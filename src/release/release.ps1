@@ -298,7 +298,6 @@ $ShipGlobs = @(
     @{ Path = 'ftesurf/gfx/rampwear';   Filter = '*.png' }
     @{ Path = 'ftesurf/gfx/snowmask';   Filter = '*.txt' }
     @{ Path = 'ftesurf/gfx/snowmask';   Filter = '*.png' }
-    @{ Path = 'ftesurf/gfx/loadwire';   Filter = '*.txt' }   # P1453: loading-screen map models (tools/loadwire.py)
     @{ Path = 'ftesurf/scripts';        Filter = '*' }
     # Keep the three font faces and both OFL notices, never install backup copies.
     @{ Path = 'ftesurf/gfx/fonts';      Filter = '*'; Deny = @('*.prev') }
@@ -354,6 +353,8 @@ $ShipGlobs = @(
     @{ Path = 'ftesurf/gfx/winter';     Filter = '*.txt' }
     @{ Path = 'ftesurf/sound/winter';   Filter = '*.wav' }
     @{ Path = 'ftesurf/sound/winter';   Filter = '*.ogg' }
+    # P1453: loading-screen map models (tools/loadwire.py); last, so the quoted --mutate indices hold.
+    @{ Path = 'ftesurf/gfx/loadwire';   Filter = '*.txt' }
 )
 
 # =============================================================================

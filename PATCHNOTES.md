@@ -21,6 +21,12 @@
 
 ## next
 
+### P1453 Loading screen: named steps, the map's own models and its picture
+- Each step names what is loading: "Mounting CS:GO content" (with the wait on screen), "Loading textures: CS:S, HL2, the map", "Loading models (3): dagger".
+- Maps with their own models show one as the spinning wireframe: surf_gigapede's dagger and boid, bhop_ceaseless's butterfly, spider and dragon, Patrick on surf_bikini_bottom, and 10 more maps.
+- The wireframes face you side on; Settings has "Loading-screen models: side on / from above".
+- The map card shows the map's own screenshot instead of the small browser thumbnail.
+
 ### P1454 No "Not Responding" while a big map loads
 - A map whose first load takes several seconds (surf_quarantine with CS:GO content) no longer turns the window grey with "Not Responding" while it loads.
 
