@@ -79,6 +79,9 @@
 .float topt_reachk, topt_reachd, topt_reachv;   // P1449: the played best's prediction, the same three
 #define TOPT_REACH 100000       // P1449: a reached target scores this + speed/energy at the reach tick
 #define TOPT_NEAR  50000        // P1449: a miss scores this - its closest distance
+#define TOPT_FACEDOT 0.95       // P1449: a contact boards the target's face within ~18 degrees of it: a bent ramp's two faces
+                                // sit 11.4 degrees apart (surf_monolith's ramp 2: 0.9797, under the old 0.98); its flat top
+                                // (0.72 there) and sides stay out
 #define TOPT_HOPDIR 20          // P1449: a hop target's score lost per degree off the demo's heading after it
 #define TOPT_LOOKW 0.01         // P1449 `look N`: a reach's score per unit of demo route survived after it (a reach scores
                                 // sqrt(E + EREF) ~ 5700: 40 u/s at 1800 is ~13; 100 ticks survived ~27 -- at 0.5 survival
@@ -351,13 +354,30 @@ float(entity e, float r, float y, float f, float i) SV_TASOptYaw =
 // nothing near the body -- an OnJump or OnEndTouch edge of a trigger touched (run_tl*, the triggers'
 // touch bits), a delayed output with this player as activator (SV_TrigPending 2), the Monolith B4
 // latch. A rollout from such a head is not the real move: refuse (-31 latch, -32 edges/delays).
+string(entity t) SV_TASOptRename;
+float(entity t) SV_TASOptRenameOnly = { return t == world || SV_TASOptRename(t) != ""; };
 float(entity e) SV_TASRollPending =
 {
+	local entity t;
+	local float n;
+	local int bit;
 	if (e.run_mono_phase || e.vsv_on) return -31;
 	if (e.vbsp_grav_trig) return -31;   // a persist-0 trigger_gravity's reset is owed (SV_GravityFrame)
-	if (e.run_tl1 || e.run_tl2 || e.run_tl3 || e.run_tl4 || e.run_tl5 || e.run_tl6 || e.run_tl7 || e.run_tl8)
+	// P1449: a touch edge owed by a trigger that only renames its toucher is not one the rollout loses:
+	// SV_TASOptRoll starts its filter name as the rename (SV_TASOptSimStart). surf_monolith's bonus boards
+	// its ramps inside such triggers, and every search after the first was refused (9 Nov).
+	if (!SV_TASOptRenameOnly(e.run_tl1) || !SV_TASOptRenameOnly(e.run_tl2) || !SV_TASOptRenameOnly(e.run_tl3) || !SV_TASOptRenameOnly(e.run_tl4)
+	    || !SV_TASOptRenameOnly(e.run_tl5) || !SV_TASOptRenameOnly(e.run_tl6) || !SV_TASOptRenameOnly(e.run_tl7) || !SV_TASOptRenameOnly(e.run_tl8))
 		return -32;
-	if (SV_TrigPending(e)) return -32;
+	n = num_for_edict(e) - 1;           // SV_TrigPending's walk, a rename-only trigger excepted
+	bit = 0;
+	if (n >= 0 && n < 32) bit = (int)1 << (int)n;
+	for (t = nextent(world); t; t = nextent(t))
+	{
+		if (t.enemy == e && t.classname == "vbsp_iodelay") return -32;
+		if (t.vbsp_touch_who == e || ((t.vbsp_touch_in | t.vbsp_touch_seen | t.vbsp_touch_out) & bit))
+		if (!SV_TASOptRenameOnly(t)) return -32;
+	}
 	return 0;
 };
 
@@ -529,6 +549,70 @@ float(entity e) SV_TASOptDemoRoll =
 	return ran;
 };
 
+// P1449: map sequencing a rollout can follow (surf_monolith's bonus): a trigger whose every output
+// renames its toucher (!activator AddOutput targetname X) gives the name it leaves; else "".
+string(entity t) SV_TASOptRename =
+{
+	local entity o;
+	local string nm;
+	nm = "";
+	for (o = t.vbsp_io_out; o; o = o.vbsp_io_next)
+	{
+		if (o.vbsp_io_target != "!activator" || strcasecmp(o.vbsp_io_input, "AddOutput")
+		    || substring(o.vbsp_io_param, 0, 11) != "targetname ") return "";
+		nm = substring(o.vbsp_io_param, 11, -1);
+	}
+	return nm;
+};
+
+// P1449: does a volume QC acts on end a rollout? Not a teleport whose filter refuses the toucher under the
+// name the rollout has given it so far, and not a rename trigger (its filter passing, the name changes:
+// topt_simname). Monolith's 447 teleports send back whoever skipped a ramp; read as fatal, every route
+// through them was cut (9 Nov). Overlapping volumes report only one a tick (SV_TASRolloutActor): a
+// second, unfiltered one under a passed one would be missed -- the played tape's check would say so.
+// A rename lands on leaving (OnEndTouch), and a filtered teleport usually sits inside its rename volume
+// (monolith's ramp 1: *130 renames filter_name_2 -> _3, *131 sends back all but _2): the rename waits in
+// topt_simpend until a tick touches no volume at all.
+string topt_simname, topt_simpend;
+float(entity e, entity t) SV_TASOptVolumeEnds =
+{
+	local string keep, nm;
+	local float pass;
+	keep = e.targetname; e.targetname = topt_simname;
+	pass = SV_PassesFilter(t, e);
+	e.targetname = keep;
+	if (t.classname == "trigger_teleport" && t.filtername != "" && !pass) return FALSE;
+	if (t.classname == "trigger_multiple" && t.vbsp_io_out)
+	{
+		nm = SV_TASOptRename(t);
+		if (nm != "") { if (pass) topt_simpend = nm; return FALSE; }
+	}
+	return TRUE;
+};
+
+// The filter name a rollout starts with (the body's), and the rename a trigger it is still touching will
+// give it on leaving, pending (its own filter passing) -- SV_TASRollPending let the search start there.
+void(entity e) SV_TASOptSimStart =
+{
+	local entity t;
+	local string keep;
+	local int bit;
+	local float n;
+	topt_simname = e.targetname; topt_simpend = "";
+	n = num_for_edict(e) - 1;
+	bit = 0;
+	if (n >= 0 && n < 32) bit = (int)1 << (int)n;
+	for (t = nextent(world); t; t = nextent(t))
+		if (t.classname == "trigger_multiple" && t.vbsp_io_out)
+		if (t.vbsp_touch_who == e || ((t.vbsp_touch_in | t.vbsp_touch_seen | t.vbsp_touch_out) & bit))
+		if (SV_TASOptRename(t) != "")
+		{
+			keep = e.targetname; e.targetname = topt_simname;
+			if (SV_PassesFilter(t, e)) topt_simpend = SV_TASOptRename(t);
+			e.targetname = keep;
+		}
+};
+
 float(entity e, float r, float y, float f) SV_TASOptRoll =
 {
 	local float i, ran, a;
@@ -555,9 +639,12 @@ float(entity e, float r, float y, float f) SV_TASOptRoll =
 		SV_NoColPost(e);
 	}
 	if (ran >= 0 && ran < e.topt_n) e.topt_rollcut = 2;
+	SV_TASOptSimStart(e);
 	for (i = 0; i < ran; i = i + 1)
 	{
 		a = topt_out[i*13 + 12];
+		if (!a && topt_simpend != "") { topt_simname = topt_simpend; topt_simpend = ""; }   // out of every volume
+		if (a && !SV_TASOptVolumeEnds(e, edict_num(fabs(a)))) a = 0;
 		if (a)
 		{	// QC acts on it (a touch, a carrier, a volume) where the rollout cannot: the prediction ends
 			// after this tick, or before it when it is the volume the body started in (negative)
@@ -723,7 +810,7 @@ float(entity e, float ran) SV_TASOptTubeIn =
 
 // P1449: topt_out's counted ticks against the target. The reach is the first tick within the radius
 // that, when the target names a face, also touches that face (a world-ramp contact whose normal is
-// within ~11 degrees of it: landing on the ramp's flat top beside the point is not boarding it); a
+// within TOPT_FACEDOT of it: landing on the ramp's flat top beside the point is not boarding it); a
 // floor normal ('0 0 1') asks for a hop there instead -- a tick that jumps (vz up > 200 u/s), since
 // pm_autobunny jumps on the grounded tick itself (a platform's far end, not the first touch). The
 // link ends there (what follows does not count, a reset after it included); reached scores
@@ -742,7 +829,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		if (d <= e.topt_tgtr)
 		if (e.topt_tgtn == '0 0 0' ||
 		    (e.topt_tgtn_z >= 0.99 && topt_out[i*13+5] - ((i > 0) ? topt_out[i*13-8] : e.velocity_z) > 200) ||
-		    (topt_out[i*13+8] == 1 && [topt_out[i*13+9], topt_out[i*13+10], topt_out[i*13+11]] * e.topt_tgtn >= 0.98))
+		    (topt_out[i*13+8] == 1 && [topt_out[i*13+9], topt_out[i*13+10], topt_out[i*13+11]] * e.topt_tgtn >= TOPT_FACEDOT))
 		{
 			best = d; bk = i; hit = TRUE;
 			break;
@@ -1063,6 +1150,14 @@ void(entity e, float argc) SV_TASSeedCommand =
 	sprint(e, PRINT_HIGH, sprintf("tas seed: %.0f knots kept for the next `curve %.0f` search\n", e.topt_kseedn, e.topt_kseedn));
 };
 
+// P1449: a KSF import's move column as a command: some imports store only its direction (-1..1: the
+// surf_monolith and surf_prosurf runs; surf_null's carry +-400) -- a 1 u sidemove strafes nothing.
+float(float m) SV_TASDemoMove =
+{
+	if (m && fabs(m) <= 1) m = m * 450;
+	return bound(-450, rint(m), 450);
+};
+
 // P1449: `tas demorows <file> <from>` -- up to TOPT_HMAX rows of a recording from time `from` (KSF import
 // columns, ksfbuttons lines: jump 2 -> 1, duck 4 -> 2) for `curve k demo` to correct. Stand where the
 // recording is at `from` (the chain driver places the body there first).
@@ -1100,8 +1195,8 @@ void(entity e, float argc) SV_TASDemoRowsCommand =
 		pvx = stof(argv(4)); pvy = stof(argv(5));
 		topt_dpos[n*3] = stof(argv(1)); topt_dpos[n*3+1] = stof(argv(2)); topt_dpos[n*3+2] = stof(argv(3));
 		topt_dlen[n] = n ? topt_dlen[n-1] + vlen([topt_dpos[n*3] - topt_dpos[n*3-3], topt_dpos[n*3+1] - topt_dpos[n*3-2], topt_dpos[n*3+2] - topt_dpos[n*3-1]]) : 0;
-		topt_drow[n*5] = bound(-450, rint(stof(argv(11))), 450);
-		topt_drow[n*5+1] = bound(-450, rint(stof(argv(12))), 450);
+		topt_drow[n*5] = SV_TASDemoMove(stof(argv(11)));
+		topt_drow[n*5+1] = SV_TASDemoMove(stof(argv(12)));
 		topt_drow[n*5+2] = bound(-89, stof(argv(7)), 89);
 		topt_drow[n*5+3] = yaw - 360 * floor((yaw + 180) / 360);
 		topt_drow[n*5+4] = ((kb & 2) ? 1 : 0) | ((kb & 4) ? 2 : 0);
@@ -1374,7 +1469,8 @@ void(entity e) SV_TASOptFrame =
 			v = SV_TASOptRollScore(e, SV_TASOptValue(e, 1), SV_TASOptValue(e, 2), SV_TASOptValue(e, 3));
 			if (v == -1 && e.topt_rollcut == 1 && !e.topt_rollran)
 			{	// cut before tick 1: the volume the body starts in, whatever the inputs
-				SV_TASOptStop(e, "the body starts inside a trigger volume QC acts on; step out of it first");
+				SV_TASOptStop(e, sprintf("the body starts inside a trigger volume QC acts on (%s, filter '%s', named '%s' here); step out of it first",
+					edict_num(fabs(topt_out[12])).classname, edict_num(fabs(topt_out[12])).filtername, topt_simname));
 				return;
 			}
 			if (v == -1) e.topt_fcut = e.topt_fcut + 1;
@@ -1532,8 +1628,8 @@ float(entity e) SV_TASDemoRead =
 		if (c < 14 || !FS_TASNumber(argv(0))) continue;
 		if (stof(argv(0)) < e.tdem_from - 0.0001) continue;
 		yaw = stof(argv(8));
-		tdem_buf[n*6] = bound(-450, rint(stof(argv(11))), 450);
-		tdem_buf[n*6+1] = bound(-450, rint(stof(argv(12))), 450);
+		tdem_buf[n*6] = SV_TASDemoMove(stof(argv(11)));
+		tdem_buf[n*6+1] = SV_TASDemoMove(stof(argv(12)));
 		tdem_buf[n*6+2] = bound(-89, stof(argv(7)), 89);
 		tdem_buf[n*6+3] = yaw - 360 * floor((yaw + 180) / 360);
 		tdem_buf[n*6+4] = (((float)tdem_kb & 2) ? 1 : 0) | (((float)tdem_kb & 4) ? 2 : 0);

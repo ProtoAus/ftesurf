@@ -49,6 +49,7 @@ p.add_argument('--look', type=int, default=0, help='with --tube: ticks of the de
 p.add_argument('--map', default='surf_null', help='the map (its .bsp from the Momentum maps folder, its zones from ftesurf/maps/zones/local)')
 p.add_argument('--bsp', type=Path, default=None, help='the .bsp to use instead of <maps>/<map>.bsp')
 p.add_argument('--tube', type=int, default=0, help="demo modes: candidates stay within this many units of the demo's path (0 off)")
+p.add_argument('--name', default='', help='targetname the placed body carries (pe_state), as the route before the placement would set it')
 p.add_argument('--finish', action='store_true', help="after the last ride, a waypoint at the demo's last sample (the end zone)")
 p.add_argument('--midair', action='store_true', help="a waypoint at each flight's middle (no face), so steered flights follow the demo's route")
 p.add_argument('--boards-only', action='store_true', help='each link is board to next board: ride and flight in one search')
@@ -205,6 +206,19 @@ try:
         if not c: return fallback, None
         k = min(c, key=lambda k: abs(k['t'] - t))
         return list(k['n']), k['t']
+    LS = []
+    if a.ledger:
+        LJ = json.load(open(a.ledger)); LS = LJ[next(iter(LJ))]['segments']
+    def ride_face(t):
+        # a ride's board face: the ledger's BSP plane if one starts within 0.1 s; else the first normal the
+        # demo's moves imply in the next ticks inside the surf band (a curved ramp's first-tick estimate
+        # mixes the strafe in: surf_monolith's 14.94 board read nz 0.87, ground here); else the first
+        near = [x for x in LS if abs(x['t_board'] - t) <= 0.1]
+        if near: return list(min(near, key=lambda x: abs(x['t_board'] - t))['n'])
+        c = sorted((k for k in lt if k['kind'] == 'clip' and k['n'] and t - 1e-6 <= k['t'] <= t + 0.06), key=lambda k: k['t'])
+        band = [k for k in c if 0.1 <= k['n'][2] <= 0.72]
+        if band: return list(band[0]['n'])
+        return list(c[0]['n']) if c and c[0]['n'][2] > 0.3 else None
     if a.rides == 'physics':
         # a ride: samples whose vz is off free fall (g * dt a sample) for 0.3 s or more, entered falling
         # (a ground start or a platform hop is not one); its face from the demo's clip at the board
@@ -214,7 +228,7 @@ try:
             if off and st is None: st = r1
             if not off and st is not None:
                 if r0[0] - st[0] >= 0.3 - 1e-6 and st[6] < -100:
-                    n, _ = face(st[0], None)
+                    n = ride_face(st[0])
                     if n: segs.append({'t_board': st[0], 't_leave': r0[0], 'n': n})
                 st = None
         print('      rides from physics: ' + ', '.join(f"{x['t_board']:.2f}-{x['t_leave']:.2f}" for x in segs), flush=True)
@@ -252,7 +266,7 @@ try:
         if n is None or what == 'hop':
             if what == 'hop': print(f'      waypoint hop {k}: demo t={wr[0]:.3f} o {tuple(round(x) for x in wr[1:4])} (a jump within {a.hop_radius} u)', flush=True)
             W2.append((what, k, wr, n)); continue
-        fn, ft = face(wr[0], n)
+        fn, ft = (n, 'ride_face') if a.rides == 'physics' else face(wr[0], n)   # physics rides chose theirs
         print(f'      waypoint {what} {k}: demo t={wr[0]:.3f} o {tuple(round(x) for x in wr[1:4])}; face from t={ft} '
               f'({sum(x * y for x, y in zip(fn, n)):.3f} against the board plane)', flush=True)
         W2.append((what, k, wr, fn))
@@ -267,7 +281,9 @@ try:
     # next move, then one TAS step on the demo's own input for that sample
     cl.send(f'cmd setpos {sr[1]:.6f} {sr[2]:.6f} {sr[3]:.6f} {sr[7]:.4f} {sr[8]:.4f} 0'); time.sleep(1)
     off = len(cl.text())
-    cl.send(f'cmd pe_state -1 {sr[1]:.6f} {sr[2]:.6f} {sr[3]:.6f} {sr[4]:.6f} {sr[5]:.6f} {sr[6]:.6f}'); time.sleep(1)
+    # --name: the activator name the map's sequencing would have given the run by here (surf_monolith's
+    # bonus: its zone names the runner filter_name_1, and its ramp-0 teleport sends back anyone else)
+    cl.send(f'cmd pe_state -1 {sr[1]:.6f} {sr[2]:.6f} {sr[3]:.6f} {sr[4]:.6f} {sr[5]:.6f} {sr[6]:.6f}' + (f' {a.name}' if a.name else '')); time.sleep(1)
     st = status(); r['after_pe_state'] = st
     applied = re.search(r'pe_state: on command', cl.text()[off:]) is not None
     kb = 0
@@ -292,7 +308,9 @@ try:
     e0 = endpoint(); nr = rows[bi - a.lead + 1]; r['placed'] = e0
     print(f'      one tick after the save (demo t={nr[0]:.3f}): ours {tuple(round(x, 1) for x in e0[:3])} v {tuple(round(x, 1) for x in e0[3:])}'
           f'; demo {tuple(round(x, 1) for x in nr[1:4])} v {tuple(round(x, 1) for x in nr[4:7])}', flush=True)
-    check('placed on the demo state, one tick on (a ducked demo is 8.5 u off: the save stands)', math.dist(e0[:3], nr[1:4]) < 12 and math.dist(e0[3:], nr[4:7]) < 60, (e0, nr[:7]))
+    # a ducked demo is 8.5 u off, and its tick strafes differently here (surf_monolith's bonus: 61 u/s); a placement
+    # that did not take (a teleport) is thousands off -- the searches start from the state as it is
+    check('placed on the demo state, one tick on (within 12 u and 100 u/s)', math.dist(e0[:3], nr[1:4]) < 12 and math.dist(e0[3:], nr[4:7]) < 100, (e0, nr[:7]))
     check('acting TAS session', status()[4] == 1, status())
     D = demo_rows()
     if a.bench:
