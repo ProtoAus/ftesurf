@@ -24,12 +24,32 @@ void() TASAuto_Event =
 float(string f) TASOptUI_SafeName =
 {
 	local float i, c;
+	if (strstrofs(f, "..") >= 0) return FALSE;      // the forwarder and SV_TASDemoPathOK refuse it (review)
 	for (i = 0; i < strlen(f); i = i + 1)
 	{
 		c = str2chr(f, i);
 		if (!((c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95 || c == 45 || c == 46 || c == 47)) return FALSE;
 	}
 	return f != "";
+};
+
+// A data/ recording unless its header names another map (autosurf refuses those: SV_TASAutoRead).
+float(string f) TASOptUI_ThisMap =
+{
+	local float fh, i, c;
+	local string line;
+	fh = fopen(f, FILE_READ);
+	if (fh < 0) return FALSE;
+	for (i = 0; i < 64; i = i + 1)
+	{
+		line = fgets(fh);
+		if (line == "") continue;
+		c = tokenize(line);
+		if (argv(0) == "map" && c >= 2) { fclose(fh); return !strcasecmp(argv(1), zone_mapname); }
+		if (c >= 7 && FS_TASNumber(argv(0))) break;     // the samples began without a map line
+	}
+	fclose(fh);
+	return TRUE;
 };
 
 // This map's KSF replays (cfg/ksfreplays/ksf_<map without surf_>_<runner>.rec), searched once a map.
@@ -63,7 +83,7 @@ void() TASOptUI_List =
 		for (i = 0; i < n && taso_demon < TASO_DEMOS; i = i + 1)
 		{
 			f = search_getfilename(h, i);
-			if (TASOptUI_SafeName(f)) { taso_demo[taso_demon] = strzone(f); taso_demon = taso_demon + 1; }
+			if (TASOptUI_SafeName(f) && TASOptUI_ThisMap(f)) { taso_demo[taso_demon] = strzone(f); taso_demon = taso_demon + 1; }
 		}
 		search_end(h);
 	}
