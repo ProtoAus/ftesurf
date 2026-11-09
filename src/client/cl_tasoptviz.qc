@@ -80,16 +80,12 @@ void(float base, float n, vector col, float alpha, float halfw) TASOptViz_Line =
 };
 
 // In the depth-tested world pass beside Zone_Draw.
-// P1449: the route clicked in the Optimizer tab (cl_tasoptui.qc keeps it as it sends `tas route add`): a post a
-// point (mint a ramp to board, butter a bhop floor, aqua a point) and a thin line through them in order.
+// P1449: the route clicked in the Optimizer tab, as the server's notes report it (cl_tasoptui.qc TASAuto_Event): a
+// post a point (mint a ramp to board, butter a bhop floor, aqua a point) and a thin line through them in order.
 #define TOV_ROUTE 64
 float tov_rn;
 vector tov_rp[TOV_ROUTE];
 float tov_rk[TOV_ROUTE];
-// an add waiting for the server's count: drawn only once the count says it was taken (a refused add -- a lobby,
-// a search running, 64 points -- then leaves no marker; review 5)
-float tov_ppend, tov_pk;
-vector tov_pp;
 
 void() TASOptViz_Draw =
 {

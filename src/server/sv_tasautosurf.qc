@@ -305,9 +305,11 @@ string(entity e, float i) SV_TASAutoEmin =
 // tas route add <x y z> <nx ny nz> | undo | clear | show -- the clicked route `tas autosurf route` surfs.
 void(entity e, float argc) SV_TASRouteCommand =
 {
-	local float i;
+	local float i, ad;
 	if (Lobby_Active()) { sprint(e, PRINT_HIGH, "tas route: a local practice tool; not on lobby servers\n"); return; }
-	// every refusal below still sends the count, so the tab drops the marker it drew for a refused add (review 2)
+	// every outcome below sends the count; only a taken add's note carries its point, which is what the tab draws
+	// (a pending marker of its own was confirmed by unrelated counts: review 6)
+	ad = 0;
 	if (e.as_on && e.as_route) sprint(e, PRINT_HIGH, "tas route: autosurf is surfing it; stop it first\n");
 	else if (argc == 9 && argv(2) == "add")
 	{
@@ -323,7 +325,7 @@ void(entity e, float argc) SV_TASRouteCommand =
 				rt_o[rt_n*3] = stof(argv(3)); rt_o[rt_n*3+1] = stof(argv(4)); rt_o[rt_n*3+2] = stof(argv(5));
 				if (i <= 0.01) rt_nn[rt_n*3] = rt_nn[rt_n*3+1] = rt_nn[rt_n*3+2] = 0;    // near zero: a point (review 2)
 				else { rt_nn[rt_n*3] = stof(argv(6)); rt_nn[rt_n*3+1] = stof(argv(7)); rt_nn[rt_n*3+2] = stof(argv(8)); }
-				rt_n = rt_n + 1;
+				rt_n = rt_n + 1; ad = 1;
 			}
 		}
 	}
@@ -333,7 +335,10 @@ void(entity e, float argc) SV_TASRouteCommand =
 		for (i = 0; i < rt_n; i = i + 1)
 			sprint(e, PRINT_HIGH, sprintf("tas route %.0f: %v, %v\n", i + 1, [rt_o[i*3], rt_o[i*3+1], rt_o[i*3+2]], [rt_nn[i*3], rt_nn[i*3+1], rt_nn[i*3+2]]));
 	else { sprint(e, PRINT_HIGH, "tas route add <x y z> <nx ny nz> | undo | clear | show\n"); return; }
-	SV_TASAutoNote(e, e.as_on ? 1 : 0, sprintf("your route: %.0f points", rt_n));
+	if (ad)
+		SV_TASAutoNote(e, e.as_on ? 1 : 0, strcat(sprintf("your route: %.0f points, added ", rt_n),
+			sprintf("%.1f %.1f %.1f %.4f %.4f %.4f", rt_o[rt_n*3-3], rt_o[rt_n*3-2], rt_o[rt_n*3-1], rt_nn[rt_n*3-3], rt_nn[rt_n*3-2], rt_nn[rt_n*3-1])));
+	else SV_TASAutoNote(e, e.as_on ? 1 : 0, sprintf("your route: %.0f points", rt_n));
 };
 
 // One stretch: the demo's rows from where it left off, the target, the search.
