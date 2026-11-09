@@ -149,22 +149,30 @@ float(entity e, float r, float y, float f, float i) SV_TASOptYaw =
 	return yaw - 360 * floor((yaw + 180) / 360);        // SV_TASPWord unwraps only one turn
 };
 
-// P1443: an entity a rollout names that per-command QC leaves the body's movement alone for: the
-// timer's zone volumes (the timer reads them; nothing pushes, limits or teleports).
-float(entity t) SV_TASRollHarmless =
+// P1443 review 2: per-command QC state already pending at the head acts on the next real ticks with
+// nothing near the body -- an OnJump or OnEndTouch edge of a trigger touched (run_tl*, the triggers'
+// touch bits), a delayed output with this player as activator (SV_TrigPending 2), the Monolith B4
+// latch. A rollout from such a head is not the real move: refuse (-31 latch, -32 edges/delays).
+float(entity e) SV_TASRollPending =
 {
-	return substring(t.classname, 0, 23) == "trigger_momentum_timer_";
+	if (e.run_mono_phase) return -31;
+	if (e.run_tl1 || e.run_tl2 || e.run_tl3 || e.run_tl4 || e.run_tl5 || e.run_tl6 || e.run_tl7 || e.run_tl8)
+		return -32;
+	if (SV_TrigPending(e)) return -32;
+	return 0;
 };
 
 // P1443: the candidate's rows through tas_rollout into topt_out. Returns the ticks that count and
-// sets topt_pcut (1 an entity QC acts on ended it, 2 the engine stopped), or SV_TASRollout's
-// negative refusal; -20 without the builtin or buffers.
+// sets topt_rollcut (1 an entity QC acts on ended it, 2 the engine stopped), or a negative refusal
+// (SV_TASRollout's, or SV_TASRollPending's); -20 without the builtin or buffers.
 .float topt_rollcut;
 float(entity e, float r, float y, float f) SV_TASOptRoll =
 {
-	local float i, ran;
+	local float i, ran, a;
 	e.topt_rollcut = 0;
 	if (!checkbuiltin(tas_rollout)) return -20;
+	ran = SV_TASRollPending(e);
+	if (ran) return ran;
 	if (!topt_rows) topt_rows = (float*)memalloc(TAS_TAPE_MAX * 7 * 4);
 	if (!topt_out) topt_out = (float*)memalloc(TAS_TAPE_MAX * 13 * 4);
 	if (!topt_rows || !topt_out) return -20;
@@ -174,17 +182,23 @@ float(entity e, float r, float y, float f) SV_TASOptRoll =
 		topt_rows[i*7+3] = SV_TASPWord(e.topt_pitch0); topt_rows[i*7+4] = SV_TASPWord(SV_TASOptYaw(e, r, y, f, i));
 		topt_rows[i*7+5] = 0; topt_rows[i*7+6] = 0;
 	}
+	SV_NoColPre(e);         // P1193's barrier is lent out around a real move; around a rollout too
 	ran = tas_rollout(e, topt_rows, e.topt_n, topt_out);
+	SV_NoColPost(e);
 	if (ran >= 0 && ran < e.topt_n) e.topt_rollcut = 2;
 	for (i = 0; i < ran; i = i + 1)
-		if (topt_out[i*13 + 12] && !SV_TASRollHarmless(edict_num(topt_out[i*13 + 12])))
-		{	// QC acts on it (a touch, a carrier, a volume) where the rollout cannot: ends with this tick
+	{
+		a = topt_out[i*13 + 12];
+		if (a)
+		{	// QC acts on it (a touch, a carrier, a volume) where the rollout cannot: the prediction ends
+			// after this tick, or before it when it is the volume the body started in (negative)
 			if (cvar("developer") >= 2 || (cvar("developer") && !e.topt_fast && !e.topt_rshort))
-				sprint(e, PRINT_HIGH, sprintf("tas optimize: rollout meets %s at tick %.0f of %.0f\n",
-					edict_num(topt_out[i*13 + 12]).classname, i + 1, e.topt_n));
+				sprint(e, PRINT_HIGH, sprintf("tas optimize: rollout meets %s %s tick %.0f of %.0f\n",
+					edict_num(fabs(a)).classname, (a < 0) ? "before" : "at", i + 1, e.topt_n));
 			e.topt_rollcut = 1;
-			return i + 1;
+			return (a < 0) ? i : i + 1;
 		}
+	}
 	return ran;
 };
 
@@ -211,7 +225,7 @@ float(entity e, float r, float y, float f) SV_TASOptRollScore =
 {
 	local float ran, i;
 	ran = SV_TASOptRoll(e, r, y, f);
-	if (ran < 0) return -2;
+	if (ran < 0) { e.topt_rwhy = ran; return -2; }
 	if (ran < e.topt_n) return -1;
 	i = (ran - 1) * 13;
 	return SV_TASOptStateScore(e, [topt_out[i], topt_out[i+1], topt_out[i+2]], [topt_out[i+3], topt_out[i+4], topt_out[i+5]]);
@@ -351,8 +365,8 @@ void(entity e) SV_TASOptFrame =
 			return;
 		}
 		e.topt_stage = 1;
-		if (e.topt_pn == e.topt_n)
-		{	// P1443: the real mover's landing against the rollout's last tick
+		if (e.topt_pn == e.topt_n && e.topt_pcut != 1)
+		{	// P1443: the real mover's landing against the rollout's last tick (a cut on the last tick is not one)
 			e.topt_rchk = e.topt_rchk + 1;
 			e.topt_rbado = max(e.topt_rbado, vlen(e.origin - e.topt_po));
 			e.topt_rbadv = max(e.topt_rbadv, vlen(e.velocity - e.topt_pv));
@@ -362,7 +376,7 @@ void(entity e) SV_TASOptFrame =
 				sprint(e, PRINT_HIGH, sprintf("tas optimize: rollout %.0f off by %.5f u, %.5f u/s\n", e.topt_evals + 1,
 					vlen(e.origin - e.topt_po), vlen(e.velocity - e.topt_pv)));
 		}
-		else if (e.topt_pn >= 0 && e.topt_pcut == 1)
+		else if (e.topt_pn >= 0 && e.topt_pcut == 1)	// incl. a cut on the last tick
 			e.topt_rshort = e.topt_rshort + 1;
 		else if (e.topt_pn >= 0)
 			e.topt_rstop = e.topt_rstop + 1;
@@ -390,7 +404,12 @@ void(entity e) SV_TASOptFrame =
 		for (k = 0; k < max(1, floor(4000 / e.topt_n)) && e.topt_on && e.topt_phase != 3; k = k + 1)
 		{
 			v = SV_TASOptRollScore(e, SV_TASOptValue(e, 1), SV_TASOptValue(e, 2), SV_TASOptValue(e, 3));
-			if (v == -2) { SV_TASOptStop(e, "the engine refused the rollout (needs a plain air or ground start)"); return; }
+			if (v == -2)
+			{
+				SV_TASOptStop(e, (e.topt_rwhy <= -31) ? "a trigger edge or delayed output is pending at this tick; step a few ticks and retry"
+					: sprintf("the engine refused the rollout (code %.0f: needs a plain air or ground start)", e.topt_rwhy));
+				return;
+			}
 			SV_TASOptResult(e, v);
 		}
 		return;
