@@ -21,6 +21,12 @@
 
 ## next
 
+### P1448 Fetch: any leg, any player, from KSF and Momentum
+- The leaderboard's Fetch button (was Fetch KSF) now asks both KSF and Momentum Mod for the leg you are on, refreshes it, and works on maps and bonuses with no times here yet.
+- It is on the KSF, Momentum and All filters, in game, in the menu's leaderboard and on the website. KSF replays for that leg download first.
+- Player profiles have a Fetch button too: it asks KSF and Momentum Mod for all of that player's records, stages and bonuses included.
+- Everything fetched arrives in the background over a few minutes; press Fetch again for 100 more times.
+
 ### P1443 TAS: a much faster optimizer, and an energy goal
 - `tas optimize <ticks> <left|right> ... fast` tries hundreds of turns, boards and flicks in a second and plays only the best -- the old search played every try (about two seconds each).
 - `energy` scores speed plus height instead of speed alone, for maps where you need every bit of energy to make the end.

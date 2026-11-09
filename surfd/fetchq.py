@@ -32,7 +32,7 @@ MAX_FETCHED = 8         # live full walks of non-account profiles
 
 
 def ensure(db):
-    # One transaction, as inventory's optional tables: atomic, and no second writer interleaves.
+    # One transaction: atomic, and no second writer interleaves (it takes the write lock each call).
     db.executescript("BEGIN IMMEDIATE;\n" + SQL + "\nCOMMIT;")
     ensure_columns(db)
 

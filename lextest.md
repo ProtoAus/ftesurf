@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1448 Fetch: any leg, any player, from KSF and Momentum -- on main 9 Nov; NOT live until the surfd generation
+- TAB board (KSF, Momentum or All filter), the menu's leaderboard and the website's map page: press Fetch on a leg
+  with no times here yet; the footer says what KSF and Momentum answered. Refresh after a few minutes: times, and
+  KSF replays for that leg, arrive in the background. Say if a leg you know exists says "not listed".
+- A profile's Fetch (game and site): stage and bonus records arrive over the next hour or so for a KSF player.
+- Until the new surfd is live, Fetch on a board still queues KSF as before and a profile's Fetch says it failed.
+
 ## P1443 tas optimize fast / energy -- LIVE 9 Nov (both installs' exe patch-1443 + QC; lobbies' QC); owner check pending
 
 - In a local TAS (pause mid-air, or on a ramp): `tas optimize 64 left board flick fast` (try right too) should finish
