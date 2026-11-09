@@ -169,6 +169,15 @@ string(entity e, float i) SV_TASAutoPace =
 	return sprintf(" pace %.2f", x);
 };
 
+// Energy against one height for the whole demo (its first sample's): signed sqrt(v.v + 2g dz), so reaches
+// compare across stretches and runs (a search's own figure is from where that stretch started).
+float(vector v, float z) SV_TASAutoVE =
+{
+	local float x;
+	x = v * v + 2 * cvar("sv_gravity") * (z - as_rows[3]);
+	return (x < 0) ? -sqrt(-x) : sqrt(x);
+};
+
 // The least energy this stretch's reach counts at: the demo's speed at its board times `emin` (0.9), as
 // energy from where the body stands now (the search's own reference); "" when off. A reach well under
 // it left the next stretches tried without the speed to make them (Lex, 10 Nov).
@@ -240,6 +249,9 @@ void(entity e) SV_TASAutoFrame =
 					d = vlen(SV_TASAutoRowO(i) - e.origin);
 					if (d < best) { best = d; t = as_rows[i*7]; }
 				}
+			for (i = 0; i < as_nrows - 1 && as_rows[i*7] < as_wt[e.as_i] - 0.0001; i = i + 1) ;
+			sprint(e, PRINT_HIGH, sprintf("tas autosurf: stretch %.0f reached: energy %.0f u/s, farsh %.0f at his (both from the demo's start height)\n",
+				e.as_i + 1, SV_TASAutoVE(e.velocity, e.origin_z), SV_TASAutoVE([as_rows[i*7+4], as_rows[i*7+5], as_rows[i*7+6]], as_rows[i*7+3])));
 			e.as_tprev = t; e.as_i = e.as_i + 1; e.as_try = 0;
 			if (e.as_i >= as_n)
 			{
