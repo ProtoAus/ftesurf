@@ -54,7 +54,7 @@ void(entity e, string why) SV_TASAutoStop =
 	if (!e.as_on) return;
 	e.as_on = 0;
 	if (e.topt_on) SV_TASOptStop(e, "autosurf stopped");
-	SV_TASAutoNote(e, 3, why);
+	SV_TASAutoNote(e, 3, (substring(why, 0, 5) == "stuck") ? why : strcat("stopped: ", why));   // a driver waits on stuck/stopped
 };
 
 vector(float i) SV_TASAutoRowO = { return [as_rows[i*7+1], as_rows[i*7+2], as_rows[i*7+3]]; };
