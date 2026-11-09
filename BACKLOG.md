@@ -242,8 +242,13 @@
   Sprite_SkyTest with rays at ~100-200 us (profile includes builtins; only renderscene/entity setup excluded).
   P1456 PARKED (origin branch p1456-glarefade 143fcc9d): glare skips glows the draw loop cannot draw (sky,
   one-sided back, distance ramp); census shows 13-45 skipped on some frames, but fairy csqc 2.13 -> 2.09 and
-  lows unchanged: the 40-ray budget is saturated, saved rays go to other glows. Lead: cap glare/sky rays by TIME
-  (gettime(1) is ms-rounded; needs an engine microsecond time-into-frame, old engines keep the ray count).
+  lows unchanged: the 40-ray budget is saturated, saved rays go to other glows. THEN TRIED (same branch, reviewed
+  twice): each ray loop stops once gettime(1) moves 2 ms (vbsp_sprite_tracems). It works -- glare+sky in the
+  worst frames 6-9 -> 2-3 ms -- but the lows do not move: pooled fairy 1% 81-102 (mean ~93.5, 4 runs) against
+  main 89-100 (~93, 6 runs), 0.1% ~73.5 vs ~74; same-build runs spread +-6, and an early '+8' was that noise.
+  The worst frames carry transparent draws 4-5.6 ms, hl2 props and the rest of csqc too. Real levers: the glare's
+  ray budget per second instead of per frame (8 at 300 fps: one run 251/112/89; glows ~2x staler -- Lex's call),
+  and fairy's transparent draws. Driver now has SL_LATE (read-back), SL_CSPROGS (restored), SL_SAMPLE.
 - NEXT for water capture frames (why P1455 could not help: a one-view capture frame still costs 3.2-4 ms against
   3.3 at a 300 cap; sys_framepacing 5 already plans by the slowest of 64 frames, so pacing cannot help a frame longer
   than the interval). Each nested view spends ~1 ms in the hl2 plugin's PrepareFrame because (a) gl_rmain.c ~1760
