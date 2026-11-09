@@ -125,6 +125,7 @@ float topt_kel[TOPT_CEPOP];      // the generation's elite marks
 // its yaw plus the curve -- so a human's line is the first candidate and only a better one replaces it.
 float topt_drow[TOPT_HMAX * 5];  // fwd, side, pitch, yaw (degrees), buttons
 float topt_dq[TOPT_HMAX];         // the row's turn command (SV_TASOptFollow's q) against the velocity before it
+float topt_dmap[TOPT_HMAX];       // demo search: the demo row each tick takes its keys from (SV_TASOptDemoMap)
 .float topt_dn;
 float topt_dpos[TOPT_HMAX * 3]; // the rows' origins (each after its tick), for `tube`
 .float topt_tube, topt_tubeout; // P1449 `tube R`: candidates stay within R of that path; how many left it
@@ -510,17 +511,53 @@ float(entity e) SV_TASOptAimFrom =
 	return rint(((e.topt_tube > 0 && e.topt_tgtj > 0) ? 0.75 * e.topt_tgtj : 0.6 * e.topt_n) + topt_kcur[e.topt_kn + 2] * 0.1);
 };
 
+// P1449: topt_dmap from a rollout of `ran` ticks: tick i takes the keys of the demo row after the one
+// nearest where tick i starts (the pointer only moves on, as `tube`'s); past the rollout, one row a tick.
+// TRUE if any tick's row changed. By the clock, a line faster than the demo's kept its strafe side past the
+// ramp's end and ducked late under a ceiling (surf_null ramps 6 and 7, Lex 10 Nov).
+float(entity e, float ran) SV_TASOptDemoMap =
+{
+	local float i, j, m, d, d2, ch;
+	local vector p;
+	j = 0; ch = FALSE;
+	for (i = 1; i < e.topt_n; i = i + 1)
+	{
+		if (i - 1 < ran)
+		{
+			p = [topt_out[(i-1)*13], topt_out[(i-1)*13+1], topt_out[(i-1)*13+2]];
+			d = vlen(p - [topt_dpos[j*3], topt_dpos[j*3+1], topt_dpos[j*3+2]]);
+			while (j + 1 < e.topt_dn)
+			{
+				d2 = vlen(p - [topt_dpos[j*3+3], topt_dpos[j*3+4], topt_dpos[j*3+5]]);
+				if (d2 > d) break;
+				d = d2; j = j + 1;
+			}
+			m = min(j + 1, e.topt_dn - 1);
+		}
+		else
+			m = min(topt_dmap[i-1] + 1, e.topt_dn - 1);
+		if (m != topt_dmap[i]) ch = TRUE;
+		topt_dmap[i] = m;
+	}
+	return ch;
+};
+
 float(entity e) SV_TASOptDemoRoll =
 {
-	local float i, d, k, off, j, ran, a;
+	local float i, d, k, off, j, ran, a, pass;
 	if (e.topt_efol)
 	{	// the demo's own command each tick plus the curve, applied by the engine from the body's velocity:
-		// its technique (side switches included) on this run's state, so drift does not compound
+		// its technique (side switches included) on this run's state, so drift does not compound. Rolled
+		// twice: by the clock, then with each tick's keys from where that roll put it (SV_TASOptDemoMap)
+		for (i = 0; i < e.topt_n; i = i + 1) topt_dmap[i] = min(i, e.topt_dn - 1);
+		ran = -1;
+		for (pass = 0; pass < 2; pass = pass + 1)
+		{
 		for (i = 0; i < e.topt_n; i = i + 1)
 		{
 			d = min(i, e.topt_kspan - 1) * (e.topt_kn - 1) / max(1, e.topt_kspan - 1); k = floor(d);
 			off = (k >= e.topt_kn - 1) ? topt_kcur[e.topt_kn - 1] : topt_kcur[k] + (d - k) * (topt_kcur[k + 1] - topt_kcur[k]);
-			j = min(i, e.topt_dn - 1);
+			j = topt_dmap[i];
 			topt_rows[i*7] = topt_drow[j*5]; topt_rows[i*7+1] = topt_drow[j*5+1]; topt_rows[i*7+2] = 0;
 			topt_rows[i*7+3] = SV_TASPWord(topt_drow[j*5+2]);
 			// the correction changes how hard the demo's side is used, never which side (an added constant
@@ -546,6 +583,8 @@ float(entity e) SV_TASOptDemoRoll =
 		else
 			ran = tas_rollout(e, topt_rows, e.topt_n, topt_out);
 		SV_NoColPost(e);
+		if (ran < 1 || pass > 0 || !SV_TASOptDemoMap(e, ran)) break;
+		}
 		return ran;
 	}
 	for (i = 0; i < e.topt_n; i = i + 1)
@@ -833,7 +872,9 @@ float(entity e, float ran) SV_TASOptTubeIn =
 			if (d2 > d) break;
 			d = d2; j = j + 1;
 		}
-		if (d > e.topt_tube) return i;
+		// the approach (within twice the tube of the target) is the target's to judge: a faster line than the
+		// demo's comes in wide of it (surf_null board 6: all 639 candidates cut 76-290 u short, 10 Nov)
+		if (d > e.topt_tube && !(e.topt_tgtuse && vlen(p - e.topt_tgt) < 2 * e.topt_tube)) return i;
 		e.topt_tubejend = j;
 		d2 = max(0, topt_dlen[e.topt_tgtj] - topt_dlen[j]) + d;
 		if (d2 < e.topt_tubebest) { e.topt_tubebest = d2; e.topt_tubebk = i; }
@@ -893,8 +934,8 @@ float(entity e, float ran) SV_TASOptTargetScore =
 			d = max(TOPT_REACH + 0.001, d - TOPT_HOPDIR * fabs(dh - 360 * floor((dh + 180) / 360)));   // still a reach (review)
 		}
 		if (e.topt_look > 0 && e.topt_tube > 0)
-		{	// lookahead: the route this candidate goes on along past the reach before a wall, a volume QC
-			// acts on or the tube ends it (SV_TASOptLimit's scan of the whole rollout), up to `look` ticks
+		{	// lookahead: the route this candidate goes on along past the reach before a volume QC acts on
+			// or the tube ends it (SV_TASOptLimit's scan of the whole rollout), up to `look` ticks
 			// of the demo's -- a board whose energy wins and whose next stretch dies loses to one that
 			// carries on (surf_null: a fast board 2 cut inside ramp 3's curve; a steep ramp 4 launch)
 			dh = topt_dlen[min(e.topt_tgtj + e.topt_look, e.topt_dn - 1)] - topt_dlen[e.topt_tgtj];

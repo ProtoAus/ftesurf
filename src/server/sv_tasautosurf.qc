@@ -167,7 +167,9 @@ void(entity e) SV_TASAutoLink =
 	if (e.topt_dn < 16) { SV_TASAutoStop(e, "the demo's rows for this stretch did not load"); return; }   // not the last stretch's (review)
 	h = min(h, e.topt_dn);
 	o = [as_wo[i*3], as_wo[i*3+1], as_wo[i*3+2]]; n = [as_wn[i*3], as_wn[i*3+1], as_wn[i*3+2]];
-	r = (as_wk[i] == 2) ? 50 : ((as_wk[i] == 3) ? 400 : 800);
+	// a board within the tube of the demo's: one 346 u off left the next stretch outside its tube at once
+	// (surf_null board 1 -> 2, and 5 -> 6: closest 8357 u / 13961 u at ticks 31 / 18, 10 Nov)
+	r = (as_wk[i] == 2) ? 50 : ((as_wk[i] == 3) ? 400 : min(800, e.as_tube));
 	if (n == '0 0 0') argc = tokenize(sprintf("tas target %.1f %.1f %.1f %.0f", o_x, o_y, o_z, r));
 	else argc = tokenize(sprintf("tas target %.1f %.1f %.1f %.0f %.4f %.4f %.4f", o_x, o_y, o_z, r, n_x, n_y, n_z));
 	e.topt_tgton = 0;
