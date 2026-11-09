@@ -149,9 +149,15 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	{
 		if (Profile_Chip("taso_stop", at, [width, row, 0], "Stop autosurf", tsz, TRUE)) localcmd("tas autosurf stop\n");
 	}
-	else if (taso_demon && Profile_Chip("taso_go", at, [width, row, 0], "Autosurf from here", tsz, FALSE))
-		localcmd(sprintf("tas autosurf %s tube %g look %g tries %g backs %g%s%s\n", taso_demo[taso_pick], taso_tube, taso_look,
-			taso_tries, taso_backmax, taso_hop ? "" : " nohop", taso_finish ? " finish" : ""));
+	else if (taso_demon)
+	{	// from a pause on the demo's route, or from the start box: a legal start, guided prestrafe and one jump
+		if (Profile_Chip("taso_go", at, chip, "Autosurf from here", tsz, FALSE))
+			localcmd(sprintf("tas autosurf %s tube %g look %g tries %g backs %g%s%s\n", taso_demo[taso_pick], taso_tube, taso_look,
+				taso_tries, taso_backmax, taso_hop ? "" : " nohop", taso_finish ? " finish" : ""));
+		if (Profile_Chip("taso_gostart", at + [half + 6, 0, 0], chip, "From the start box", tsz, FALSE))
+			localcmd(sprintf("tas autosurf %s tube %g look %g tries %g backs %g%s%s start\n", taso_demo[taso_pick], taso_tube, taso_look,
+				taso_tries, taso_backmax, taso_hop ? "" : " nohop", taso_finish ? " finish" : ""));
+	}
 	at_y = at_y + row + hint * 1.4;
 	sui_text(at, [tsz, tsz], "One stretch", SUI_THEME_TEXT, 1, 0); at_y = at_y + tsz * 1.6;
 	sui_text(at, [hint, hint], "Aim at a ramp's face (or a point), set the target, then optimize toward it.", SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.8;
