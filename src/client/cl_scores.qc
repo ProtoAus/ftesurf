@@ -2854,17 +2854,25 @@ string() Scores_CountLine =
 	return s;
 };
 
+// P1448: Fetch asks KSF and Momentum for the leg; offered on every imported filter.
+float() Scores_CanFetch =
+{
+	local float f;
+	f = Scores_ImpState();
+	return (f == SB_IMP_ALL || f == SB_IMP_MOM || f == SB_IMP_KSF) && !FS_BoardSegmented(Scores_StyleOf());
+};
+
 // The footer's left sentence: the count, or for four seconds what the LINE heading did.
 string() Scores_FootLine =
 {
 	local string state;
 
-	if (Scores_IsOnline() && Scores_ImpState() == SB_IMP_KSF && cltime < ok_after + 10)
+	if (Scores_IsOnline() && Scores_CanFetch() && cltime < ok_after + 10)
 	if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
 	{
 		state = Online_KsfState(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg], Scores_StyleOf());
 		if (state != "")
-			return sprintf("KSF: %s. Up to 100 more times; available replays follow in background. Refresh later.", state);
+			return sprintf("Fetch: %s. Up to 100 more times and their replays arrive in the background; refresh in a few minutes.", state);
 	}
 	if (!Scores_IsOnline() && rec_sb_ksfstyle != 0)
 		return "Local directions are not recorded yet; use Normal";
@@ -3401,8 +3409,8 @@ void(vector scr) Scores_Draw =
 		pad   = rec_sb_szrow;           // every ladder rung is even: its halves are whole pixels
 		chipw = ceil(rec_sb_cw * 8.5);
 		fetchw = 0;
-		if (Scores_IsOnline() && Scores_ImpState() == SB_IMP_KSF && !FS_BoardSegmented(Scores_StyleOf()))
-			fetchw = ceil(stringwidth("Fetch KSF", TRUE, [sb_szui, sb_szui]) + pad * 1.5) + 6;
+		if (Scores_IsOnline() && Scores_CanFetch())
+			fetchw = ceil(stringwidth("Fetch", TRUE, [sb_szui, sb_szui]) + pad * 1.5) + 6;
 		// P724: the row's mono em can shrink below the UI label's 12px floor.
 		// Measure the shared formatter in the actual label face/size.
 		sidew = stringwidth("TRACK  * suggested", TRUE, [rec_sb_szhead, rec_sb_szhead]);
@@ -3610,8 +3618,8 @@ void(vector scr) Scores_Draw =
 		if (fetchw > 0)
 		{
 			x = x - fetchw;
-			if (Scores_Chip("sb_ksmore", [x, yc], [fetchw - 6, chiph], "Fetch KSF", FALSE))
-				Online_KsfMore(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg], Scores_StyleOf());
+			if (Scores_Chip("sb_ksmore", [x, yc], [fetchw - 6, chiph], "Fetch", FALSE))
+				Online_KsfMore(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg], Scores_TierOf(), Scores_StyleOf());
 		}
 	}
 
@@ -4256,7 +4264,7 @@ float(string cmd) Scores_ConsoleCommand =
 		else if (argv(1) == "ksfmore")
 		{
 			if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
-				Online_KsfMore(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg], Scores_StyleOf());
+				Online_KsfMore(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg], Scores_TierOf(), Scores_StyleOf());
 		}
 		else if (argv(1) == "lineall")      // the LINE heading's click
 		{

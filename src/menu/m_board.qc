@@ -698,12 +698,26 @@ void() Mlb_KsfMore =
 	if (time < mlb_kafter) return;
 	if (mlb_kreq && time < mlb_kdead) return;
 	mlb_kreq = Lob_NextReq(); mlb_kdead = time + MLB_DEADLINE; mlb_kafter = time + 10;
-	url = sprintf("%s/api/board?ksfmore=1&map=%s&track=%g&leg=%g&style=%s",
+	url = sprintf("%s/api/board?fetch=1&map=%s&track=%g&leg=%g&style=%s",
 	              cvar_string("lobby_dir"), uri_escape(mlb_map), mlb_track, mlb_leg, uri_escape(mlb_style));
 	strunzone(mlb_kstate); mlb_kstate = strzone("asking");
 	if (uri_get(url, mlb_kreq, "application/json", "{}")) return;
 	mlb_kreq = 0;
 	strunzone(mlb_kstate); mlb_kstate = strzone("failed");
+};
+
+// P1448: one source's queue state from a Fetch reply (cl_online.qc's Online_FetchWord).
+string(float root, string src) Mlb_FetchWord =
+{
+	local float n;
+	local string st;
+	n = json_find_object_child(root, src);
+	st = (n >= 0) ? json_get_string(json_find_object_child(n, "state")) : "";
+	if (st == "queued" || st == "partial") return "queued";
+	if (st == "done" || st == "exhausted") return "up to date";
+	if (st == "limited") return "at its limit";
+	if (st == "busy") return "busy";
+	return "not listed";
 };
 
 float() Mlb_IsOpen = { return mlb_open; };
@@ -1057,11 +1071,20 @@ float(float reqid, float code, string body) Mlb_Reply =
 			if (root >= 0)
 			{
 				strunzone(mlb_kstate);
-				mlb_kstate = strzone(substring(json_get_string(json_find_object_child(root, "state")), 0, 32));
+				mlb_kstate = strzone(sprintf("KSF %s, Momentum %s",
+				                             Mlb_FetchWord(root, "ksf"), Mlb_FetchWord(root, "momentum")));
 				json_free(root);
 			}
 		}
-		print(sprintf("^5board:^7 KSF top-up %s (code %g); refresh after the background crawl\n", mlb_kstate, code));
+		else if (code == 404)
+		{
+			strunzone(mlb_kstate); mlb_kstate = strzone("neither KSF nor Momentum lists this leg");
+		}
+		else if (code == 429)
+		{
+			strunzone(mlb_kstate); mlb_kstate = strzone("busy, try again in a minute");
+		}
+		print(sprintf("^5board:^7 fetch %s (code %g); refresh after the background crawl\n", mlb_kstate, code));
 		return TRUE;
 	}
 	if (mlb_req)
@@ -1353,9 +1376,9 @@ void(vector screensize) Mlb_Draw =
 
 	// Closed at the end: the rows below still read the buffers a close frees.
 	closeit = FALSE;
-	ksffetch = (mlb_tab == MLB_T_KSF && !FS_BoardSegmented(mlb_style));
+	ksffetch = (mlb_tab != MLB_T_OURS && !FS_BoardSegmented(mlb_style));    // P1448: KSF and Momentum
 	if (ksffetch && w >= 640)
-	if (ui_button("mlb_ksmore", [w - 354, 12], [112, 30], "Fetch KSF")) Mlb_KsfMore();
+	if (ui_button("mlb_ksmore", [w - 354, 12], [112, 30], "Fetch")) Mlb_KsfMore();
 	if (ui_button("mlb_jumpme", [w - 234, 12], [126, 30], "Jump to me")) Mlb_JumpToMe();
 	if (ui_button("mlb_close", [w - 100, 12], [84, 30], "close"))
 		closeit = TRUE;
@@ -1368,7 +1391,7 @@ void(vector screensize) Mlb_Draw =
 	ly = 56;
 	if (ksffetch && w < 640)
 	{
-		if (ui_button("mlb_ksmore", [16, ly], [112, 30], "Fetch KSF")) Mlb_KsfMore();
+		if (ui_button("mlb_ksmore", [16, ly], [112, 30], "Fetch")) Mlb_KsfMore();
 		ly = ly + 38;
 	}
 	x = 16;
@@ -1512,9 +1535,9 @@ void(vector screensize) Mlb_Draw =
 	if (mlb_kstate != "" && time < mlb_kafter + 10)
 	{
 		if (mlb_kreq && time > mlb_kdead)
-			s = "KSF request timed out; try again";
+			s = "Fetch timed out; try again";
 		else
-			s = sprintf("KSF: %s. Up to 100 times; available replays follow. Reopen later.", mlb_kstate);
+			s = sprintf("Fetch: %s. Up to 100 more times and their replays follow. Reopen in a few minutes.", mlb_kstate);
 	}
 	x = w - 16;
 	if (mlb_state == MLBS_OK)
