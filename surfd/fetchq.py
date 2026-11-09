@@ -33,6 +33,18 @@ MAX_FETCHED = 8         # live full walks of non-account profiles
 
 def ensure(db):
     db.executescript(SQL)
+    ensure_columns(db)
+
+
+def ensure_columns(db):
+    """A momtopup made before `strikes` gains it (CREATE IF NOT EXISTS keeps old columns)."""
+    try:
+        cols = {r[1] for r in db.execute("PRAGMA table_info(momtopup)")}
+    except sqlite3.Error:
+        return
+    if cols and "strikes" not in cols:
+        db.execute("ALTER TABLE momtopup ADD COLUMN strikes INTEGER NOT NULL DEFAULT 0")
+        db.commit()
 
 
 def _missing(e):
@@ -133,6 +145,8 @@ def ensure_in_tx(db):
     for stmt in SQL.split(";"):
         if stmt.strip():
             db.execute(stmt)
+    if "strikes" not in {r[1] for r in db.execute("PRAGMA table_info(momtopup)")}:
+        db.execute("ALTER TABLE momtopup ADD COLUMN strikes INTEGER NOT NULL DEFAULT 0")
 
 
 def mom_pending(db, n=3):
@@ -185,17 +199,18 @@ LIVE_MARK = ("SELECT 1 FROM profilefetch f JOIN ksfprofiles p ON p.player=f.play
 
 
 def fetch_profile(db, player, now):
-    """Mark the KSF walk a press just started (its `asked` is `now`) as a full walk; the mark ends
-    with that walk. -> whether the walk is a full one. Accounts walk fully anyway, uncounted;
-    other players' marked walks are MAX_FETCHED at most."""
+    """Mark the player's live KSF walk -- a press's, or the one opening the profile started --
+    as a full walk; the mark carries that walk's `asked` and ends with it. -> whether the walk is
+    a full one. Accounts walk fully anyway, uncounted; other players' marked walks are
+    MAX_FETCHED at most."""
     with db:
         db.execute("BEGIN IMMEDIATE")
         ensure_in_tx(db)
         walk = db.execute("SELECT state, asked FROM ksfprofiles WHERE player=?", (player,)).fetchone()
         if walk is None or walk[0] not in ACTIVE:
             return False
-        if walk[1] != now:                  # a walk an earlier press or view started: as it is
-            return db.execute(LIVE_MARK % "?", (player,)).fetchone() is not None
+        if db.execute(LIVE_MARK % "?", (player,)).fetchone() is not None:
+            return True
         mine = db.execute("SELECT 1 FROM accounts WHERE steamid=? AND banned_at=0", (player,)).fetchone()
         if not mine:
             n = db.execute("SELECT COUNT(*) FROM profilefetch f JOIN ksfprofiles p ON p.player=f.player"
@@ -205,7 +220,7 @@ def fetch_profile(db, player, now):
             if n >= MAX_FETCHED:
                 return False
         db.execute("INSERT INTO profilefetch VALUES (?,?) ON CONFLICT(player)"
-                   " DO UPDATE SET asked=excluded.asked", (player, now))
+                   " DO UPDATE SET asked=excluded.asked", (player, walk[1]))
     return True
 
 

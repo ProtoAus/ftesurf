@@ -6385,7 +6385,7 @@ def ksf_topup_request():
     now = int(time.time())
     if request.args.get("ksfmore") != "1":
         return fail(400, "expected ksfmore=1")
-    if not rate_ok(rate_key(), now, 10, "ksftopup"):
+    if not rate_ok(rate_key(), now, FETCH_RATE, "boardfetch"):     # P1448: Fetch's bucket
         return fail(429, "rate limited")
     mp = clean_map(request.args.get("map"))
     track = strict_int(request.args.get("track", "0"), 0, MAX_TRACK)
@@ -6398,7 +6398,7 @@ def ksf_topup_request():
     conn = connect()
     try:
         conn.execute("PRAGMA busy_timeout=50")
-        body, code = ksftopup.enqueue(conn, (variant_base(mp) or mp, track, leg, style), now,
+        body, code = ksftopup.enqueue(conn, (ksf_board_name(mp), track, leg, style), now,
                                      os.path.join(DATA_DIR, 'ksf', 'maps'))
     except sqlite3.Error:
         return fail(503, "queue busy; try again")
@@ -6412,7 +6412,20 @@ def ksf_topup_request():
     return resp
 
 
-FETCH_RATE = 4          # P1448: Fetch presses a minute per caller, shared by legs and profiles
+FETCH_RATE = 4          # P1448: Fetch presses a minute per caller, shared by legs, profiles, ksfmore
+
+
+def ksf_board_name(mp):
+    """P1448: the name KSF lists this map's boards under -- the map, its base, or a port of the
+    base (link_ports: KSF may list only the suffixed name) -- by the importer's catalogue."""
+    base = variant_base(mp) or mp
+    ksfmaps = os.path.join(DATA_DIR, 'ksf', 'maps')
+    with _maps_lock:
+        ports = sorted(k for k, b in _variants["ports"].items() if b == base)
+    for name in [mp, base] + ports:
+        if os.path.isfile(os.path.join(ksfmaps, name + '.json')):
+            return name
+    return base
 
 
 def board_fetch_request():
@@ -6433,16 +6446,14 @@ def board_fetch_request():
         return fail(400, "bad board")
     if mp not in map_index()[0]:
         return fail(404, "no such map here")     # nothing is filed for a map this server cannot load
-    base = variant_base(mp) or mp
-    ksfmaps = os.path.join(DATA_DIR, 'ksf', 'maps')
-    # A port: KSF lists the suffixed name (link_ports), Momentum and our boards the base.
-    ksfname = mp if os.path.isfile(os.path.join(ksfmaps, mp + '.json')) else base
-    mp = base
+    ksfname = ksf_board_name(mp)            # Momentum and our boards use the base
+    mp = variant_base(mp) or mp
     out, codes = {}, []
     conn = connect()
     try:
         conn.execute("PRAGMA busy_timeout=50")
-        body, code = ksftopup.enqueue(conn, (ksfname, track, leg, style), now, ksfmaps)
+        body, code = ksftopup.enqueue(conn, (ksfname, track, leg, style), now,
+                                     os.path.join(DATA_DIR, 'ksf', 'maps'))
         out["ksf"] = body if body is not None else {"state": "unknown" if code == 404 else "busy"}
         codes.append(code)
         if style == STYLE_CLEAN:        # Momentum boards have no styles
@@ -6631,7 +6642,7 @@ def web_map():
     out = {"v": 1, "t": now, "map": mapname,
            "disp": bsp.get(mapname, mapname), "boards": boards,
            "tier": tier, "counts": counts,
-           "ksf_topup": ksftopup.status(db, (base or mapname, track, leg, style),
+           "ksf_topup": ksftopup.status(db, (ksf_board_name(mapname), track, leg, style),
                                        os.path.join(DATA_DIR, 'ksf', 'maps')),
            "mom_topup": fetchq.mom_status(db, (base or mapname, track, leg), MOMTRACKS_PATH),
            "track": track, "leg": leg, "style": style, "n": n,

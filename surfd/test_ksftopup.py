@@ -34,8 +34,11 @@ class Topup(unittest.TestCase):
         # P1448: a press is for a map this server hosts.
         self.installed = patch.object(S, 'map_index', return_value=({'surf_topup': 1, 'surf_topup_ksf': 1}, set()))
         self.installed.start()
+        self.rate = patch.object(S, 'FETCH_RATE', 100)      # P1448: ksfmore shares Fetch's 4 a minute
+        self.rate.start()
 
     def tearDown(self):
+        self.rate.stop()
         self.installed.stop()
         self.db.close()
         K.fetch = T.REAL_FETCH

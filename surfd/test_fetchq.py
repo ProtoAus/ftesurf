@@ -126,6 +126,23 @@ class Fetch(unittest.TestCase):
         self.assertEqual(KT_recent(self.db), {('surf_fq', 0, 0, 'clean'), ('surf_fq', 3, 0, 'clean'),
                                               ('surf_fq', 0, 2, 'sw'), ('surf_fq', 0, 3, 'clean')})
 
+    def test_old_momtopup_gains_strikes(self):
+        self.db.execute("DROP TABLE momtopup")
+        self.db.execute("CREATE TABLE momtopup (map TEXT NOT NULL, track INTEGER NOT NULL, leg INTEGER NOT NULL,"
+                        " target INTEGER NOT NULL, asked INTEGER NOT NULL, updated INTEGER NOT NULL,"
+                        " state TEXT NOT NULL, PRIMARY KEY (map, track, leg))")
+        self.db.commit()
+        F.ensure(self.db)
+        self.assertIn('strikes', {r[1] for r in self.db.execute("PRAGMA table_info(momtopup)")})
+        self.assertEqual(F.mom_enqueue(self.db, ('surf_fq', 0, 0), 100, self.tracks)[1], 202)
+
+    def test_ksfmore_shares_the_fetch_rate(self):
+        with patch.object(S, 'FETCH_RATE', 2), S.app.test_client() as c:
+            codes = [c.post('/api/board?fetch=1&map=surf_fq').status_code,
+                     c.post('/api/board?fetch=1&map=surf_fq&leg=2').status_code,
+                     c.post('/api/board?ksfmore=1&map=surf_fq').status_code]
+        self.assertEqual(codes[-1], 429)
+
     def test_http_rate_limit(self):
         with S.app.test_client() as c:
             codes = [c.post('/api/board?fetch=1&map=surf_fq').status_code for _ in range(S.FETCH_RATE + 1)]
@@ -140,7 +157,8 @@ class Fetch(unittest.TestCase):
         h = S.web_handle(PLAYER)
         with patch.object(K, 'fetch', side_effect=AssertionError('HTTP must not fetch')), \
              S.app.test_client() as c:
-            r = c.post('/board/api/map?fetch=1&player=' + h)
+            self.assertEqual(c.get('/api/board?player=' + h).json['ksf_sync']['state'], 'queued')  # opening it walks
+            r = c.post('/board/api/map?fetch=1&player=' + h)                                      # ...and a press upgrades that walk
             self.assertEqual(r.status_code, 202)
             self.assertEqual((r.json['ksf_sync']['state'], r.json['mom_sync']['state'], r.json['full']),
                              ('queued', 'queued', True))
@@ -166,21 +184,22 @@ class Fetch(unittest.TestCase):
         self.assertTrue(F.fetch_profile(self.db, fetched, now))
         self.assertEqual(P.pending(self.db)[0][0], view)                 # by turn, not ahead of views
         self.assertTrue(P.is_account(K, fetched))                        # but it walks fully
-        self.assertFalse(F.fetch_profile(self.db, view, now))            # a view's walk stays a view's
+        self.assertFalse(P.is_account(K, view))                          # a view's walk has view limits...
         self.account(acct)
         P.enqueue(self.db, acct, now)
         with patch.object(F, 'MAX_FETCHED', 1):
             self.assertTrue(F.fetch_profile(self.db, acct, now))         # accounts are not counted
-            P.enqueue(self.db, third, now)
-            self.assertFalse(F.fetch_profile(self.db, third, now))       # the cap
+            self.assertFalse(F.fetch_profile(self.db, view, now))        # ...and a press on it meets the cap
             self.assertTrue(F.fetch_profile(self.db, fetched, now + 5))  # its own live walk, not new
+        self.assertTrue(F.fetch_profile(self.db, view, now + 6))         # under the cap it is upgraded
+        self.assertTrue(P.is_account(K, view))
         # The mark ends with the walk: a later view's walk of the same player has view limits.
         self.db.execute("UPDATE ksfprofiles SET state='complete', updated=0 WHERE player=?", (fetched,))
         self.db.commit()
         P.enqueue(self.db, fetched, now + 10)
         self.assertFalse(P.is_account(K, fetched))
         # The KSF slot is the view pool's: fetching never takes an account's slot.
-        with patch.object(P, 'MAX_VIEWED', 3):
+        with patch.object(P, 'MAX_VIEWED', 2):
             self.assertEqual(P.enqueue(self.db, str(int(PLAYER) + 4), now)['state'], 'busy')
         self.db.execute("DROP TABLE profilefetch")                       # an older generation's DB
         self.db.commit()
@@ -307,6 +326,23 @@ class Fetch(unittest.TestCase):
                                  (202, 'queued', 'queued'))
             self.assertEqual(self.db.execute("SELECT map FROM ksftopup").fetchall()[0][0], 'surf_fq_ksf')
             self.assertEqual(self.db.execute("SELECT map FROM momtopup").fetchall()[0][0], 'surf_fq')
+            # From the base map's board, with only the port in KSF's catalogue.
+            self.db.execute("DELETE FROM ksftopup"); self.db.execute("DELETE FROM momtopup"); self.db.commit()
+            self.meta.rename(self.meta.with_name('surf_fq.json.away'))
+            old = dict(S._variants)
+            try:
+                S._variants.update(at=time.monotonic(), of={'surf_fq_ksf': 'surf_fq', 'surf_fq': 'surf_fq'},
+                                   ports={'surf_fq_ksf': 'surf_fq'})
+                with patch.object(S, 'map_index', return_value=({'surf_fq': 1, 'surf_fq_ksf': 1}, set())), \
+                     S.app.test_client() as c:
+                    r = c.post('/api/board?fetch=1&map=surf_fq')
+                    self.assertEqual((r.status_code, r.json['ksf']['state']), (202, 'queued'))
+                    self.assertEqual(c.post('/api/board?ksfmore=1&map=surf_fq&style=sw').status_code, 202)
+                self.assertEqual(sorted(r[0] for r in self.db.execute("SELECT DISTINCT map FROM ksftopup")),
+                                 ['surf_fq_ksf'])
+            finally:
+                S._variants.clear(); S._variants.update(old)
+                self.meta.with_name('surf_fq.json.away').rename(self.meta)
         finally:
             port.unlink()
 
@@ -385,7 +421,7 @@ class Fetch(unittest.TestCase):
         try:
             with patch.object(W.sys, 'argv', argv), patch.object(W, 'has_extras', return_value=True), \
                  patch.object(W.subprocess, 'call', side_effect=lambda cmd: cmds.append(cmd) or (3 if '--board' in cmd else 0)):
-                W.main()
+                self.assertEqual(W.main(), 3)
         finally:
             self.db.execute("DELETE FROM lobbies")
             self.db.commit()

@@ -201,6 +201,7 @@ def topup_step(a):
     """P1448: boards somebody pressed Fetch on, before the live maps. -> (fetched, failed)."""
     conn = S.connect()
     try:
+        fetchq.ensure_columns(conn)
         jobs = fetchq.mom_pending(conn)
     finally:
         conn.close()
@@ -365,7 +366,7 @@ def main():
     by_lower = {n.lower(): m for n, m in cat.items()}
 
     # A refusal rests the rotation and walks; the live maps still go. Its code is the tick's.
-    top_failed = topup_step(a)[1]
+    top_failed = topup_step(a)[1]   # rests what a refusal rests; the rest of the tick still runs
 
     conn = S.connect()
     live = live_maps(conn)
@@ -441,13 +442,13 @@ def main():
     else:
         print("everything live and queued is already prepared.")
     if not maps and a.backfill <= 0:
-        return 0
+        return top_failed
 
     if not a.go:
         print("\nDRY RUN -- nothing fetched.  Pass --go.")
         return 0
 
-    fetched, failed = False, top_failed
+    fetched, failed = False, 0
 
     if maps:
         cmd = [sys.executable, _momfetch_path(),
@@ -579,7 +580,7 @@ def main():
         rc = subprocess.call([sys.executable, os.path.join(HERE, "momboards.py"),
                               "--boards", a.boards, "--link", "--go"])
         failed = failed or rc
-    return failed
+    return failed or top_failed
 
 
 if __name__ == "__main__":
