@@ -663,7 +663,8 @@ void(entity b) Body_ReadState =
 
 .float tfx_held, tfx_inst;      // P1432: holds a template copy's sprite entry or emitter range; its instance
 
-// P1432: a template copy's edict now carries something else (its remove was lost): free what it held.
+// P1432: a template copy's edict now carries another wire (its remove was lost): free what it held, and its
+// identity, so a later copy here is a new one.
 void(entity e) TplFx_Drop =
 {
 	if (e.classname == "tplfx_net")
@@ -672,6 +673,7 @@ void(entity e) TplFx_Drop =
 		Emit_TplGone(e);
 	e.classname = "";
 	e.tfx_held = FALSE;
+	e.tfx_cls = e.tfx_inst = 0;
 };
 
 void(float isnew) CSQC_Ent_Update =
@@ -789,12 +791,13 @@ void(float isnew) CSQC_Ent_Update =
 		}
 		else if (f == ENTWIRE_TPLFX)
 		{	// P1432: a template's copy of a lump-drawn effect (cl_sprites.qc Sprite_TplNet, cl_emit.qc Emit_TplNet)
-			if (isnew)
+			if (!self.tfx_held)
 				self.tfx_gen = self.tps_gen = -1;
 			dd = readbyte();
 			v2 = dd & TPLFX_V2;
 			dd = dd & TPLFX_ID;
 			nid = self.tfx_inst;
+			st = self.tfx_cls;
 			if (dd)
 			{
 				self.tfx_cls = readbyte();
@@ -812,16 +815,22 @@ void(float isnew) CSQC_Ent_Update =
 				self.angles_z = readfloat();
 			}
 			self.tfx_on = readbyte();
+			// A new copy here: a new edict, or another instance's or class's identity on it (the last copy's
+			// remove lost). Bracketed: = binds tighter than || here.
+			nid = (isnew || (dd && (self.tfx_inst != nid || self.tfx_cls != st)));
 			st = fr = 0;
 			if (v2)
 			{	// three bytes for every class (SV_TplFxSend)
 				st = readbyte();
 				fr = readbyte();
 			}
-			// A new copy here: a new edict, or another instance's identity on it (the last copy's remove lost).
-			nid = (isnew || (dd && self.tfx_inst != nid));     // bracketed: = binds tighter than || here
 			if (nid && !isnew)
-				TplFx_Drop(self);
+			{	// the last copy's sprite entry or emitter range (TplFx_Drop would zero the identity just read)
+				if (self.classname == "tplfx_net")
+					Sprite_TplGone(self);
+				if (self.classname == "tplps_net")
+					Emit_TplGone(self);
+			}
 			self.tfx_held = TRUE;
 			if (self.tfx_cls == FX_CLS_PSYS)
 			{	// ENTWIRE_PSYSSTATE2's start count and fresh flag, read as that branch reads them
@@ -842,7 +851,7 @@ void(float isnew) CSQC_Ent_Update =
 			else
 			{
 				self.classname = "tplfx_net";
-				Sprite_TplNet(self, dd);
+				Sprite_TplNet(self, dd && (nid || !v2));   // not the spawn frame's duplicate identity
 			}
 		}
 		else if (f == ENTWIRE_LASERSTATE)
