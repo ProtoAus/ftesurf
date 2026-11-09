@@ -1401,6 +1401,20 @@ float(entity e) SV_TASCanPause =
 	return TRUE;
 };
 
+// `tas pause`'s own steps, for the command and for autosurf's pause on a run's first tick (P1449).
+float(entity e) SV_TASPauseNow =
+{
+	if (!SV_TASCanPause(e)) return FALSE;
+	SV_TASMark(e);
+	e.run_tas_mode = TRUE;
+	if (!e.run_tas_paused) e.run_tas_seen = e.run_tas_done;
+	e.run_tas_paused = TRUE;
+	SV_RewindTASHead(e);
+	SV_TASEditorCapture(e);
+	sprint(e, PRINT_HIGH, "tas: movement paused; tas step/back [1..128] or tas play; shared world continues\n");
+	return TRUE;
+};
+
 // P1061: the established pin/load/cut path owns timer and recorder state.
 // Native restore adds private mover state, never rolls back connection counters.
 float(entity e, float slot, float token) SV_TASGo =
@@ -1612,7 +1626,7 @@ void(entity e, float argc) SV_TASCommand =
 		sprint(e, PRINT_HIGH, "tas: a project load is running; wait, or tas play/off to stop it\n");
 		return;
 	}
-	if (e.topt_on && strcmp(action, "status") && !(!strcmp(action, "autosurf") && argc == 3 && (argv(2) == "stop" || argv(2) == "status")))
+	if (e.topt_on && strcmp(action, "status") && !(!strcmp(action, "autosurf") && argc == 3 && (argv(2) == "stop" || argv(2) == "status" || argv(2) == "startpause")))
 	{	// P1449 review: autosurf's own stop and status are how its chain is ended between and during searches
 		sprint(e, PRINT_HIGH, "tas: the optimizer is running; tas play or tas off stops it\n");
 		return;
@@ -1707,14 +1721,7 @@ void(entity e, float argc) SV_TASCommand =
 	}
 	if (argc == 2 && !strcmp(action, "pause"))
 	{
-		if (!SV_TASCanPause(e)) return;
-		SV_TASMark(e);
-		e.run_tas_mode = TRUE;
-		if (!e.run_tas_paused) e.run_tas_seen = e.run_tas_done;
-		e.run_tas_paused = TRUE;
-		SV_RewindTASHead(e);
-		SV_TASEditorCapture(e);
-		sprint(e, PRINT_HIGH, "tas: movement paused; tas step/back [1..128] or tas play; shared world continues\n");
+		SV_TASPauseNow(e);
 		return;
 	}
 	if (argc == 2 && !strcmp(action, "on"))

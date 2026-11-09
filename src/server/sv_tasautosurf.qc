@@ -14,7 +14,8 @@
 
 .float as_stage, as_i, as_try, as_backs, as_tprev, as_wait, as_goal;
 .float as_tube, as_look, as_tries, as_backmax, as_hop, as_finish, as_pace;
-.float as_backhead, as_backfail;   // the head at the last rewind request, and requests since it last moved
+.float as_backhead, as_backfail;
+.float as_startpause, as_laststate;    // `tas autosurf startpause`: pause on a run's first tick (TAS on), and the state seen last   // the head at the last rewind request, and requests since it last moved
 .string as_file;
 float as_n;                     // waypoints
 float as_wt[TAS_ASMAX];         // the demo's time there
@@ -205,6 +206,12 @@ void(entity e) SV_TASAutoLink =
 void(entity e) SV_TASAutoFrame =
 {
 	local float head, i, best, d, t;
+	// The TAS timeline (rewinds, edits, every tool here) begins with the running attempt, so a start box's
+	// prestrafe and jump stay the player's: paused on the first running tick, autosurf takes the fall to the
+	// first ramp from there (Lex, 10 Nov).
+	if (e.as_startpause && e.run_tas_mode && !e.run_tas_paused && e.run_t_state == TS_RUNNING && e.as_laststate != TS_RUNNING)
+		if (SV_TASPauseNow(e)) sprint(e, PRINT_HIGH, sprintf("tas autosurf: paused on the run's first tick (%.0f); press Autosurf\n", SV_TimerTicks(e)));
+	e.as_laststate = e.run_t_state;
 	if (!e.as_on || e.topt_on || e.tdem_on) return;
 	if (!e.run_tas_paused || e.run_t_state != TS_RUNNING) { SV_TASAutoStop(e, "TAS play/off, or the run ended"); return; }
 	if (e.as_stage == 1) { SV_TASAutoLink(e); return; }
@@ -274,6 +281,14 @@ void(entity e, float argc) SV_TASAutoCommand =
 	local float i, s, n;
 	local string w, path;
 	if (argc == 3 && argv(2) == "stop") { if (e.as_on) SV_TASAutoStop(e, "stopped"); else sprint(e, PRINT_HIGH, "tas autosurf: not running\n"); return; }
+	if (argc == 3 && argv(2) == "startpause")
+	{
+		e.as_startpause = !e.as_startpause; e.as_laststate = e.run_t_state;
+		sprint(e, PRINT_HIGH, e.as_startpause ? "tas autosurf: startpause on -- a TAS run pauses on its first tick out of the start box\n"
+			: "tas autosurf: startpause off\n");
+		SV_TASAutoNote(e, e.as_on ? 1 : 0, e.as_startpause ? "startpause on" : "startpause off");
+		return;
+	}
 	if (argc == 3 && argv(2) == "status")
 	{
 		if (e.as_on) SV_TASAutoNote(e, 1, sprintf("stretch %.0f of %.0f, try %.0f, %.0f backtracks", e.as_i + 1, as_n, e.as_try + 1, e.as_backs));
@@ -283,7 +298,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 	path = argv(2);
 	if (argc < 3 || path == "" || strstrofs(path, "..") >= 0)
 	{
-		sprint(e, PRINT_HIGH, "tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [nohop] [finish] | stop | status\n");
+		sprint(e, PRINT_HIGH, "tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [nohop] [finish] | stop | status | startpause\n");
 		return;
 	}
 	if (e.as_on || e.topt_on || e.tdem_on) { sprint(e, PRINT_HIGH, "tas autosurf: a search, demo or autosurf is running\n"); return; }

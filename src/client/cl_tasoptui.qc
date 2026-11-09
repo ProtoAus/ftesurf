@@ -6,6 +6,7 @@ float taso_state, taso_i, taso_n, taso_try, taso_backs;
 string taso_note;
 var float taso_tube = 300, taso_look = 100, taso_tries = 2, taso_backmax = 6, taso_hop = 1, taso_finish = 0;
 var float taso_ticks = 300;
+float taso_startpause;          // `tas autosurf startpause` as last pressed here (the server toggles and says so)
 float taso_listed;              // the demo list was searched for this map
 string taso_listmap;
 #define TASO_DEMOS 8
@@ -119,7 +120,7 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	running = (taso_state == 1);
 	half = (width - 6) / 2; chip = [half, row, 0];
 	sui_text(at, [tsz, tsz], "Autosurf a demo's route", SUI_THEME_TEXT, 1, 0); at_y = at_y + tsz * 1.6;
-	label = (taso_note == "") ? "Pause on a demo's route, pick the demo, press Autosurf." : taso_note;
+	label = (taso_note == "") ? "Pause on a demo's route (or prestrafe out of the start box with the pause below on), pick the demo, press Autosurf." : taso_note;
 	if (running) label = sprintf("Stretch %g of %g, try %g, %g backtracks -- %s", taso_i + 1, taso_n, taso_try + 1, taso_backs, taso_note);
 	sui_text(at, [hint, hint], label, running ? SUI_THEME_TEXT : SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.8;
 	if (!taso_demon) { sui_text(at, [hint, hint], "No replay for this map in cfg/ksfreplays or data/.", SUI_THEME_MUTED, 1, 0); at_y = at_y + hint * 1.8; }
@@ -137,6 +138,9 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	WPU_Slider("taso_backs", "Backtracks", at, width, taso_backmax, '0 12 12', TASOptUI_Backs, tsz); at_y = at_y + tsz * 2.2;
 	if (Profile_Chip("taso_hop", at, chip, taso_hop ? "Bhop platforms: hop" : "Bhop platforms: off", hint, taso_hop)) taso_hop = !taso_hop;
 	if (Profile_Chip("taso_finish", at + [half + 6, 0, 0], chip, taso_finish ? "To the end zone" : "Ramps only", hint, taso_finish)) taso_finish = !taso_finish;
+	at_y = at_y + row + 3;
+	if (Profile_Chip("taso_startp", at, [width, row, 0], taso_startpause ? "Pause on leaving the start box: on" : "Pause on leaving the start box: off", hint, taso_startpause))
+		{ taso_startpause = !taso_startpause; localcmd("tas autosurf startpause\n"); }
 	at_y = at_y + row + 3;
 	if (Profile_Chip("taso_viz", at, [width, row, 0], cvar("tas_viz") ? "Search lines shown" : "Search lines hidden", hint, cvar("tas_viz")))
 		localcmd(cvar("tas_viz") ? "set tas_viz 0\n" : "set tas_viz 1\n");
