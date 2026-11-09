@@ -1077,7 +1077,7 @@ export class BSPFile {
         assert(readString(buffer, 0x00, 0x04) === 'VBSP');
         const view = buffer.createDataView();
         this.version = view.getUint32(0x04, true);
-        assert(this.version === 19 || this.version === 20 || this.version === 21  || this.version === 22);
+        assert(this.version === 19 || this.version === 20 || this.version === 21  || this.version === 22 || this.version === 25); // FTESurf P1447: Strata
 
         //#region Utils
         function getLumpDataEx(lumpType: LumpType): [ArrayBufferSlice, number] {
@@ -1115,6 +1115,14 @@ export class BSPFile {
                 assert(version === expectedVersion);
             return buffer;
         }
+
+        // FTESurf P1447: a lump whose layout follows its own version. Any other version still asserts.
+        function getLumpDataV(lumpType: LumpType, versions: number[]): [ArrayBufferSlice, number] {
+            const [buffer, version] = getLumpDataEx(lumpType);
+            if (buffer.byteLength !== 0)
+                assert(versions.includes(version));
+            return [buffer, buffer.byteLength !== 0 ? version : versions[0]];
+        }
         //#endregion
 
         //#region HDR determination
@@ -1145,28 +1153,35 @@ export class BSPFile {
         if (visibilityData.byteLength > 0)
             this.visibility = new BSPVisibility(visibilityData);
 
-        const entitiesStr = decodeString(getLumpData(LumpType.ENTITIES));
+        const entitiesStr = decodeString(getLumpDataV(LumpType.ENTITIES, [0, 1])[0]); // FTESurf P1447: v1 is the same text
         this.entities = parseEntitiesLump(entitiesStr);
         if (IS_DEVELOPMENT)
             this.entitiesStr = entitiesStr;
 
         const pakfileData = getLumpData(LumpType.PAKFILE);
         this.pakfile = parseZipFile(pakfileData);
-        const nodes = getLumpData(LumpType.NODES).createDataView();
+        // FTESurf P1447: NODES v1, PRIMITIVES/PRIMINDICES v1, VERTNORMALINDICES v1 are 32-bit.
+        const [nodesLump, nodesVersion] = getLumpDataV(LumpType.NODES, [0, 1]);
+        const nodes = nodesLump.createDataView();
 
-        const primindices = getLumpData(LumpType.PRIMINDICES).createTypedArray(Uint16Array);
-        const primitives = getLumpData(LumpType.PRIMITIVES).createDataView();
+        const [primindicesLump, primindicesVersion] = getLumpDataV(LumpType.PRIMINDICES, [0, 1]);
+        const primindices: Uint16Array | Uint32Array = primindicesVersion === 1 ?
+            primindicesLump.createTypedArray(Uint32Array) : primindicesLump.createTypedArray(Uint16Array);
+        const [primitivesLump, primitivesVersion] = getLumpDataV(LumpType.PRIMITIVES, [0, 1]);
+        const primitives = primitivesLump.createDataView();
 
         const vertexes = getLumpData(LumpType.VERTEXES).createTypedArray(Float32Array);
         const vertnormals = getLumpData(LumpType.VERTNORMALS).createTypedArray(Float32Array);
-        const vertnormalindices = getLumpData(LumpType.VERTNORMALINDICES).createTypedArray(Uint16Array);
+        const [vniLump, vniVersion] = getLumpDataV(LumpType.VERTNORMALINDICES, [0, 1]);
+        const vertnormalindices: Uint16Array | Uint32Array = vniVersion === 1 ?
+            vniLump.createTypedArray(Uint32Array) : vniLump.createTypedArray(Uint16Array);
         const disp_verts = getLumpData(LumpType.DISP_VERTS).createTypedArray(Float32Array);
         //#endregion
 
         //#region Game Lump Parsing
         const game_lump = getLumpData(LumpType.GAME_LUMP).createDataView();
         function getGameLumpData(magic: string): [ArrayBufferSlice, number] | null {
-            const lumpCount = game_lump.getUint32(0x00, true);
+            const lumpCount = game_lump.byteLength >= 0x04 ? game_lump.getUint32(0x00, true) : 0; // FTESurf P1447
             const needle = magicint(magic);
             let idx = 0x04;
             for (let i = 0; i < lumpCount; i++) {
@@ -1180,15 +1195,20 @@ export class BSPFile {
 
                     if (!!(flags & GameLumpFlags.COMPRESSED)) {
                         // Find next offset to find compressed size length.
-                        let compressedEnd: number;
-                        if (i + 1 < lumpCount)
-                            compressedEnd = game_lump.getUint32(idx + 0x10 + 0x08, true);
-                        else
-                            compressedEnd = game_lump.byteOffset + game_lump.byteLength;
+                        const lumpEnd = game_lump.byteOffset + game_lump.byteLength;
+                        let compressedEnd = (i + 1 < lumpCount) ? game_lump.getUint32(idx + 0x10 + 0x08, true) : lumpEnd;
+                        if (compressedEnd <= fileofs)
+                            compressedEnd = lumpEnd;
+                        if (compressedEnd - fileofs < 0x11)
+                            return null;
                         const compressed = buffer.slice(fileofs, compressedEnd);
-                        const lump = decompressLZMA(compressed, filelen);
+                        if (readString(compressed, 0x00, 0x04) !== 'LZMA')
+                            return null; // FTESurf P1447: not Valve's framing; the map draws without it
+                        const lump = decompressLZMA(compressed, compressed.createDataView().getUint32(0x04, true));
                         return [lump, version];
                     } else {
+                        if (filelen === 0)
+                            return null; // FTESurf P1447: an empty stub
                         const lump = buffer.subarray(fileofs, filelen);
                         return [lump, version];
                     }
@@ -1199,8 +1219,13 @@ export class BSPFile {
         }
 
         const dprp = getGameLumpData('dprp');
-        if (dprp !== null)
-            this.detailObjects = deserializeGameLump_dprp(dprp[0], dprp[1]);
+        if (dprp !== null) {
+            try {
+                this.detailObjects = deserializeGameLump_dprp(dprp[0], dprp[1]);
+            } catch (e) {
+                console.warn(`${mapname}: detail props skipped (${e})`); // FTESurf P1447
+            }
+        }
 
         const sprp = getGameLumpData('sprp');
         if (sprp !== null)
@@ -1233,7 +1258,8 @@ export class BSPFile {
             [worldlightsLump, worldlightsVersion] = getLumpDataEx(LumpType.WORLDLIGHTS);
             worldlightsIsHDR = false;
         }
-        const worldlights = worldlightsLump.createDataView();
+        // FTESurf P1447: Strata's v2 record is unverified; those props light from the ambient cubes alone.
+        const worldlights = (worldlightsVersion <= 1 ? worldlightsLump : worldlightsLump.subarray(0, 0)).createDataView();
 
         for (let i = 0, idx = 0x00; idx < worldlights.byteLength; i++, idx += 0x58) {
             const posX = worldlights.getFloat32(idx + 0x00, true);
@@ -1344,7 +1370,7 @@ export class BSPFile {
 
         //#region NODES Parsing
         const planes = getLumpData(LumpType.PLANES).createDataView();
-        for (let idx = 0x00; idx < nodes.byteLength; idx += 0x20) {
+        for (let idx = 0x00; idx < nodes.byteLength; idx += (nodesVersion === 1 ? 0x30 : 0x20)) { // FTESurf P1447: strata_dnode_t
             const planenum = nodes.getUint32(idx + 0x00, true);
 
             // Read plane.
@@ -1357,23 +1383,27 @@ export class BSPFile {
 
             const child0 = nodes.getInt32(idx + 0x04, true);
             const child1 = nodes.getInt32(idx + 0x08, true);
-            const bboxMinX = nodes.getInt16(idx + 0x0C, true);
-            const bboxMinY = nodes.getInt16(idx + 0x0E, true);
-            const bboxMinZ = nodes.getInt16(idx + 0x10, true);
-            const bboxMaxX = nodes.getInt16(idx + 0x12, true);
-            const bboxMaxY = nodes.getInt16(idx + 0x14, true);
-            const bboxMaxZ = nodes.getInt16(idx + 0x16, true);
+            const nw = nodesVersion === 1;
+            const rdn = (o16: number, o32: number) => nw ? nodes.getFloat32(idx + o32, true) : nodes.getInt16(idx + o16, true);
+            const bboxMinX = rdn(0x0C, 0x0C);
+            const bboxMinY = rdn(0x0E, 0x10);
+            const bboxMinZ = rdn(0x10, 0x14);
+            const bboxMaxX = rdn(0x12, 0x18);
+            const bboxMaxY = rdn(0x14, 0x1C);
+            const bboxMaxZ = rdn(0x16, 0x20);
             const bbox = new AABB(bboxMinX, bboxMinY, bboxMinZ, bboxMaxX, bboxMaxY, bboxMaxZ);
-            const firstface = nodes.getUint16(idx + 0x18, true);
-            const numfaces = nodes.getUint16(idx + 0x1A, true);
-            const area = nodes.getInt16(idx + 0x1C, true);
+            const firstface = nw ? nodes.getUint32(idx + 0x24, true) : nodes.getUint16(idx + 0x18, true);
+            const numfaces = nw ? nodes.getUint32(idx + 0x28, true) : nodes.getUint16(idx + 0x1A, true);
+            const area = nodes.getInt16(idx + (nw ? 0x2C : 0x1C), true);
 
             this.nodelist.push({ plane, child0, child1, bbox, area });
         }
         //#endregion
 
         //#region EDGES/SURFEDGES Parsing
-        const edges = getLumpData(LumpType.EDGES).createTypedArray(Uint16Array);
+        const [edgesLump, edgesVersion] = getLumpDataV(LumpType.EDGES, [0, 1]); // FTESurf P1447: v1 is 32-bit
+        const edges: Uint16Array | Uint32Array = edgesVersion === 1 ?
+            edgesLump.createTypedArray(Uint32Array) : edgesLump.createTypedArray(Uint16Array);
         const surfedges = getLumpData(LumpType.SURFEDGES).createTypedArray(Int32Array);
         const vertindices = new Uint32Array(surfedges.length);
         for (let i = 0; i < surfedges.length; i++) {
@@ -1386,17 +1416,27 @@ export class BSPFile {
         //#endregion
 
         //#region FACES Parsing
+        // FTESurf P1447: FACES v2 (Strata) is strata_dface_t, 72 bytes of 32-bit fields.
         let facelist: DataView | null = null;
-        if (this.usingHDR)
-            facelist = getLumpData(LumpType.FACES_HDR, 1).createDataView();
-        if (facelist === null || facelist.byteLength === 0)
-            facelist = getLumpData(LumpType.FACES, 1).createDataView();
+        let facesVersion = 1;
+        if (this.usingHDR) {
+            const [l, v] = getLumpDataV(LumpType.FACES_HDR, [1, 2]);
+            facelist = l.createDataView(); facesVersion = v;
+        }
+        if (facelist === null || facelist.byteLength === 0) {
+            const [l, v] = getLumpDataV(LumpType.FACES, [1, 2]);
+            facelist = l.createDataView(); facesVersion = v;
+        }
+        const fw = facesVersion === 2;
+        const faceStride = fw ? 0x48 : 0x38;
         //#endregion
 
         //#region DISPINFO Parsing
-        const dispinfo = getLumpData(LumpType.DISPINFO).createDataView();
+        // FTESurf P1447: DISPINFO v1 (Strata) is 232 bytes with mapFace u32; the fields read here keep their offsets.
+        const [dispinfoLump, dispinfoVersion] = getLumpDataV(LumpType.DISPINFO, [0, 1]);
+        const dispinfo = dispinfoLump.createDataView();
         const dispinfolist: DispInfo[] = [];
-        for (let idx = 0x00; idx < dispinfo.byteLength; idx += 0xB0) {
+        for (let idx = 0x00; idx < dispinfo.byteLength; idx += (dispinfoVersion === 1 ? 0xE8 : 0xB0)) {
             const startPosX = dispinfo.getFloat32(idx + 0x00, true);
             const startPosY = dispinfo.getFloat32(idx + 0x04, true);
             const startPosZ = dispinfo.getFloat32(idx + 0x08, true);
@@ -1408,7 +1448,7 @@ export class BSPFile {
             const minTess = dispinfo.getUint32(idx + 0x18, true);
             const smoothingAngle = dispinfo.getFloat32(idx + 0x1C, true);
             const contents = dispinfo.getUint32(idx + 0x20, true);
-            const mapFace = dispinfo.getUint16(idx + 0x24, true);
+            const mapFace = dispinfoVersion === 1 ? dispinfo.getUint32(idx + 0x24, true) : dispinfo.getUint16(idx + 0x24, true);
             const m_iLightmapAlphaStart = dispinfo.getUint32(idx + 0x26, true);
             const m_iLightmapSamplePositionStart = dispinfo.getUint32(idx + 0x2A, true);
 
@@ -1424,11 +1464,12 @@ export class BSPFile {
         //#endregion
 
         //#region LEAFWATERDATA Parsing
-        const leafwaterdata = getLumpData(LumpType.LEAFWATERDATA).createDataView();
+        const [lwdLump, lwdVersion] = getLumpDataV(LumpType.LEAFWATERDATA, [0, 1]); // FTESurf P1447: v1 texinfo is u32
+        const leafwaterdata = lwdLump.createDataView();
         for (let idx = 0; idx < leafwaterdata.byteLength; idx += 0x0C) {
             const surfaceZ = leafwaterdata.getFloat32(idx + 0x00, true);
             const minZ = leafwaterdata.getFloat32(idx + 0x04, true);
-            const surfaceTexInfoID = leafwaterdata.getUint16(idx + 0x08, true);
+            const surfaceTexInfoID = lwdVersion === 1 ? leafwaterdata.getUint32(idx + 0x08, true) : leafwaterdata.getUint16(idx + 0x08, true);
             const surfaceMaterialName = texinfos[surfaceTexInfoID].texName;
             this.leafwaterdata.push({ surfaceZ, minZ, surfaceMaterialName });
         }
@@ -1475,9 +1516,9 @@ export class BSPFile {
         let vertnormalIdx = 0;
 
         // Do some initial surface parsing, pack lightmaps.
-        for (let i = 0, idx = 0x00; idx < facelist.byteLength; i++, idx += 0x38, numfaces++) {
-            const numedges = facelist.getUint16(idx + 0x08, true);
-            const texinfo = facelist.getUint16(idx + 0x0A, true);
+        for (let i = 0, idx = 0x00; idx < facelist.byteLength; i++, idx += faceStride, numfaces++) {
+            const numedges = fw ? facelist.getUint32(idx + 0x0C, true) : facelist.getUint16(idx + 0x08, true);
+            const texinfo = fw ? facelist.getUint32(idx + 0x10, true) : facelist.getUint16(idx + 0x0A, true);
             const tex = texinfos[texinfo];
 
             // Normals are stored in the data for all surfaces, even for displacements.
@@ -1487,26 +1528,28 @@ export class BSPFile {
             if (!!(tex.flags & (TexinfoFlags.SKY | TexinfoFlags.SKY2D)))
                 continue;
 
-            const lightofs = facelist.getInt32(idx + 0x14, true);
-            const m_LightmapTextureSizeInLuxels = nArray(2, (i) => facelist!.getUint32(idx + 0x24 + i * 4, true));
+            const lightofs = facelist.getInt32(idx + (fw ? 0x20 : 0x14), true);
+            const m_LightmapTextureSizeInLuxels = nArray(2, (i) => facelist!.getUint32(idx + (fw ? 0x30 : 0x24) + i * 4, true));
 
             // Lighting styles
             const styles: number[] = [];
             for (let j = 0; j < 4; j++) {
-                const style = facelist.getUint8(idx + 0x10 + j);
+                const style = facelist.getUint8(idx + (fw ? 0x1C : 0x10) + j);
                 if (style === 0xFF)
                     break;
                 styles.push(style);
             }
 
             // Surface lighting info
-            const width = m_LightmapTextureSizeInLuxels[0] + 1, height = m_LightmapTextureSizeInLuxels[1] + 1;
+            const badExtents = !(m_LightmapTextureSizeInLuxels[0] < 2048 && m_LightmapTextureSizeInLuxels[1] < 2048); // FTESurf P1447
+            const width = badExtents ? 1 : m_LightmapTextureSizeInLuxels[0] + 1, height = badExtents ? 1 : m_LightmapTextureSizeInLuxels[1] + 1;
             const hasBumpmapSamples = !!(tex.flags & TexinfoFlags.BUMPLIGHT);
             const srcNumLightmaps = hasBumpmapSamples ? 4 : 1;
             const srcLightmapSize = styles.length * (width * height * srcNumLightmaps * 4);
 
             let samples: Uint8Array | null = null;
-            if (lightofs !== -1)
+            // FTESurf P1447: an unlit map (bhop_perspective) has no lighting lump at all.
+            if (lightofs !== -1 && !badExtents && lighting !== null && lightofs + srcLightmapSize <= lighting.byteLength)
                 samples = lighting.subarray(lightofs, srcLightmapSize).createTypedArray(Uint8Array);
 
             const lightmapData: FaceLightmapData = {
@@ -1525,11 +1568,17 @@ export class BSPFile {
         const [leafsLump, leafsVersion] = getLumpDataEx(LumpType.LEAFS);
         const leafs = leafsLump.createDataView();
 
+        // FTESurf P1447: LEAF_AMBIENT_INDEX v1 is two u32 a leaf (measured: 8 bytes a leaf).
         let leafambientindex: DataView | null = null;
-        if (this.usingHDR)
-            leafambientindex = getLumpData(LumpType.LEAF_AMBIENT_INDEX_HDR).createDataView();
-        if (leafambientindex === null || leafambientindex.byteLength === 0)
-            leafambientindex = getLumpData(LumpType.LEAF_AMBIENT_INDEX).createDataView();
+        let laiVersion = 0;
+        if (this.usingHDR) {
+            const [l, v] = getLumpDataV(LumpType.LEAF_AMBIENT_INDEX_HDR, [0, 1]);
+            leafambientindex = l.createDataView(); laiVersion = v;
+        }
+        if (leafambientindex === null || leafambientindex.byteLength === 0) {
+            const [l, v] = getLumpDataV(LumpType.LEAF_AMBIENT_INDEX, [0, 1]);
+            leafambientindex = l.createDataView(); laiVersion = v;
+        }
 
         let leafambientlightingLump: ArrayBufferSlice | null = null;
         let leafambientlightingVersion: number = 0;
@@ -1539,28 +1588,35 @@ export class BSPFile {
             [leafambientlightingLump, leafambientlightingVersion] = getLumpDataEx(LumpType.LEAF_AMBIENT_LIGHTING);
         const leafambientlighting = leafambientlightingLump.createDataView();
 
-        const leaffacelist = getLumpData(LumpType.LEAFFACES).createTypedArray(Uint16Array);
+        const [lfLump, lfVersion] = getLumpDataV(LumpType.LEAFFACES, [0, 1]); // FTESurf P1447: v1 is 32-bit
+        const leaffacelist: Uint16Array | Uint32Array = lfVersion === 1 ?
+            lfLump.createTypedArray(Uint32Array) : lfLump.createTypedArray(Uint16Array);
         for (let i = 0, idx = 0x00; idx < leafs.byteLength; i++) {
+            // FTESurf P1447: LEAFS v2 (Strata) is strata_dleaf_t: 32-bit cluster and refs, float bounds,
+            // 56 bytes, no inline ambient cube (the index and lighting lumps carry it, as for v1).
+            const lw = leafsVersion === 2;
             const contents = leafs.getUint32(idx + 0x00, true);
-            const cluster = leafs.getUint16(idx + 0x04, true);
-            const areaAndFlags = leafs.getUint16(idx + 0x06, true);
-            const area = areaAndFlags & 0x01FF;
-            const flags = (areaAndFlags >>> 9) & 0x007F;
-            const bboxMinX = leafs.getInt16(idx + 0x08, true);
-            const bboxMinY = leafs.getInt16(idx + 0x0A, true);
-            const bboxMinZ = leafs.getInt16(idx + 0x0C, true);
-            const bboxMaxX = leafs.getInt16(idx + 0x0E, true);
-            const bboxMaxY = leafs.getInt16(idx + 0x10, true);
-            const bboxMaxZ = leafs.getInt16(idx + 0x12, true);
+            const clusterRaw = lw ? leafs.getInt32(idx + 0x04, true) : leafs.getUint16(idx + 0x04, true);
+            const cluster = clusterRaw < 0 ? 0xFFFF : clusterRaw;
+            const areaAndFlags = lw ? leafs.getUint32(idx + 0x08, true) : leafs.getUint16(idx + 0x06, true);
+            const area = lw ? areaAndFlags & 0x1FFFF : areaAndFlags & 0x01FF;
+            const flags = lw ? (areaAndFlags >>> 17) & 0x7FFF : (areaAndFlags >>> 9) & 0x007F;
+            const rdl = (o16: number, o32: number) => lw ? leafs.getFloat32(idx + o32, true) : leafs.getInt16(idx + o16, true);
+            const bboxMinX = rdl(0x08, 0x0C);
+            const bboxMinY = rdl(0x0A, 0x10);
+            const bboxMinZ = rdl(0x0C, 0x14);
+            const bboxMaxX = rdl(0x0E, 0x18);
+            const bboxMaxY = rdl(0x10, 0x1C);
+            const bboxMaxZ = rdl(0x12, 0x20);
             const bbox = new AABB(bboxMinX, bboxMinY, bboxMinZ, bboxMaxX, bboxMaxY, bboxMaxZ);
-            const firstleafface = leafs.getUint16(idx + 0x14, true);
-            const numleaffaces = leafs.getUint16(idx + 0x16, true);
-            const firstleafbrush = leafs.getUint16(idx + 0x18, true);
-            const numleafbrushes = leafs.getUint16(idx + 0x1A, true);
-            const leafwaterdata = leafs.getInt16(idx + 0x1C, true);
+            const firstleafface = lw ? leafs.getUint32(idx + 0x24, true) : leafs.getUint16(idx + 0x14, true);
+            const numleaffaces = lw ? leafs.getUint32(idx + 0x28, true) : leafs.getUint16(idx + 0x16, true);
+            const firstleafbrush = lw ? leafs.getUint32(idx + 0x2C, true) : leafs.getUint16(idx + 0x18, true);
+            const numleafbrushes = lw ? leafs.getUint32(idx + 0x30, true) : leafs.getUint16(idx + 0x1A, true);
+            const leafwaterdata = lw ? leafs.getInt32(idx + 0x34, true) : leafs.getInt16(idx + 0x1C, true);
             const leafindex = this.leaflist.length;
 
-            idx += 0x1E;
+            idx += lw ? 0x36 : 0x1E;
 
             const ambientLightSamples: BSPLeafAmbientSample[] = [];
             if (leafsVersion === 0) {
@@ -1586,6 +1642,8 @@ export class BSPFile {
 
                 // Padding.
                 idx += 0x02;
+            } else if (leafambientindex.byteLength === 0 && leafambientlighting.byteLength === 0) {
+                idx += 0x02; // FTESurf P1447: no ambient data in the map
             } else if (leafambientindex.byteLength === 0) {
                 // Intermediate leafambient version.
                 assert(leafambientlighting.byteLength !== 0);
@@ -1614,8 +1672,12 @@ export class BSPFile {
                 idx += 0x02;
             } else {
                 assert(leafambientlightingVersion === 1);
-                const ambientSampleCount = leafambientindex.getUint16(leafindex * 0x04 + 0x00, true);
-                const firstAmbientSample = leafambientindex.getUint16(leafindex * 0x04 + 0x02, true);
+                const laiStride = laiVersion === 1 ? 0x08 : 0x04;
+                const laiIn = (leafindex + 1) * laiStride <= leafambientindex.byteLength; // FTESurf P1447: a short index
+                const ambientSampleCount = !laiIn ? 0 : laiVersion === 1 ? leafambientindex.getUint32(leafindex * 0x08 + 0x00, true)
+                                                            : leafambientindex.getUint16(leafindex * 0x04 + 0x00, true);
+                const firstAmbientSample = !laiIn ? 0 : laiVersion === 1 ? leafambientindex.getUint32(leafindex * 0x08 + 0x04, true)
+                                                            : leafambientindex.getUint16(leafindex * 0x04 + 0x02, true);
                 for (let i = 0; i < ambientSampleCount; i++) {
                     const ambientSampleOffs = (firstAmbientSample + i) * 0x1C;
 
@@ -1718,23 +1780,25 @@ export class BSPFile {
                     mergeSurface = this.surfaces[this.surfaces.length - 1];
             }
 
-            const idx = face.index * 0x38;
-            const planenum = facelist.getUint16(idx + 0x00, true);
-            const side = facelist.getUint8(idx + 0x02);
-            const onNode = !!facelist.getUint8(idx + 0x03);
-            const firstedge = facelist.getUint32(idx + 0x04, true);
-            const numedges = facelist.getUint16(idx + 0x08, true);
-            const dispinfo = facelist.getInt16(idx + 0x0C, true);
-            const surfaceFogVolumeID = facelist.getUint16(idx + 0x0E, true);
+            // FTESurf P1447: strata_dface_t offsets (fw) beside dface_t's. Strata's prim word has
+            // EnableShadows in bit 0 and the count above it (measured: raw >>> 1 sums to the prims).
+            const idx = face.index * faceStride;
+            const planenum = fw ? facelist.getUint32(idx + 0x00, true) : facelist.getUint16(idx + 0x00, true);
+            const side = facelist.getUint8(idx + (fw ? 0x04 : 0x02));
+            const onNode = !!facelist.getUint8(idx + (fw ? 0x05 : 0x03));
+            const firstedge = facelist.getUint32(idx + (fw ? 0x08 : 0x04), true);
+            const numedges = fw ? facelist.getUint32(idx + 0x0C, true) : facelist.getUint16(idx + 0x08, true);
+            const dispinfo = fw ? facelist.getInt32(idx + 0x14, true) : facelist.getInt16(idx + 0x0C, true);
+            const surfaceFogVolumeID = fw ? facelist.getInt32(idx + 0x18, true) : facelist.getUint16(idx + 0x0E, true);
 
-            const area = facelist.getFloat32(idx + 0x18, true);
-            const m_LightmapTextureMinsInLuxels = nArray(2, (i) => facelist!.getInt32(idx + 0x1C + i * 4, true));
-            const m_LightmapTextureSizeInLuxels = nArray(2, (i) => facelist!.getUint32(idx + 0x24 + i * 4, true));
-            const origFace = facelist.getUint32(idx + 0x2C, true);
-            const m_NumPrimsRaw = facelist.getUint16(idx + 0x30, true);
-            const m_NumPrims = m_NumPrimsRaw & 0x7FFF;
-            const firstPrimID = facelist.getUint16(idx + 0x32, true);
-            const smoothingGroups = facelist.getUint32(idx + 0x34, true);
+            const area = facelist.getFloat32(idx + (fw ? 0x24 : 0x18), true);
+            const m_LightmapTextureMinsInLuxels = nArray(2, (i) => facelist!.getInt32(idx + (fw ? 0x28 : 0x1C) + i * 4, true));
+            const m_LightmapTextureSizeInLuxels = nArray(2, (i) => facelist!.getUint32(idx + (fw ? 0x30 : 0x24) + i * 4, true));
+            const origFace = facelist.getUint32(idx + (fw ? 0x38 : 0x2C), true);
+            const m_NumPrimsRaw = fw ? facelist.getUint32(idx + 0x3C, true) : facelist.getUint16(idx + 0x30, true);
+            const m_NumPrims = fw ? m_NumPrimsRaw >>> 1 : m_NumPrimsRaw & 0x7FFF;
+            const firstPrimID = fw ? facelist.getUint32(idx + 0x40, true) : facelist.getUint16(idx + 0x32, true);
+            const smoothingGroups = facelist.getUint32(idx + (fw ? 0x44 : 0x34), true);
 
             // Tangent space setup.
             vec3.set(scratchTangentS, tex.textureMapping.s[0], tex.textureMapping.s[1], tex.textureMapping.s[2]);
@@ -1867,7 +1931,15 @@ export class BSPFile {
                 const indexData = indexBuffer.addUint32(indexCount);
                 if (m_NumPrims !== 0) {
                     let primType, primFirstIndex, primIndexCount, primFirstVert, primVertCount;
-                    if (this.version === 22) {
+                    if (primitivesVersion === 1) {
+                        // FTESurf P1447: dprimitive_t v1, five u32 (measured: 20-byte records).
+                        const primOffs = firstPrimID * 0x14;
+                        primType = primitives.getUint32(primOffs + 0x00, true);
+                        primFirstIndex = primitives.getUint32(primOffs + 0x04, true);
+                        primIndexCount = primitives.getUint32(primOffs + 0x08, true);
+                        primFirstVert = primitives.getUint32(primOffs + 0x0C, true);
+                        primVertCount = primitives.getUint32(primOffs + 0x10, true);
+                    } else if (this.version === 22) {
                         const primOffs = firstPrimID * 0x10;
                         primType = primitives.getUint8(primOffs + 0x00);
                         primFirstIndex = primitives.getUint32(primOffs + 0x04, true);
@@ -1888,12 +1960,14 @@ export class BSPFile {
                     }
 
                     // We should be in static mode, so we should have 1 prim maximum.
-                    assert(m_NumPrims === 1);
-                    assert(primIndexCount === indexCount);
-                    assert(primType === 0x00 /* PRIM_TRILIST */);
-
-                    for (let k = 0; k < indexCount; k++)
-                        indexData[dstOffsIndex + k] = dstIndexBase + primindices[primFirstIndex + k];
+                    // FTESurf P1447: otherwise (several, a strip, a short list) draw the polygon's fan.
+                    if (m_NumPrims === 1 && primIndexCount === indexCount && primType === 0x00 /* PRIM_TRILIST */
+                        && primFirstIndex + indexCount <= primindices.length) {
+                        for (let k = 0; k < indexCount; k++)
+                            indexData[dstOffsIndex + k] = dstIndexBase + primindices[primFirstIndex + k];
+                    } else {
+                        convertToTrianglesRange(indexData, dstOffsIndex, GfxTopology.TriFans, dstIndexBase, numedges);
+                    }
                 } else {
                     convertToTrianglesRange(indexData, dstOffsIndex, GfxTopology.TriFans, dstIndexBase, numedges);
                 }
@@ -1928,7 +2002,7 @@ export class BSPFile {
             if (dispinfo >= 0) {
                 // Displacements don't come with surface leaf information.
                 // Use the bbox to mark ourselves in the proper leaves...
-                this.queryAABB(surface.bbox, (leaf) => {
+                this.queryAABB(bbox, (leaf) => { // FTESurf P1447: the face's own box
                     ensureInList(leaf.faces, face.index);
                     return true;
                 });
@@ -1937,7 +2011,9 @@ export class BSPFile {
         //#endregion
 
         //#region Overlays
-        const overlays = getLumpData(LumpType.OVERLAYS).createDataView();
+        // FTESurf P1447: only the v0 record is parsed; v1-v3 (some v20/v21 maps, Strata) draw no overlays yet.
+        const [ovLump, ovVersion] = getLumpDataV(LumpType.OVERLAYS, [0, 1, 2, 3]);
+        const overlays = (ovVersion === 0 ? ovLump : ovLump.subarray(0, 0)).createDataView();
         for (let i = 0, idx = 0; idx < overlays.byteLength; i++) {
             const nId = overlays.getUint32(idx + 0x00, true);
             const nTexinfo = overlays.getUint16(idx + 0x04, true);

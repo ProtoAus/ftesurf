@@ -402,7 +402,7 @@ interface StaticProp {
     flags: StaticPropFlags;
     skin: number;
     propName: string;
-    leafList: Uint16Array;
+    leafList: Uint16Array | Uint32Array; // FTESurf P1447: Strata's are 32-bit
     fadeMinDist: number;
     fadeMaxDist: number;
     lightingOrigin: vec3 | null;
@@ -412,7 +412,58 @@ export interface StaticObjects {
     staticProps: StaticProp[];
 }
 
+// FTESurf P1447: Strata's sprp v12/v13, after the engine's VBSP_LoadStaticProps (mod_vbsp.c): 32-bit
+// leaf refs (16-bit tried too, by which divides), v10's fields to FlagsEx at +0x44, a measured stride
+// whose extra bytes sit at +0x48, then a Vector scale whose X is taken, as the engine does.
+function deserializeGameLump_sprpStrata(buffer: ArrayBufferSlice): StaticObjects {
+    const sprp = buffer.createDataView();
+    const staticModelDict: string[] = [];
+    if (sprp.byteLength < 0x04)
+        return { staticProps: [] };     // an empty lump (bhop_egyptian_balls, df_ash)
+    const dictCount = sprp.getUint32(0x00, true);
+    let idx = 0x04;
+    for (let i = 0; i < dictCount; i++, idx += 0x80)
+        staticModelDict.push(readString(buffer, idx, 0x80, true));
+    const leafListCount = sprp.getUint32(idx, true);
+    idx += 0x04;
+    for (const width of [4, 2]) {
+        const at = idx + leafListCount * width;
+        if (at + 0x04 > sprp.byteLength)
+            continue;
+        const count = sprp.getUint32(at, true);
+        const stride = count > 0 ? (sprp.byteLength - at - 0x04) / count : 0x54;
+        if (stride < 0x54 || stride !== Math.floor(stride))
+            continue;
+        const leafList = width === 4 ? buffer.createTypedArray(Uint32Array, idx, leafListCount, Endianness.LITTLE_ENDIAN)
+                                     : buffer.createTypedArray(Uint16Array, idx, leafListCount, Endianness.LITTLE_ENDIAN);
+        const staticProps: StaticProp[] = [];
+        for (let i = 0; i < count; i++) {
+            const o = at + 0x04 + i * stride;
+            const pos = vec3.fromValues(sprp.getFloat32(o + 0x00, true), sprp.getFloat32(o + 0x04, true), sprp.getFloat32(o + 0x08, true));
+            const rot = vec3.fromValues(sprp.getFloat32(o + 0x0C, true), sprp.getFloat32(o + 0x10, true), sprp.getFloat32(o + 0x14, true));
+            const propType = sprp.getUint16(o + 0x18, true);
+            const firstLeaf = sprp.getUint16(o + 0x1A, true);
+            const leafCount = sprp.getUint16(o + 0x1C, true);
+            const flags: StaticPropFlags = sprp.getUint8(o + 0x1F);
+            const skin = sprp.getInt32(o + 0x20, true);
+            const fadeMinDist = sprp.getFloat32(o + 0x24, true);
+            const fadeMaxDist = sprp.getFloat32(o + 0x28, true);
+            const lightingOrigin = !!(flags & StaticPropFlags.USE_LIGHTING_ORIGIN) ?
+                vec3.fromValues(sprp.getFloat32(o + 0x2C, true), sprp.getFloat32(o + 0x30, true), sprp.getFloat32(o + 0x34, true)) : null;
+            let scale = sprp.getFloat32(o + 0x48 + (stride - 0x54), true);
+            if (!(scale > 0 && scale <= 64))
+                scale = 1.0;
+            staticProps.push({ index: i, pos, rot, scale, flags, skin, propName: staticModelDict[propType],
+                leafList: leafList.subarray(firstLeaf, firstLeaf + leafCount), fadeMinDist, fadeMaxDist, lightingOrigin });
+        }
+        return { staticProps };
+    }
+    return { staticProps: [] };
+}
+
 export function deserializeGameLump_sprp(buffer: ArrayBufferSlice, version: number, bspVersion: number): StaticObjects | null {
+    if (version === 12 || version === 13)
+        return deserializeGameLump_sprpStrata(buffer); // FTESurf P1447
     assert(version === 4 || version === 5 || version === 6 || version === 9 || version === 10 || version === 11);
     const sprp = buffer.createDataView();
     let idx = 0x00;

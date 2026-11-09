@@ -236,6 +236,508 @@ PATCHES = [
      '        window.main?.toplevel.insertBefore(canvas, window.main.canvas); // FTESurf: no noclip page\n'),
 ]
 
+PATCHES += [
+    # P1447: Strata (BSP v25) maps, and v20/v21 maps carrying the same wide lumps. Every layout
+    # follows its lump's OWN version, as plugins/hl2/mod_vbsp.c does; the ones the engine does not
+    # read were measured on the library's 133 v25 maps (tools/p1447-viewer.md).
+    ('SourceEngine/BSPFile.ts',
+     '        assert(this.version === 19 || this.version === 20 || this.version === 21  || this.version === 22);\n',
+     '        assert(this.version === 19 || this.version === 20 || this.version === 21  || this.version === 22 || this.version === 25); // FTESurf P1447: Strata\n'),
+    ('SourceEngine/BSPFile.ts',
+     '''        function getLumpData(lumpType: LumpType, expectedVersion: number = 0): ArrayBufferSlice {
+            const [buffer, version] = getLumpDataEx(lumpType);
+            if (buffer.byteLength !== 0)
+                assert(version === expectedVersion);
+            return buffer;
+        }
+''',
+     '''        function getLumpData(lumpType: LumpType, expectedVersion: number = 0): ArrayBufferSlice {
+            const [buffer, version] = getLumpDataEx(lumpType);
+            if (buffer.byteLength !== 0)
+                assert(version === expectedVersion);
+            return buffer;
+        }
+
+        // FTESurf P1447: a lump whose layout follows its own version. Any other version still asserts.
+        function getLumpDataV(lumpType: LumpType, versions: number[]): [ArrayBufferSlice, number] {
+            const [buffer, version] = getLumpDataEx(lumpType);
+            if (buffer.byteLength !== 0)
+                assert(versions.includes(version));
+            return [buffer, buffer.byteLength !== 0 ? version : versions[0]];
+        }
+'''),
+    ('SourceEngine/BSPFile.ts',
+     '        const entitiesStr = decodeString(getLumpData(LumpType.ENTITIES));\n',
+     '        const entitiesStr = decodeString(getLumpDataV(LumpType.ENTITIES, [0, 1])[0]); // FTESurf P1447: v1 is the same text\n'),
+    ('SourceEngine/BSPFile.ts',
+     '''        const nodes = getLumpData(LumpType.NODES).createDataView();
+
+        const primindices = getLumpData(LumpType.PRIMINDICES).createTypedArray(Uint16Array);
+        const primitives = getLumpData(LumpType.PRIMITIVES).createDataView();
+''',
+     '''        // FTESurf P1447: NODES v1, PRIMITIVES/PRIMINDICES v1, VERTNORMALINDICES v1 are 32-bit.
+        const [nodesLump, nodesVersion] = getLumpDataV(LumpType.NODES, [0, 1]);
+        const nodes = nodesLump.createDataView();
+
+        const [primindicesLump, primindicesVersion] = getLumpDataV(LumpType.PRIMINDICES, [0, 1]);
+        const primindices: Uint16Array | Uint32Array = primindicesVersion === 1 ?
+            primindicesLump.createTypedArray(Uint32Array) : primindicesLump.createTypedArray(Uint16Array);
+        const [primitivesLump, primitivesVersion] = getLumpDataV(LumpType.PRIMITIVES, [0, 1]);
+        const primitives = primitivesLump.createDataView();
+'''),
+    ('SourceEngine/BSPFile.ts',
+     '        const vertnormalindices = getLumpData(LumpType.VERTNORMALINDICES).createTypedArray(Uint16Array);\n',
+     '''        const [vniLump, vniVersion] = getLumpDataV(LumpType.VERTNORMALINDICES, [0, 1]);
+        const vertnormalindices: Uint16Array | Uint32Array = vniVersion === 1 ?
+            vniLump.createTypedArray(Uint32Array) : vniLump.createTypedArray(Uint16Array);
+'''),
+    ('SourceEngine/BSPFile.ts',
+     '        const worldlights = worldlightsLump.createDataView();\n',
+     '''        // FTESurf P1447: Strata's v2 record is unverified; those props light from the ambient cubes alone.
+        const worldlights = (worldlightsVersion <= 1 ? worldlightsLump : worldlightsLump.subarray(0, 0)).createDataView();
+'''),
+    ('SourceEngine/BSPFile.ts',
+     '        for (let idx = 0x00; idx < nodes.byteLength; idx += 0x20) {\n',
+     '        for (let idx = 0x00; idx < nodes.byteLength; idx += (nodesVersion === 1 ? 0x30 : 0x20)) { // FTESurf P1447: strata_dnode_t\n'),
+    ('SourceEngine/BSPFile.ts',
+     '''            const bboxMinX = nodes.getInt16(idx + 0x0C, true);
+            const bboxMinY = nodes.getInt16(idx + 0x0E, true);
+            const bboxMinZ = nodes.getInt16(idx + 0x10, true);
+            const bboxMaxX = nodes.getInt16(idx + 0x12, true);
+            const bboxMaxY = nodes.getInt16(idx + 0x14, true);
+            const bboxMaxZ = nodes.getInt16(idx + 0x16, true);
+            const bbox = new AABB(bboxMinX, bboxMinY, bboxMinZ, bboxMaxX, bboxMaxY, bboxMaxZ);
+            const firstface = nodes.getUint16(idx + 0x18, true);
+            const numfaces = nodes.getUint16(idx + 0x1A, true);
+            const area = nodes.getInt16(idx + 0x1C, true);
+''',
+     '''            const nw = nodesVersion === 1;
+            const rdn = (o16: number, o32: number) => nw ? nodes.getFloat32(idx + o32, true) : nodes.getInt16(idx + o16, true);
+            const bboxMinX = rdn(0x0C, 0x0C);
+            const bboxMinY = rdn(0x0E, 0x10);
+            const bboxMinZ = rdn(0x10, 0x14);
+            const bboxMaxX = rdn(0x12, 0x18);
+            const bboxMaxY = rdn(0x14, 0x1C);
+            const bboxMaxZ = rdn(0x16, 0x20);
+            const bbox = new AABB(bboxMinX, bboxMinY, bboxMinZ, bboxMaxX, bboxMaxY, bboxMaxZ);
+            const firstface = nw ? nodes.getUint32(idx + 0x24, true) : nodes.getUint16(idx + 0x18, true);
+            const numfaces = nw ? nodes.getUint32(idx + 0x28, true) : nodes.getUint16(idx + 0x1A, true);
+            const area = nodes.getInt16(idx + (nw ? 0x2C : 0x1C), true);
+'''),
+    ('SourceEngine/BSPFile.ts',
+     '        const edges = getLumpData(LumpType.EDGES).createTypedArray(Uint16Array);\n',
+     '''        const [edgesLump, edgesVersion] = getLumpDataV(LumpType.EDGES, [0, 1]); // FTESurf P1447: v1 is 32-bit
+        const edges: Uint16Array | Uint32Array = edgesVersion === 1 ?
+            edgesLump.createTypedArray(Uint32Array) : edgesLump.createTypedArray(Uint16Array);
+'''),
+    ('SourceEngine/BSPFile.ts',
+     '''        let facelist: DataView | null = null;
+        if (this.usingHDR)
+            facelist = getLumpData(LumpType.FACES_HDR, 1).createDataView();
+        if (facelist === null || facelist.byteLength === 0)
+            facelist = getLumpData(LumpType.FACES, 1).createDataView();
+''',
+     '''        // FTESurf P1447: FACES v2 (Strata) is strata_dface_t, 72 bytes of 32-bit fields.
+        let facelist: DataView | null = null;
+        let facesVersion = 1;
+        if (this.usingHDR) {
+            const [l, v] = getLumpDataV(LumpType.FACES_HDR, [1, 2]);
+            facelist = l.createDataView(); facesVersion = v;
+        }
+        if (facelist === null || facelist.byteLength === 0) {
+            const [l, v] = getLumpDataV(LumpType.FACES, [1, 2]);
+            facelist = l.createDataView(); facesVersion = v;
+        }
+        const fw = facesVersion === 2;
+        const faceStride = fw ? 0x48 : 0x38;
+'''),
+    ('SourceEngine/BSPFile.ts',
+     '''        for (let i = 0, idx = 0x00; idx < facelist.byteLength; i++, idx += 0x38, numfaces++) {
+            const numedges = facelist.getUint16(idx + 0x08, true);
+            const texinfo = facelist.getUint16(idx + 0x0A, true);
+''',
+     '''        for (let i = 0, idx = 0x00; idx < facelist.byteLength; i++, idx += faceStride, numfaces++) {
+            const numedges = fw ? facelist.getUint32(idx + 0x0C, true) : facelist.getUint16(idx + 0x08, true);
+            const texinfo = fw ? facelist.getUint32(idx + 0x10, true) : facelist.getUint16(idx + 0x0A, true);
+'''),
+    ('SourceEngine/BSPFile.ts',
+     '''            const lightofs = facelist.getInt32(idx + 0x14, true);
+            const m_LightmapTextureSizeInLuxels = nArray(2, (i) => facelist!.getUint32(idx + 0x24 + i * 4, true));
+''',
+     '''            const lightofs = facelist.getInt32(idx + (fw ? 0x20 : 0x14), true);
+            const m_LightmapTextureSizeInLuxels = nArray(2, (i) => facelist!.getUint32(idx + (fw ? 0x30 : 0x24) + i * 4, true));
+'''),
+    ('SourceEngine/BSPFile.ts',
+     '                const style = facelist.getUint8(idx + 0x10 + j);\n',
+     '                const style = facelist.getUint8(idx + (fw ? 0x1C : 0x10) + j);\n'),
+    ('SourceEngine/BSPFile.ts',
+     '''            if (lightofs !== -1)
+                samples = lighting.subarray(lightofs, srcLightmapSize).createTypedArray(Uint8Array);
+''',
+     '''            // FTESurf P1447: an unlit map (bhop_perspective) has no lighting lump at all.
+            if (lightofs !== -1 && lighting !== null && lightofs + srcLightmapSize <= lighting.byteLength)
+                samples = lighting.subarray(lightofs, srcLightmapSize).createTypedArray(Uint8Array);
+'''),
+    ('SourceEngine/BSPFile.ts',
+     '''            const idx = face.index * 0x38;
+            const planenum = facelist.getUint16(idx + 0x00, true);
+            const side = facelist.getUint8(idx + 0x02);
+            const onNode = !!facelist.getUint8(idx + 0x03);
+            const firstedge = facelist.getUint32(idx + 0x04, true);
+            const numedges = facelist.getUint16(idx + 0x08, true);
+            const dispinfo = facelist.getInt16(idx + 0x0C, true);
+            const surfaceFogVolumeID = facelist.getUint16(idx + 0x0E, true);
+
+            const area = facelist.getFloat32(idx + 0x18, true);
+            const m_LightmapTextureMinsInLuxels = nArray(2, (i) => facelist!.getInt32(idx + 0x1C + i * 4, true));
+            const m_LightmapTextureSizeInLuxels = nArray(2, (i) => facelist!.getUint32(idx + 0x24 + i * 4, true));
+            const origFace = facelist.getUint32(idx + 0x2C, true);
+            const m_NumPrimsRaw = facelist.getUint16(idx + 0x30, true);
+            const m_NumPrims = m_NumPrimsRaw & 0x7FFF;
+            const firstPrimID = facelist.getUint16(idx + 0x32, true);
+            const smoothingGroups = facelist.getUint32(idx + 0x34, true);
+''',
+     '''            // FTESurf P1447: strata_dface_t offsets (fw) beside dface_t's. Strata's prim word has
+            // EnableShadows in bit 0 and the count above it (measured: raw >>> 1 sums to the prims).
+            const idx = face.index * faceStride;
+            const planenum = fw ? facelist.getUint32(idx + 0x00, true) : facelist.getUint16(idx + 0x00, true);
+            const side = facelist.getUint8(idx + (fw ? 0x04 : 0x02));
+            const onNode = !!facelist.getUint8(idx + (fw ? 0x05 : 0x03));
+            const firstedge = facelist.getUint32(idx + (fw ? 0x08 : 0x04), true);
+            const numedges = fw ? facelist.getUint32(idx + 0x0C, true) : facelist.getUint16(idx + 0x08, true);
+            const dispinfo = fw ? facelist.getInt32(idx + 0x14, true) : facelist.getInt16(idx + 0x0C, true);
+            const surfaceFogVolumeID = fw ? facelist.getInt32(idx + 0x18, true) : facelist.getUint16(idx + 0x0E, true);
+
+            const area = facelist.getFloat32(idx + (fw ? 0x24 : 0x18), true);
+            const m_LightmapTextureMinsInLuxels = nArray(2, (i) => facelist!.getInt32(idx + (fw ? 0x28 : 0x1C) + i * 4, true));
+            const m_LightmapTextureSizeInLuxels = nArray(2, (i) => facelist!.getUint32(idx + (fw ? 0x30 : 0x24) + i * 4, true));
+            const origFace = facelist.getUint32(idx + (fw ? 0x38 : 0x2C), true);
+            const m_NumPrimsRaw = fw ? facelist.getUint32(idx + 0x3C, true) : facelist.getUint16(idx + 0x30, true);
+            const m_NumPrims = fw ? m_NumPrimsRaw >>> 1 : m_NumPrimsRaw & 0x7FFF;
+            const firstPrimID = fw ? facelist.getUint32(idx + 0x40, true) : facelist.getUint16(idx + 0x32, true);
+            const smoothingGroups = facelist.getUint32(idx + (fw ? 0x44 : 0x34), true);
+'''),
+    ('SourceEngine/BSPFile.ts',
+     '''                    if (this.version === 22) {
+                        const primOffs = firstPrimID * 0x10;
+''',
+     '''                    if (primitivesVersion === 1) {
+                        // FTESurf P1447: dprimitive_t v1, five u32 (measured: 20-byte records).
+                        const primOffs = firstPrimID * 0x14;
+                        primType = primitives.getUint32(primOffs + 0x00, true);
+                        primFirstIndex = primitives.getUint32(primOffs + 0x04, true);
+                        primIndexCount = primitives.getUint32(primOffs + 0x08, true);
+                        primFirstVert = primitives.getUint32(primOffs + 0x0C, true);
+                        primVertCount = primitives.getUint32(primOffs + 0x10, true);
+                    } else if (this.version === 22) {
+                        const primOffs = firstPrimID * 0x10;
+'''),
+    ('SourceEngine/BSPFile.ts',
+     '''        const dispinfo = getLumpData(LumpType.DISPINFO).createDataView();
+        const dispinfolist: DispInfo[] = [];
+        for (let idx = 0x00; idx < dispinfo.byteLength; idx += 0xB0) {
+''',
+     '''        // FTESurf P1447: DISPINFO v1 (Strata) is 232 bytes with mapFace u32; the fields read here keep their offsets.
+        const [dispinfoLump, dispinfoVersion] = getLumpDataV(LumpType.DISPINFO, [0, 1]);
+        const dispinfo = dispinfoLump.createDataView();
+        const dispinfolist: DispInfo[] = [];
+        for (let idx = 0x00; idx < dispinfo.byteLength; idx += (dispinfoVersion === 1 ? 0xE8 : 0xB0)) {
+'''),
+    ('SourceEngine/BSPFile.ts',
+     '            const mapFace = dispinfo.getUint16(idx + 0x24, true);\n',
+     '            const mapFace = dispinfoVersion === 1 ? dispinfo.getUint32(idx + 0x24, true) : dispinfo.getUint16(idx + 0x24, true);\n'),
+    ('SourceEngine/BSPFile.ts',
+     '        const leafwaterdata = getLumpData(LumpType.LEAFWATERDATA).createDataView();\n',
+     '''        const [lwdLump, lwdVersion] = getLumpDataV(LumpType.LEAFWATERDATA, [0, 1]); // FTESurf P1447: v1 texinfo is u32
+        const leafwaterdata = lwdLump.createDataView();
+'''),
+    ('SourceEngine/BSPFile.ts',
+     '            const surfaceTexInfoID = leafwaterdata.getUint16(idx + 0x08, true);\n',
+     '            const surfaceTexInfoID = lwdVersion === 1 ? leafwaterdata.getUint32(idx + 0x08, true) : leafwaterdata.getUint16(idx + 0x08, true);\n'),
+    ('SourceEngine/BSPFile.ts',
+     '''        let leafambientindex: DataView | null = null;
+        if (this.usingHDR)
+            leafambientindex = getLumpData(LumpType.LEAF_AMBIENT_INDEX_HDR).createDataView();
+        if (leafambientindex === null || leafambientindex.byteLength === 0)
+            leafambientindex = getLumpData(LumpType.LEAF_AMBIENT_INDEX).createDataView();
+''',
+     '''        // FTESurf P1447: LEAF_AMBIENT_INDEX v1 is two u32 a leaf (measured: 8 bytes a leaf).
+        let leafambientindex: DataView | null = null;
+        let laiVersion = 0;
+        if (this.usingHDR) {
+            const [l, v] = getLumpDataV(LumpType.LEAF_AMBIENT_INDEX_HDR, [0, 1]);
+            leafambientindex = l.createDataView(); laiVersion = v;
+        }
+        if (leafambientindex === null || leafambientindex.byteLength === 0) {
+            const [l, v] = getLumpDataV(LumpType.LEAF_AMBIENT_INDEX, [0, 1]);
+            leafambientindex = l.createDataView(); laiVersion = v;
+        }
+'''),
+    ('SourceEngine/BSPFile.ts',
+     '''                const ambientSampleCount = leafambientindex.getUint16(leafindex * 0x04 + 0x00, true);
+                const firstAmbientSample = leafambientindex.getUint16(leafindex * 0x04 + 0x02, true);
+''',
+     '''                const ambientSampleCount = laiVersion === 1 ? leafambientindex.getUint32(leafindex * 0x08 + 0x00, true)
+                                                            : leafambientindex.getUint16(leafindex * 0x04 + 0x00, true);
+                const firstAmbientSample = laiVersion === 1 ? leafambientindex.getUint32(leafindex * 0x08 + 0x04, true)
+                                                            : leafambientindex.getUint16(leafindex * 0x04 + 0x02, true);
+'''),
+    ('SourceEngine/BSPFile.ts',
+     '        const leaffacelist = getLumpData(LumpType.LEAFFACES).createTypedArray(Uint16Array);\n',
+     '''        const [lfLump, lfVersion] = getLumpDataV(LumpType.LEAFFACES, [0, 1]); // FTESurf P1447: v1 is 32-bit
+        const leaffacelist: Uint16Array | Uint32Array = lfVersion === 1 ?
+            lfLump.createTypedArray(Uint32Array) : lfLump.createTypedArray(Uint16Array);
+'''),
+    ('SourceEngine/BSPFile.ts',
+     '''            const contents = leafs.getUint32(idx + 0x00, true);
+            const cluster = leafs.getUint16(idx + 0x04, true);
+            const areaAndFlags = leafs.getUint16(idx + 0x06, true);
+            const area = areaAndFlags & 0x01FF;
+            const flags = (areaAndFlags >>> 9) & 0x007F;
+            const bboxMinX = leafs.getInt16(idx + 0x08, true);
+            const bboxMinY = leafs.getInt16(idx + 0x0A, true);
+            const bboxMinZ = leafs.getInt16(idx + 0x0C, true);
+            const bboxMaxX = leafs.getInt16(idx + 0x0E, true);
+            const bboxMaxY = leafs.getInt16(idx + 0x10, true);
+            const bboxMaxZ = leafs.getInt16(idx + 0x12, true);
+            const bbox = new AABB(bboxMinX, bboxMinY, bboxMinZ, bboxMaxX, bboxMaxY, bboxMaxZ);
+            const firstleafface = leafs.getUint16(idx + 0x14, true);
+            const numleaffaces = leafs.getUint16(idx + 0x16, true);
+            const firstleafbrush = leafs.getUint16(idx + 0x18, true);
+            const numleafbrushes = leafs.getUint16(idx + 0x1A, true);
+            const leafwaterdata = leafs.getInt16(idx + 0x1C, true);
+            const leafindex = this.leaflist.length;
+
+            idx += 0x1E;
+''',
+     '''            // FTESurf P1447: LEAFS v2 (Strata) is strata_dleaf_t: 32-bit cluster and refs, float bounds,
+            // 56 bytes, no inline ambient cube (the index and lighting lumps carry it, as for v1).
+            const lw = leafsVersion === 2;
+            const contents = leafs.getUint32(idx + 0x00, true);
+            const clusterRaw = lw ? leafs.getInt32(idx + 0x04, true) : leafs.getUint16(idx + 0x04, true);
+            const cluster = clusterRaw < 0 ? 0xFFFF : clusterRaw;
+            const areaAndFlags = lw ? leafs.getUint32(idx + 0x08, true) : leafs.getUint16(idx + 0x06, true);
+            const area = lw ? areaAndFlags & 0x1FFFF : areaAndFlags & 0x01FF;
+            const flags = lw ? (areaAndFlags >>> 17) & 0x7FFF : (areaAndFlags >>> 9) & 0x007F;
+            const rdl = (o16: number, o32: number) => lw ? leafs.getFloat32(idx + o32, true) : leafs.getInt16(idx + o16, true);
+            const bboxMinX = rdl(0x08, 0x0C);
+            const bboxMinY = rdl(0x0A, 0x10);
+            const bboxMinZ = rdl(0x0C, 0x14);
+            const bboxMaxX = rdl(0x0E, 0x18);
+            const bboxMaxY = rdl(0x10, 0x1C);
+            const bboxMaxZ = rdl(0x12, 0x20);
+            const bbox = new AABB(bboxMinX, bboxMinY, bboxMinZ, bboxMaxX, bboxMaxY, bboxMaxZ);
+            const firstleafface = lw ? leafs.getUint32(idx + 0x24, true) : leafs.getUint16(idx + 0x14, true);
+            const numleaffaces = lw ? leafs.getUint32(idx + 0x28, true) : leafs.getUint16(idx + 0x16, true);
+            const firstleafbrush = lw ? leafs.getUint32(idx + 0x2C, true) : leafs.getUint16(idx + 0x18, true);
+            const numleafbrushes = lw ? leafs.getUint32(idx + 0x30, true) : leafs.getUint16(idx + 0x1A, true);
+            const leafwaterdata = lw ? leafs.getInt32(idx + 0x34, true) : leafs.getInt16(idx + 0x1C, true);
+            const leafindex = this.leaflist.length;
+
+            idx += lw ? 0x36 : 0x1E;
+'''),
+    ('SourceEngine/BSPFile.ts',
+     '        const overlays = getLumpData(LumpType.OVERLAYS).createDataView();\n',
+     '''        // FTESurf P1447: only the v0 record is parsed; v1-v3 (some v20/v21 maps, Strata) draw no overlays yet.
+        const [ovLump, ovVersion] = getLumpDataV(LumpType.OVERLAYS, [0, 1, 2, 3]);
+        const overlays = (ovVersion === 0 ? ovLump : ovLump.subarray(0, 0)).createDataView();
+'''),
+    ('SourceEngine/StaticDetailObject.ts',
+     '    leafList: Uint16Array;\n',
+     '    leafList: Uint16Array | Uint32Array; // FTESurf P1447: Strata\'s are 32-bit\n'),
+    ('SourceEngine/StaticDetailObject.ts',
+     '''export function deserializeGameLump_sprp(buffer: ArrayBufferSlice, version: number, bspVersion: number): StaticObjects | null {
+    assert(version === 4 || version === 5 || version === 6 || version === 9 || version === 10 || version === 11);
+''',
+     '''// FTESurf P1447: Strata's sprp v12/v13, after the engine's VBSP_LoadStaticProps (mod_vbsp.c): 32-bit
+// leaf refs (16-bit tried too, by which divides), v10's fields to FlagsEx at +0x44, a measured stride
+// whose extra bytes sit at +0x48, then a Vector scale whose X is taken, as the engine does.
+function deserializeGameLump_sprpStrata(buffer: ArrayBufferSlice): StaticObjects {
+    const sprp = buffer.createDataView();
+    const staticModelDict: string[] = [];
+    if (sprp.byteLength < 0x04)
+        return { staticProps: [] };     // an empty lump (bhop_egyptian_balls, df_ash)
+    const dictCount = sprp.getUint32(0x00, true);
+    let idx = 0x04;
+    for (let i = 0; i < dictCount; i++, idx += 0x80)
+        staticModelDict.push(readString(buffer, idx, 0x80, true));
+    const leafListCount = sprp.getUint32(idx, true);
+    idx += 0x04;
+    for (const width of [4, 2]) {
+        const at = idx + leafListCount * width;
+        if (at + 0x04 > sprp.byteLength)
+            continue;
+        const count = sprp.getUint32(at, true);
+        const stride = count > 0 ? (sprp.byteLength - at - 0x04) / count : 0x54;
+        if (stride < 0x54 || stride !== Math.floor(stride))
+            continue;
+        const leafList = width === 4 ? buffer.createTypedArray(Uint32Array, idx, leafListCount, Endianness.LITTLE_ENDIAN)
+                                     : buffer.createTypedArray(Uint16Array, idx, leafListCount, Endianness.LITTLE_ENDIAN);
+        const staticProps: StaticProp[] = [];
+        for (let i = 0; i < count; i++) {
+            const o = at + 0x04 + i * stride;
+            const pos = vec3.fromValues(sprp.getFloat32(o + 0x00, true), sprp.getFloat32(o + 0x04, true), sprp.getFloat32(o + 0x08, true));
+            const rot = vec3.fromValues(sprp.getFloat32(o + 0x0C, true), sprp.getFloat32(o + 0x10, true), sprp.getFloat32(o + 0x14, true));
+            const propType = sprp.getUint16(o + 0x18, true);
+            const firstLeaf = sprp.getUint16(o + 0x1A, true);
+            const leafCount = sprp.getUint16(o + 0x1C, true);
+            const flags: StaticPropFlags = sprp.getUint8(o + 0x1F);
+            const skin = sprp.getInt32(o + 0x20, true);
+            const fadeMinDist = sprp.getFloat32(o + 0x24, true);
+            const fadeMaxDist = sprp.getFloat32(o + 0x28, true);
+            const lightingOrigin = !!(flags & StaticPropFlags.USE_LIGHTING_ORIGIN) ?
+                vec3.fromValues(sprp.getFloat32(o + 0x2C, true), sprp.getFloat32(o + 0x30, true), sprp.getFloat32(o + 0x34, true)) : null;
+            let scale = sprp.getFloat32(o + 0x48 + (stride - 0x54), true);
+            if (!(scale > 0 && scale <= 64))
+                scale = 1.0;
+            staticProps.push({ index: i, pos, rot, scale, flags, skin, propName: staticModelDict[propType],
+                leafList: leafList.subarray(firstLeaf, firstLeaf + leafCount), fadeMinDist, fadeMaxDist, lightingOrigin });
+        }
+        return { staticProps };
+    }
+    return { staticProps: [] };
+}
+
+export function deserializeGameLump_sprp(buffer: ArrayBufferSlice, version: number, bspVersion: number): StaticObjects | null {
+    if (version === 12 || version === 13)
+        return deserializeGameLump_sprpStrata(buffer); // FTESurf P1447
+    assert(version === 4 || version === 5 || version === 6 || version === 9 || version === 10 || version === 11);
+'''),
+]
+
+PATCHES += [
+    # P1447: an empty game lump (bhop_anomalous) has no count to read.
+    ('SourceEngine/BSPFile.ts',
+     '            const lumpCount = game_lump.getUint32(0x00, true);\n',
+     '            const lumpCount = game_lump.byteLength >= 0x04 ? game_lump.getUint32(0x00, true) : 0; // FTESurf P1447\n'),
+    # P1447: a compressed game lump's region ends at the next entry's offset, or the lump's end
+    # when that offset is 0 or before it (bhop_adventure's terminator); its size is the 'LZMA'
+    # header's, because maps disagree about what filelen means; under 17 bytes is an empty stub
+    # (Strata writes 12-byte ones) -- the engine's VBSP_LoadGameLump rules.
+    ('SourceEngine/BSPFile.ts',
+     '''                        let compressedEnd: number;
+                        if (i + 1 < lumpCount)
+                            compressedEnd = game_lump.getUint32(idx + 0x10 + 0x08, true);
+                        else
+                            compressedEnd = game_lump.byteOffset + game_lump.byteLength;
+                        const compressed = buffer.slice(fileofs, compressedEnd);
+                        const lump = decompressLZMA(compressed, filelen);
+                        return [lump, version];
+''',
+     '''                        const lumpEnd = game_lump.byteOffset + game_lump.byteLength;
+                        let compressedEnd = (i + 1 < lumpCount) ? game_lump.getUint32(idx + 0x10 + 0x08, true) : lumpEnd;
+                        if (compressedEnd <= fileofs)
+                            compressedEnd = lumpEnd;
+                        if (compressedEnd - fileofs < 0x11)
+                            return null;
+                        const compressed = buffer.slice(fileofs, compressedEnd);
+                        const lump = decompressLZMA(compressed, compressed.createDataView().getUint32(0x04, true));
+                        return [lump, version];
+'''),
+    # P1447: a map with no ambient lighting at all (unlit, or compiled without it) has neither
+    # lump; its leaves get no ambient sample instead of an assert.
+    ('SourceEngine/BSPFile.ts',
+     '''            } else if (leafambientindex.byteLength === 0) {
+                // Intermediate leafambient version.
+''',
+     '''            } else if (leafambientindex.byteLength === 0 && leafambientlighting.byteLength === 0) {
+                idx += 0x02; // FTESurf P1447: no ambient data in the map
+            } else if (leafambientindex.byteLength === 0) {
+                // Intermediate leafambient version.
+'''),
+    # P1447: a face with garbage extents (surf_huecomundo: INT_MIN) gets a 1x1 unlit lightmap
+    # instead of failing the lightmap page allocation for the whole map.
+    ('SourceEngine/BSPFile.ts',
+     '            const width = m_LightmapTextureSizeInLuxels[0] + 1, height = m_LightmapTextureSizeInLuxels[1] + 1;\n',
+     '''            const badExtents = !(m_LightmapTextureSizeInLuxels[0] < 2048 && m_LightmapTextureSizeInLuxels[1] < 2048); // FTESurf P1447
+            const width = badExtents ? 1 : m_LightmapTextureSizeInLuxels[0] + 1, height = badExtents ? 1 : m_LightmapTextureSizeInLuxels[1] + 1;
+'''),
+    ('SourceEngine/BSPFile.ts',
+     '            if (lightofs !== -1 && lighting !== null && lightofs + srcLightmapSize <= lighting.byteLength)\n',
+     '            if (lightofs !== -1 && !badExtents && lighting !== null && lightofs + srcLightmapSize <= lighting.byteLength)\n'),
+]
+
+PATCHES += [
+    # P1447: a displacement is marked in the leaves under ITS box. The merged surface's box (which
+    # can span the map) made every displacement walk thousands of leaves, each with a linear
+    # ensureInList: 71-73% of the parse on ahop_coast (11.7 s) and bhop_canals (23.3 s).
+    ('SourceEngine/BSPFile.ts',
+     '                this.queryAABB(surface.bbox, (leaf) => {\n',
+     '                this.queryAABB(bbox, (leaf) => { // FTESurf P1447: the face\'s own box\n'),
+]
+
+PATCHES += [
+    # P1447: optional data degrades instead of failing the whole map (all 11 of the library's
+    # remaining v20/v21 failures; each failed the same way before P1447).
+    # A face whose primitives are not one triangle list (surf_bossfight, surf_healthy, surf_fiellu_ksf)
+    # is drawn as its polygon's fan.
+    ('SourceEngine/BSPFile.ts',
+     '''                    // We should be in static mode, so we should have 1 prim maximum.
+                    assert(m_NumPrims === 1);
+                    assert(primIndexCount === indexCount);
+                    assert(primType === 0x00 /* PRIM_TRILIST */);
+
+                    for (let k = 0; k < indexCount; k++)
+                        indexData[dstOffsIndex + k] = dstIndexBase + primindices[primFirstIndex + k];
+''',
+     '''                    // We should be in static mode, so we should have 1 prim maximum.
+                    // FTESurf P1447: otherwise (several, a strip, a short list) draw the polygon's fan.
+                    if (m_NumPrims === 1 && primIndexCount === indexCount && primType === 0x00 /* PRIM_TRILIST */
+                        && primFirstIndex + indexCount <= primindices.length) {
+                        for (let k = 0; k < indexCount; k++)
+                            indexData[dstOffsIndex + k] = dstIndexBase + primindices[primFirstIndex + k];
+                    } else {
+                        convertToTrianglesRange(indexData, dstOffsIndex, GfxTopology.TriFans, dstIndexBase, numedges);
+                    }
+'''),
+    # A compressed game lump that does not start with Valve's 'LZMA' header (surf_boogie_woogie) is skipped.
+    ('SourceEngine/BSPFile.ts',
+     '''                        const compressed = buffer.slice(fileofs, compressedEnd);
+                        const lump = decompressLZMA(compressed, compressed.createDataView().getUint32(0x04, true));
+''',
+     '''                        const compressed = buffer.slice(fileofs, compressedEnd);
+                        if (readString(compressed, 0x00, 0x04) !== 'LZMA')
+                            return null; // FTESurf P1447: not Valve's framing; the map draws without it
+                        const lump = decompressLZMA(compressed, compressed.createDataView().getUint32(0x04, true));
+'''),
+    # A detail-prop lump that does not parse (surf_bewatermyfriend, surf_classics3) costs the detail props only.
+    ('SourceEngine/BSPFile.ts',
+     '''        if (dprp !== null)
+            this.detailObjects = deserializeGameLump_dprp(dprp[0], dprp[1]);
+''',
+     '''        if (dprp !== null) {
+            try {
+                this.detailObjects = deserializeGameLump_dprp(dprp[0], dprp[1]);
+            } catch (e) {
+                console.warn(`${mapname}: detail props skipped (${e})`); // FTESurf P1447
+            }
+        }
+'''),
+    # A leaf past the end of a short ambient index (surf_eon) gets no ambient sample.
+    ('SourceEngine/BSPFile.ts',
+     '''                const ambientSampleCount = laiVersion === 1 ? leafambientindex.getUint32(leafindex * 0x08 + 0x00, true)
+                                                            : leafambientindex.getUint16(leafindex * 0x04 + 0x00, true);
+                const firstAmbientSample = laiVersion === 1 ? leafambientindex.getUint32(leafindex * 0x08 + 0x04, true)
+                                                            : leafambientindex.getUint16(leafindex * 0x04 + 0x02, true);
+''',
+     '''                const laiStride = laiVersion === 1 ? 0x08 : 0x04;
+                const laiIn = (leafindex + 1) * laiStride <= leafambientindex.byteLength; // FTESurf P1447: a short index
+                const ambientSampleCount = !laiIn ? 0 : laiVersion === 1 ? leafambientindex.getUint32(leafindex * 0x08 + 0x00, true)
+                                                            : leafambientindex.getUint16(leafindex * 0x04 + 0x00, true);
+                const firstAmbientSample = !laiIn ? 0 : laiVersion === 1 ? leafambientindex.getUint32(leafindex * 0x08 + 0x04, true)
+                                                            : leafambientindex.getUint16(leafindex * 0x04 + 0x02, true);
+'''),
+]
+
+PATCHES += [
+    # P1447: an empty uncompressed game lump (surf_bewatermyfriend: sprp version 0, length 0) is absent.
+    ('SourceEngine/BSPFile.ts',
+     '                        const lump = buffer.subarray(fileofs, filelen);\n',
+     '                        if (filelen === 0)\n'
+     '                            return null; // FTESurf P1447: an empty stub\n'
+     '                        const lump = buffer.subarray(fileofs, filelen);\n'),
+]
+
 ROOTS = [
     'SourceEngine/Main.ts',
     'SourceEngine/BSPFile.ts',

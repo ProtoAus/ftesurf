@@ -92,7 +92,7 @@ function lenDecode(rc: RangeDecoder, probs: Uint16Array, posState: number): numb
     return 16 + bitTree(rc, probs, LEN_HIGH, 8);
 }
 
-function lzma_decompress(src: Uint8Array, lc: number, lp: number, pb: number, _dictSize: number, unpackedSize: bigint): Uint8Array {
+export function lzma_decompress_spec(src: Uint8Array, lc: number, lp: number, pb: number, _dictSize: number, unpackedSize: bigint): Uint8Array {
     const size = Number(unpackedSize);
     const out = new Uint8Array(size);
     const rc = new RangeDecoder(src, 0);
@@ -201,6 +201,229 @@ function lzma_decompress(src: Uint8Array, lc: number, lp: number, pb: number, _d
         pos += n;
     }
 
+    return out;
+}
+
+// P1447: the decoder above, flattened for speed -- every probability in one array, the range
+// coder's state in locals and its bit step written out at each use (a closure over them would
+// put them on the heap for the whole loop), long non-overlapping matches copied in one call.
+// Same output (tools/lzma_check.ts against Python's lzma, 6,464 entries on 5 maps); ~12% faster
+// (bhop_canals 6.0 -> 5.8 s, surf_leesriize 20.3 -> 17.8 s parse). Python's C lzma is ~2.4x it still.
+const LZ_IS_MATCH = 0, LZ_IS_REP = 192, LZ_IS_REP_G0 = 204, LZ_IS_REP_G1 = 216, LZ_IS_REP_G2 = 228,
+    LZ_IS_REP0_LONG = 240, LZ_POS_SLOT = 432, LZ_SPEC_POS = 688, LZ_ALIGN = 803, LZ_LEN = 819,
+    LZ_REP_LEN = LZ_LEN + LEN_SIZE, LZ_LITERAL = LZ_REP_LEN + LEN_SIZE;
+
+function lzma_decompress(src: Uint8Array, lc: number, lp: number, pb: number, _dictSize: number, unpackedSize: bigint): Uint8Array {
+    const size = Number(unpackedSize);
+    const out = new Uint8Array(size);
+    if (src[0] !== 0)
+        throw new Error('lzma: bad range coder header');
+    let range = 0xFFFFFFFF;
+    let code = ((src[1] << 24) | (src[2] << 16) | (src[3] << 8) | src[4]) >>> 0;
+    let ip = 5;
+    if (code === range)
+        throw new Error('lzma: corrupt stream');
+    const P = new Uint16Array(LZ_LITERAL + (0x300 << (lc + lp))).fill(PROB_INIT);
+    const pbMask = (1 << pb) - 1, lpMask = (1 << lp) - 1;
+    let state = 0, rep0 = 0, rep1 = 0, rep2 = 0, rep3 = 0, pos = 0;
+    let p = 0, bound = 0, b = 0, i = 0, m = 0, k = 0;
+
+    while (pos < size) {
+        const posState = pos & pbMask;
+        i = LZ_IS_MATCH + (state << 4) + posState;
+        p = P[i]; bound = (range >>> 11) * p;
+        if (code < bound) { range = bound; P[i] = p + ((2048 - p) >>> 5); b = 0; }
+        else { range -= bound; code -= bound; P[i] = p - (p >>> 5); b = 1; }
+        if (range < 0x1000000) { range = (range * 256) >>> 0; code = ((code * 256) + (src[ip++] | 0)) >>> 0; }
+        if (b === 0) {
+            const prev = pos > 0 ? out[pos - 1] : 0;
+            const base = LZ_LITERAL + 0x300 * (((pos & lpMask) << lc) + (prev >>> (8 - lc)));
+            let sym = 1;
+            if (state >= 7) {
+                let matchByte = out[pos - rep0 - 1];
+                do {
+                    const matchBit = (matchByte >>> 7) & 1;
+                    matchByte <<= 1;
+                    i = base + ((1 + matchBit) << 8) + sym;
+                    p = P[i]; bound = (range >>> 11) * p;
+                    if (code < bound) { range = bound; P[i] = p + ((2048 - p) >>> 5); b = 0; }
+                    else { range -= bound; code -= bound; P[i] = p - (p >>> 5); b = 1; }
+                    if (range < 0x1000000) { range = (range * 256) >>> 0; code = ((code * 256) + (src[ip++] | 0)) >>> 0; }
+                    sym = (sym << 1) | b;
+                    if (matchBit !== b)
+                        break;
+                } while (sym < 0x100);
+            }
+            while (sym < 0x100) {
+                i = base + sym;
+                p = P[i]; bound = (range >>> 11) * p;
+                if (code < bound) { range = bound; P[i] = p + ((2048 - p) >>> 5); b = 0; }
+                else { range -= bound; code -= bound; P[i] = p - (p >>> 5); b = 1; }
+                if (range < 0x1000000) { range = (range * 256) >>> 0; code = ((code * 256) + (src[ip++] | 0)) >>> 0; }
+                sym = (sym << 1) | b;
+            }
+            out[pos++] = sym - 0x100;
+            state = state < 4 ? 0 : (state < 10 ? state - 3 : state - 6);
+            continue;
+        }
+
+        i = LZ_IS_REP + state;
+        p = P[i]; bound = (range >>> 11) * p;
+        if (code < bound) { range = bound; P[i] = p + ((2048 - p) >>> 5); b = 0; }
+        else { range -= bound; code -= bound; P[i] = p - (p >>> 5); b = 1; }
+        if (range < 0x1000000) { range = (range * 256) >>> 0; code = ((code * 256) + (src[ip++] | 0)) >>> 0; }
+        let lenBase: number;
+        const isRepMatch = b !== 0;
+        if (isRepMatch) {
+            if (pos === 0)
+                throw new Error('lzma: rep match at start');
+            i = LZ_IS_REP_G0 + state;
+            p = P[i]; bound = (range >>> 11) * p;
+            if (code < bound) { range = bound; P[i] = p + ((2048 - p) >>> 5); b = 0; }
+            else { range -= bound; code -= bound; P[i] = p - (p >>> 5); b = 1; }
+            if (range < 0x1000000) { range = (range * 256) >>> 0; code = ((code * 256) + (src[ip++] | 0)) >>> 0; }
+            if (b === 0) {
+                i = LZ_IS_REP0_LONG + (state << 4) + posState;
+                p = P[i]; bound = (range >>> 11) * p;
+                if (code < bound) { range = bound; P[i] = p + ((2048 - p) >>> 5); b = 0; }
+                else { range -= bound; code -= bound; P[i] = p - (p >>> 5); b = 1; }
+                if (range < 0x1000000) { range = (range * 256) >>> 0; code = ((code * 256) + (src[ip++] | 0)) >>> 0; }
+                if (b === 0) {
+                    state = state < 7 ? 9 : 11;
+                    out[pos] = out[pos - rep0 - 1];
+                    pos++;
+                    continue;
+                }
+            } else {
+                let dist: number;
+                i = LZ_IS_REP_G1 + state;
+                p = P[i]; bound = (range >>> 11) * p;
+                if (code < bound) { range = bound; P[i] = p + ((2048 - p) >>> 5); b = 0; }
+                else { range -= bound; code -= bound; P[i] = p - (p >>> 5); b = 1; }
+                if (range < 0x1000000) { range = (range * 256) >>> 0; code = ((code * 256) + (src[ip++] | 0)) >>> 0; }
+                if (b === 0) {
+                    dist = rep1;
+                } else {
+                    i = LZ_IS_REP_G2 + state;
+                    p = P[i]; bound = (range >>> 11) * p;
+                    if (code < bound) { range = bound; P[i] = p + ((2048 - p) >>> 5); b = 0; }
+                    else { range -= bound; code -= bound; P[i] = p - (p >>> 5); b = 1; }
+                    if (range < 0x1000000) { range = (range * 256) >>> 0; code = ((code * 256) + (src[ip++] | 0)) >>> 0; }
+                    if (b === 0) {
+                        dist = rep2;
+                    } else {
+                        dist = rep3;
+                        rep3 = rep2;
+                    }
+                    rep2 = rep1;
+                }
+                rep1 = rep0;
+                rep0 = dist;
+            }
+            lenBase = LZ_REP_LEN;
+        } else {
+            rep3 = rep2; rep2 = rep1; rep1 = rep0;
+            lenBase = LZ_LEN;
+        }
+
+        // Length: choice, choice2, then a 3- or 8-bit tree.
+        let treeBase: number, nbits: number, len: number;
+        i = lenBase;
+        p = P[i]; bound = (range >>> 11) * p;
+        if (code < bound) { range = bound; P[i] = p + ((2048 - p) >>> 5); b = 0; }
+        else { range -= bound; code -= bound; P[i] = p - (p >>> 5); b = 1; }
+        if (range < 0x1000000) { range = (range * 256) >>> 0; code = ((code * 256) + (src[ip++] | 0)) >>> 0; }
+        if (b === 0) {
+            treeBase = lenBase + LEN_LOW + posState * 8; nbits = 3; len = 0;
+        } else {
+            i = lenBase + 1;
+            p = P[i]; bound = (range >>> 11) * p;
+            if (code < bound) { range = bound; P[i] = p + ((2048 - p) >>> 5); b = 0; }
+            else { range -= bound; code -= bound; P[i] = p - (p >>> 5); b = 1; }
+            if (range < 0x1000000) { range = (range * 256) >>> 0; code = ((code * 256) + (src[ip++] | 0)) >>> 0; }
+            if (b === 0) {
+                treeBase = lenBase + LEN_MID + posState * 8; nbits = 3; len = 8;
+            } else {
+                treeBase = lenBase + LEN_HIGH; nbits = 8; len = 16;
+            }
+        }
+        m = 1;
+        for (k = 0; k < nbits; k++) {
+            i = treeBase + m;
+            p = P[i]; bound = (range >>> 11) * p;
+            if (code < bound) { range = bound; P[i] = p + ((2048 - p) >>> 5); b = 0; }
+            else { range -= bound; code -= bound; P[i] = p - (p >>> 5); b = 1; }
+            if (range < 0x1000000) { range = (range * 256) >>> 0; code = ((code * 256) + (src[ip++] | 0)) >>> 0; }
+            m = (m << 1) + b;
+        }
+        len += m - (1 << nbits);
+
+        if (isRepMatch) {
+            state = state < 7 ? 8 : 11;
+        } else {
+            state = state < 7 ? 7 : 10;
+            const slotBase = LZ_POS_SLOT + ((len < 3 ? len : 3) << 6);
+            m = 1;
+            for (k = 0; k < 6; k++) {
+                i = slotBase + m;
+                p = P[i]; bound = (range >>> 11) * p;
+                if (code < bound) { range = bound; P[i] = p + ((2048 - p) >>> 5); b = 0; }
+                else { range -= bound; code -= bound; P[i] = p - (p >>> 5); b = 1; }
+                if (range < 0x1000000) { range = (range * 256) >>> 0; code = ((code * 256) + (src[ip++] | 0)) >>> 0; }
+                m = (m << 1) + b;
+            }
+            const slot = m - 64;
+            if (slot < 4) {
+                rep0 = slot;
+            } else {
+                const numDirect = (slot >>> 1) - 1;
+                let dist = (2 | (slot & 1)) * 2 ** numDirect;
+                let revBase: number, revBits: number;
+                if (slot < 14) {
+                    revBase = LZ_SPEC_POS + dist - slot; revBits = numDirect;
+                } else {
+                    let res = 0;
+                    for (k = numDirect - 4; k > 0; k--) {
+                        range >>>= 1;
+                        code = (code - range) >>> 0;
+                        const t = (code >>> 31) ? -1 : 0;
+                        code = (code + (range & t)) >>> 0;
+                        if (range < 0x1000000) { range = (range * 256) >>> 0; code = ((code * 256) + (src[ip++] | 0)) >>> 0; }
+                        res = res * 2 + (t + 1);
+                    }
+                    dist += res * 16;
+                    revBase = LZ_ALIGN; revBits = 4;
+                }
+                m = 1;
+                let sym = 0;
+                for (k = 0; k < revBits; k++) {
+                    i = revBase + m;
+                    p = P[i]; bound = (range >>> 11) * p;
+                    if (code < bound) { range = bound; P[i] = p + ((2048 - p) >>> 5); b = 0; }
+                    else { range -= bound; code -= bound; P[i] = p - (p >>> 5); b = 1; }
+                    if (range < 0x1000000) { range = (range * 256) >>> 0; code = ((code * 256) + (src[ip++] | 0)) >>> 0; }
+                    m = (m << 1) + b;
+                    sym |= b << k;
+                }
+                rep0 = dist + sym;
+            }
+            if (rep0 === 0xFFFFFFFF)
+                break; // end marker
+            if (rep0 >= pos)
+                throw new Error('lzma: distance past start');
+        }
+
+        len += 2;
+        const from = pos - rep0 - 1;
+        const n = Math.min(len, size - pos);
+        if (rep0 + 1 >= n) {
+            out.copyWithin(pos, from, from + n);
+        } else {
+            for (k = 0; k < n; k++)
+                out[pos + k] = out[from + k];
+        }
+        pos += n;
+    }
     return out;
 }
 
