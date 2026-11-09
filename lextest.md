@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1458-P1462 Lex's list of 10 Nov -- on main 10 Nov (engine patch-1460 7ab4e81a2, QC 647c05f7); C:\FTEQuake installed (exe a1fd4c50, hl2 adaa24d7, cs 36a67934 / qw 338e252c); C:\FTESurf installs when your game closes; lobbies HELD (surfd stopped by another agent 18:06Z)
+## P1458-P1462 Lex's list of 10 Nov -- on main 10 Nov (engine patch-1460 7ab4e81a2, QC 647c05f7); C:\FTEQuake installed (exe a1fd4c50, hl2 adaa24d7, cs 36a67934 / qw 338e252c); LIVE on 12 lobbies 18:36Z 9 Nov (deploy/p1462-lexlist49 = main + P1448 client files held; .prev 7e843d1c/e1ac3414); C:\FTESurf installs when your game closes
 - P1458: surf_beginner2 stage 7 (your save 4) should look like a normal stage now; walk right up to the doorway
   light and its glow should fade in only within ~150 units. Graphics menu (X) page 6: "Light glows" Off, with
   Sprites Off, should leave no flares on surf_tensor2.
