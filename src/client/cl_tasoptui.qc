@@ -46,14 +46,27 @@ void() TASOptUI_List =
 	if (substring(m, 0, 5) == "surf_") m = substring(m, 5, -1);
 	pre = strcat("ksf_", m, "_");
 	h = search_begin("cfg/ksfreplays/*.rec", TRUE, TRUE);
-	if (h < 0) return;
-	n = search_getsize(h);
-	for (i = 0; i < n && taso_demon < TASO_DEMOS; i = i + 1)
+	if (h >= 0)
 	{
-		f = search_getfilename(h, i);
-		if (strstrofs(strtolower(f), pre) >= 0 && TASOptUI_SafeName(f)) { taso_demo[taso_demon] = strzone(f); taso_demon = taso_demon + 1; }
+		n = search_getsize(h);
+		for (i = 0; i < n && taso_demon < TASO_DEMOS; i = i + 1)
+		{
+			f = search_getfilename(h, i);
+			if (strstrofs(strtolower(f), pre) >= 0 && TASOptUI_SafeName(f)) { taso_demo[taso_demon] = strzone(f); taso_demon = taso_demon + 1; }
+		}
+		search_end(h);
 	}
-	search_end(h);
+	h = search_begin("data/*.rec", TRUE, TRUE);      // a recording of your own put in data/ (autosurf refuses another map's)
+	if (h >= 0)
+	{
+		n = search_getsize(h);
+		for (i = 0; i < n && taso_demon < TASO_DEMOS; i = i + 1)
+		{
+			f = search_getfilename(h, i);
+			if (TASOptUI_SafeName(f)) { taso_demo[taso_demon] = strzone(f); taso_demon = taso_demon + 1; }
+		}
+		search_end(h);
+	}
 };
 
 void(float v) TASOptUI_Tube = { taso_tube = rint(v / 10) * 10; };
@@ -89,18 +102,18 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	label = (taso_note == "") ? "Pause on a demo's route, pick the demo, press Autosurf." : taso_note;
 	if (running) label = sprintf("Stretch %g of %g, try %g, %g backtracks -- %s", taso_i + 1, taso_n, taso_try + 1, taso_backs, taso_note);
 	sui_text(at, [hint, hint], label, running ? SUI_THEME_TEXT : SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.8;
-	if (!taso_demon) { sui_text(at, [hint, hint], "No KSF replay for this map in cfg/ksfreplays.", SUI_THEME_MUTED, 1, 0); at_y = at_y + hint * 1.8; }
+	if (!taso_demon) { sui_text(at, [hint, hint], "No replay for this map in cfg/ksfreplays or data/.", SUI_THEME_MUTED, 1, 0); at_y = at_y + hint * 1.8; }
 	for (i = 0; i < taso_demon; i = i + 1)
 	{
 		label = taso_demo[i];
-		label = substring(label, strlen("cfg/ksfreplays/"), -1);
+		if (substring(label, 0, 15) == "cfg/ksfreplays/") label = substring(label, 15, -1);
 		if (Profile_Chip(sprintf("taso_demo%g", i), at + [(i & 1) * (half + 6), floor(i / 2) * (row + 3), 0], chip, label, hint, taso_pick == i))
 			taso_pick = i;
 	}
 	at_y = at_y + ceil(taso_demon / 2) * (row + 3) + hint * 0.6;
-	WPU_Slider("taso_tube", "Stay within (u) of its route", at, width, taso_tube, '100 600 50', TASOptUI_Tube, tsz); at_y = at_y + tsz * 2.2;
-	WPU_Slider("taso_look", "Look ahead (ticks)", at, width, taso_look, '0 200 20', TASOptUI_Look, tsz); at_y = at_y + tsz * 2.2;
-	WPU_Slider("taso_tries", "Tries a stretch", at, width, taso_tries, '1 5 4', TASOptUI_Tries, tsz); at_y = at_y + tsz * 2.2;
+	WPU_Slider("taso_tube", "Route tube (u)", at, width, taso_tube, '100 600 50', TASOptUI_Tube, tsz); at_y = at_y + tsz * 2.2;
+	WPU_Slider("taso_look", "Look ahead", at, width, taso_look, '0 200 20', TASOptUI_Look, tsz); at_y = at_y + tsz * 2.2;
+	WPU_Slider("taso_tries", "Tries", at, width, taso_tries, '1 5 4', TASOptUI_Tries, tsz); at_y = at_y + tsz * 2.2;
 	WPU_Slider("taso_backs", "Backtracks", at, width, taso_backmax, '0 12 12', TASOptUI_Backs, tsz); at_y = at_y + tsz * 2.2;
 	if (Profile_Chip("taso_hop", at, chip, taso_hop ? "Bhop platforms: hop" : "Bhop platforms: off", hint, taso_hop)) taso_hop = !taso_hop;
 	if (Profile_Chip("taso_finish", at + [half + 6, 0, 0], chip, taso_finish ? "To the end zone" : "Ramps only", hint, taso_finish)) taso_finish = !taso_finish;

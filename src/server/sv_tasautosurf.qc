@@ -84,12 +84,22 @@ void(float kind, float i, vector n) SV_TASAutoAdd =
 	as_n = as_n + 1;
 };
 
-// A board's face: the plane a hull swept along the demo's last move into the ramp meets (a real BSP
-// plane; the normal the demo's moves imply mixes the strafe in), in the surf band; '0 0 0' if none.
+// A board's face: a real BSP plane in the surf band (the normal the demo's moves imply mixes the strafe
+// in). First the hull dropped from the demo one and two samples into the ride, lying on the face; then
+// swept along its last move into the ramp -- nearly parallel to the face at a board, that sweep met the
+// ramp's edge instead (surf_null's ramp 1: misses 19 u from the board point, 10 Nov). '0 0 0' if none.
 vector(entity e, float b) SV_TASAutoFace =
 {
 	local vector p, q, n;
 	local float k;
+	for (k = 1; k <= 2; k = k + 1)
+	{
+		if (b + k >= as_nrows) continue;
+		q = SV_TASAutoRowO(b + k);
+		tracebox(q + '0 0 2', PM_HULL_MINS, PM_HULL_MAXS, q - '0 0 48', MOVE_NOMONSTERS, e);
+		n = trace_plane_normal;
+		if (trace_fraction < 1 && !trace_startsolid && fabs(n_z) >= 0.1 && fabs(n_z) <= 0.72) return n;
+	}
 	for (k = 0; k < 2; k = k + 1)
 	{
 		if (b + k < 1 || b + k >= as_nrows) continue;
@@ -135,6 +145,11 @@ float(entity e) SV_TASAutoPlan =
 		}
 	}
 	if (e.as_finish) SV_TASAutoAdd(3, as_nrows - 1, '0 0 0');
+	if (cvar("developer"))
+		for (i = 0; i < as_n; i = i + 1)
+			sprint(e, PRINT_HIGH, sprintf("tas autosurf: stretch %.0f: %s at demo t=%.3f %v, face %v\n", i + 1,
+				(as_wk[i] == 1) ? "board" : ((as_wk[i] == 2) ? "hop" : "finish"), as_wt[i],
+				[as_wo[i*3], as_wo[i*3+1], as_wo[i*3+2]], [as_wn[i*3], as_wn[i*3+1], as_wn[i*3+2]]));
 	return s;
 };
 
