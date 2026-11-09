@@ -867,9 +867,9 @@ float(float n) SV_TASOptWallTicks =
 // cut on it the same distance short: board 4, 9 Nov).
 float(entity e, float ran) SV_TASOptTubeIn =
 {
-	local float i, j, d, d2;
+	local float i, j, d, d2, onr, iex, dex, allow;
 	local vector p;
-	j = 0;
+	j = 0; onr = 0; iex = -1; dex = 0;
 	e.topt_tubebest = 1000000; e.topt_tubebk = -1; e.topt_tubejend = 0;
 	if (ran < 1) return -1;
 	p = [topt_out[0], topt_out[1], topt_out[2]];
@@ -891,8 +891,14 @@ float(entity e, float ran) SV_TASOptTubeIn =
 		}
 		// the approach (within twice the tube of the target) is the target's to judge: a faster line than the
 		// demo's comes in wide of it (surf_null board 6: all 639 candidates cut 76-290 u short, 10 Nov)
-		// nor a ramp ride, which the ramp steers (a board 346 u off the demo's left the next stretch cut 31 ticks in)
-		if (d > e.topt_tube && !(e.topt_tgtuse && vlen(p - e.topt_tgt) < 2 * e.topt_tube) && topt_out[i*13+8] != 1) return i;
+		// nor a ramp ride, which the ramp steers (a board 346 u off the demo's left the next stretch cut 31 ticks in);
+		// and a flight from a ride starts as wide as the ride left it, narrowing to the tube by the target's row (a
+		// ramp-1 board at farsh's speed but elsewhere left every ramp-2 candidate cut at the ride's end, tstart11)
+		if (topt_out[i*13+8] == 1) onr = 1;
+		else if (onr) { onr = 0; iex = i; dex = d; }
+		allow = e.topt_tube;
+		if (iex >= 0 && dex > allow) allow = allow + (dex - allow) * max(0, 1 - (i - iex) / max(1, e.topt_tgtj - iex));
+		if (d > allow && !(e.topt_tgtuse && vlen(p - e.topt_tgt) < 2 * e.topt_tube) && topt_out[i*13+8] != 1) return i;
 		e.topt_tubejend = j;
 		d2 = max(0, topt_dlen[e.topt_tgtj] - topt_dlen[j]) + d;
 		if (d2 < e.topt_tubebest) { e.topt_tubebest = d2; e.topt_tubebk = i; }
