@@ -232,6 +232,14 @@
   stagger reads groups a frame apart; planes past BE_WATERPLANES). Lead instead: frame pacing that knows a capture
   frame is coming (capture due is known before the frame) and starts it earlier, rather than splitting it.
 - P1451 (QC GC buffers at load) and P1454 (no window ghosting) are in both installs; see ENGINE.txt.
+- NEXT for water capture frames (why P1455 could not help: a one-view capture frame still costs 3.2-4 ms against
+  3.3 at a 300 cap; sys_framepacing 5 already plans by the slowest of 64 frames, so pacing cannot help a frame longer
+  than the interval). Each nested view spends ~1 ms in the hl2 plugin's PrepareFrame because (a) gl_rmain.c ~1760
+  (P879 r_capturemergevis) rebuilds the forced PVS every capture frame -- a ClusterPVS merge per water mesh into an
+  alloca'd buffer -- and (b) with forcevis set, mod_vbsp.c VBSP_MarkLeaves drops the level's vis cache and
+  VBSP_PVSMemo (P1261) bails, so every prop and displacement is re-tested; reflection, refraction and the 3D skybox
+  also share recursion level 1's single cache slot (P273). Cache the merged PVS per plane (water meshes are static)
+  and give the memo a key for a forced vis; then measure capture frames again, with and without P1455.
 - Slow-throughout maps (artifacts/run_twopass.py, r_budget 3; twopass/<map>-budget.txt) are all CPU-bound:
   - fairy, jumble: cl_sprites 1.0-2.8 ms -> P1422 for the sky test (fairy 222 -> 303). Sprite_Glare is the next
     ~0.46 ms on fairy (338 -> 400 with vbsp_glare 0): 40 rays a frame, the same per-frame scaling, but its response
