@@ -24,6 +24,7 @@
 // air strafing toward the demo's exit point) or at the exit, the chain takes over (Lex, 10 Nov).
 .float as_arm, as_nolegal, as_lastground;
 .vector as_ex;                  // the demo's position as its run starts (its first sample at t >= 0)
+.vector as_exd;                 // and its horizontal heading there: the start steers onto that line
 void(entity e, float z) SV_TASLegalStart;    // `tas autosurf startpause`: pause on a run's first tick (TAS on), and the state seen last   // the head at the last rewind request, and requests since it last moved
 .string as_file;
 float as_n;                     // waypoints
@@ -185,6 +186,24 @@ void(entity e, float fwd, float side, float yaw, float bits, float n) SV_TASAuto
 	SV_TASPlanCommand(e, argc);
 };
 
+// One guided step of the start toward the demo's exit line (a point 300 u past where its run starts, along its
+// heading): the strafe side that turns the velocity toward it, alternating once within `tol` degrees so the line
+// holds; a side change mirrors the view about the velocity (the guide's own slew would take ~15 ticks to swing
+// it). A fixed side circled in the box (rig tpre1, 10 Nov).
+void(entity e, float fwd, float bits, float n, float tol) SV_TASAutoSteer =
+{
+	local float h, d, side, yaw;
+	h = (vlen([e.velocity_x, e.velocity_y, 0]) > 30) ? vectoyaw([e.velocity_x, e.velocity_y, 0]) : vectoyaw(e.as_exd);
+	d = vectoyaw(e.as_ex + e.as_exd * 300 - e.origin) - h;
+	d = d - 360 * floor((d + 180) / 360);
+	side = (fabs(d) < tol) ? -e.as_sair : ((d > 0) ? -1 : 1);       // + yaw turns left: the left key (-)
+	yaw = e.v_angle_y;
+	if (vlen([e.velocity_x, e.velocity_y, 0]) <= 30) yaw = h + ((side < 0) ? -45 : 45) * (fwd ? 1 : 2);   // from rest: wish along the line
+	else if (side != e.as_sair) yaw = 2 * h - yaw;
+	e.as_sair = side;
+	SV_TASAutoGuide(e, fwd, 400 * side, yaw, bits, n);
+};
+
 // Energy against one height for the whole demo (its first sample's): signed sqrt(v.v + 2g dz), so reaches
 // compare across stretches and runs (a search's own figure is from where that stretch started).
 float(vector v, float z) SV_TASAutoVE =
@@ -271,16 +290,19 @@ void(entity e) SV_TASAutoFrame =
 	{	// the start: a step at a time, each once the last has landed
 		if (e.run_tas_pending || e.run_tas_replaystate == TAS_TAPE_ACTIVE || e.run_tas_replaystate == TAS_TAPE_STAGING) return;
 		if (!e.run_tas_paused || (!e.taslg_on && !e.as_nolegal)) { SV_TASAutoStop(e, "the start ended (TAS play, a move, a respawn)"); return; }
-		if (e.as_stage == 10)
-		{
-			SV_TASAutoGuide(e, 400, 400 * e.as_sside, e.as_sy, 0, e.as_sg);
-			e.as_stage = 11; e.as_sn = 0;
-			SV_TASAutoNote(e, 1, sprintf("start: %.0f ticks of prestrafe from yaw %.0f", e.as_sg, e.as_sy));
-		}
-		else if (e.as_stage == 11 && e.run_t_state != TS_RUNNING)
-		{
-			SV_TASAutoGuide(e, 400, 400 * e.as_sside, e.v_angle_y, 1, 1);     // the jump
-			e.as_stage = 12;
+		if (e.as_stage == 10 && e.run_t_state != TS_RUNNING)
+		{	// the prestrafe, 3 ticks a step; the jump once at speed and lined up within reach of the box's edge
+			d = vlen([e.as_ex_x - e.origin_x, e.as_ex_y - e.origin_y, 0]);
+			t = vlen([e.velocity_x, e.velocity_y, 0]);
+			best = vectoyaw(e.as_ex + e.as_exd * 300 - e.origin) - vectoyaw([e.velocity_x, e.velocity_y, 0]);
+			best = fabs(best - 360 * floor((best + 180) / 360));
+			if (e.as_sn > 0 && ((t >= 280 && best < 15 && d < 260) || d < 200 || e.as_sn >= e.as_sg))
+			{
+				SV_TASAutoGuide(e, 400, 400 * e.as_sair, e.v_angle_y, 1, 1);     // the start's one jump
+				SV_TASAutoNote(e, 1, sprintf("start: jumped at %.0f u/s, %.0f u from the demo's exit, %.0f deg off its line", t, d, best));
+				e.as_stage = 12; e.as_sn = 0;
+			}
+			else { SV_TASAutoSteer(e, 400, 0, 3, 5); e.as_sn = e.as_sn + 3; }
 		}
 		else if (e.run_t_state == TS_RUNNING)
 		{
@@ -291,17 +313,7 @@ void(entity e) SV_TASAutoFrame =
 				vlen([e.velocity_x, e.velocity_y, 0]), SV_TimerTicks(e), as_n));
 		}
 		else if (e.as_sn >= 240) SV_TASAutoStop(e, "the start never left the box (240 air ticks)");
-		else
-		{	// in the air in the box; after a player's jump, turn toward where the demo left the box (a side each
-			// 2-tick step; within 3 degrees the side alternates, so the line holds while the speed builds)
-			if (e.as_nolegal)
-			{
-				d = vectoyaw(e.as_ex - e.origin) - vectoyaw(e.velocity);
-				d = d - 360 * floor((d + 180) / 360);
-				e.as_sair = (fabs(d) < 3) ? -e.as_sair : ((d > 0) ? -1 : 1);     // + yaw is a left turn: the left key
-			}
-			SV_TASAutoGuide(e, 0, 400 * e.as_sair, e.v_angle_y, 0, 2); e.as_sn = e.as_sn + 2;
-		}
+		else { SV_TASAutoSteer(e, 0, 0, 2, 3); e.as_sn = e.as_sn + 2; }    // in the air in the box
 		return;
 	}
 	if (!e.as_on || e.topt_on || e.tdem_on) return;
@@ -399,7 +411,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 	if (e.as_on || e.topt_on || e.tdem_on) { sprint(e, PRINT_HIGH, "tas autosurf: a search, demo or autosurf is running\n"); return; }
 	if (!SV_TASDemoPathOK(path)) { sprint(e, PRINT_HIGH, "tas autosurf: a .rec under data/ or cfg/ksfreplays/\n"); return; }
 	if (SV_TASOptBusy(e)) return;
-	st = 0; flip = 0; arm = 0; e.as_szone = 0; e.as_sg = 40; e.as_sy = -100; e.as_sside = -1;
+	st = 0; flip = 0; arm = 0; e.as_szone = 0; e.as_sg = 120; e.as_sy = 0; e.as_sside = -1;
 	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = 6; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1; e.as_emin = 0.9;
 	for (i = 3; i < argc; i = i + 1)
 	{
@@ -413,7 +425,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		else if (w == "nohop") e.as_hop = 0;
 		else if (w == "start") st = 1;
 		else if (w == "zone" && n >= 0 && n < 64 && n == floor(n)) { e.as_szone = n; i = i + 1; }
-		else if (w == "sg" && n >= 1 && n <= 128 && n == floor(n)) { e.as_sg = n; i = i + 1; }    // one step command's most
+		else if (w == "sg" && n >= 6 && n <= 400 && n == floor(n)) { e.as_sg = n; i = i + 1; }    // the most ground ticks before the jump
 		else if (w == "sy" && FS_TASNumber(argv(i + 1)) && fabs(stof(argv(i + 1))) <= 360) { e.as_sy = stof(argv(i + 1)); i = i + 1; }
 		else if (w == "sright") e.as_sside = 1;
 		else if (w == "sflip") flip = 1;
@@ -436,6 +448,8 @@ void(entity e, float argc) SV_TASAutoCommand =
 	e.as_nolegal = 0; e.as_arm = 0;
 	for (i = 0; i < as_nrows - 1 && as_rows[i*7] < 0; i = i + 1) ;
 	e.as_ex = SV_TASAutoRowO(i);
+	e.as_exd = normalize([as_rows[i*7+4], as_rows[i*7+5], 0]);
+	if (e.as_exd == '0 0 0') e.as_exd = '1 0 0';
 	if (arm)
 	{
 		if (e.run_t_state != TS_ARMED) { sprint(e, PRINT_HIGH, "tas autosurf: onjump / onexit wait in the start box (stand in it, TAS on)\n"); strunzone(path); return; }
@@ -452,8 +466,8 @@ void(entity e, float argc) SV_TASAutoCommand =
 		if (!e.taslg_on) { strunzone(path); return; }
 		if (e.as_file != "") strunzone(e.as_file);
 		e.as_file = path;
-		e.as_on = 1; e.as_stage = 10; e.as_backs = 0;
-		SV_TASAutoNote(e, 1, sprintf("start: prestrafe %.0f ticks from yaw %.0f, %s, then one jump", e.as_sg, e.as_sy, (e.as_sside < 0) ? "W+A" : "W+D"));
+		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sair = -1;
+		SV_TASAutoNote(e, 1, "start: prestrafe toward the demo's exit line, then one jump");
 		return;
 	}
 	s = SV_TASAutoPlan(e);
