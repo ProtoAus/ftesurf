@@ -2516,13 +2516,25 @@ float(string cmd) CSQC_ConsoleCommand =
 				localcmd(sprintf("p%g cmd tas %s %g %.0f\n", tsseat + 1, argv(1), tsvalue, run_tas_request[tsseat]));
 			}
 		}
+		else if (cmdargc >= 2 && cmdargc <= 9 && !strcmp(argv(1), "target"))     // P1449: numbers, clear or show only
+		{
+			tsline = "";
+			for (tsi = 2; tsi < cmdargc; tsi = tsi + 1)
+				if (argv(tsi) == "clear" || argv(tsi) == "show" || FS_TASNumber(argv(tsi)))
+					tsline = strcat(tsline, " ", argv(tsi));
+				else tsline = "!";
+			if (substring(tsline, 0, 1) == "!")
+				print("tas target <x> <y> <z> [radius [nx ny nz]] | clear | show\n");
+			else
+				localcmd(sprintf("p%g cmd tas target%s\n", tsseat + 1, tsline));
+		}
 		else if (cmdargc >= 4 && cmdargc <= 10 && !strcmp(argv(1), "optimize"))    // P1088; P1092 board/flick; P1097 time; P1443 energy/fast
 		{
 			tsvalue = stof(argv(2));
 			tsline = "";
 			for (tsi = 4; tsi < cmdargc; tsi = tsi + 1)    // the server checks their order; only known words pass
 				if (argv(tsi) == "board" || argv(tsi) == "flick" || argv(tsi) == "time" || argv(tsi) == "energy" ||
-				    argv(tsi) == "fast" || (stof(argv(tsi)) >= 1 && stof(argv(tsi)) <= 32
+				    argv(tsi) == "fast" || argv(tsi) == "zigzag" || argv(tsi) == "split" || (stof(argv(tsi)) >= 1 && stof(argv(tsi)) <= 32
 				    && argv(tsi) == ftos(stof(argv(tsi)))))
 					tsline = strcat(tsline, " ", argv(tsi));
 				else tsline = "!";
@@ -2551,7 +2563,7 @@ float(string cmd) CSQC_ConsoleCommand =
 				localcmd(sprintf("p%g cmd tas speed %.9g\n", tsseat + 1, tsvalue));
 		}
 		else
-			print("tas: menu | timeline | undo/redo | mouse [on/off] | on/off | pause/play | step/back [1..128] | plan/next mode forward side pitch yaw bits [count] | inputs [N] | replay first | edit first [last] field value | optimize ticks left/right [board] [flick [k]] [time | energy] [fast] | status | speed 0.1..1\n");
+			print("tas: menu | timeline | undo/redo | mouse [on/off] | on/off | pause/play | step/back [1..128] | plan/next mode forward side pitch yaw bits [count] | inputs [N] | replay first | edit first [last] field value | optimize ticks left/right [board] [split] [flick [k] | zigzag] [time | energy] [fast] | target x y z [r] / clear | status | speed 0.1..1\n");
 		return TRUE;
 	}
 	if (!strcmp(argv(0), "host_timescale"))
