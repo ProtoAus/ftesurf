@@ -228,10 +228,14 @@ def fetch_profile(db, player, now):
     return True
 
 
+def is_account(db, player):
+    return db.execute("SELECT 1 FROM accounts WHERE steamid=? AND banned_at=0", (player,)).fetchone() is not None
+
+
 def can_mark(db, player):
     """Would fetch_profile mark a walk of this player now (an account, or under the cap)?"""
     try:
-        if db.execute("SELECT 1 FROM accounts WHERE steamid=? AND banned_at=0", (player,)).fetchone():
+        if is_account(db, player):
             return True
         n = db.execute("SELECT COUNT(*) FROM profilefetch f JOIN ksfprofiles p ON p.player=f.player"
                        " WHERE f.asked=p.asked AND p.state IN ('queued','partial') AND f.player!=?"

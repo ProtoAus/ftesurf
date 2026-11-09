@@ -178,6 +178,20 @@ class Fetch(unittest.TestCase):
         with S.app.test_client() as c:                    # its own finished full walk: FORCE_TTL holds
             r = c.post('/board/api/map?fetch=1&player=' + h)
         self.assertEqual(r.json['ksf_sync']['state'], 'complete')
+        # With the cap full, a finished view walk is not re-walked (it could not be marked).
+        self.db.execute("DELETE FROM profilefetch")
+        self.db.execute("UPDATE ksfprofiles SET state='complete', updated=?", (int(time.time()) - 600,))
+        self.db.commit()
+        S._rate.clear()
+        with patch.object(F, 'MAX_FETCHED', 0), S.app.test_client() as c:
+            r = c.post('/board/api/map?fetch=1&player=' + h)
+        self.assertEqual((r.json['ksf_sync']['state'], r.json['full']), ('complete', False))
+        # An account's finished walk was full already: no re-walk inside FORCE_TTL.
+        self.account(PLAYER)
+        S._rate.clear()
+        with S.app.test_client() as c:
+            r = c.post('/board/api/map?fetch=1&player=' + h)
+        self.assertEqual(r.json['ksf_sync']['state'], 'complete')
         now = int(time.time())
         # FORCE_TTL: a press re-walks after an hour, a view does not within a day.
         self.db.execute("UPDATE ksfprofiles SET state='complete', updated=?", (now - 2 * P.FORCE_TTL,))
