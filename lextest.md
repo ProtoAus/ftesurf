@@ -1,5 +1,9 @@
 # lextest.md — things waiting on a human
 
+## P1456 glow check capped per frame -- lobbies + both installs (pending deploy)
+- Play surf_fairy and surf_jumble: lamp glows should appear and vanish behind pillars and walls as before while
+  you turn and move. `vbsp_sprite_tracems 0` puts the old behaviour back for a side-by-side.
+
 ## P1453 loading screen: named steps, map wireframes, map picture -- both installs 9 Nov (exe c53078bf, menu e4f7b1ad)
 - Play bhop_landmark (or any CS:GO map) fresh after a launch: "Mounting CS:GO content" shows through the few-second
   wait, then "Loading textures: ..." lists the games the textures come from.

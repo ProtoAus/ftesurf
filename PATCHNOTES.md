@@ -21,6 +21,9 @@
 
 ## next
 
+### P1456 Shorter stutters on maps full of lamp glows
+- On maps with hundreds of light glows (surf_fairy, surf_jumble) the check for which glows are hidden now stops for the frame when it runs long, so the worst stutters there are much shorter. Glows look and react as before.
+
 ### P1454 No "Not Responding" while a big map loads
 - A map whose first load takes several seconds (surf_quarantine with CS:GO content) no longer turns the window grey with "Not Responding" while it loads.
 
