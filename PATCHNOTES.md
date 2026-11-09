@@ -21,6 +21,9 @@
 
 ## next
 
+### P1451 No string-cleanup hitch early in each map
+- The memory the game code's string cleanup works in is now set up while the map loads, so the first cleanup of each map, usually during your first run, no longer stutters for it.
+
 ### P1447 Website replays play on Strata maps, and load faster
 - The website's 3D replay viewer now draws Strata Source maps (and a dozen other maps that failed): every map in the library loads.
 - Maps with lots of curved terrain build up to 5x faster in the viewer (ahop_coast 11 s to 2 s).
