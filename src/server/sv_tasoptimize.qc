@@ -1396,6 +1396,10 @@ void(entity e) SV_TASOptCurveNext =
 	if (e.topt_kgen < 0)
 	{
 		for (j = e.topt_kn; j < e.topt_kd; j = j + 1) topt_kcur[j] = 0;    // aim: the grid aims at the target
+		// aim late: the grid tries four starts (0.7, 0.4, 0.55, 0.85 of the way): a line faster than the demo's must
+		// begin a max-rate air turn earlier, and spread 200 round 0.7 almost never sampled 0.4 (surf_null ramp 6 -> 7:
+		// farsh turns 94 deg at 43 deg/s, the air cap's rate; at 2800 u/s that arc is ~490 u wider)
+		if ((e.topt_mode & 256) && e.topt_kidx > 0) topt_kcur[e.topt_kn + 2] = (e.topt_kidx & 2) ? ((e.topt_kidx & 1) ? 250 : -250) : ((e.topt_kidx & 1) ? -500 : 0);
 		if (e.topt_kidx == 0 && (e.topt_mode & 64))
 		{	// the demo itself
 			for (j = 0; j < e.topt_kn; j = j + 1) topt_kcur[j] = 0;
