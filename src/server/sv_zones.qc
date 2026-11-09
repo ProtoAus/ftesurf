@@ -59,6 +59,7 @@ const float ZONE_EF_TELEPORT_BIT = 2097152;
 // key is matched to a QC field by name, so declaring it is all it takes to
 // read it; maps that do not set it leave this 0.
 .float stage;
+.float zone_number;     // P1461: the newer Momentum schema's stage/checkpoint number (track_number: sv_entities.qc)
 
 /*
   Legacy BSP scan, server side.
@@ -112,7 +113,8 @@ float() SV_ZoneLoadFromBsp =
 			  Deliberately its own change, landed before the hull rule, so the
 			  two effects can be told apart in an A/B.
 			*/
-			Zone_AddBox(e.absmin + '1 1 1', e.absmax - '1 1 1', type, e.stage);
+			Zone_AddBox(e.absmin + '1 1 1', e.absmax - '1 1 1', type,
+			            Zone_LegacySeg(type, e.stage, e.zone_number), Zone_LegacyTrack(e.track_number, e.targetname));
 			n = n + 1;
 		}
 	}

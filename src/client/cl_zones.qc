@@ -256,9 +256,10 @@ void() Zone_ReadCvars =
 */
 float() Zone_LoadFromBsp =
 {
-	local string tok, key, cn, mdl;
+	local string tok, key, cn, mdl, tracknum, tn;
 	local entity probe;
-	local float type, stage, n;
+	local float type, stage, n, zonenum;
+	local vector org;
 
 	Zone_Clear();
 	n = 0;
@@ -271,8 +272,9 @@ float() Zone_LoadFromBsp =
 		if (tok != "{")
 			continue;
 
-		cn = mdl = "";
-		stage = 0;
+		cn = mdl = tracknum = tn = "";
+		stage = zonenum = 0;
+		org = '0 0 0';
 
 		while ((key = getentitytoken()) != "" && key != "}")
 		{
@@ -280,14 +282,22 @@ float() Zone_LoadFromBsp =
 			if      (key == "classname") cn = tok;
 			else if (key == "model")     mdl = tok;
 			else if (key == "stage")     stage = stof(tok);
+			else if (key == "zone_number")  zonenum = stof(tok);    // P1461, as sv_zones.qc
+			else if (key == "track_number") tracknum = tok;
+			else if (key == "targetname")   tn = tok;
+			else if (key == "origin")       org = stov(tok);
 		}
 
 		type = Zone_LegacyType(cn);
 		if (type < 0 || mdl == "" || substring(mdl, 0, 1) != "*")
 			continue;
 
+		// P1461: a Source brush entity with an origin stores its brush relative to it; the server's
+		// absmin includes it, and without it the cage drew elsewhere (surf_summer_ksf's start is
+		// 13056 units off) and zone_pvs culled it.
 		setmodel(probe, mdl);
-		Zone_AddBox(probe.mins, probe.maxs, type, stage);
+		Zone_AddBox(org + probe.mins, org + probe.maxs, type, Zone_LegacySeg(type, stage, zonenum),
+		            Zone_LegacyTrack(tracknum, tn));
 		n = n + 1;
 	}
 

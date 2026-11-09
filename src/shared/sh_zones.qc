@@ -1616,7 +1616,35 @@ float(string cn) Zone_LegacyType =
 	return -1;
 };
 
-void(vector mn, vector mx, float type, float stage) Zone_AddBox =
+/*
+  P1461: a legacy trigger's track. Momentum's track_number names it (absent or -1 = every track,
+  which is the main one here); maps older than the key name bonuses only in targetname
+  (surf_domain: main_start, bonus1_start_momentum, bonus2_end). Read as 0 before P1461, so a
+  bonus start began a MAIN run and any end finished it.
+*/
+float(string tracknum, string tn) Zone_LegacyTrack =
+{
+	local float o, n;
+
+	if (tracknum != "")
+		return max(0, floor(stof(tracknum)));
+	o = strstrofs(strtolower(tn), "bonus", 0);
+	if (o < 0)
+		return 0;
+	n = floor(stof(substring(tn, o + 5, 3)));   // "bonus2_end" -> 2; "bonus_end" -> 0
+	return (n >= 1) ? n : 1;
+};
+
+// P1461: the newer schema numbers stages and checkpoints in zone_number, the older in stage.
+float(float type, float stage, float zonenum) Zone_LegacySeg =
+{
+	if (stage == 0)
+	if (type == ZONE_STAGE || type == ZONE_CHECKPOINT)
+		return zonenum;
+	return stage;
+};
+
+void(vector mn, vector mx, float type, float stage, float track) Zone_AddBox =
 {
 	local float z;
 
@@ -1628,7 +1656,7 @@ void(vector mn, vector mx, float type, float stage) Zone_AddBox =
 
 	z = zone_count;
 	zone_type[z]   = type;
-	zone_track[z]  = 0;
+	zone_track[z]  = track;
 	zone_seg[z]    = stage;
 	/*
 	  The legacy brush triggers have no checkpoint ordinal to give: all a
