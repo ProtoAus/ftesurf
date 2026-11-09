@@ -23,6 +23,7 @@
 // `onjump` / `onexit`: armed in the start box while the player prestrafes live; paused at their jump (then guided
 // air strafing toward the demo's exit point) or at the exit, the chain takes over (Lex, 10 Nov).
 .float as_arm, as_nolegal, as_lastground;
+.float as_sn2;                  // ticks steered since the run started (the start clears the box's triggers first)
 .vector as_ex;                  // the demo's position as its run starts (its first sample at t >= 0)
 .vector as_exd;                 // and its horizontal heading there: the start steers onto that line
 void(entity e, float z) SV_TASLegalStart;    // `tas autosurf startpause`: pause on a run's first tick (TAS on), and the state seen last   // the head at the last rewind request, and requests since it last moved
@@ -209,6 +210,19 @@ void(entity e, float fwd, float bits, float n, float tol, float fside, float res
 	SV_TASAutoGuide(e, fwd, 400 * side, yaw, bits, n);
 };
 
+// The body overlaps a trigger volume (QC acts on it, so a rollout starting inside is cut at once: surf_null's
+// own main_map_startzone has the start box's bounds and every candidate of the first search met it, rig tstart3).
+float(entity e) SV_TASAutoTouching =
+{
+	local entity t;
+	for (t = nextent(world); t; t = nextent(t))
+		if (t.solid == SOLID_TRIGGER && t != e)
+		if (t.absmin_x <= e.absmax_x + 1 && t.absmax_x >= e.absmin_x - 1 && t.absmin_y <= e.absmax_y + 1 && t.absmax_y >= e.absmin_y - 1 &&
+		    t.absmin_z <= e.absmax_z + 1 && t.absmax_z >= e.absmin_z - 1)
+			return TRUE;
+	return FALSE;
+};
+
 // Energy against one height for the whole demo (its first sample's): signed sqrt(v.v + 2g dz), so reaches
 // compare across stretches and runs (a search's own figure is from where that stretch started).
 float(vector v, float z) SV_TASAutoVE =
@@ -315,6 +329,10 @@ void(entity e) SV_TASAutoFrame =
 				SV_TASAutoSteer(e, 400, 0, 3, 5, (t < 283 && d > 230) ? -1 : 0, vectoyaw(e.as_exd) + 100);
 				e.as_sn = e.as_sn + 3;
 			}
+		}
+		else if (e.run_t_state == TS_RUNNING && e.as_sn2 < 30 && (e.as_sn2 < 4 || SV_TASAutoTouching(e)))
+		{	// out of the box: on until clear of its volumes (at least 4 ticks, at most 30)
+			SV_TASAutoSteer(e, (e.flags & FL_ONGROUND) ? 400 : 0, 0, 2, 3, 0, vectoyaw(e.as_exd)); e.as_sn2 = e.as_sn2 + 2;
 		}
 		else if (e.run_t_state == TS_RUNNING)
 		{
@@ -469,7 +487,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		if (e.run_t_state != TS_ARMED) { sprint(e, PRINT_HIGH, "tas autosurf: onjump / onexit wait in the start box (stand in it, TAS on)\n"); strunzone(path); return; }
 		if (e.as_file != "") strunzone(e.as_file);
 		e.as_file = path;
-		e.as_on = 1; e.as_stage = 20; e.as_arm = arm; e.as_nolegal = 1; e.as_backs = 0; e.as_sair = -1;
+		e.as_on = 1; e.as_stage = 20; e.as_arm = arm; e.as_nolegal = 1; e.as_backs = 0; e.as_sair = -1; e.as_sn2 = 0;
 		e.as_lastground = (e.flags & FL_ONGROUND) ? 1 : 0;
 		SV_TASAutoNote(e, 1, (arm == 2) ? "armed: prestrafe and jump -- I take over at your jump" : "armed: prestrafe out of the box -- I take over at its edge");
 		return;
@@ -480,7 +498,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		if (!e.taslg_on) { strunzone(path); return; }
 		if (e.as_file != "") strunzone(e.as_file);
 		e.as_file = path;
-		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sair = -1;
+		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sair = -1;
 		SV_TASAutoNote(e, 1, "start: prestrafe toward the demo's exit line, then one jump");
 		return;
 	}
