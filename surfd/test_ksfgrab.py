@@ -618,6 +618,10 @@ class Tests(unittest.TestCase):
                             binding='seed')
                 K.write_rows([seed])
                 self.board([self.r])
+                # P1448: page 1 fetched just now, so the Fetch refresh does not ask it again.
+                doc = K.board_load(self.cache, 'surf_test', 0, 0)
+                doc['top'] = int(time.time())
+                K._save(K.board_path(self.cache, 'surf_test', 0, 0), doc)
                 if already_owed:
                     K.mark_owed(self.cache, 'surf_test', 0, 0)
                 code = K.KT.enqueue(self.conn, ('surf_test', 0, 0, 'clean'), int(time.time()))[1]
@@ -663,6 +667,35 @@ class Tests(unittest.TestCase):
                 finally:
                     self.conn.execute('DELETE FROM ksftopup')
                     self.conn.commit()
+
+    def test_fetch_refreshes_a_stale_first_page(self):
+        # P1448: a Fetch re-asks page 1 (new records) when it is older than FETCH_FRESH,
+        # even on a board walked to its end; a fresh page 1 is not asked again.
+        try:
+            for age, want in ((K.FETCH_FRESH + 60, [True]), (0, [])):
+                with self.subTest(age=age):
+                    self.conn.execute('DELETE FROM ksftopup')
+                    self.conn.commit()
+                    self.board([self.r])
+                    doc = K.board_load(self.cache, 'surf_test', 0, 0)
+                    doc['done'], doc['top'] = True, int(time.time()) - age
+                    K._save(K.board_path(self.cache, 'surf_test', 0, 0), doc)
+                    code = K.KT.enqueue(self.conn, ('surf_test', 0, 0, 'clean'), int(time.time()))[1]
+                    self.assertEqual(code, 202)
+                    tops = []
+
+                    def page(cache, mp, zone, pacer, mode, **kwargs):
+                        tops.append(kwargs.get('top', False))
+                        return K.board_load(cache, mp, zone, mode), []
+                    with patch.object(K, 'map_info', return_value={}), \
+                         patch.object(K, 'zones_of', return_value={0}), \
+                         patch.object(K, 'board_page', side_effect=page), \
+                         patch.object(K, 'fetch', side_effect=AssertionError('board network forbidden')):
+                        K.topup_step(self.cache, {}, K.Pacer(0, 5), [], [], [])
+                    self.assertEqual(tops, want)
+        finally:
+            self.conn.execute('DELETE FROM ksftopup')
+            self.conn.commit()
 
     def test_main_zero_demo_reservation_still_repairs_retained_original(self):
         self.board([self.r])

@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS momprofiles (
 );
 """
 TTL = 86400
+FORCE_TTL = 3600
 MAX_ACTIVE = 32
 TAKE = 100                  # the API's own cap
 MAX_PAGES = 200             # 20,000 PBs; past it the walk is 'limited', not complete
@@ -42,8 +43,9 @@ def status(db, player):
             if r else {"state": "idle"})
 
 
-def enqueue(db, player, now):
-    """ksfprofile.enqueue's rules: a SteamID64, one live walk, none within TTL."""
+def enqueue(db, player, now, force=False):
+    """ksfprofile.enqueue's rules: a SteamID64, one live walk, none within TTL
+    (FORCE_TTL for a Fetch press, P1448)."""
     if (len(player) != 17 or not player.isascii() or not player.isdigit()
             or int(player) >> 32 != 0x01100001):
         return {"state": "ineligible"}
@@ -54,7 +56,7 @@ def enqueue(db, player, now):
             db.execute("BEGIN IMMEDIATE")
             old = db.execute("SELECT state, updated FROM momprofiles WHERE player = ?",
                              (player,)).fetchone()
-            if old and (old[0] in ACTIVE or now - old[1] < TTL):
+            if old and (old[0] in ACTIVE or now - old[1] < (FORCE_TTL if force else TTL)):
                 return status(db, player)
             n = db.execute("SELECT COUNT(*) FROM momprofiles WHERE state IN (?, ?)",
                            ACTIVE).fetchone()[0]

@@ -14,6 +14,8 @@ import sqlite3
 import time
 import urllib.parse
 
+import fetchq
+
 SQL = """
 CREATE TABLE IF NOT EXISTS ksfprofiles (
  player TEXT PRIMARY KEY, mode INTEGER NOT NULL, cursor INTEGER NOT NULL,
@@ -22,6 +24,7 @@ CREATE TABLE IF NOT EXISTS ksfprofiles (
 );
 """
 TTL = 86400
+FORCE_TTL = 3600            # P1448: a Fetch press re-walks a profile walked over an hour ago
 MAX_ACTIVE = 32             # P1117 review: live walks of signed-in accounts...
 MAX_VIEWED = 24             # ...and, apart, of anyone else's profile views
 VIEW_PAGES = 20             # pages a profile view's walk asks before it is 'limited'
@@ -66,9 +69,11 @@ def answered(K, cache):
 
 
 def is_account(K, player):
+    """An account's walk, or (P1448) a profile somebody pressed Fetch on: no view limits."""
     db = K.S.connect()
     try:
-        return db.execute(ACCOUNT % "?", (player,)).fetchone() is not None
+        return (db.execute(ACCOUNT % "?", (player,)).fetchone() is not None
+                or fetchq.fetched(db, player, int(time.time())))
     finally:
         db.close()
 
@@ -94,13 +99,15 @@ def status(db, player):
              'pages': r[4], 'unavailable': r[5]} if r else {'state': 'idle'})
 
 
-def enqueue(db, player, now):
+def enqueue(db, player, now, force=False):
     # Only called after surfd resolved a public profile, never raw URL identity.
+    # `force` (P1448, a Fetch press) shortens the TTL to FORCE_TTL.
     if (len(player) != 17 or not player.isascii() or not player.isdigit()
             or int(player) >> 32 != 0x01100001):
         return {'state': 'ineligible'}
+    ttl = FORCE_TTL if force else TTL
     old = db.execute('SELECT state,updated FROM ksfprofiles WHERE player=?', (player,)).fetchone()
-    if old and (old[0] in ('queued', 'partial') or now - old[1] < TTL):
+    if old and (old[0] in ('queued', 'partial') or now - old[1] < ttl):
         return status(db, player)
     wait = db.execute('PRAGMA busy_timeout').fetchone()[0]
     try:
@@ -108,10 +115,11 @@ def enqueue(db, player, now):
         with db:
             db.execute('BEGIN IMMEDIATE')
             old = db.execute('SELECT state,updated FROM ksfprofiles WHERE player=?', (player,)).fetchone()
-            if old and (old[0] in ('queued', 'partial') or now - old[1] < TTL):
+            if old and (old[0] in ('queued', 'partial') or now - old[1] < ttl):
                 return status(db, player)
             # Views of other profiles cannot fill an account's slots (P1117 review).
-            mine = db.execute(ACCOUNT % "?", (player,)).fetchone() is not None
+            mine = (db.execute(ACCOUNT % "?", (player,)).fetchone() is not None
+                    or fetchq.fetched(db, player, now))
             n = db.execute("SELECT count(*) FROM ksfprofiles p WHERE state IN ('queued','partial')"
                            " AND %sEXISTS (%s)" % ("" if mine else "NOT ", ACCOUNT % "p.player")
                            ).fetchone()[0]
@@ -129,9 +137,17 @@ def enqueue(db, player, now):
 
 
 def pending(db):
-    # P1117 review 2: signed-in accounts' walks first, then by turn.
-    return db.execute("SELECT player,mode,cursor,asked FROM ksfprofiles p WHERE state IN ('queued','partial')"
-                      " ORDER BY NOT EXISTS (%s),updated,asked,player LIMIT 3" % (ACCOUNT % "p.player")).fetchall()
+    # P1117 review 2: signed-in accounts' walks first, then (P1448) fetched profiles, then by turn.
+    sql = ("SELECT player,mode,cursor,asked FROM ksfprofiles p WHERE state IN ('queued','partial')"
+           " ORDER BY NOT EXISTS (%s),%supdated,asked,player LIMIT 3")
+    try:
+        return db.execute(sql % (ACCOUNT % "p.player", "NOT EXISTS (SELECT 1 FROM profilefetch f"
+                                 " WHERE f.player=p.player AND f.asked>=%d)," % (
+                                     int(time.time()) - fetchq.FETCH_DAYS * 86400))).fetchall()
+    except sqlite3.OperationalError as e:
+        if "no such table" not in str(e):
+            raise
+        return db.execute(sql % (ACCOUNT % "p.player", "")).fetchall()
 
 
 def kept(recs, fields):

@@ -51,6 +51,7 @@ import zonefit          # bounded BSP entity/model reader for legacy timers
 import ksftopup         # bounded, board-scoped requests; no network in HTTP
 import ksfprofile       # resolved profile demand, paced by the same importer
 import momprofile       # P1117: a signed-in player's Momentum PBs, paced by momwatch
+import fetchq           # P1448: Fetch-button demand (Momentum boards, full KSF walks)
 import recplot          # .rec -> plot data; stdlib only, never raises
 import steam            # the only module that asks Steam anything
 
@@ -1678,6 +1679,8 @@ def migrate():
         # service generations can ignore these tables without losing gifts or
         # weakening their newer-core-schema refusal. Creation/stamp is atomic.
         inventory.ensure_event_schema(conn)
+        # P1448: optional queue tables, as P1304's: not a core-format bump.
+        fetchq.ensure(conn)
 
         verdict_metrics(conn)
         gone = accounts.links_now(conn)
@@ -4143,7 +4146,7 @@ def _ban_late(db, player):
 @app.route("/api/board", methods=["GET", "POST"])
 def board():
     if request.method == "POST":
-        return ksf_topup_request()
+        return board_fetch_request() if request.args.get("fetch") == "1" else ksf_topup_request()
     now = int(time.time())
 
     # rate_key() AND NOT request.remote_addr, BECAUSE THIS ENDPOINT IS PROXIED.
@@ -6407,6 +6410,97 @@ def ksf_topup_request():
     return resp
 
 
+FETCH_RATE = 10         # P1448: Fetch presses a minute per caller, shared by legs and profiles
+
+
+def board_fetch_request():
+    """P1448: the Fetch button. A map leg (map/track/leg/style) is queued with KSF and
+    Momentum, whichever knows it; `player=` queues that player's full walks instead.
+    Queues only: the import crons fetch on their own pacing (momwatch, ksfimport).
+    The site posts both forms to /board/api/map, the one board path nginx lets POST."""
+    now = int(time.time())
+    if not rate_ok(rate_key(), now, FETCH_RATE, "boardfetch"):
+        return fail(429, "rate limited")
+    if request.args.get("player") is not None:
+        return _fetch_player(request.args.get("player"), now)
+    mp = clean_map(request.args.get("map"))
+    track = strict_int(request.args.get("track", "0"), 0, MAX_TRACK)
+    leg = strict_int(request.args.get("leg", "0"), 0, MAX_LEG)
+    style = request.args.get("style", STYLE_CLEAN)
+    if mp is None or track is None or leg is None or style not in ksftopup.STYLES:
+        return fail(400, "bad board")
+    mp = variant_base(mp) or mp
+    out, codes = {}, []
+    conn = connect()
+    try:
+        conn.execute("PRAGMA busy_timeout=50")
+        body, code = ksftopup.enqueue(conn, (mp, track, leg, style), now,
+                                     os.path.join(DATA_DIR, 'ksf', 'maps'))
+        out["ksf"] = body if body is not None else {"state": "unknown" if code == 404 else "busy"}
+        codes.append(code)
+        if style == STYLE_CLEAN:        # Momentum boards have no styles
+            body, code = fetchq.mom_enqueue(conn, (mp, track, leg), now, MOMTRACKS_PATH)
+            out["momentum"] = body if body is not None else {"state": "unknown" if code == 404 else "busy"}
+            codes.append(code)
+        else:
+            out["momentum"] = {"state": "unknown"}
+        if 202 in codes or 200 in codes:
+            note_want(conn, mp)         # the map's crawl and its KSF demos go first
+    except sqlite3.Error:
+        return fail(503, "queue busy; try again")
+    finally:
+        conn.close()
+    code = 202 if 202 in codes else 200 if 200 in codes else 429 if 429 in codes else 404
+    if code == 404:
+        return fail(404, "neither KSF nor Momentum has this leg")
+    if code == 429:
+        return fail(429, "queue full")
+    resp = jsonify(v=1, **out)
+    resp.status_code = code
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+def _fetch_player(raw, now):
+    """A profile's Fetch: both walks again (FORCE_TTL) and the KSF one without a view's
+    limits. `raw` is a web handle, or the game's 8-hex mark as game_player takes it."""
+    raw = raw or ""
+    if not re.fullmatch(r"[0-9a-f]{8}|[0-9a-f]{%d}" % WEB_HANDLE_LEN, raw):
+        return fail(400, "bad player")
+    if len(raw) == 8 and not RANKED_LINKED:
+        return fail(404, "no such player")
+    try:
+        db = get_db()
+        _people_current(db, now)
+        handle = raw
+        if len(raw) == 8:
+            with _people_lock:
+                handle = _people.get("by_mark", {}).get(raw)
+        player = player_of(db, handle, now) if handle else None
+        if player is None:
+            return fail(404, "no such player")
+        if not accounts.steam.is_steamid64(player):
+            return fail(404, "no KSF or Momentum identity")
+        db.execute("PRAGMA busy_timeout=50")
+        try:
+            full = fetchq.fetch_profile(db, player, now)
+            ksf = ksfprofile.enqueue(db, player, now, force=True)
+            mom = momprofile.enqueue(db, player, now, force=True)
+        finally:
+            db.execute("PRAGMA busy_timeout=5000")
+    except sqlite3.OperationalError as exc:
+        if "locked" in str(exc).lower() or "busy" in str(exc).lower():
+            return fail(503, "queue busy; try again")
+        raise
+    except sqlite3.Error as exc:
+        log.exception("player fetch db error: %s", exc)
+        return fail(500, "storage error")
+    resp = jsonify(v=1, ksf_sync=ksf, mom_sync=mom, full=full)
+    resp.status_code = 202 if "queued" in (ksf.get("state"), mom.get("state")) else 200
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
 WANT_WAIT_MS = 50       # see note_want
 
 
@@ -6452,7 +6546,7 @@ def note_want(db, mapname):
 @app.route("/board/api/map", methods=["GET", "POST"])
 def web_map():
     if request.method == "POST":
-        return ksf_topup_request()
+        return board_fetch_request() if request.args.get("fetch") == "1" else ksf_topup_request()
     now = int(time.time())
     if not rate_ok(rate_key(), now, WEB_RATE_MAX, "web"):
         return fail(429, "rate limited")
@@ -7472,6 +7566,7 @@ def game_player(raw, now):
          "av": 1 if player in have else 0, "completion": comp,
          "completion_wos": _completion_wos(ranked, main_maps), "wos": _wos_figures(ranked),
          "ksf_sync": ksfprofile.status(db, player),
+         "mom_sync": momprofile.status(db, player),
          "cosmetics": inventory.public(db, player),
          "playtime": dict(playstats.profile(db, player, on), coverage="official_lobby"),
          "rows_source": rows_source, "rows_only": rows_only, "rows_mode": mode,
@@ -7635,6 +7730,7 @@ def web_player(handle):
                   "av": 1 if player in pics else 0,
                   "completion": comp, "completion_wos": _completion_wos(ranked, main_maps),
                   "ksf_sync": ksfprofile.status(db, player),
+                  "mom_sync": momprofile.status(db, player),
                   "offset": offset, "total": len(ranked),
                   "limit": limit, "rows": out}, "max-age=30")
 

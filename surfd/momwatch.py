@@ -90,6 +90,7 @@ if not logging.getLogger("surfd").handlers:
 import surfd as S       # noqa: E402
 import momfetch         # noqa: E402
 import momprofile       # noqa: E402
+import fetchq           # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -101,6 +102,9 @@ EXTRA_MAX = 6
 ROTATE = 3               # page-1 refreshes a tick
 PROFILE_MAX = 1          # requests a tick for signed-in players' own PBs (momprofile)
 QUIET = 3600
+TOPUP_MAX = 8            # P1448: requests a tick for boards somebody pressed Fetch on
+TOPUP_PAGES = 3          # per board: page 1 again (if older than TOPUP_FRESH) and deeper pages
+TOPUP_FRESH = 600
 
 
 ROTATION = ".rotation"   # P1117 review 3: board key -> when the rotation last asked it
@@ -193,6 +197,72 @@ def stalest_boards(cat, boards, cut, n):
     return out
 
 
+def topup_step(a):
+    """P1448: boards somebody pressed Fetch on, before the live maps. -> (fetched, failed)."""
+    conn = S.connect()
+    try:
+        jobs = fetchq.mom_pending(conn)
+    finally:
+        conn.close()
+    if not jobs:
+        return False, 0
+    quiet = resting(a.boards)
+    if quiet or not a.go or not has_extras(_momfetch_path()):
+        print("fetch queue          %d board(s) wait: %s" % (
+            len(jobs), quiet or ("dry run" if not a.go else "momfetch predates --board")))
+        return False, 0
+    left, fetched, failed = TOPUP_MAX, False, 0
+    for mp, track, leg, target in jobs:
+        key, now = (mp, track, leg), int(time.time())
+        b = fetchq.mom_board(a.tracks, mp, track, leg)
+        conn = S.connect()
+        try:
+            if b is None:
+                fetchq.mom_finish(conn, key, target, 0, 0, True, now)
+                continue
+        finally:
+            conn.close()
+        if left <= 0:
+            break
+        bk = fetchq.board_key(b)
+        path = os.path.join(a.boards, bk + ".json")
+        n = min(TOPUP_PAGES, left)
+        cmd = [sys.executable, _momfetch_path(), "--tracks", a.tracks, "--out", a.boards,
+               "--take", str(a.take), "--delay", str(a.delay), "--depth", str(target),
+               "--max", str(n), "--board", bk, "--go"]
+        try:
+            if time.time() - os.path.getmtime(path) > TOPUP_FRESH:
+                cmd.append("--refresh")
+        except OSError:
+            pass                        # never fetched: momfetch asks page 1 anyway
+        print("\n--- fetch: %s track %d leg %d to %d places (%s) ---" % (mp, track, leg, target, bk))
+        if fetched:
+            time.sleep(a.delay)
+        sys.stdout.flush()
+        rc = subprocess.call(cmd)
+        fetched, left = True, left - n
+        if rc != 0:
+            print("fetch stopped (%d) -- the board stays queued" % rc)
+            rest(a.boards, "fetch refused")
+            failed = rc
+            break
+        d = momfetch.load_board(path)
+        held = len(d["rows"]) if d else 0
+        total = min(int(d.get("total") or 0), momfetch.TOTAL_MAX) if d else 0
+        conn = S.connect()
+        try:
+            st = fetchq.mom_finish(conn, key, target, held, total, d is None or bool(d.get("absent")),
+                                   int(time.time()))
+        finally:
+            conn.close()
+        print("fetch                %s: %d of %d places held -> %s" % (bk, held, total, st))
+    if fetched and a.index:
+        sys.stdout.flush()
+        failed = subprocess.call([sys.executable, os.path.join(HERE, "momboards.py"),
+                                  "--boards", a.boards, "--link", "--go"]) or failed
+    return fetched, failed
+
+
 def live_maps(conn, fresh=LOBBY_FRESH):
     """Lowercased map names the fleet is on right now, most players first."""
     cut = int(time.time()) - fresh
@@ -273,6 +343,10 @@ def main():
 
     cat = momfetch.read_tracks(a.tracks)
     by_lower = {n.lower(): m for n, m in cat.items()}
+
+    _top, top_failed = topup_step(a)
+    if top_failed:
+        return top_failed
 
     conn = S.connect()
     live = live_maps(conn)

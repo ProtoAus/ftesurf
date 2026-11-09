@@ -34,8 +34,9 @@ def known_leg(db, key, cache=None):
         return True
     # Bootstrap a not-yet-filed leg only from our importer's bounded public
     # metadata cache, never a request-supplied count or an HTTP-side fetch.
-    if cache is None or not db.execute("SELECT 1 FROM runs WHERE map=?"
-                                      " AND tier='ksf' LIMIT 1", key[:1]).fetchone():
+    # P1448: the cache alone suffices -- catalog_step lists every KSF map, so a
+    # map or bonus with no KSF row here yet can be asked for.
+    if cache is None:
         return False
     try:
         with open(os.path.join(cache, key[0] + '.json'), 'rb') as f:
@@ -92,6 +93,12 @@ def enqueue(db, key, now, cache=None):
                    " target=excluded.target, asked=excluded.asked,"
                    " updated=excluded.updated, state='queued'", (*key, target, now, now))
         return dict(old, state="queued", target=target, updated=now), 202
+
+
+def recent(db, now, days=1):
+    """P1448: legs somebody pressed Fetch on lately -- ksfgrab downloads their demos first."""
+    return {tuple(r) for r in db.execute("SELECT map,track,leg,style FROM ksftopup WHERE asked>=?",
+                                         (now - days * 86400,))}
 
 
 def pending(db):

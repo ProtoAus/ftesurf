@@ -14,12 +14,14 @@ import os
 from pathlib import Path
 import re
 import shutil
+import sqlite3
 import sys
 import time
 import urllib.error
 import urllib.request
 
 import ksfimport as K
+import ksftopup as KT
 import surfd as S
 
 # Pi installs surfd beside its codec tools; checkout layout keeps tools at root.
@@ -594,7 +596,14 @@ def tick(cache, maximum=2, delay=3.0, download=fetch):
         dpark = K._load(os.path.join(cache, PARK)) or {}
         until = max(int(park.get('until') or 0), int(dpark.get('until') or 0))
         # Give each lane one original slot when both have eligible work; viewed maps first.
-        queued = sorted(jobs.items(), key=lambda kj: kj[1].get('map') not in prio)
+        # P1448: legs somebody pressed Fetch on first ("if there is one, grab it"), then viewed maps.
+        try:
+            hot = KT.recent(conn, now)
+        except sqlite3.Error:
+            hot = set()
+        queued = sorted(jobs.items(), key=lambda kj: (
+            (kj[1].get('map'), kj[1].get('track'), kj[1].get('leg'), kj[1].get('style')) not in hot,
+            kj[1].get('map') not in prio))
         work = overflow[:1] + [(k, j, None) for k, j in queued] + overflow[1:]
         # Patch 896: all of KSF's advertised recordings are ~46 GB (21 Oct), more than the
         # Pi can spare beside its lobbies; install()'s 256 MiB reserve is the last ditch only.

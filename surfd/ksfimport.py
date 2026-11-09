@@ -177,6 +177,7 @@ QUIET_COOLDOWN = 30 * 60   # P1117: the same, after no answer at all (timeout, d
 COOLDOWN_MAX = 48 * 3600
 CATALOG_DAYS = 7           # re-list KSF's maps this often
 REFRESH_DAYS = 14          # re-ask a board's first page this often
+FETCH_FRESH = 600          # P1448: a Fetch re-asks page 1 older than this (s)
 WANT_DAYS = 14             # a map viewed this recently is crawled first
 # --watch's order, by ranks paged (sweep_maps): a viewed map's Forward main
 # board to WANT_FIRST; then, shallowest first and in one class, its other
@@ -1150,6 +1151,10 @@ def topup_step(cache, idx, pacer, completed, fetched, filing=None):
             continue
         doc = board_load(cache, mp, zone, mode)
         fresh = []
+        # P1448: Fetch also refreshes the leg -- new records arrive on page 1.
+        if pacer.left() > 0 and time.time() - int(doc.get("top") or 0) > FETCH_FRESH:
+            doc, page = board_page(cache, mp, zone, pacer, mode, top=True, idx=idx)
+            fresh.extend(page)
         for _ in range(min(5, pacer.left())):
             if not wants_more(_state(doc), target):
                 break
