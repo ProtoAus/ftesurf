@@ -364,6 +364,9 @@ void(entity e) SV_TASAutoFrame =
 			o_x = vectoyaw(e.as_ex + e.as_exd * (head + 150) - e.origin) - i;    // the pursuit point's bearing, off the heading
 			o_x = o_x - 360 * floor((o_x + 180) / 360);
 			o_y = vectoyaw(e.as_exd) - i; o_y = o_y - 360 * floor((o_y + 180) / 360);   // the line's heading, off ours
+			if (cvar("developer") && !(e.as_sn % 30))
+				sprint(e, PRINT_HIGH, strcat(sprintf("tas autosurf: start %.0f ph %.0f at %v %.0f u/s hdg %.0f, ", e.as_sn, e.as_sph, e.origin, t, i),
+					sprintf("%.0f u to the exit, %.0f u off the line, pursuit %.0f deg, line %.0f deg, side %.0f\n", d, best, o_x, o_y, e.as_sair)));
 			if (e.as_sph == 0 && t >= 283) e.as_sph = 1;
 			if ((e.as_sph == 1 && fabs(best) < 25 && fabs(o_y) < 8 && d >= 130 && d <= 220) || d < 60 || e.as_sn >= e.as_sg)
 			{
