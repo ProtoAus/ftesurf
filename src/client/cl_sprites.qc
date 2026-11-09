@@ -483,7 +483,7 @@ float  spr_gsweep_f;                    // frames since the cursor last wrapped
 */
 float  spr_gvacc;                       // fractional visit quota carried between frames
 float  spr_gquota;                      // this frame's visit quota; 0 = uncapped
-float  spr_glimit;                      // what stopped the loop: 1 rays, 2 visits, 0 neither
+float  spr_glimit;                      // what stopped the loop: 1 rays, 2 visits, 3 the time cap (P1456), 0 neither
 /*
   BUILD 60: the adaptive-ray split, and it needs THREE numbers, not one.
 
@@ -2289,12 +2289,15 @@ float(float margin, vector fwd) Sprite_ConeTan =
 	return best * margin;
 };
 
-// P1456: the frame's glare and sky rays have run past the cap. gettime(1) is whole ms, a float of seconds
-// since launch (~1 ms steps after 2.3 h), so the cap is at least two of its steps: a 0.3-0.6 ms frame of
-// rays never trips it; surf_fairy's 4-9 ms bursts (rays at 100-200 us) stop at 1-3 ms.
-float() Sprite_TraceOver =
+// P1456: a ray loop has run past the cap since t0; the sky test and the glare each get the whole cap.
+// gettime(1) is whole ms, a float of seconds since launch (~1 ms steps after 2.3 h), so the cap is at least
+// two of its steps: a 0.3-0.6 ms loop never trips it; surf_fairy's 4-9 ms bursts (rays at 100-200 us) stop
+// at 1-3 ms. Past ~4.6 h the floor outgrows the bursts and the cap stops biting.
+float(float t0) Sprite_TraceOver =
 {
-	return spr_tcap > 0 && gettime(1) - spr_tt0 >= spr_tcap;
+	if (spr_tcap <= 0)
+		return FALSE;
+	return gettime(1) - t0 >= spr_tcap;
 };
 
 // P1456: FALSE for a glow the glow draw loop skips whatever its occlusion says -- behind the sky, a
@@ -2335,7 +2338,7 @@ void() Sprite_Glare =
 	// BUILD 61: the interval-targeted budget.
 	local float  interval, vmax, ft;
 	local entity pass;              // P799: carries SPR_GLARE_MASK
-	local float skyon, gtcap;       // P1456
+	local float skyon, gtcap, gt0, tn;     // P1456
 
 	eye = getproperty(VF_ORIGIN);
 	if (!spr_gtracer)
@@ -2583,17 +2586,23 @@ void() Sprite_Glare =
 	spr_gcull = 0;
 	spr_gnodraw = 0;
 	gtcap = FALSE;
+	tn = 0;
+	gt0 = gettime(1);
 	spr_gtraced_n = 0;
 	spr_gcheap = 0;
 	spr_gforce = 0;
 	spr_grays = 0;
 	while (n < budget && visits < vmax && spr_n > 0)
 	{
-		if (n > 0 && Sprite_TraceOver())
+		if (n > tn)                    // asked once per traced glow, not per visit
 		{
-			gtcap = TRUE;
-			spr_tcapn = spr_tcapn + 1;
-			break;
+			tn = n;
+			if (Sprite_TraceOver(gt0))
+			{
+				gtcap = TRUE;
+				spr_tcapn = spr_tcapn + 1;
+				break;
+			}
 		}
 		i = spr_gnext;
 		spr_gnext = spr_gnext + 1;
@@ -2653,10 +2662,13 @@ void() Sprite_Glare =
 				}
 			}
 		}
-		// P1456: no rays for a glow that cannot draw; free like a culled visit. Its answer is a sweep old
-		// when it comes into range, where its distance fade starts from 0.
-		if (spr_kind[i] == SPRK_GLOW && !Sprite_GlowDrawable(i, d, skyon))
+		// P1456: no rays for a glow that cannot draw; free like a culled visit. Its answer is dropped as
+		// P1373's jump reset drops it, so it comes back dark (not with an answer from before) until traced.
+		if (spr_kind[i] == SPRK_GLOW)
+		if (!Sprite_GlowDrawable(i, d, skyon))
 		{
+			if (spr_gtraced[i])
+				spr_gvis[i] = -1;
 			spr_gnodraw = spr_gnodraw + 1;
 			continue;
 		}
@@ -3080,11 +3092,12 @@ void(vector eye) Sprite_SkyTick =
 					continue;
 			}
 		}
-		if (Sprite_TraceOver())
+		if (Sprite_TraceOver(spr_tt0))
 		{
 			spr_tcapn = spr_tcapn + 1;
+			spr_skynext = i;            // still due: first next frame
 			if (burst)
-				spr_skyburst = spr_skyburst + rays;	// the burst's unfired rays stay owed
+				spr_skyburst = min(n, spr_skyburst + rays);	// the burst's unfired rays stay owed
 			break;
 		}
 		spr_skyat[i] = eye;
@@ -3563,6 +3576,7 @@ void() Sprite_Draw =
 	{
 		if (spr_kind[i] != SPRK_GLOW)
 			continue;
+		// P1456: Sprite_GlowDrawable repeats this loop's sky, facing and distance-ramp gates; change both.
 		if (skyon && spr_sky[i] == SKY_BEHIND)
 		{
 			skyhid = skyhid + 1;
