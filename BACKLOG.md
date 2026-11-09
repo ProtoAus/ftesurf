@@ -226,9 +226,9 @@
   hung for ~2.5 s of it (tools/p1442-warmbudget.md).
 - P1427 (PVS skip for sprites, local branch p1427-spritepvs in lows2-20261107-opus/qc) parked: correct, but checkpvs
   + Portal_EyesSee at ~3 us a check ate the gain on tensor2; would need an entity per sprite or an engine builtin.
-- 0.1%-low causes from r_spikes (P1444, tools/p1444-spikes.md): surf_nuclear's largest spikes are CSQC pairs --
-  "prediction" 5.5-7.7 ms then "QC UpdateView, HUD" 5.2-8.3 ms -- at the same two places on its route (a teleport
-  or trigger there?); water-capture frames 4-6 ms in PrepareFrame + draws; a rare swap/present stall (49.8 ms once).
+- 0.1%-low causes from r_spikes (P1444, tools/p1444-spikes.md): surf_nuclear's largest spikes are frame pairs --
+  engine "prediction" (CL_SetSolidEntities/TransitionEntities/PredictMove, not QC) 5.5-7.7 ms then "QC UpdateView,
+  HUD" 5.2-8.3 ms -- at the same two places on its route (an entity flood as the PVS opens?); water-capture frames 4-6 ms in PrepareFrame + draws; a rare swap/present stall (49.8 ms once).
   r_capturerate 60 is better than every frame on every number; hl2_water 0 helps ceaseless's 1% only.
 - Slow-throughout maps (artifacts/run_twopass.py, r_budget 3; twopass/<map>-budget.txt) are all CPU-bound:
   - fairy, jumble: cl_sprites 1.0-2.8 ms -> P1422 for the sky test (fairy 222 -> 303). Sprite_Glare is the next
