@@ -59,9 +59,13 @@ cs a90ec502. Pixel diffs every 2nd px; the HUD chat line alone is ~500.
   (r_part blocks this file writes at load) draw. So particles/ftesurf.cfg's effects do not show in this rig at
   all; whether they show in a real install is an owner check (lextest). Pre-dates P1433: start-on sparks use the
   same path.
-  Re-run 9 Nov (tools/armsj.sh, spk5-7.cfg; rigs/bm-sp5..sp7-new) with the client on basedir C:\FTESurf, the
-  installs' own exe (c61f874b, the same as ftesurf64.exe) and no copied set: spark1's SparkOnce (8 bursts of 27
-  printed, 120 u ahead, in view) and emit_test of ftesurf_fire / ftesurf_spark, of copies exec'd after the map
-  loaded, and of a copy textured effects/softglow all gave 0 px outside the HUD. No effect known to draw was fired
-  the same way, so this does not show they fail for players either -- still the owner check.
+  CORRECTED 9 Nov (tools/armsj.sh, spk5-10.cfg; rigs/bm-sp5..sp10-new; client on basedir C:\FTESurf, the installs'
+  exe c61f874b): the rig DOES draw particles/ftesurf.cfg effects. emit_test fire / spark / a softglow copy changed
+  98105 / 2890 / 145093 px on bhop_crash_egypt, and on bhop_depot fire drew at the spawn (165045) and by the fog
+  controller (126435), spark at the spawn (3113). The earlier 0 px arms were the camera's fault: spk4 spawned the
+  test below the frame, and the spark-room spot put the eye inside a crate stack. spark1 itself still shows nothing:
+  8 SparkOnce bursts of 27 (each printed) from 64 u away in open air, looking at it (sp10 q1->q2: 699 px, the HUD
+  only). So env_spark's sparks are not drawn although the effect is -- a real defect in how the emitter fires
+  them, not a rig blind spot; start-on sparks use the same path, so it predates P1433. Ruled out: the effect and
+  its handle (emit_test uses the same precache slot), r_part_density (1), the spawn box (the origin).
 - Extinguish's fade, Source's spark sound and glow (SF_SPARK_GLOW), the steam heat wave, env_firesource.
