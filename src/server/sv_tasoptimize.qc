@@ -134,6 +134,7 @@ float topt_kel[TOPT_CEPOP];      // the generation's elite marks
 float topt_drow[TOPT_HMAX * 5];  // fwd, side, pitch, yaw (degrees), buttons
 float topt_dq[TOPT_HMAX];         // the row's turn command (SV_TASOptFollow's q) against the velocity before it
 float topt_dmap[TOPT_HMAX];       // demo search: the demo row each tick takes its keys from (SV_TASOptDemoMap)
+float topt_ride[TOPT_HMAX];       // curve search without a demo: a ride tick's side into its ramp (+1 left, -1 right, 0 none)
 .float topt_dn;
 float topt_dpos[TOPT_HMAX * 3]; // the rows' origins (each after its tick), for `tube`
 .float topt_tube, topt_tubeout; // P1449 `tube R`: candidates stay within R of that path; how many left it
@@ -422,15 +423,23 @@ float(entity e) SV_TASRollPending =
 // ~0.97 deg off the velocity at 1780 u/s). Source's AirAccelerate: addspeed = 30 - v.wishdir.
 float(entity e, float r, float f) SV_TASOptFollow =
 {
-	local float i, it, ran, k, m, ks, off, nv, d, moved, q, sd, ph, vs;
+	local float i, it, ran, k, m, ks, off, nv, d, moved, q, sd, ph, vs, pass, ch;
+	local vector rn, rl;
 	m = e.topt_n - e.topt_fk;
 	ks = bound(1, floor(e.topt_curs * e.topt_n + 0.5), m);
 	if (e.topt_kn && e.topt_efol)
-	{	// the engine applies the command from each tick's own velocity and writes back what it played
+	{	// the engine applies the command from each tick's own velocity and writes back what it played. Rolled twice
+		// when the first roll rides a ramp: then each ride tick's next row strafes into that ramp (q +-30: the view on
+		// the velocity, the wish across it on the ramp's side), as a human holds the key in -- with no demo's keys the
+		// knots slid a clicked route's ride off ramp 1 into the teleport under it (rig troute1, 10 Nov)
+		for (i = 0; i < e.topt_n; i = i + 1) topt_ride[i] = 0;
+		for (pass = 0; pass < 2; pass = pass + 1)
+		{
 		for (i = 0; i < e.topt_n; i = i + 1)
 		{
 			d = min(i, e.topt_kspan - 1) * (e.topt_kn - 1) / max(1, e.topt_kspan - 1); k = floor(d);   // aim: the knots cover the ride
 			q = (k >= e.topt_kn - 1) ? topt_kcur[e.topt_kn - 1] : topt_kcur[k] + (d - k) * (topt_kcur[k + 1] - topt_kcur[k]);
+			if (topt_ride[i]) q = 30 * topt_ride[i];
 			topt_rows[i*7] = 0; topt_rows[i*7+1] = -450 * e.topt_dir; topt_rows[i*7+2] = 0;
 			topt_rows[i*7+3] = SV_TASPWord(e.topt_pitch0); topt_rows[i*7+4] = bound(-TOPT_QMAX, q, TOPT_QMAX);
 			topt_rows[i*7+5] = 0; topt_rows[i*7+6] = TOPT_EFOLLOW + (e.topt_pfoff ? 0 : TOPT_EPITCHV) + ((e.topt_mode & 128) ? TOPT_EAIM : 0) + (e.topt_hop ? 1 : 0);
@@ -443,6 +452,18 @@ float(entity e, float r, float f) SV_TASOptFollow =
 		else
 			ran = tas_rollout(e, topt_rows, e.topt_n, topt_out);
 		SV_NoColPost(e);
+		if (pass > 0 || ran < 2) break;
+		ch = FALSE;
+		for (i = 0; i + 1 < ran; i = i + 1)
+			if (topt_out[i*13+8] == 1)
+			{	// a world ramp under this tick: the next row strafes into it (the wish against its horizontal normal)
+				rn = [topt_out[i*13+9], topt_out[i*13+10], 0];
+				rl = [-topt_out[i*13+4], topt_out[i*13+3], 0];        // left of the velocity
+				topt_ride[i + 1] = (rn * rl < 0) ? 1 : -1;
+				ch = TRUE;
+			}
+		if (!ch) break;
+		}
 		for (i = 0; i < e.topt_n; i = i + 1)
 		{	// past the last tick run the rows were not set: they are not played
 			k = min(i, max(0, ran - 1)) * 7;
