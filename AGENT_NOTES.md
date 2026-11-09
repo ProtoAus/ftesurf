@@ -6984,6 +6984,48 @@ must require42checks and exact8baseline labels, and catch unnumbered warnings.
 
 ## Anti-cheat and run evidence
 
+### Implementation behaviour: value before machinery (owner, 9 Nov 2026)
+
+Mandatory for anti-cheat planning, implementation and reporting:
+
+- **Name the useful outcome first.** State which cheat/abuse is detected or
+  prevented, or whether this is only evidence-integrity/safety maintenance.
+  State what remains undetectable and the expected player/admin benefit.
+- **Prove the signal, not just the plumbing.** Use a representative acting
+  cheat/assist case and a matched legitimate control on the target engine where
+  authorized. Label proxies and untested cases; do not invent catch rates,
+  calibration or false-positive guarantees from parser tests or one example.
+- **Get the smallest real end-to-end path working early.** Read existing
+  producer/consumer contracts and exercise the actual entrypoint, default reader
+  selection and transport before a large proof campaign. Matching mocks can
+  reproduce the same wrong assumption; require a normal positive arm as well as
+  refusals. Silence is not acceptance.
+- **Keep infrastructure subordinate.** Reuse existing build/test/deploy seams.
+  Fix the smallest reusable fault rather than growing wrapper/manifest chains.
+  After two infrastructure-only failures use the startup contract's bounded
+  diagnostic/fallback rule; preserve failures and continue independent work.
+- **Validate proportionately.** Prefer an existing test, focused smoke check or
+  small owner check where adequate. Reuse evidence whose dependencies are
+  unchanged; refresh volatile facts at the execution boundary, never redate them.
+  Do not expand optional regression machinery after acceptance is sufficient.
+- **Deliver a bounded improvement before starting another collection of tools.**
+  Follow the user's requested end state through the authorized consumer/deploy
+  path. A build, review, test count, staged package or checkpoint is progress,
+  not a delivered detector or permission to abandon the remaining feature.
+- **Report capability honestly.** Separate implemented, verified, installed and
+  live; detection, review-only observation and evidence authenticity are different
+  claims. Checklist completion is not a security percentage. A physics-consistent
+  run or valid signature is not proof that a human supplied the input.
+- **Keep every safety gate.** This priority does not waive required builds,
+  security review, corpus/data-preservation checks, ownership/freshness fences or
+  approvals for capture, privacy, thresholds, ranking and enforcement. Do not
+  weaken a guard to turn a failed transaction into a pass.
+
+Measured process pitfall: tests built around an invented wrapper contract can
+agree with that wrapper while the real existing producer/consumer is incompatible.
+Read and test the actual contract first. Necessary security reviews stay necessary;
+avoidable implementation rework must not be excused as inherent anti-cheat cost.
+
 P1434 measured8November2026: a malformed diagnostic/observer record may fault and
 be skipped while hidcheck still reports zero or a surviving input subtotal. A
 content FAULT is not proof that every reported numeric total is complete. New
