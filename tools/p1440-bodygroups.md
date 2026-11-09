@@ -25,11 +25,20 @@ SetBodyGroup 1..14 over 0.43 s, then Kill. fteplug_hl2 tagged every mesh geomset
   sequence on a non-solid prop_dynamic as on a 3D-skybox prop (P1202), the same rule as DefaultAnim (P1273); the
   success line prints under developer 2 (map timers repeat it), a missing sequence under developer 1.
 
-Left: collision is unchanged -- a prop whose collision is its render mesh (no usable .phy; 162 of 3,084 models)
-still collides with hidden alternatives, as before. Client prediction and the server build the same trees and the
-lobby server runs an older engine; change both together. Bodyparts past 32, csprogs-drawn props (train riders, P860
-movers: their wires carry skin and frame, not body) and bodies over 255 (the wire's byte) draw submodel 0. A
+Left: collision is unchanged -- a prop whose collision is its render mesh still collides with hidden alternatives,
+as before. Census (9 Nov, offline, the plugin's rules ported): 55 solid prop_dynamic on 13 maps (surf_happyhands3
+and _css 15 each, surf_froots_ksf 7, bhop_alvo2 4, rj_beef 3, ...), all NPC models with a jointed .phy (zombies'
+headcrab, antlion wings, a chicken's hat, mom_soldier's rocket); no static prop. Client prediction and the server
+build the same trees and the lobby server runs engine git-8489-patch-1353 (84 commits behind), so the fix needs the
+lobby server engine upgraded with it. Bodyparts past 32 and bodies over 255 (the wire's byte) draw submodel 0. A
 repeated SetAnimation of the same sequence does not restart it (Source restarts a one-shot).
+
+Follow-up (same day): csprogs train riders (P1378) and movers (P860/P1387) carry body -- ENTWIRE_TRKPROP's flag bit 2
+and ENTWIRE_SPSTATE's bit 4 add the byte (clamped 0-255), so older recordings parse as written. No library prop
+rides with a non-zero body today; measured by firing SetBodyGroup: surf_centipedes' skull1 riders and
+bhop_lost_world_v2's carrot1 mover print the body on the client. One review (no defects; the clamp and a comment
+fixed). LIVE 9 Nov ~13:10 local: lobbies qw cafb0be2 + cs e84310b0 from main 0f88c669 (nobody on, 0 QC errors),
+C:\FTESurf the same, csprogsvers cd742783 seeded on the Pi and both installs, codes.txt 110 -> 111 (.pre1440b).
 
 ## Review (one reviewer, code only)
 
