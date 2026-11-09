@@ -11313,7 +11313,7 @@ float(entity to, float sf) SV_TrkPropSend =
 	WriteFloat(MSG_ENTITY, self.colormod_x);
 	WriteFloat(MSG_ENTITY, self.colormod_y);
 	WriteFloat(MSG_ENTITY, self.colormod_z);
-	WriteByte(MSG_ENTITY, self.body);
+	WriteByte(MSG_ENTITY, bound(0, self.body, 255));     // clamped as sv_ents.c clamps the engine's own path
 	return TRUE;
 };
 
@@ -11916,7 +11916,7 @@ float(entity to, float sf) SV_SpSend =
 		WriteFloat(MSG_ENTITY, self.colormod_x);
 		WriteFloat(MSG_ENTITY, self.colormod_y);
 		WriteFloat(MSG_ENTITY, self.colormod_z);
-		WriteByte(MSG_ENTITY, self.body);
+		WriteByte(MSG_ENTITY, bound(0, self.body, 255));
 	}
 	if (sf & 2)
 	{
