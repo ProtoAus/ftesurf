@@ -157,7 +157,7 @@ float(entity e, float r, float y, float f, float i) SV_TASOptYaw =
 float(entity e) SV_TASRollPending =
 {
 	if (e.run_mono_phase || e.vsv_on) return -31;
-	if (e.gravity && e.gravity != 1) return -31;   // the engine's entgravity cache refreshes on the next move
+	if (e.vbsp_grav_trig) return -31;   // a persist-0 trigger_gravity's reset is owed (SV_GravityFrame)
 	if (e.run_tl1 || e.run_tl2 || e.run_tl3 || e.run_tl4 || e.run_tl5 || e.run_tl6 || e.run_tl7 || e.run_tl8)
 		return -32;
 	if (SV_TrigPending(e)) return -32;
@@ -169,6 +169,7 @@ float(entity e) SV_TASRollPending =
 // negative refusal; -20 without the builtin or buffers. Callers check SV_TASRollPending first, once
 // per head (it walks every edict).
 .float topt_rollcut;
+.float topt_rollran;            // the last fast candidate's counted ticks (0 with a cut: a start volume)
 float(entity e, float r, float y, float f) SV_TASOptRoll =
 {
 	local float i, ran, a;
@@ -193,7 +194,7 @@ float(entity e, float r, float y, float f) SV_TASOptRoll =
 		if (a)
 		{	// QC acts on it (a touch, a carrier, a volume) where the rollout cannot: the prediction ends
 			// after this tick, or before it when it is the volume the body started in (negative)
-			if (cvar("developer") >= 2 || (cvar("developer") && !e.topt_fast && !e.topt_rshort))
+			if ((cvar("developer") >= 2 && (!e.topt_fast || e.topt_evals < 64)) || (cvar("developer") && !e.topt_fast && !e.topt_rshort))
 				sprint(e, PRINT_HIGH, sprintf("tas optimize: rollout meets %s %s tick %.0f of %.0f\n",
 					edict_num(fabs(a)).classname, (a < 0) ? "before" : "at", i + 1, e.topt_n));
 			e.topt_rollcut = 1;
@@ -208,6 +209,8 @@ float(entity e, float r, float y, float f) SV_TASOptRoll =
 void(entity e, float r, float y, float f) SV_TASOptPredict =
 {
 	local float ran, i;
+	e.topt_pn = -2;
+	if (!checkbuiltin(tas_rollout)) return;
 	ran = SV_TASRollPending(e);
 	if (!ran) ran = SV_TASOptRoll(e, r, y, f);
 	e.topt_pn = (ran == -20) ? -2 : ran;
@@ -227,6 +230,7 @@ float(entity e, float r, float y, float f) SV_TASOptRollScore =
 {
 	local float ran, i;
 	ran = SV_TASOptRoll(e, r, y, f);
+	e.topt_rollran = ran;
 	if (ran < 0) { e.topt_rwhy = ran; return -2; }
 	if (ran < e.topt_n || e.topt_rollcut == 1) return -1;   // incl. an entity named on the last tick
 	i = (ran - 1) * 13;
@@ -409,12 +413,18 @@ void(entity e) SV_TASOptFrame =
 		v = SV_TASRollPending(e);
 		if (v)
 		{
-			SV_TASOptStop(e, "a trigger edge or delayed output is pending at this tick; step a few ticks and retry");
+			SV_TASOptStop(e, (v == -31) ? "QC owes this body a velocity or gravity change on its next move (a gravity reset, a script write, a pad latch); step a few ticks and retry"
+				: "a trigger edge or delayed output is pending at this tick; step a few ticks and retry");
 			return;
 		}
 		for (k = 0; k < max(1, floor(4000 / e.topt_n)) && e.topt_on && e.topt_phase != 3; k = k + 1)
 		{
 			v = SV_TASOptRollScore(e, SV_TASOptValue(e, 1), SV_TASOptValue(e, 2), SV_TASOptValue(e, 3));
+			if (v == -1 && e.topt_rollcut == 1 && !e.topt_rollran)
+			{	// cut before tick 1: the volume the body starts in, whatever the inputs
+				SV_TASOptStop(e, "the body starts inside a trigger volume QC acts on; step out of it first");
+				return;
+			}
 			if (v == -1) e.topt_fcut = e.topt_fcut + 1;
 			if (v == -2)
 			{
