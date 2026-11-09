@@ -59,13 +59,13 @@ cs a90ec502. Pixel diffs every 2nd px; the HUD chat line alone is ~500.
   (r_part blocks this file writes at load) draw. So particles/ftesurf.cfg's effects do not show in this rig at
   all; whether they show in a real install is an owner check (lextest). Pre-dates P1433: start-on sparks use the
   same path.
-  CORRECTED 9 Nov (tools/armsj.sh, spk5-10.cfg; rigs/bm-sp5..sp10-new; client on basedir C:\FTESurf, the installs'
-  exe c61f874b): the rig DOES draw particles/ftesurf.cfg effects. emit_test fire / spark / a softglow copy changed
-  98105 / 2890 / 145093 px on bhop_crash_egypt, and on bhop_depot fire drew at the spawn (165045) and by the fog
-  controller (126435), spark at the spawn (3113). The earlier 0 px arms were the camera's fault: spk4 spawned the
-  test below the frame, and the spark-room spot put the eye inside a crate stack. spark1 itself still shows nothing:
-  8 SparkOnce bursts of 27 (each printed) from 64 u away in open air, looking at it (sp10 q1->q2: 699 px, the HUD
-  only). So env_spark's sparks are not drawn although the effect is -- a real defect in how the emitter fires
-  them, not a rig blind spot; start-on sparks use the same path, so it predates P1433. Ruled out: the effect and
-  its handle (emit_test uses the same precache slot), r_part_density (1), the spawn box (the origin).
+  SETTLED 9 Nov (tools/armsj.sh, spk5-12.cfg; rigs/bm-sp5..sp12-new; client on basedir C:\FTESurf, the installs'
+  exe c61f874b): sparks DRAW, and so do all particles/ftesurf.cfg effects. Seen from above, spark1's SparkOnce is
+  gold streaks out of the junction box (sp11 q3->q4 3179 px; a matched emit_test spark 1209), and
+  bhop_contamination's start-on spark (SF 64, MaxDelay 0) streams them (consecutive shots 2751 / 3520 px, 628 --
+  the HUD -- with vbsp_emit_spark 0). Every earlier 0 px was the camera: emit_test spawned below the frame (spk4),
+  the eye inside a crate stack (the spark-room spot), and a view down the sparks' own flight line (64 u west
+  looking east: the streaks shrink to points). bhop_depot only ever sends SparkOnce (a logic_timer, every 12-20 s),
+  and a SparkOnce stops a running spark as Source's InputSparkOnce does, so StartSpark there lasts until the next
+  tick.
 - Extinguish's fade, Source's spark sound and glow (SF_SPARK_GLOW), the steam heat wave, env_firesource.

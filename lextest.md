@@ -37,8 +37,8 @@
 - surf_sluice2: white steam pours down from four ceiling vents (around -500 13600). bhop_rpg: the map
   turns a red and a blue steam jet on and off. bhop_maya: two explosions (around 1030 2410) when the map sets them off,
   with a boom and a scorch mark. surf_garden_css: fish swimming in the ponds; swim close and they dart off.
-- SPARKS (bhop_depot spark1, around -15534 -12064 153): the rig now shows the spark effect itself draws, but the
-  map's sparks do not -- an open defect (tools/p1433-steam.md, Left); no need to check them.
+- SPARKS: verified in the rig (bhop_depot spark1 bursts every 12-20 s; bhop_contamination's always-on sparks);
+  nothing to check unless they look wrong to you.
 
 ## P1431 switched sprites and spotlights -- LIVE 9 Nov (lobbies + both installs, cs a90ec502); owner check pending
 
