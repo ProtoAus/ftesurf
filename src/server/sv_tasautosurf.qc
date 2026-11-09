@@ -26,6 +26,7 @@
 .float as_arm, as_nolegal, as_lastground;
 .float as_sn2;                  // ticks steered since the run started (the start clears the box's triggers first)
 .float as_sph;                  // the start's ground phase: 0 speed (a left circle), 1 onto the line, 2 around again
+.float as_sdrop;                // ticks of the spawn's drop (as_sn2 is the out-of-box phase's own: review 2)
 .vector as_runo;                // where the run started (the start box's edge): the start steers 48 u past it before planning
 .vector as_ex;                  // the demo's position as its run starts (its first sample at t >= 0)
 .vector as_exd;                 // and its horizontal heading there: the start steers onto that line
@@ -306,16 +307,25 @@ void(entity e, float argc) SV_TASRouteCommand =
 {
 	local float i;
 	if (Lobby_Active()) { sprint(e, PRINT_HIGH, "tas route: a local practice tool; not on lobby servers\n"); return; }
-	if (e.as_on && e.as_route) { sprint(e, PRINT_HIGH, "tas route: autosurf is surfing it; stop it first\n"); return; }
-	if (argc == 9 && argv(2) == "add")
+	// every refusal below still sends the count, so the tab drops the marker it drew for a refused add (review 2)
+	if (e.as_on && e.as_route) sprint(e, PRINT_HIGH, "tas route: autosurf is surfing it; stop it first\n");
+	else if (argc == 9 && argv(2) == "add")
 	{
-		for (i = 3; i < 9; i = i + 1) if (!FS_TASNumber(argv(i)) || fabs(stof(argv(i))) > 65536) { sprint(e, PRINT_HIGH, "tas route add <x y z> <nx ny nz>\n"); return; }
-		if (rt_n >= TAS_ASMAX) { sprint(e, PRINT_HIGH, sprintf("tas route: %.0f points at most\n", TAS_ASMAX)); return; }
-		i = vlen([stof(argv(6)), stof(argv(7)), stof(argv(8))]);
-		if (i > 0.01 && fabs(i - 1) > 0.02) { sprint(e, PRINT_HIGH, "tas route add: the normal is a unit vector, or 0 0 0 for a point\n"); return; }
-		rt_o[rt_n*3] = stof(argv(3)); rt_o[rt_n*3+1] = stof(argv(4)); rt_o[rt_n*3+2] = stof(argv(5));
-		rt_nn[rt_n*3] = stof(argv(6)); rt_nn[rt_n*3+1] = stof(argv(7)); rt_nn[rt_n*3+2] = stof(argv(8));
-		rt_n = rt_n + 1;
+		for (i = 3; i < 9; i = i + 1) if (!FS_TASNumber(argv(i)) || fabs(stof(argv(i))) > 65536) i = 100;
+		if (i >= 100) sprint(e, PRINT_HIGH, "tas route add <x y z> <nx ny nz>\n");
+		else if (rt_n >= TAS_ASMAX) sprint(e, PRINT_HIGH, sprintf("tas route: %.0f points at most\n", TAS_ASMAX));
+		else
+		{
+			i = vlen([stof(argv(6)), stof(argv(7)), stof(argv(8))]);
+			if (i > 0.01 && fabs(i - 1) > 0.02) sprint(e, PRINT_HIGH, "tas route add: the normal is a unit vector, or 0 0 0 for a point\n");
+			else
+			{
+				rt_o[rt_n*3] = stof(argv(3)); rt_o[rt_n*3+1] = stof(argv(4)); rt_o[rt_n*3+2] = stof(argv(5));
+				if (i <= 0.01) rt_nn[rt_n*3] = rt_nn[rt_n*3+1] = rt_nn[rt_n*3+2] = 0;    // near zero: a point (review 2)
+				else { rt_nn[rt_n*3] = stof(argv(6)); rt_nn[rt_n*3+1] = stof(argv(7)); rt_nn[rt_n*3+2] = stof(argv(8)); }
+				rt_n = rt_n + 1;
+			}
+		}
 	}
 	else if (argc == 3 && argv(2) == "undo") { if (rt_n > 0) rt_n = rt_n - 1; }
 	else if (argc == 3 && argv(2) == "clear") rt_n = 0;
@@ -425,8 +435,8 @@ void(entity e) SV_TASAutoFrame =
 			// version circled the same loop 227 u off the line for 900 ticks (rig tstart7).
 			if (!(e.flags & FL_ONGROUND))
 			{	// the spawn's drop; bounded (review: a refused step or a box with no floor repeated forever)
-				e.as_sn2 = e.as_sn2 + 2;
-				if (e.as_sn2 > 300) { SV_TASAutoStop(e, "the start never landed in the box (300 ticks)"); return; }
+				e.as_sdrop = e.as_sdrop + 2;
+				if (e.as_sdrop > 300) { SV_TASAutoStop(e, "the start never landed in the box (300 ticks)"); return; }
 				SV_TASAutoGuide(e, 0, 0, e.v_angle_y, 0, 2);
 				return;
 			}
@@ -499,7 +509,7 @@ void(entity e) SV_TASAutoFrame =
 		{
 			s = SV_TASAutoPlan(e);
 			if (s < 0 || as_n < 1) { SV_TASAutoStop(e, "out of the start box off the demo's route (not within 400 u)"); return; }
-			e.as_stage = 1; e.as_i = 0; e.as_try = 0; e.as_backs = 0; e.as_tprev = as_rows[s*7];
+			e.as_stage = 1; e.as_i = 0; e.as_try = 0; e.as_backs = 0; e.as_tprev = as_rows[s*7]; e.as_failat = -1;
 			sprint(e, PRINT_HIGH, sprintf("tas autosurf: out of the start box at %.0f u/s (tick %.0f); %.0f stretches ahead\n",
 				vlen([e.velocity_x, e.velocity_y, 0]), SV_TimerTicks(e), as_n));
 		}
@@ -553,7 +563,7 @@ void(entity e) SV_TASAutoFrame =
 			if (e.as_failat == e.as_i) e.as_failn = e.as_failn + 1; else { e.as_failat = e.as_i; e.as_failn = 1; }
 			e.as_backs = e.as_backs + 1; e.as_i = max(0, e.as_i - 1 - floor((e.as_failn - 1) / 2)); e.as_try = 0;
 			e.as_tprev = as_wp[e.as_i]; e.as_goal = as_ws[e.as_i]; e.as_stage = 3;
-			SV_TASAutoNote(e, 1, sprintf("stretch %.0f failed its tries: backtrack %.0f to stretch %.0f", e.as_i + 2, e.as_backs, e.as_i + 1));
+			SV_TASAutoNote(e, 1, sprintf("stretch %.0f failed its tries: backtrack %.0f to stretch %.0f", e.as_failat + 1, e.as_backs, e.as_i + 1));
 			return;
 		}
 		SV_TASAutoStop(e, sprintf("stuck at stretch %.0f of %.0f after %.0f backtracks", e.as_i + 1, as_n, e.as_backs));
@@ -685,7 +695,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		if (!e.taslg_on) { strunzone(path); return; }
 		if (e.as_file != "") strunzone(e.as_file);
 		e.as_file = path;
-		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sair = -1; e.as_sph = 0;
+		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0;
 		SV_TASAutoNote(e, 1, "start: prestrafe toward the demo's exit line, then one jump");
 		return;
 	}

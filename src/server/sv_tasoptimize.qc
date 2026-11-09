@@ -313,7 +313,7 @@ void(entity e, string why) SV_TASOptStop =
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: best so far turn %.3f deg/tick%s (not applied)\n", e.topt_bestr, SV_TASOptExtra(e)));
 	else if (e.topt_bestv >= TOPT_REACH && e.topt_tgtuse)
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: best so far turn %.3f deg/tick%s reaches the target, %.1f u/s there (not applied)\n",
-			e.topt_bestr, SV_TASOptExtra(e), SV_TASOptEnergyShow(e, e.topt_bestv - TOPT_REACH)));
+			e.topt_bestr, SV_TASOptExtra(e), SV_TASOptEnergyShow(e, e.topt_reache)));
 	else if (e.topt_bestv >= 0 && e.topt_tgtuse)
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: best so far turn %.3f deg/tick%s misses the target by %.1f u (not applied)\n",
 			e.topt_bestr, SV_TASOptExtra(e), TOPT_NEAR - e.topt_bestv));
@@ -909,9 +909,11 @@ float(entity e, float ran) SV_TASOptTubeIn =
 	return -1;
 };
 
-// P1449 review: a band's score from its value (energy less penalties, possibly negative): base + x above 1, and
-// below it squashed into (base, base + 1) -- monotonic, so penalties still rank, never across a band's floor.
-float(float base, float x) SV_TASOptBand = { return base + ((x >= 1) ? x : 1 / (2 - x)); };
+// P1449 review: a band's score from its value (energy less penalties, possibly negative): base + x above K, and
+// below it squashed into (base, base + K) as K*K / (2K - x) -- monotonic, so penalties still rank, never across a
+// band's floor. K 1500: squashed into (base, base + 1) every reach past ~-254 tied at 100000.0 in float32 (review 2).
+#define TOPT_BANDK 1500
+float(float base, float x) SV_TASOptBand = { return base + ((x >= TOPT_BANDK) ? x : TOPT_BANDK * TOPT_BANDK / (2 * TOPT_BANDK - x)); };
 
 // P1449: topt_out's counted ticks against the target. The reach is the first tick within the radius
 // that, when the target names a face, also touches that face (a world-ramp contact whose normal is
@@ -1554,7 +1556,7 @@ void(entity e) SV_TASOptFrame =
 	local float head, k, v, t0v;
 	SV_TASDemoFrame(e);             // P1449
 	SV_TASAutoFrame(e);             // P1449: an autosurf's next stretch, between its searches
-	if (e.topt_on || e.tdem_on || (e.as_on && e.as_stage != 20)) topt_busyt = time;   // not while armed (review)   // the chain holds the guard across its rewinds
+	if (e.topt_on || e.tdem_on || e.as_on) topt_busyt = time;   // armed too: the chain owns as_rows (review 2)   // the chain holds the guard across its rewinds
 	if (!e.topt_on) return;
 	if (!e.run_tas_paused || e.run_t_state != TS_RUNNING) { SV_TASOptStop(e, "TAS play/off, or the run ended"); return; }
 	if (e.run_tas_replaystate == TAS_TAPE_ACTIVE || e.run_tas_pending) return;

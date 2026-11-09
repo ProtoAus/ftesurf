@@ -226,7 +226,7 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	sui_text(at, [hint, hint], (tov_rn > 0) ? sprintf("Your route: %g points (aim at each ramp in order, then surf it)", tov_rn)
 		: "Or click your own route: aim at each ramp (or bhop floor) in order and add it.", SUI_THEME_DIM, 1, 0);
 	at_y = at_y + hint * 1.6;
-	if (Profile_Chip("taso_radd", at, chip, "Add at crosshair", hint, FALSE)) TASOptUI_RouteAdd();
+	if (!running && Profile_Chip("taso_radd", at, chip, "Add at crosshair", hint, FALSE)) TASOptUI_RouteAdd();
 	if (Profile_Chip("taso_rundo", at + [half + 6, 0, 0], chip, "Undo", hint, FALSE)) { localcmd("tas route undo\n"); tov_rn = max(0, tov_rn - 1); }
 	at_y = at_y + row + 3;
 	if (Profile_Chip("taso_rclear", at, chip, "Clear", hint, FALSE)) { localcmd("tas route clear\n"); tov_rn = 0; }
