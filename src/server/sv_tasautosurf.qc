@@ -20,6 +20,10 @@
 // friction included) -- as_sg ground ticks of W + strafe key from yaw as_sy, one jump (the start's one hop), then
 // guided air strafing (side as_sair) in 2-tick steps until the run starts, where the chain begins.
 .float as_szone, as_sg, as_sy, as_sside, as_sair, as_sn;
+// `onjump` / `onexit`: armed in the start box while the player prestrafes live; paused at their jump (then guided
+// air strafing toward the demo's exit point) or at the exit, the chain takes over (Lex, 10 Nov).
+.float as_arm, as_nolegal, as_lastground;
+.vector as_ex;                  // the demo's position as its run starts (its first sample at t >= 0)
 void(entity e, float z) SV_TASLegalStart;    // `tas autosurf startpause`: pause on a run's first tick (TAS on), and the state seen last   // the head at the last rewind request, and requests since it last moved
 .string as_file;
 float as_n;                     // waypoints
@@ -247,10 +251,26 @@ void(entity e) SV_TASAutoFrame =
 	if (e.as_startpause && e.run_tas_mode && !e.run_tas_paused && e.run_t_state == TS_RUNNING && e.as_laststate != TS_RUNNING)
 		if (SV_TASPauseNow(e)) sprint(e, PRINT_HIGH, sprintf("tas autosurf: paused on the run's first tick (%.0f); press Autosurf\n", SV_TimerTicks(e)));
 	e.as_laststate = e.run_t_state;
+	if (e.as_on && e.as_stage == 20)
+	{	// armed: the player's own prestrafe; take over at the jump (as_arm 2) or the exit (1)
+		if (e.run_t_state == TS_RUNNING)
+		{
+			if (e.run_tas_paused || SV_TASPauseNow(e)) { e.as_stage = 12; return; }
+			SV_TASAutoStop(e, "could not pause where the run started"); return;
+		}
+		if (e.as_arm == 2 && e.run_t_state == TS_ARMED && !e.run_tas_paused && e.as_lastground && !(e.flags & FL_ONGROUND) && e.velocity_z > 100)
+			if (SV_TASPauseNow(e))
+			{
+				e.as_stage = 12; e.as_sn = 0;
+				SV_TASAutoNote(e, 1, sprintf("took over at your jump: %.0f u/s", vlen([e.velocity_x, e.velocity_y, 0])));
+			}
+		e.as_lastground = (e.flags & FL_ONGROUND) ? 1 : 0;
+		return;
+	}
 	if (e.as_on && e.as_stage >= 10)
 	{	// the start: a step at a time, each once the last has landed
 		if (e.run_tas_pending || e.run_tas_replaystate == TAS_TAPE_ACTIVE || e.run_tas_replaystate == TAS_TAPE_STAGING) return;
-		if (!e.run_tas_paused || !e.taslg_on) { SV_TASAutoStop(e, "the legal start ended (TAS play, a move, a respawn)"); return; }
+		if (!e.run_tas_paused || (!e.taslg_on && !e.as_nolegal)) { SV_TASAutoStop(e, "the start ended (TAS play, a move, a respawn)"); return; }
 		if (e.as_stage == 10)
 		{
 			SV_TASAutoGuide(e, 400, 400 * e.as_sside, e.as_sy, 0, e.as_sg);
@@ -271,7 +291,17 @@ void(entity e) SV_TASAutoFrame =
 				vlen([e.velocity_x, e.velocity_y, 0]), SV_TimerTicks(e), as_n));
 		}
 		else if (e.as_sn >= 240) SV_TASAutoStop(e, "the start never left the box (240 air ticks)");
-		else { SV_TASAutoGuide(e, 0, 400 * e.as_sair, e.v_angle_y, 0, 2); e.as_sn = e.as_sn + 2; }
+		else
+		{	// in the air in the box; after a player's jump, turn toward where the demo left the box (a side each
+			// 2-tick step; within 3 degrees the side alternates, so the line holds while the speed builds)
+			if (e.as_nolegal)
+			{
+				d = vectoyaw(e.as_ex - e.origin) - vectoyaw(e.velocity);
+				d = d - 360 * floor((d + 180) / 360);
+				e.as_sair = (fabs(d) < 3) ? -e.as_sair : ((d > 0) ? -1 : 1);     // + yaw is a left turn: the left key
+			}
+			SV_TASAutoGuide(e, 0, 400 * e.as_sair, e.v_angle_y, 0, 2); e.as_sn = e.as_sn + 2;
+		}
 		return;
 	}
 	if (!e.as_on || e.topt_on || e.tdem_on) return;
@@ -343,7 +373,7 @@ void(entity e) SV_TASToolsDisconnect =
 
 void(entity e, float argc) SV_TASAutoCommand =
 {
-	local float i, s, n, st, flip;
+	local float i, s, n, st, flip, arm;
 	local string w, path;
 	if (argc == 3 && argv(2) == "stop") { if (e.as_on) SV_TASAutoStop(e, "stopped"); else sprint(e, PRINT_HIGH, "tas autosurf: not running\n"); return; }
 	if (argc == 3 && argv(2) == "startpause")
@@ -363,13 +393,13 @@ void(entity e, float argc) SV_TASAutoCommand =
 	path = argv(2);
 	if (argc < 3 || path == "" || strstrofs(path, "..") >= 0)
 	{
-		sprint(e, PRINT_HIGH, "tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [emin F] [nohop] [finish] [start [zone N] [sg N] [sy Y] [sright] [sflip]] | stop | status | startpause\n");
+		sprint(e, PRINT_HIGH, "tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [emin F] [nohop] [finish] [start [zone N] [sg N] [sy Y] [sright] [sflip] | onjump | onexit] | stop | status | startpause\n");
 		return;
 	}
 	if (e.as_on || e.topt_on || e.tdem_on) { sprint(e, PRINT_HIGH, "tas autosurf: a search, demo or autosurf is running\n"); return; }
 	if (!SV_TASDemoPathOK(path)) { sprint(e, PRINT_HIGH, "tas autosurf: a .rec under data/ or cfg/ksfreplays/\n"); return; }
 	if (SV_TASOptBusy(e)) return;
-	st = 0; flip = 0; e.as_szone = 0; e.as_sg = 40; e.as_sy = -100; e.as_sside = -1;
+	st = 0; flip = 0; arm = 0; e.as_szone = 0; e.as_sg = 40; e.as_sy = -100; e.as_sside = -1;
 	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = 6; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1; e.as_emin = 0.9;
 	for (i = 3; i < argc; i = i + 1)
 	{
@@ -383,15 +413,17 @@ void(entity e, float argc) SV_TASAutoCommand =
 		else if (w == "nohop") e.as_hop = 0;
 		else if (w == "start") st = 1;
 		else if (w == "zone" && n >= 0 && n < 64 && n == floor(n)) { e.as_szone = n; i = i + 1; }
-		else if (w == "sg" && n >= 1 && n <= 400 && n == floor(n)) { e.as_sg = n; i = i + 1; }
+		else if (w == "sg" && n >= 1 && n <= 128 && n == floor(n)) { e.as_sg = n; i = i + 1; }    // one step command's most
 		else if (w == "sy" && FS_TASNumber(argv(i + 1)) && fabs(stof(argv(i + 1))) <= 360) { e.as_sy = stof(argv(i + 1)); i = i + 1; }
 		else if (w == "sright") e.as_sside = 1;
 		else if (w == "sflip") flip = 1;
+		else if (w == "onjump") arm = 2;
+		else if (w == "onexit") arm = 1;
 		else if (w == "finish") e.as_finish = 1;
 		else { sprint(e, PRINT_HIGH, sprintf("tas autosurf: unknown option '%s'\n", w)); return; }
 	}
 	// `start` begins in the start box, before the running attempt the tools need (it is a legal start's own path)
-	if (st) { if (Lobby_Active() || !e.run_tas_rwcap) { SV_TASToolGate(e, "autosurf"); return; } }
+	if (st || arm) { if (Lobby_Active() || !e.run_tas_rwcap) { SV_TASToolGate(e, "autosurf"); return; } }
 	else if (!SV_TASToolGate(e, "autosurf")) return;
 	e.as_sair = flip ? -e.as_sside : e.as_sside;
 	path = strzone(path);                       // argv is clobbered by the reads and searches below
@@ -400,6 +432,19 @@ void(entity e, float argc) SV_TASAutoCommand =
 	{
 		sprint(e, PRINT_HIGH, (as_nrows == -2) ? "tas autosurf: that demo is another map's\n" : sprintf("tas autosurf: cannot read %s\n", path));
 		strunzone(path); return;
+	}
+	e.as_nolegal = 0; e.as_arm = 0;
+	for (i = 0; i < as_nrows - 1 && as_rows[i*7] < 0; i = i + 1) ;
+	e.as_ex = SV_TASAutoRowO(i);
+	if (arm)
+	{
+		if (e.run_t_state != TS_ARMED) { sprint(e, PRINT_HIGH, "tas autosurf: onjump / onexit wait in the start box (stand in it, TAS on)\n"); strunzone(path); return; }
+		if (e.as_file != "") strunzone(e.as_file);
+		e.as_file = path;
+		e.as_on = 1; e.as_stage = 20; e.as_arm = arm; e.as_nolegal = 1; e.as_backs = 0; e.as_sair = -1;
+		e.as_lastground = (e.flags & FL_ONGROUND) ? 1 : 0;
+		SV_TASAutoNote(e, 1, (arm == 2) ? "armed: prestrafe and jump -- I take over at your jump" : "armed: prestrafe out of the box -- I take over at its edge");
+		return;
 	}
 	if (st)
 	{
