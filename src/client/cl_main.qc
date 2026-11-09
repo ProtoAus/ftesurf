@@ -2096,6 +2096,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	if (!worldonly)
 	{
 		Zone_Draw();
+		TASOptViz_Draw();           // P1449: tas optimize's candidates, same depth-tested pass
 		PTrail_DrawAll();           // P772: after the predraws that feed it
 	}
 	ZoneEdit_Draw3D(!worldonly); // P1348: maintain input/drag without submitting overlays
@@ -2531,6 +2532,32 @@ float(string cmd) CSQC_ConsoleCommand =
 				localcmd(sprintf("p%g cmd tas demo %s%s%s\n", tsseat + 1, tsline, (cmdargc >= 4) ? strcat(" ", argv(3)) : "",
 					(cmdargc == 5) ? strcat(" ", argv(4)) : ""));
 		}
+		else if (cmdargc == 4 && !strcmp(argv(1), "demorows"))                   // P1449: a path (letters, digits, _ - . /) and a time
+		{
+			tsline = argv(2);
+			for (tsi = 0; tsi < strlen(tsline); tsi = tsi + 1)
+			{
+				tsvalue = str2chr(tsline, tsi);
+				if (!((tsvalue >= 48 && tsvalue <= 57) || (tsvalue >= 65 && tsvalue <= 90) || (tsvalue >= 97 && tsvalue <= 122) ||
+				      tsvalue == 95 || tsvalue == 45 || tsvalue == 46 || tsvalue == 47)) tsline = "";
+			}
+			if (tsline == "" || strstrofs(tsline, "..") >= 0 || !FS_TASNumber(argv(3)))
+				print("tas demorows <file> <from>\n");
+			else
+				localcmd(sprintf("p%g cmd tas demorows %s %s\n", tsseat + 1, tsline, argv(3)));
+		}
+		else if (cmdargc >= 3 && cmdargc <= 18 && !strcmp(argv(1), "seed"))      // P1449: knots (numbers) or clear
+		{
+			tsline = "";
+			for (tsi = 2; tsi < cmdargc; tsi = tsi + 1)
+				if ((cmdargc == 3 && argv(tsi) == "clear") || FS_TASNumber(argv(tsi)))
+					tsline = strcat(tsline, " ", argv(tsi));
+				else tsline = "!";
+			if (substring(tsline, 0, 1) == "!")
+				print("tas seed <q1> .. <qk> | clear\n");
+			else
+				localcmd(sprintf("p%g cmd tas seed%s\n", tsseat + 1, tsline));
+		}
 		else if (cmdargc >= 2 && cmdargc <= 9 && !strcmp(argv(1), "target"))     // P1449: numbers, clear or show only
 		{
 			tsline = "";
@@ -2549,7 +2576,7 @@ float(string cmd) CSQC_ConsoleCommand =
 			tsline = "";
 			for (tsi = 4; tsi < cmdargc; tsi = tsi + 1)    // the server checks their order; only known words pass
 				if (argv(tsi) == "board" || argv(tsi) == "flick" || argv(tsi) == "time" || argv(tsi) == "energy" ||
-				    argv(tsi) == "fast" || argv(tsi) == "zigzag" || argv(tsi) == "split" || argv(tsi) == "fixedpitch" || argv(tsi) == "follow" || argv(tsi) == "curve" || (stof(argv(tsi)) >= 1 && stof(argv(tsi)) <= 32
+				    argv(tsi) == "fast" || argv(tsi) == "zigzag" || argv(tsi) == "split" || argv(tsi) == "fixedpitch" || argv(tsi) == "follow" || argv(tsi) == "curve" || argv(tsi) == "demo" || (stof(argv(tsi)) >= 1 && stof(argv(tsi)) <= 32
 				    && argv(tsi) == ftos(stof(argv(tsi)))))
 					tsline = strcat(tsline, " ", argv(tsi));
 				else tsline = "!";

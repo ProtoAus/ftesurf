@@ -336,6 +336,8 @@ client/cl_weaponui.qc
 // TAS panel reuses the workshop slider and precedes cl_main's draw/input hooks.
 client/cl_tasui.qc
 client/cl_tastimeline.qc
+// P1449: tas optimize's candidates in the world; cl_share (event) and cl_main (draw) follow.
+client/cl_tasoptviz.qc
 // Sections reuse the timeline's body binding and single-owner name editor.
 client/cl_tascontacts.qc
 client/cl_tassections.qc

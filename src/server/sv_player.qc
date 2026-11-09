@@ -1619,6 +1619,8 @@ void(entity e, float argc) SV_TASCommand =
 	if (!strcmp(action, "optimize")) { SV_TASOptCommand(e, argc); return; }
 	if (!strcmp(action, "rollbench")) { SV_TASRollBench(e, argc); return; }   // P1443
 	if (!strcmp(action, "target")) { SV_TASTargetCommand(e, argc); return; }  // P1449
+	if (!strcmp(action, "seed")) { SV_TASSeedCommand(e, argc); return; }      // P1449
+	if (!strcmp(action, "demorows")) { SV_TASDemoRowsCommand(e, argc); return; }   // P1449
 	if (!strcmp(action, "demo")) { SV_TASDemoCommand(e, argc); return; }      // P1449
 	if (!strcmp(action, "project") || !strcmp(action, "cp")) { SV_TASProjectCommand(e, argc); return; }
 	if (!strcmp(action, "inputs")) { SV_TASInputs(e, argc); return; }

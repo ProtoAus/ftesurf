@@ -209,6 +209,7 @@
 #define TAS_SECTION_MAX 49    // 48 checkpoint boundaries plus the retained tail
 #define TAS_EV_CONTACTS 54   // own source-bound observed spans; no input/pose authority
 #define TAS_EV_SOLVE 55      // own bounded-search progress; never input/pose authority
+#define TAS_EV_OPTVIZ 56     // P1449: tas optimize's candidate paths, drawn only (cl_tasoptviz.qc)
 #define TAS_CONTACT_ROWS 4
 #define TAS_CONTACT_MAX 4096
 #define TAS_PAGE_ROWS 8

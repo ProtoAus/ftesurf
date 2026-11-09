@@ -278,6 +278,7 @@ void() TASTimeline_Event2;
 void() TASSections_Event;
 void() TASContacts_Event;
 void() TASSolve_Event;
+void() TASOptViz_Event;         // P1449
 void() TASProject_Event;
 
 void() CSQC_Parse_Event =
@@ -292,6 +293,7 @@ void() CSQC_Parse_Event =
 	if (t == TAS_EV_SECTIONS) { TASSections_Event(); return; }
 	if (t == TAS_EV_CONTACTS) { TASContacts_Event(); return; }
 	if (t == TAS_EV_SOLVE) { TASSolve_Event(); return; }
+	if (t == TAS_EV_OPTVIZ) { TASOptViz_Event(); return; }
 	if (t == TAS_EV_PROJECT) { TASProject_Event(); return; }
 	if (t >= AR_EV_ROW && t <= AR_EV_DATA)
 	{

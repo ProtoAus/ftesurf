@@ -26,7 +26,14 @@ p.add_argument('--tries', type=int, default=5); p.add_argument('--radius', type=
 p.add_argument('--budget', type=float, default=500, help='seconds of chaining before stopping')
 p.add_argument('--ledger', type=Path, required=True, help='surfledger.py JSON of the demo')
 p.add_argument('--developer', type=int, default=0)
+p.add_argument('--shots', type=int, default=0, help='screenshots of the drawn search (pairs: mid-search, played)')
+p.add_argument('--shot-after', type=float, default=12.0)
+p.add_argument('--chase', default='', help='client chase camera: back,up (e.g. 400,250) for the shots')
+p.add_argument('--sides', default='right,left', help='sides each try searches (curve: one is enough, its grid spans both)')
+p.add_argument('--bench', action='store_true', help='time rollouts at the placed state (developer 1), then stop')
 p.add_argument('--horizon', type=int, default=0, help='ticks a link searches (fast: up to 512, played as tapes); 0: the demo stretch x1.25 + 10')
+p.add_argument('--seed', action='store_true', help="start each curve search from the demo's own command over the link (tas seed)")
+p.add_argument('--boards-only', action='store_true', help='each link is board to next board: ride and flight in one search')
 p.add_argument('--bottoms', action='store_true', help="also a waypoint at each ride's lowest point (default: the ride is one link)")
 p.add_argument('--demo-check', action='store_true', help="replay the demo's own inputs from the save to each waypoint, then stop")
 p.add_argument('--lead', type=int, default=2, help='the save is this many samples before the demo boards the first ramp')
@@ -95,10 +102,16 @@ def endpoint():
 BEST = r'tas optimize: best (left|right) turn (-?[\d.]+) deg/tick over (\d+) ticks: (exit|energy) (-?[\d.]+) u/s \((\d+) candidates\); paused at (\d+)'
 REACH = r'tas optimize: target reached at tick (\d+) of (\d+) \(([\d.]+) u from it\), (?:energy|speed) (-?[\d.]+) u/s there'
 MISS = r'tas optimize: target not reached: closest ([\d.]+) u at tick (\d+) of (\d+)'
+SHOTS = []
 def optimize(line):
     off = len(cl.text()); cl.send(f'tas optimize {line}')
+    if a.shots and len(SHOTS) < a.shots:
+        # the search drawn mid-way (cl_tasoptviz.qc), then once more when the best is played
+        time.sleep(a.shot_after); cl.send('screenshot'); SHOTS.append(('search', line, time.monotonic()))
     m = cl.wait(BEST + r'|tas optimize: stopped[^\n]*', off, 300)
     time.sleep(1.0)
+    if a.shots and len(SHOTS) < a.shots:
+        cl.send('screenshot'); SHOTS.append(('played', line, time.monotonic())); time.sleep(2.5)
     t = cl.text()[off:]
     rm = re.search(REACH, t); mm = re.search(MISS, t)
     return m, t, rm, mm
@@ -129,6 +142,33 @@ try:
             except ValueError: continue
             rows.append(v)
     L = json.load(open(a.ledger)); L = L[next(iter(L))]; segs = L['segments']
+    # the demo's turn command per sample (sv_tasoptimize.qc SV_TASOptFollow's q): its strafe side and the
+    # wish direction against the velocity before the sample's move; 0 where no side key is held
+    kbs = []; kb = 0
+    for line in open(a.demo, encoding='latin-1'):
+        q = line.split()
+        if q and q[0] == 'ksfbuttons' and len(q) >= 3: kb = int(q[2]); continue
+        if q and (q[0][0] == '-' or q[0][0].isdigit()):
+            try: [float(x) for x in q[:14]]
+            except ValueError: continue
+            kbs.append(kb)
+    DQ = [0.0]
+    for i in range(1, len(rows)):
+        r0, r1 = rows[i - 1], rows[i]
+        if r1[12] == 0: DQ.append(0.0); continue
+        wy = math.radians(r1[8]) + (math.pi / 2 if r1[12] < 0 else -math.pi / 2)
+        x = r0[4] * math.cos(wy) + r0[5] * math.sin(wy)
+        DQ.append(max(-120.0, min(120.0, (1 if r1[12] < 0 else -1) * (30 - x))))
+    def seed_knots(i0, H, K):
+        # each knot: the demo's command averaged over its share of the link (i0: the demo sample the link starts on)
+        out = []
+        h = (H - 1) / (K - 1)
+        for j in range(K):
+            c = i0 + j * h
+            lo, hi = int(max(i0, c - h / 2)), int(min(i0 + H - 1, c + h / 2))
+            seg = [DQ[i] for i in range(lo, hi + 1) if 0 <= i < len(DQ)]
+            out.append(sum(seg) / len(seg) if seg else 0.0)
+        return out
     # waypoints: each ride's bottom (vz crosses 0 nearest the lowest point) and its leave on the ramp's
     # face, then the next ramp's board on its face -- a long ride in two halves (Lex, 9 Nov)
     # each waypoint's face: the plane the demo touches at that tick (a ride crosses many planes: the
@@ -150,7 +190,7 @@ try:
             W.append(('board', k, R[0], sg['n']))
         lo = min(R, key=lambda x: x[3])
         if a.bottoms and R.index(lo) not in (0, len(R) - 1): W.append(('bottom', k, lo, sg['n']))
-        W.append(('leave', k, R[-1], sg['n']))
+        if not a.boards_only: W.append(('leave', k, R[-1], sg['n']))
     if a.first + a.ramps < len(segs):
         sg = segs[a.first + a.ramps]
         W.append(('board', a.first + a.ramps, next(x for x in rows if x[0] >= sg['t_board'] - 1e-6), sg['n']))
@@ -196,9 +236,15 @@ try:
     e0 = endpoint(); nr = rows[bi - a.lead + 1]; r['placed'] = e0
     print(f'      one tick after the save (demo t={nr[0]:.3f}): ours {tuple(round(x, 1) for x in e0[:3])} v {tuple(round(x, 1) for x in e0[3:])}'
           f'; demo {tuple(round(x, 1) for x in nr[1:4])} v {tuple(round(x, 1) for x in nr[4:7])}', flush=True)
-    check('placed on the demo state, one tick on', math.dist(e0[:3], nr[1:4]) < 8 and math.dist(e0[3:], nr[4:7]) < 30, (e0, nr[:7]))
+    check('placed on the demo state, one tick on (a ducked demo is 8.5 u off: the save stands)', math.dist(e0[:3], nr[1:4]) < 12 and math.dist(e0[3:], nr[4:7]) < 60, (e0, nr[:7]))
     check('acting TAS session', status()[4] == 1, status())
     D = demo_rows()
+    if a.bench:
+        for n, c in ((24, 400), (194, 60), (194, 300)):
+            off = len(cl.text()); cl.send(f'cmd tas rollbench {n} {c}')
+            m = cl.wait(r'tas rollbench: [^\n]*', off, 120)
+            print('      ' + m.group(0), flush=True)
+        W = []
     if a.demo_check:
         # the demo's own inputs in this mover from the same state: what its line is worth here
         tnow = rows[bi - a.lead + 1][0]
@@ -214,11 +260,26 @@ try:
             r.setdefault('demo_check', []).append({'point': f'{what} {k}', 'ours': e1, 'demo': wr[:7], 'vE': v, 'demo_vE': dv})
             tnow = wr[0]
         W = []
+    if a.chase:
+        cb, cu = a.chase.split(',')
+        cl.send(f'chase_active 1; chase_back {cb}; chase_up {cu}; scr_sshot_type png'); time.sleep(1)
     chain = []; t_start = time.monotonic(); tprev = rows[bi - a.lead + 1][0]
     print('      point     try  side  result                          | demo there', flush=True)
     for (what, k, wr, n) in W:
         # the horizon: the demo's own ticks for this stretch, with room (--horizon 0), or fixed
-        H = a.horizon or min(512, max(16, round(1.25 * (wr[0] - tprev) / 0.015) + 10)); tprev = wr[0]
+        H = a.horizon or min(512, max(16, round(1.25 * (wr[0] - tprev) / 0.015) + 10))
+        if 'demo' in a.modes.split():
+            off = len(cl.text()); cl.send(f'tas demorows tasdemo.rec {tprev:.4f}')
+            m = cl.wait(r'tas demorows: (\d+) rows', off, 15)
+            check(f'demo rows for {what} {k}', int(m.group(1)) >= H, m.group(0))
+        if a.seed:
+            km = re.search(r'curve (\d+)', a.modes); K = int(km.group(1)) if km else 8
+            i0 = min(range(len(rows)), key=lambda i: abs(rows[i][0] - tprev)) + 1   # DQ[i]: the move from sample i-1 to i
+            sk = seed_knots(i0, H, K)
+            off = len(cl.text()); cl.send('tas seed ' + ' '.join(f'{x:.2f}' for x in sk))
+            cl.wait(r'tas seed: \d+ knots kept', off, 10)
+            print(f'      seed for {what} {k}: ' + ' '.join(f'{x:.0f}' for x in sk), flush=True)
+        tprev = wr[0]
         o = wr[1:4]; off = len(cl.text())
         cl.send(f'tas target {o[0]:.1f} {o[1]:.1f} {o[2]:.1f} {a.radius} {n[0]:.4f} {n[1]:.4f} {n[2]:.4f}')
         cl.wait(r"tas target: '", off, 10)
@@ -229,7 +290,7 @@ try:
         for tr in range(a.tries):
             if time.monotonic() - t_start > a.budget: break
             h = tick(); results = []
-            for side in ('right', 'left'):
+            for side in a.sides.split(','):
                 for mode in MODES:
                     how = f'{side} {mode}'
                     m, t, rm, mm = optimize(f'{H} {how} energy fast')
