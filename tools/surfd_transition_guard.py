@@ -185,8 +185,12 @@ def state_read(root, m):
 
 def lock_file(root, name):
     fd = os.open(root / name, os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK)
-    secure_stat(os.fstat(fd))
-    return fd
+    try:
+        secure_stat(os.fstat(fd))
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
 
 
 def acquire(fd, operation, timeout):

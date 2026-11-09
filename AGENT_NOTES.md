@@ -10385,6 +10385,22 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+- **A CLOSED process is not a CLOSED HTTP application (9 Nov).** Starting an
+  authorized candidate under a process-lifetime lease does not fence its requests.
+  `surfd_http_admission.py` uses the selected Gunicorn config's post-worker hook;
+  only exact GET health reaches the application while CLOSED. Real HTTP controls
+  must prove ordinary writes and read-with-write routes ACT after OPEN and refuse
+  before application entry while CLOSED. Use a new sealed generation and qualify
+  the actual prior application on the same schema/nonempty queues before stopping
+  serving. Never mutate an old generation or relabel a failed DATA comparison.
+- **Persistent request workers need exception-safe lock ownership (9 Nov).**
+  `lock_file` must close a locally opened fd when metadata/fstat validation raises;
+  its caller cannot close a descriptor that was never returned. Synthetic invalid
+  metadata requests exposed one leaked descriptor per refusal in the old helper.
+  Validate both refusal/no app effect and stable descriptor count, then repair the
+  fixture and prove an ordinary request can act. Keep one open lock description
+  per request through iterable close so sibling threads cannot release its lease.
+
 P1372 progs rollout preservation (7 Nov): captured/read back ALL189current parts/
 resume payloads off-box before restart, bounded to each opened FD's size. An active
 prefix is not a closed-writer or simultaneous snapshot claim. Afterward188prefixes
