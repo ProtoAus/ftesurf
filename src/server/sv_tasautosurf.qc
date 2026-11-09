@@ -192,6 +192,32 @@ void(entity e, float fwd, float side, float yaw, float bits, float n) SV_TASAuto
 // heading): the strafe side that turns the velocity toward it, alternating once within `tol` degrees so the line
 // holds; a side change mirrors the view about the velocity (the guide's own slew would take ~15 ticks to swing
 // it). A fixed side circled in the box (rig tpre1, 10 Nov).
+// The native guide's best-gain yaw for these keys from the body's velocity (SV_TASGuideYaw, sv_tas_control.h:
+// friction first on the ground, the wish at acos((cap - impulse) / speed) off the velocity), so each step starts
+// on it: a step's preset came from v_angle, which a TAS pause need not hold, and 3-tick steps topped out at
+// 269 u/s where one long guide command reached 290 (rig tstart4). -1000 without a bearing.
+float(entity e, float fwd, float side) SV_TASAutoGuideYaw =
+{
+	local float sp, wish, ctrl, imp, cap, dot, th, ground, surf, off;
+	ground = (e.flags & FL_ONGROUND) ? 1 : 0;
+	sp = vlen([e.velocity_x, e.velocity_y, 0]);
+	if (sp < 1) return -1000;
+	wish = min(sqrt(fwd * fwd + side * side), cvar("sv_maxspeed"));
+	if (ground)
+	{
+		ctrl = max(sp, cvar("sv_stopspeed"));
+		sp = sp - ctrl * cvar("sv_friction") * PM_TICK;
+		if (sp <= 0.0001) return -1000;
+	}
+	surf = (!ground && e.velocity_z > 0 && e.velocity_z <= 140) ? 0.25 : 1;
+	imp = (ground ? cvar("sv_accelerate") : cvar("sv_airaccelerate")) * wish * PM_TICK * surf;
+	cap = ground ? wish : min(wish, 30);
+	dot = bound(0, cap - imp, sp);
+	th = acos(dot / sp) * 180 / M_PI;
+	off = fwd ? ((side < 0) ? 45 : -45) : ((side < 0) ? 90 : -90);
+	return vectoyaw([e.velocity_x, e.velocity_y, 0]) + ((side < 0) ? th : -th) - off;
+};
+
 // fside -1 / 1 holds that side (the start's speed circle); from rest the wish starts along `rest`'s yaw.
 void(entity e, float fwd, float bits, float n, float tol, float fside, float rest) SV_TASAutoSteer =
 {
@@ -203,9 +229,8 @@ void(entity e, float fwd, float bits, float n, float tol, float fside, float res
 	if (fabs(d) > 150) side = e.as_sair;    // the line behind: hold the turn (d's sign flipped each step there and
 	                                        // every flip's mirrored view bled speed: 269 u/s, rig tstart3)
 	if (fside) side = fside;
-	yaw = e.v_angle_y;
-	if (vlen([e.velocity_x, e.velocity_y, 0]) <= 30) yaw = h + ((side < 0) ? -45 : 45) * (fwd ? 1 : 2);   // from rest: wish along the line
-	else if (side != e.as_sair) yaw = 2 * h - yaw;
+	yaw = SV_TASAutoGuideYaw(e, fwd, 400 * side);
+	if (yaw <= -1000) yaw = h + ((side < 0) ? -45 : 45) * (fwd ? 1 : 2);    // from rest: wish along the line
 	e.as_sair = side;
 	SV_TASAutoGuide(e, fwd, 400 * side, yaw, bits, n);
 };
@@ -320,7 +345,8 @@ void(entity e) SV_TASAutoFrame =
 			// the line from rest jumped at 239 u/s, 194 u short (rig tstart2).
 			if (e.as_sn > 0 && ((t >= 280 && best < 12 && d < 260) || d < 140 || e.as_sn >= e.as_sg))
 			{
-				SV_TASAutoGuide(e, 400, 400 * e.as_sair, e.v_angle_y, 1, 1);     // the start's one jump
+				head = SV_TASAutoGuideYaw(e, 400, 400 * e.as_sair);
+				SV_TASAutoGuide(e, 400, 400 * e.as_sair, (head > -1000) ? head : e.v_angle_y, 1, 1);     // the start's one jump
 				SV_TASAutoNote(e, 1, sprintf("start: jumped at %.0f u/s, %.0f u from the demo's exit, %.0f deg off its line", t, d, best));
 				e.as_stage = 12; e.as_sn = 0;
 			}
