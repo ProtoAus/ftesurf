@@ -2551,7 +2551,7 @@ float(string cmd) CSQC_ConsoleCommand =
 				localcmd(sprintf("p%g cmd tas speed %.9g\n", tsseat + 1, tsvalue));
 		}
 		else
-			print("tas: menu | timeline | undo/redo | mouse [on/off] | on/off | pause/play | step/back [1..128] | plan/next mode forward side pitch yaw bits [count] | inputs [N] | replay first | edit first [last] field value | optimize ticks left/right [board] [flick [k]] [time] | status | speed 0.1..1\n");
+			print("tas: menu | timeline | undo/redo | mouse [on/off] | on/off | pause/play | step/back [1..128] | plan/next mode forward side pitch yaw bits [count] | inputs [N] | replay first | edit first [last] field value | optimize ticks left/right [board] [flick [k]] [time | energy] [fast] | status | speed 0.1..1\n");
 		return TRUE;
 	}
 	if (!strcmp(argv(0), "host_timescale"))
