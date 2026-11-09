@@ -136,6 +136,7 @@ vector(entity e, float b) SV_TASAutoFace =
 float(entity e) SV_TASAutoPlan =
 {
 	local float i, s, d, best, st, lastleave, gdt, j;
+	local vector n;
 	best = 1000000; s = -1;
 	for (i = 0; i < as_nrows; i = i + 1)
 	{
@@ -150,7 +151,11 @@ float(entity e) SV_TASAutoPlan =
 		if (d && st < 0) st = i;
 		if (!d && st >= 0)
 		{
-			if (as_rows[i*7-7] - as_rows[st*7] >= 0.3 - 0.0001 && as_rows[st*7+6] < -100)
+			// a ride of 0.3 s or more: entered falling, or rising onto a surf face (surf_null's ramp past the ceiling
+			// after ramp 6 is entered rising; skipped, one stretch ran ramp 6 to ramp 7 -- 8 s, past a search's cap)
+			n = '0 0 0';
+			if (as_rows[i*7-7] - as_rows[st*7] >= 0.3 - 0.0001 && as_rows[st*7+6] >= -100 && st > s + 2) n = SV_TASAutoFace(e, st);
+			if (as_rows[i*7-7] - as_rows[st*7] >= 0.3 - 0.0001 && (as_rows[st*7+6] < -100 || n != '0 0 0'))
 			{
 				if (e.as_hop)
 					for (j = max(lastleave, s) + 1; j < st - 3; j = j + 1)
