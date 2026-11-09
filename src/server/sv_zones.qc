@@ -113,14 +113,17 @@ float() SV_ZoneLoadFromBsp =
 			  Deliberately its own change, landed before the hull rule, so the
 			  two effects can be told apart in an A/B.
 			*/
-			Zone_AddBox(e.absmin + '1 1 1', e.absmax - '1 1 1', type,
-			            Zone_LegacySeg(type, e.stage, e.zone_number), Zone_LegacyTrack(e.track_number, e.targetname));
+			Zone_AddLegacy(e.absmin + '1 1 1', e.absmax - '1 1 1', type, e.stage, e.zone_number,
+			               e.track_number, e.targetname);
 			n = n + 1;
 		}
 	}
 
 	if (n)
+	{
+		Zone_LegacyEnds();
 		zone_source = ZSRC_BSP;
+	}
 	return n > 0;
 };
 

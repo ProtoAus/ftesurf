@@ -258,7 +258,7 @@ float() Zone_LoadFromBsp =
 {
 	local string tok, key, cn, mdl, tracknum, tn;
 	local entity probe;
-	local float type, stage, n, zonenum;
+	local float type, stage, n, zonenum, pass, want;
 	local vector org;
 
 	Zone_Clear();
@@ -266,45 +266,58 @@ float() Zone_LoadFromBsp =
 
 	probe = spawn();
 
-	getentitytoken(0);				// reset to the start of the lump
-	while ((tok = getentitytoken()) != "")
+	// P1461: one walk per type, START STAGE CHECKPOINT END, which is SV_ZoneLoadFromBsp's order;
+	// lump order put 22 maps' rows in another order and their zonecrc could never match.
+	for (pass = 0; pass < 4; pass = pass + 1)
 	{
-		if (tok != "{")
-			continue;
-
-		cn = mdl = tracknum = tn = "";
-		stage = zonenum = 0;
-		org = '0 0 0';
-
-		while ((key = getentitytoken()) != "" && key != "}")
+		if (pass == 0)      want = ZONE_START;
+		else if (pass == 1) want = ZONE_STAGE;
+		else if (pass == 2) want = ZONE_CHECKPOINT;
+		else                want = ZONE_END;
+		getentitytoken(0);				// reset to the start of the lump
+		while ((tok = getentitytoken()) != "")
 		{
-			tok = getentitytoken();
-			if      (key == "classname") cn = tok;
-			else if (key == "model")     mdl = tok;
-			else if (key == "stage")     stage = stof(tok);
-			else if (key == "zone_number")  zonenum = stof(tok);    // P1461, as sv_zones.qc
-			else if (key == "track_number") tracknum = tok;
-			else if (key == "targetname")   tn = tok;
-			else if (key == "origin")       org = stov(tok);
+			if (tok != "{")
+				continue;
+
+			cn = mdl = tracknum = tn = "";
+			stage = zonenum = 0;
+			org = '0 0 0';
+
+			while ((key = getentitytoken()) != "" && key != "}")
+			{
+				tok = getentitytoken();
+				if      (key == "classname") cn = tok;
+				else if (key == "model")     mdl = tok;
+				else if (key == "stage")     stage = stof(tok);
+				else if (key == "zone_number")  zonenum = stof(tok);    // P1461, as sv_zones.qc
+				else if (key == "track_number") tracknum = tok;
+				else if (key == "targetname")   tn = tok;
+				else if (key == "origin")       org = stov(tok);
+			}
+
+			type = Zone_LegacyType(cn);
+			if (type < 0 || mdl == "" || substring(mdl, 0, 1) != "*")
+				continue;
+			if (type != want)
+				continue;
+
+			// P1461: a Source brush entity with an origin stores its brush relative to it; the server's
+			// absmin includes it, and without it the cage drew elsewhere (surf_domain's start box sits
+			// 21000 units from the world origin it was drawn at) and zone_pvs culled it.
+			setmodel(probe, mdl);
+			Zone_AddLegacy(org + probe.mins, org + probe.maxs, type, stage, zonenum, tracknum, tn);
+			n = n + 1;
 		}
-
-		type = Zone_LegacyType(cn);
-		if (type < 0 || mdl == "" || substring(mdl, 0, 1) != "*")
-			continue;
-
-		// P1461: a Source brush entity with an origin stores its brush relative to it; the server's
-		// absmin includes it, and without it the cage drew elsewhere (surf_summer_ksf's start is
-		// 13056 units off) and zone_pvs culled it.
-		setmodel(probe, mdl);
-		Zone_AddBox(org + probe.mins, org + probe.maxs, type, Zone_LegacySeg(type, stage, zonenum),
-		            Zone_LegacyTrack(tracknum, tn));
-		n = n + 1;
 	}
 
 	remove(probe);
 
 	if (n)
+	{
+		Zone_LegacyEnds();
 		zone_source = ZSRC_BSP;
+	}
 	return n > 0;
 };
 

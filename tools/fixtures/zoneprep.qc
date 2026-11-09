@@ -37,7 +37,7 @@ void(entity e) ZPT_Run =
 	Zone_Clear();
 	for (i = 0; i < 8; i += 1)
 	{
-		Zone_AddBox(ground - '64 64 8', ground + '64 64 256', ZONE_START, 0);
+		Zone_AddBox(ground - '64 64 8', ground + '64 64 256', ZONE_START, 0, 0, 0);
 		zone_td_kind[i] = ZTD_POS; zone_td_pos[i] = ground + '0 0 32'; zone_td_yaw[i] = i * 23;
 	}
 	zone_type[1] = ZONE_STAGE; zone_seg[1] = 1;

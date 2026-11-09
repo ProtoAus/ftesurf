@@ -1616,35 +1616,39 @@ float(string cn) Zone_LegacyType =
 	return -1;
 };
 
+#define ZONE_MAXTRACKS 12      // P1461: = FS_MAXTRACKS (sv_timer.qc), main + 11 bonuses
+
 /*
   P1461: a legacy trigger's track. Momentum's track_number names it (absent or -1 = every track,
   which is the main one here); maps older than the key name bonuses only in targetname
   (surf_domain: main_start, bonus1_start_momentum, bonus2_end). Read as 0 before P1461, so a
-  bonus start began a MAIN run and any end finished it.
+  bonus start began a MAIN run and any end finished it. -1: past the timer's track arrays.
 */
 float(string tracknum, string tn) Zone_LegacyTrack =
 {
 	local float o, n;
+	local string c;
 
 	if (tracknum != "")
-		return max(0, floor(stof(tracknum)));
-	o = strstrofs(strtolower(tn), "bonus", 0);
-	if (o < 0)
-		return 0;
-	n = floor(stof(substring(tn, o + 5, 3)));   // "bonus2_end" -> 2; "bonus_end" -> 0
-	return (n >= 1) ? n : 1;
+		n = max(0, floor(stof(tracknum)));
+	else
+	{
+		tn = strtolower(tn);
+		o = strstrofs(tn, "bonus", 0);
+		if (o < 0)
+			return 0;
+		o = o + 5;
+		c = substring(tn, o, 1);
+		if (c == "_" || c == "-" || c == " ")
+			o = o + 1;                  // bonus_2_start
+		n = floor(stof(substring(tn, o, 3)));
+		if (n < 1)
+			n = 1;                      // bonus_start
+	}
+	return (n < ZONE_MAXTRACKS) ? n : -1;
 };
 
-// P1461: the newer schema numbers stages and checkpoints in zone_number, the older in stage.
-float(float type, float stage, float zonenum) Zone_LegacySeg =
-{
-	if (stage == 0)
-	if (type == ZONE_STAGE || type == ZONE_CHECKPOINT)
-		return zonenum;
-	return stage;
-};
-
-void(vector mn, vector mx, float type, float stage, float track) Zone_AddBox =
+void(vector mn, vector mx, float type, float seg, float cpn, float track) Zone_AddBox =
 {
 	local float z;
 
@@ -1657,17 +1661,8 @@ void(vector mn, vector mx, float type, float stage, float track) Zone_AddBox =
 	z = zone_count;
 	zone_type[z]   = type;
 	zone_track[z]  = track;
-	zone_seg[z]    = stage;
-	/*
-	  The legacy brush triggers have no checkpoint ordinal to give: all a
-	  trigger_momentum_timer_checkpoint carries is `stage`, and on the 34 maps
-	  that use this path (all of them linear) that key IS the gate's number.  So
-	  reuse it rather than writing 0, which would make every checkpoint on those
-	  maps share an ordinal and collapse them into one under the forward-only
-	  rule.  A map that leaves the key unset gets 0 and is simply not timed at
-	  its checkpoints, which is what it got before build 19 anyway.
-	*/
-	zone_cp[z]     = (type == ZONE_CHECKPOINT) ? stage : 0;
+	zone_seg[z]    = seg;
+	zone_cp[z]     = cpn;      // 0: not timed at this gate
 	zone_first[z]  = zone_ptcount;
 	zone_npts[z]   = 4;
 	zone_bottom[z] = mn_z;
@@ -1688,4 +1683,43 @@ void(vector mn, vector mx, float type, float stage, float track) Zone_AddBox =
 
 	zone_count = zone_count + 1;
 	Zone_Finish(z);
+};
+
+/*
+  P1461: one legacy trigger, numbered as Zone_AddTrack numbers a zone file. Momentum numbers a
+  track's stages from 2 (the start is 1) in zone_number, or in the older `stage` key, and its
+  checkpoints the same way; here a stage starts segment n-1 and a checkpoint is ordinal n-1, so 0
+  (no number) leaves a checkpoint untimed as before. zone_number wins when both are set
+  (surf_concretejungle_fix writes stage 2 on all five stage triggers and zone_number 2..6).
+  Both VMs add through here, in the same order, so the two tables (and zonecrc) agree.
+*/
+void(vector mn, vector mx, float type, float stage, float zonenum, string tracknum, string tn) Zone_AddLegacy =
+{
+	local float n, track;
+
+	track = Zone_LegacyTrack(tracknum, tn);
+	if (track < 0)
+		return;
+	n = (zonenum > 0) ? zonenum : stage;
+	if (n < 2)
+		n = 1;
+	Zone_AddBox(mn, mx, type, (type == ZONE_STAGE) ? n - 1 : 0, (type == ZONE_CHECKPOINT) ? n - 1 : 0, track);
+};
+
+// P1461: an end follows its track's last stage (Zone_AddTrack: segment count), not segment 0.
+void() Zone_LegacyEnds =
+{
+	local float z, y, m;
+
+	for (z = 0; z < zone_count; z = z + 1)
+	{
+		if (zone_type[z] != ZONE_END)
+			continue;
+		m = 0;
+		for (y = 0; y < zone_count; y = y + 1)
+			if (zone_type[y] == ZONE_STAGE)
+			if (zone_track[y] == zone_track[z])
+				m = max(m, zone_seg[y]);
+		zone_seg[z] = m + 1;
+	}
 };
