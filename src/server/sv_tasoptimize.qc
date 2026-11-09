@@ -223,6 +223,16 @@ void(entity e, float r, float y, float f) SV_TASOptPredict =
 	}
 };
 
+// P1443: what an engine refusal (SV_TASRollout's code) means to the player.
+string(float why) SV_TASRollWhy =
+{
+	if (why == -4) return "a movement limit, slide volume or forced duck is in effect here";
+	if (why == -6) return "water, a ladder or a duck transition: rollouts cover plain air and ground moves";
+	if (why == -7) return "gravity is not the map's default here (rollouts do not follow bank-gravity accounting)";
+	if (why == -9) return "a push or conveyor carrier is armed, or the body stands on a moving entity";
+	return sprintf("the engine refused the rollout (code %.0f)", why);
+};
+
 // P1443 `fast`: a candidate's score from its rollout. -1 when an entity QC acts on (a reset, a
 // push) or an engine stop ends it early -- the tape would not land where the rollout says --
 // and -2 when it cannot run.
@@ -413,8 +423,9 @@ void(entity e) SV_TASOptFrame =
 		v = SV_TASRollPending(e);
 		if (v)
 		{
-			SV_TASOptStop(e, (v == -31) ? "QC owes this body a velocity or gravity change on its next move (a gravity reset, a script write, a pad latch); step a few ticks and retry"
-				: "a trigger edge or delayed output is pending at this tick; step a few ticks and retry");
+			SV_TASOptStop(e, e.vbsp_grav_trig ? "the body is inside a trigger_gravity volume that resets gravity on leaving; step out of it first"
+				: ((v == -31) ? "QC owes this body a velocity change on its next move (a script write or a pad latch); step a few ticks and retry"
+				: "a trigger edge or delayed output is pending at this tick; step a few ticks and retry"));
 			return;
 		}
 		for (k = 0; k < max(1, floor(4000 / e.topt_n)) && e.topt_on && e.topt_phase != 3; k = k + 1)
@@ -428,7 +439,7 @@ void(entity e) SV_TASOptFrame =
 			if (v == -1) e.topt_fcut = e.topt_fcut + 1;
 			if (v == -2)
 			{
-				SV_TASOptStop(e, sprintf("the engine refused the rollout (code %.0f: needs a plain air or ground start)", e.topt_rwhy));
+				SV_TASOptStop(e, SV_TASRollWhy(e.topt_rwhy));
 				return;
 			}
 			SV_TASOptResult(e, v);
