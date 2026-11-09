@@ -1365,7 +1365,7 @@ void(entity p) Lobby_AnnJoin =
 	if (!Lobby_AnnOn())
 		return;
 	if (!p.lobby_ann_at || time >= p.lobby_ann_at + LOBBY_ANN_PACE)
-		Lobby_SayOthers(p, sprintf("^5server:^7 %s joined\n", Lobby_ChatName(p)));
+		Lobby_SayOthers(p, sprintf("%s joined %s\n", Lobby_ChatName(p), Lobby_Clean(mapname)));    // P1464: Lex's wording
 	p.lobby_ann_at = time;
 	if (t != CLIENTTYPE_REAL)
 		return;
