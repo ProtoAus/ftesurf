@@ -37,9 +37,11 @@
 .float topt_besty, topt_bestf;  // P1092: the best's boarding offset and flick rate (-1: no flick)
 .float topt_srch;               // P1092: which 1-D search of SV_TASOptParam's list is running
 .float topt_obj, topt_seg0;     // P1097: 1 = time; run_t_seg at the start
-.float topt_pn;                 // P1443: the candidate's rollout: ticks run (-2 none)
+.float topt_pn;                 // P1443: the candidate's rollout: ticks that count (-2 none)
+.float topt_pcut;               // P1443: why it counts fewer: 1 an entity QC acts on, 2 the engine stopped
 .vector topt_po, topt_pv;       // P1443: its last tick's origin and velocity
-.float topt_rchk, topt_rshort, topt_rbado, topt_rbadv;  // P1443: landings checked, rollouts short, worst gaps
+.float topt_rchk, topt_rshort, topt_rbado, topt_rbadv;  // P1443: landings checked, cut at an entity, worst gaps
+.float topt_rstop;              // P1443: rollouts the engine stopped (a tick its plain case does not cover)
 .float topt_rref, topt_rwhy;    // P1443: rollouts refused, and the last refusal's code (SV_TASRollout)
 .float topt_rexact;             // P1443: landings bit-equal to the prediction (origin and velocity)
 
@@ -93,10 +95,11 @@ string(entity e) SV_TASOptExtra =
 // P1443: how the rollouts matched the real mover's landings.
 void(entity e) SV_TASOptRollReport =
 {
-	if (!cvar("developer") || (!e.topt_rchk && !e.topt_rshort && !e.topt_rref)) return;
-	sprint(e, PRINT_HIGH, sprintf("tas optimize: rollout check: %.0f landings predicted (%.0f bit-equal), worst %.5f u and %.5f u/s off%s%s\n",
+	if (!cvar("developer") || (!e.topt_rchk && !e.topt_rshort && !e.topt_rstop && !e.topt_rref)) return;
+	sprint(e, PRINT_HIGH, sprintf("tas optimize: rollout check: %.0f landings predicted (%.0f bit-equal), worst %.5f u and %.5f u/s off%s%s%s\n",
 		e.topt_rchk, e.topt_rexact, e.topt_rbado, e.topt_rbadv,
-		e.topt_rshort ? sprintf("; %.0f stopped early (a trigger)", e.topt_rshort) : "",
+		e.topt_rshort ? sprintf("; %.0f cut where QC acts", e.topt_rshort) : "",
+		e.topt_rstop ? sprintf("; %.0f stopped by the engine", e.topt_rstop) : "",
 		e.topt_rref ? sprintf("; %.0f refused (code %.0f)", e.topt_rref, e.topt_rwhy) : ""));
 };
 
@@ -125,14 +128,21 @@ float(entity e, float r, float y, float f, float i) SV_TASOptYaw =
 	return yaw - 360 * floor((yaw + 180) / 360);        // SV_TASPWord unwraps only one turn
 };
 
+// P1443: an entity a rollout names that per-command QC leaves the body's movement alone for: the
+// timer's zone volumes (the timer reads them; nothing pushes, limits or teleports).
+float(entity t) SV_TASRollHarmless =
+{
+	return substring(t.classname, 0, 23) == "trigger_momentum_timer_";
+};
+
 // P1443: the same rows through tas_rollout before the tape plays; SV_TASOptFrame checks the
-// tape's landing against the prediction's last tick (topt_pn -2: no rollout, else ticks run).
+// tape's landing against the prediction's last tick (topt_pn -2: no rollout, else ticks that count).
 void(entity e, float r, float y, float f) SV_TASOptPredict =
 {
 	local float *rows;
 	local float *out;
 	local float i, ran;
-	e.topt_pn = -2;
+	e.topt_pn = -2; e.topt_pcut = 0;
 	if (!checkbuiltin(tas_rollout)) return;
 	rows = (float*)memalloc(e.topt_n * 7 * 4);
 	out = (float*)memalloc(e.topt_n * 13 * 4);
@@ -145,13 +155,15 @@ void(entity e, float r, float y, float f) SV_TASOptPredict =
 			rows[i*7+5] = 0; rows[i*7+6] = 0;
 		}
 		ran = tas_rollout(e, rows, e.topt_n, out);
+		if (ran >= 0 && ran < e.topt_n) e.topt_pcut = 2;
 		for (i = 0; i < ran; i = i + 1)
-			if (out[i*13 + 12])
-			{	// a trigger: QC runs touches the rollout does not, so the prediction ends with this tick
+			if (out[i*13 + 12] && !SV_TASRollHarmless(edict_num(out[i*13 + 12])))
+			{	// QC acts on it (a touch, a carrier, a volume) where the rollout cannot: ends with this tick
 				if (cvar("developer") && !e.topt_rshort)
 					sprint(e, PRINT_HIGH, sprintf("tas optimize: rollout meets %s at tick %.0f of %.0f\n",
 						edict_num(out[i*13 + 12]).classname, i + 1, e.topt_n));
 				ran = i + 1;
+				e.topt_pcut = 1;
 				break;
 			}
 		e.topt_pn = ran;
@@ -310,8 +322,10 @@ void(entity e) SV_TASOptFrame =
 				sprint(e, PRINT_HIGH, sprintf("tas optimize: rollout %.0f off by %.5f u, %.5f u/s\n", e.topt_evals + 1,
 					vlen(e.origin - e.topt_po), vlen(e.velocity - e.topt_pv)));
 		}
-		else if (e.topt_pn >= 0)
+		else if (e.topt_pn >= 0 && e.topt_pcut == 1)
 			e.topt_rshort = e.topt_rshort + 1;
+		else if (e.topt_pn >= 0)
+			e.topt_rstop = e.topt_rstop + 1;
 		else if (e.topt_pn != -2)
 		{
 			e.topt_rref = e.topt_rref + 1;
@@ -352,9 +366,9 @@ void(entity e, float argc) SV_TASRollBench =
 	local float *out;
 	n = stof(argv(2)); c = stof(argv(3));
 	if (!cvar("developer") || !checkbuiltin(tas_rollout) || argc != 4 ||
-		!(n >= 1 && n <= 2048 && n == floor(n)) || !(c >= 1 && c <= 20000 && c == floor(c)))
+		!(n >= 1 && n <= 2048 && n == floor(n)) || !(c >= 1 && c <= 20000 && c == floor(c)) || n * c > 1000000)
 	{
-		sprint(e, PRINT_HIGH, "tas rollbench <ticks 1..2048> <count 1..20000> (developer 1, an engine with tas_rollout)\n");
+		sprint(e, PRINT_HIGH, "tas rollbench <ticks 1..2048> <count 1..20000>, ticks x count <= 1000000 (developer 1, an engine with tas_rollout)\n");
 		return;
 	}
 	rows = (float*)memalloc(n * 7 * 4);
@@ -436,7 +450,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_backed = e.topt_wait = 0;
 	e.topt_mode = mode; e.topt_fk = fk; e.topt_srch = 0; e.topt_besty = 0; e.topt_bestf = 0;
 	e.topt_obj = obj; e.topt_seg0 = e.run_t_seg;
-	e.topt_pn = -2; e.topt_rchk = e.topt_rshort = e.topt_rbado = e.topt_rbadv = e.topt_rref = e.topt_rwhy = e.topt_rexact = 0;
+	e.topt_pn = -2; e.topt_rchk = e.topt_rshort = e.topt_rbado = e.topt_rbadv = e.topt_rref = e.topt_rwhy = e.topt_rexact = e.topt_rstop = 0;
 	// Source's air wish speed cap is 30: the speed-holding turn is asin(30 / v) a tick.
 	e.topt_rmax = bound(1, 2 * asin(min(1, 30 / max(30, vlen([e.velocity_x, e.velocity_y, 0])))) * 180 / M_PI, 45);
 	e.topt_bestf = -1;                  // no flick until its search finds a faster one

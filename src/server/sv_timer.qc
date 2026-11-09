@@ -267,9 +267,10 @@ float(entity player, float slot, float token, float op) tas_rewind = #0:tas_rewi
 vector(entity player, float slot, float token, float field) tas_input = #0:tas_input;
 float(entity player, float op, float a, float b, vector moves, vector angles, float buttons) tas_tape = #0:tas_tape;
 // P1443: ticks rows of tas_tape words (7 floats) through the mover from the paused body, nothing
-// kept; 13 floats a tick out (origin, velocity, onground, ducked, contact kind and normal, trigger).
+// kept; 13 floats a tick out (origin, velocity, onground, ducked, contact kind and normal, and the
+// first entity per-command QC could act on: a touched solid, a non-world ground, a trigger volume).
 float(entity player, float *rows, float ticks, float *out) tas_rollout = #0:tas_rollout;
-float(optional float timetype) gettime = #519;  // P1443: 1 = wall clock, milliseconds (tas rollbench)
+float(optional float timetype) gettime = #519;  // P1443: 1 = wall-clock seconds, to the millisecond (tas rollbench)
 
 /*
   Patch 419 (engine): the OS entropy the master-server challenge code already
