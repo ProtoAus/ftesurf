@@ -343,6 +343,8 @@ vector lw_p[LW_V];              // this frame: screen position
 float  lw_ta[LW_T], lw_tb[LW_T], lw_tc[LW_T], lw_tf[LW_T];  // tf: 1 ab, 2 bc, 4 ca drawn; 8 faces against its plane
 vector lw_nn[LW_N];             // node: plane normal
 float  lw_nf[LW_N], lw_nb[LW_N], lw_n0[LW_N], lw_nc[LW_N];  // front and back child (-1 none), its triangles
+float  lw_ndep[LW_N], lw_npar[LW_N];                        // LW_Valid's: depth, parents
+#define LW_DEPTH 200            // the shipped worst is 79; QC's call stack is 1024 deep
 float  lw_nv, lw_nt, lw_nnum, lw_closed, lw_ok, lw_bad;
 float  lw_es, lw_ec;    // sin, cos of the view's elevation (ls_wireangle: 0 side on, 45 as the shapes)
 vector lw_dir;          // this frame: the view direction in model space
@@ -424,20 +426,42 @@ float(string path, float want) LW_Read =
 	return models;
 };
 
-// Every node's children come after it (the walk cannot loop) and its triangles are in range.
+// A tree the walk finishes quickly: children after their parent (no loop), each node one parent (no shared
+// subtree visited twice -- 2^depth), depth capped, and at most every triangle drawn once (review).
 float() LW_Valid =
 {
-	local float k;
+	local float k, c, total;
+	for (k = 0; k < lw_nnum; k = k + 1)
+		lw_npar[k] = 0;
+	lw_ndep[0] = 1;
+	total = 0;
 	for (k = 0; k < lw_nnum; k = k + 1)
 	{
-		if (lw_nf[k] != -1 && (!LW_In(lw_nf[k], lw_nnum) || lw_nf[k] <= k))
+		if (k > 0 && lw_npar[k] != 1)
 			return FALSE;
-		if (lw_nb[k] != -1 && (!LW_In(lw_nb[k], lw_nnum) || lw_nb[k] <= k))
+		if (lw_ndep[k] > LW_DEPTH)
 			return FALSE;
+		c = lw_nf[k];
+		if (c != -1)
+		{
+			if (!LW_In(c, lw_nnum) || c <= k)
+				return FALSE;
+			lw_npar[c] = lw_npar[c] + 1;
+			lw_ndep[c] = lw_ndep[k] + 1;
+		}
+		c = lw_nb[k];
+		if (c != -1)
+		{
+			if (!LW_In(c, lw_nnum) || c <= k)
+				return FALSE;
+			lw_npar[c] = lw_npar[c] + 1;
+			lw_ndep[c] = lw_ndep[k] + 1;
+		}
 		if (!LW_In(lw_n0[k], lw_nt + 1) || !LW_In(lw_nc[k], lw_nt + 1) || lw_n0[k] + lw_nc[k] > lw_nt)
 			return FALSE;
+		total = total + lw_nc[k];
 	}
-	return TRUE;
+	return total <= lw_nt;
 };
 
 // For the card's map: its model, if gfx/loadwire has one.  Once a map.
@@ -530,7 +554,8 @@ void(vector scr) LW_Draw =
 	lw_es = sin(i);
 	lw_ec = cos(i);
 	lw_dir = [ls_sa * lw_ec, ls_ca * lw_ec, 0 - lw_es];      // the camera's (0, ec, -es), unspun
-	lw_lw = max(1, rint(scr_y * sui_style_pixel_ratio_y / 540)) / sui_style_pixel_ratio_y;
+	i = (sui_style_pixel_ratio_y > 0) ? sui_style_pixel_ratio_y : 1;     // set by LS_Draw's sui_style_hud, after
+	lw_lw = max(1, rint(scr_y * i / 540)) / i;
 	for (i = 0; i < lw_nv; i = i + 1)
 	{
 		p = LS_Rot(lw_v[i]);

@@ -446,12 +446,21 @@ def bsp(v, tris, flags):
 
     def emit(pts, fl, own, nn):
         back = _dot(own, nn) < 0
-        for k in range(1, len(pts) - 1):        # a fan: inner diagonals are not drawn
-            ids = (vid(pts[0]), vid(pts[k]), vid(pts[k + 1]))
-            if len(set(ids)) < 3:
-                continue
-            f = (fl[0] if k == 1 else 0) | (fl[k] << 1) | ((fl[k + 1] if k + 1 == len(pts) - 1 else 0) << 2)
-            otris.append(ids + (f | (8 if back else 0),))
+        # Points that round together merge first, the survivor taking the merged one's outgoing edge: a fan
+        # triangle skipped for them took a real edge with it (a cut 0.01-0.03 from a corner; review).
+        ring = []
+        for p, f in zip(pts, fl):
+            i = vid(p)
+            if ring and ring[-1][0] == i:
+                ring[-1][1] = f
+            else:
+                ring.append([i, f])
+        while len(ring) > 1 and ring[-1][0] == ring[0][0]:
+            ring.pop()
+        n = len(ring)
+        for k in range(1, n - 1):               # a fan: inner diagonals are not drawn
+            f = (ring[0][1] if k == 1 else 0) | (ring[k][1] << 1) | ((ring[k + 1][1] if k + 1 == n - 1 else 0) << 2)
+            otris.append((ring[0][0], ring[k][0], ring[k + 1][0], f | (8 if back else 0)))
 
     depth = [0]
 
@@ -474,14 +483,22 @@ def bsp(v, tris, flags):
                     sp += 1
             score = sp * 5 + abs(fr - bk)
             if best is None or score < best[0]:
-                best = (score, n, d)
-        _, n, d = best
+                best = (score, n, d, c)
+        _, n, d, split = best
         on, front, back = [], [], []
         for q in ps:
             pts, fl, own = q
+            if q is split:          # always placed here: each level places one, so the build ends
+                on.append(q)
+                continue
             ds = [_dot(n, p) - d for p in pts]
             if all(abs(x) < BSP_EPS for x in ds):
-                on.append(q)
+                # In the plane only if it faces along it too: a sliver within BSP_EPS of a neighbour's plane
+                # would be culled by that plane's facing (review: the hand's silhouette lost 4 units).
+                if abs(_dot(own, n)) > 0.999:
+                    on.append(q)
+                else:
+                    (front if sum(ds) >= 0 else back).append(q)
             elif all(x >= -BSP_EPS for x in ds):
                 front.append(q)
             elif all(x <= BSP_EPS for x in ds):
@@ -616,7 +633,7 @@ def main():
         for m, flip in models:
             try:
                 v, t, nodes, closed, depth, n0 = wire(files, m, args.tris, args.flat, flip)
-            except (ModelError, struct.error, IndexError) as exc:
+            except (ModelError, struct.error, IndexError, RecursionError) as exc:
                 print('%s: %s skipped (%s)' % (mp, m, exc))
                 bad += 1
                 continue
