@@ -6502,6 +6502,10 @@ def _fetch_player(raw, now):
         db.execute("PRAGMA busy_timeout=50")
         try:
             ksf = ksfprofile.enqueue(db, player, now, force=True)
+            if (ksf.get("state") not in ("queued", "partial", "ineligible", "busy")
+                    and not fetchq.fetched(db, player) and fetchq.can_mark(db, player)):
+                # The last walk was a profile view's (main records only): walk again, fully, now.
+                ksf = ksfprofile.enqueue(db, player, now, ttl=0)
             mom = momprofile.enqueue(db, player, now, force=True)
             full = (ksf.get("state") in ("queued", "partial")
                     and fetchq.fetch_profile(db, player, now))

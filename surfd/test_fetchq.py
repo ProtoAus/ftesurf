@@ -166,6 +166,18 @@ class Fetch(unittest.TestCase):
             self.assertEqual(c.post('/api/board?fetch=1&player=zz').status_code, 400)
             self.assertIn('mom_sync', c.get('/api/board?player=' + h).json)
         self.assertTrue(P.is_account(K, PLAYER))          # walks past a view's limits
+        # A walk that already ended as a profile view's is walked again, fully, at the press.
+        self.db.execute("UPDATE ksfprofiles SET state='complete', updated=?, asked=asked-100", (int(time.time()) - 600,))
+        self.db.commit()
+        S._rate.clear()
+        with S.app.test_client() as c:
+            r = c.post('/board/api/map?fetch=1&player=' + h)
+        self.assertEqual((r.json['ksf_sync']['state'], r.json['full']), ('queued', True))
+        self.db.execute("UPDATE ksfprofiles SET state='complete', updated=?", (int(time.time()) - 600,))
+        self.db.commit()
+        with S.app.test_client() as c:                    # its own finished full walk: FORCE_TTL holds
+            r = c.post('/board/api/map?fetch=1&player=' + h)
+        self.assertEqual(r.json['ksf_sync']['state'], 'complete')
         now = int(time.time())
         # FORCE_TTL: a press re-walks after an hour, a view does not within a day.
         self.db.execute("UPDATE ksfprofiles SET state='complete', updated=?", (now - 2 * P.FORCE_TTL,))

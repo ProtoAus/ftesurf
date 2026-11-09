@@ -43,8 +43,12 @@ def ensure_columns(db):
     except sqlite3.Error:
         return
     if cols and "strikes" not in cols:
-        db.execute("ALTER TABLE momtopup ADD COLUMN strikes INTEGER NOT NULL DEFAULT 0")
-        db.commit()
+        try:
+            db.execute("ALTER TABLE momtopup ADD COLUMN strikes INTEGER NOT NULL DEFAULT 0")
+            db.commit()
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e):
+                raise
 
 
 def _missing(e):
@@ -222,6 +226,22 @@ def fetch_profile(db, player, now):
         db.execute("INSERT INTO profilefetch VALUES (?,?) ON CONFLICT(player)"
                    " DO UPDATE SET asked=excluded.asked", (player, walk[1]))
     return True
+
+
+def can_mark(db, player):
+    """Would fetch_profile mark a walk of this player now (an account, or under the cap)?"""
+    try:
+        if db.execute("SELECT 1 FROM accounts WHERE steamid=? AND banned_at=0", (player,)).fetchone():
+            return True
+        n = db.execute("SELECT COUNT(*) FROM profilefetch f JOIN ksfprofiles p ON p.player=f.player"
+                       " WHERE f.asked=p.asked AND p.state IN ('queued','partial') AND f.player!=?"
+                       " AND NOT EXISTS (SELECT 1 FROM accounts a WHERE a.steamid=f.player"
+                       " AND a.banned_at=0)", (player,)).fetchone()[0]
+    except sqlite3.OperationalError as e:
+        if not _missing(e):
+            raise
+        return True
+    return n < MAX_FETCHED
 
 
 def fetched(db, player, now=None):

@@ -99,13 +99,13 @@ def status(db, player):
              'pages': r[4], 'unavailable': r[5]} if r else {'state': 'idle'})
 
 
-def enqueue(db, player, now, force=False):
+def enqueue(db, player, now, force=False, ttl=None):
     # Only called after surfd resolved a public profile, never raw URL identity.
-    # `force` (P1448, a Fetch press) shortens the TTL to FORCE_TTL.
+    # `force` (P1448, a Fetch press) shortens the TTL to FORCE_TTL; `ttl` overrides both.
     if (len(player) != 17 or not player.isascii() or not player.isdigit()
             or int(player) >> 32 != 0x01100001):
         return {'state': 'ineligible'}
-    ttl = FORCE_TTL if force else TTL
+    ttl = ttl if ttl is not None else FORCE_TTL if force else TTL
     old = db.execute('SELECT state,updated FROM ksfprofiles WHERE player=?', (player,)).fetchone()
     if old and (old[0] in ('queued', 'partial') or now - old[1] < ttl):
         return status(db, player)
