@@ -22,18 +22,21 @@
 ## next
 
 ### P1444 Find what makes a frame slow: r_spikes
-- `r_spikes 1` (with `r_frametime 1`) keeps the slowest frames since `r_frametime_reset`, and `r_frametime_dump` now lists what each one spent its time on: game code, draw calls, map visibility, the display, the network, late shader compiles, water and glass views. For tracking down the stutters behind the 0.1% lows.
+- `r_spikes 1` (with `r_frametime 1`) keeps the slowest frames since `r_frametime_reset`, and `r_frametime_dump` now lists what each one spent its time on: game code, draw calls, map visibility, the display, the network, late shader compiles, water and glass views.
+- For tracking down the stutters behind the 0.1% lows.
 
 ### P1440 Model parts and animations maps switch
 - Models with swappable parts now show only the part the map picks, as in Source: bhop_crash_egypt's crates are whole boxes until you break them, then shatter frame by frame. Before, every part drew at once.
 - Props that maps animate now play it: bhop_crash_egypt's nitro crates jiggle.
 
 ### P1442 More shaders prepared while loading, without "Not Responding"
-- A map's load may now spend up to 6 seconds (was 2) preparing shaders, so slower PCs finish preparing them during the load instead of stuttering through the first run. The window stays responsive meanwhile: Windows no longer marks it "Not Responding" while shaders are prepared.
+- A map's load may now spend up to 6 seconds (was 2) preparing shaders, so slower PCs finish preparing them during the load instead of stuttering through the first run.
+- The window stays responsive meanwhile: Windows no longer marks it "Not Responding" while shaders are prepared.
 - A saved setting still on the old 2 seconds moves to 6 once you have this version; a different value you chose is kept.
 
 ### P1441 Fewer stutters the first time you play a map
-- The game now prepares the shaders of all 60 tested maps while a map loads, instead of the first time each one is drawn. The first run on a map, after a new install or a graphics driver update, stutters far less: surf_tendies went from 64 small freezes (up to 71 ms) to 4, and its slowest frames from 58 to 139 fps.
+- The game now prepares the shaders of all 60 tested maps while a map loads, instead of the first time each one is drawn.
+- The first run on a map, after a new install or a graphics driver update, stutters far less: surf_tendies went from 64 small freezes (up to 71 ms) to 4, and its slowest frames from 58 to 139 fps.
 - The first load of each map can take about a second longer on such a PC; later loads are as before.
 
 ### P1432 Sprites and particles maps spawn
