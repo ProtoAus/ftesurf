@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1446 string-cleanup stutters -- engine in both installs (9 Nov); owner check pending
+
+- Play a few minutes on any map with `r_frametime 1; r_spikes 1; r_frametime_reset`, then `r_frametime_dump`: the
+  line "qc tempstring collector" lists each cleanup; expect most phases around 2-4 ms (they were 5-9 ms).
+- Map changes, quitting and disconnecting should behave as before (the change touches what happens when a map's
+  game code unloads).
+
 ## P1448 Fetch: any leg, any player, from KSF and Momentum -- on main 9 Nov; NOT live until the surfd generation
 - TAB board (KSF, Momentum or All filter), the menu's leaderboard and the website's map page: press Fetch on a leg
   with no times here yet; the footer says what KSF and Momentum answered. Refresh after a few minutes: times, and
