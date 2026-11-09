@@ -327,51 +327,45 @@ void(vector scr) LS_DrawShape =
 };
 
 /*
-  P1453: the map's own model in the middle, when tools/loadwire.py made one for it (gfx/loadwire/<map>.txt:
-  v x y z, t a b c, e a b t1 t2 -- picks in tools/loadwire_picks.txt; one model at random if it has several).
-  Not convex, so painted: triangles far to near, each filled black and then its edges in white, which hides
-  what is behind.  A closed model (no border edge) skips the triangles facing away -- always hidden anyway.
+  P1453: the map's own model in the middle, when tools/loadwire.py made one for it (gfx/loadwire/<map>.txt,
+  format 2, described in the tool; picks in tools/loadwire_picks.txt; one model at random if it has several).
+  Painted: black fills hide what is behind, white edges go on top.  The order is the BSP walk the tool built,
+  exact from any side, so lines do not fight as it turns (a depth-bucket sort did).  A node's triangles share
+  a plane, so its fills all go before its lines: a sibling's fill would shave half of each shared edge.  A
+  closed model skips the triangles facing away.
 */
 string(string s, float n) LS_Tok;   // below
-#define LW_V 512
-#define LW_T 512
-#define LW_E 1024
-#define LW_B 32
+#define LW_V 1024
+#define LW_T 1024
+#define LW_N 1024
 vector lw_v[LW_V];
-vector lw_p[LW_V];              // this frame: screen position, and z the depth (larger is farther)
-float  lw_ta[LW_T], lw_tb[LW_T], lw_tc[LW_T];
-float  lw_te0[LW_T], lw_te1[LW_T], lw_te2[LW_T];    // the edges drawn with each triangle, -1 none
-vector lw_tn[LW_T];             // outward normal
-float  lw_next[LW_T];
-float  lw_head[LW_B];
-float  lw_ea[LW_E], lw_eb[LW_E];
-float  lw_nv, lw_nt, lw_ne, lw_open, lw_ok, lw_bad;
+vector lw_p[LW_V];              // this frame: screen position
+float  lw_ta[LW_T], lw_tb[LW_T], lw_tc[LW_T], lw_tf[LW_T];  // tf: 1 ab, 2 bc, 4 ca drawn; 8 faces against its plane
+vector lw_nn[LW_N];             // node: plane normal
+float  lw_nf[LW_N], lw_nb[LW_N], lw_n0[LW_N], lw_nc[LW_N];  // front and back child (-1 none), its triangles
+float  lw_nv, lw_nt, lw_nnum, lw_closed, lw_ok, lw_bad;
 float  lw_es, lw_ec;    // sin, cos of the view's elevation (ls_wireangle: 0 side on, 45 as the shapes)
+vector lw_dir;          // this frame: the view direction in model space
+float  lw_lw;           // this frame: the line width, whole physical pixels (a fractional one shimmers)
 string lw_map;                  // the map the model is for (zoned); "" none tried
 
 float(float i, float n) LW_In = { return i >= 0 && i < n && i == floor(i); };
 
-void(float t, float e) LW_TriEdge =
-{
-	if (t < 0 || t >= lw_nt)
-		return;
-	if (lw_te0[t] < 0)
-		lw_te0[t] = e;
-	else if (lw_te1[t] < 0)
-		lw_te1[t] = e;
-	else if (lw_te2[t] < 0)
-		lw_te2[t] = e;
-};
-
 // Read model `want` (0-based) of the file; -> how many models the file holds.  LS_Tok, not tokenize (see it).
 float(string path, float want) LW_Read =
 {
-	local float f, models, n, a, b, c;
+	local float f, models, a, b, c;
 	local string l, k;
-	local vector ctr, d;
 	f = fopen(path, FILE_READ);
 	if (f < 0)
 		return 0;
+	l = fgets(f);
+	if (LS_Tok(l, 0) != "FTESURF-LOADWIRE" || LS_Tok(l, 1) != "2")
+	{
+		fclose(f);
+		lw_bad = TRUE;
+		return 0;
+	}
 	models = 0;
 	while ((l = fgets(f)) != __NULL__)
 	{
@@ -383,7 +377,9 @@ float(string path, float want) LW_Read =
 		}
 		if (want < 0 || models - 1 != want)
 			continue;
-		if (k == "v")
+		if (k == "closed")
+			lw_closed = (LS_Tok(l, 1) == "1");
+		else if (k == "v")
 		{
 			if (lw_nv >= LW_V)
 			{
@@ -406,42 +402,42 @@ float(string path, float want) LW_Read =
 			lw_ta[lw_nt] = a;
 			lw_tb[lw_nt] = b;
 			lw_tc[lw_nt] = c;
-			lw_te0[lw_nt] = lw_te1[lw_nt] = lw_te2[lw_nt] = -1;
+			lw_tf[lw_nt] = stof(LS_Tok(l, 4));
 			lw_nt = lw_nt + 1;
 		}
-		else if (k == "e")
+		else if (k == "n")
 		{
-			a = stof(LS_Tok(l, 3));
-			b = stof(LS_Tok(l, 4));
-			lw_ea[lw_ne] = stof(LS_Tok(l, 1));
-			lw_eb[lw_ne] = stof(LS_Tok(l, 2));
-			if (lw_ne >= LW_E || !LW_In(lw_ea[lw_ne], lw_nv) || !LW_In(lw_eb[lw_ne], lw_nv)
-			    || !LW_In(a, lw_nt) || (b != -1 && !LW_In(b, lw_nt)))
+			if (lw_nnum >= LW_N)
 			{
 				lw_bad = TRUE;
 				continue;
 			}
-			if (b < 0)
-				lw_open = TRUE;
-			LW_TriEdge(a, lw_ne);
-			LW_TriEdge(b, lw_ne);
-			lw_ne = lw_ne + 1;
+			lw_nn[lw_nnum] = [stof(LS_Tok(l, 1)), stof(LS_Tok(l, 2)), stof(LS_Tok(l, 3))];
+			lw_nf[lw_nnum] = stof(LS_Tok(l, 5));
+			lw_nb[lw_nnum] = stof(LS_Tok(l, 6));
+			lw_n0[lw_nnum] = stof(LS_Tok(l, 7));
+			lw_nc[lw_nnum] = stof(LS_Tok(l, 8));
+			lw_nnum = lw_nnum + 1;
 		}
 	}
 	fclose(f);
-	// Normals, turned outward: the winding is whatever the model's was, so the majority decides.
-	n = 0;
-	for (a = 0; a < lw_nt; a = a + 1)
-	{
-		lw_tn[a] = normalize(crossproduct(lw_v[lw_tb[a]] - lw_v[lw_ta[a]], lw_v[lw_tc[a]] - lw_v[lw_ta[a]]));
-		ctr = (lw_v[lw_ta[a]] + lw_v[lw_tb[a]] + lw_v[lw_tc[a]]) * (1 / 3);
-		d = ctr;                // the model is centred on its box
-		n = n + ((lw_tn[a] * d > 0) ? 1 : -1);
-	}
-	if (n < 0)
-		for (a = 0; a < lw_nt; a = a + 1)
-			lw_tn[a] = lw_tn[a] * -1;
 	return models;
+};
+
+// Every node's children come after it (the walk cannot loop) and its triangles are in range.
+float() LW_Valid =
+{
+	local float k;
+	for (k = 0; k < lw_nnum; k = k + 1)
+	{
+		if (lw_nf[k] != -1 && (!LW_In(lw_nf[k], lw_nnum) || lw_nf[k] <= k))
+			return FALSE;
+		if (lw_nb[k] != -1 && (!LW_In(lw_nb[k], lw_nnum) || lw_nb[k] <= k))
+			return FALSE;
+		if (!LW_In(lw_n0[k], lw_nt + 1) || !LW_In(lw_nc[k], lw_nt + 1) || lw_n0[k] + lw_nc[k] > lw_nt)
+			return FALSE;
+	}
+	return TRUE;
 };
 
 // For the card's map: its model, if gfx/loadwire has one.  Once a map.
@@ -454,41 +450,77 @@ void(string mp) LW_Load =
 	if (lw_map != "")
 		strunzone(lw_map);
 	lw_map = (mp != "") ? strzone(mp) : "";
-	lw_ok = lw_open = lw_bad = FALSE;
-	lw_nv = lw_nt = lw_ne = 0;
+	lw_ok = lw_bad = lw_closed = FALSE;
+	lw_nv = lw_nt = lw_nnum = 0;
 	if (mp == "")
 		return;
 	path = strcat("gfx/loadwire/", mp, ".txt");
 	models = LW_Read(path, -1);
-	if (models <= 0)
-		return;
-	LW_Read(path, floor(random() * models));
-	lw_ok = (lw_nt > 0 && !lw_bad);
-	if (lw_bad)
-		print(sprintf("loadscreen: %s is malformed or over the limits; the shape draws\n", path));
+	if (models > 0)
+		LW_Read(path, floor(random() * models));
+	lw_ok = (lw_nt > 0 && lw_nnum > 0 && !lw_bad && LW_Valid());
+	if (models > 0 && !lw_ok)
+		print(sprintf("loadscreen: %s is malformed, over the limits or not format 2; the shape draws\n", path));
 };
 
-// LS_Faces at the wire's elevation: the camera looks along (0, ec, -es).
-float(vector n) LW_Faces =
+void(float a, float b) LW_Seg =
 {
-	n = [n_x * ls_ca - n_y * ls_sa, n_x * ls_sa + n_y * ls_ca, n_z];
-	return n_z * lw_es - n_y * lw_ec > 0.0001;
+	LS_Line(lw_p[a], lw_p[b], lw_lw);
 };
 
-void(float e, float lw) LW_Edge =
+// One node's triangles, in its plane: every fill, then every drawn edge.
+void(float k) LW_Here =
 {
-	local vector a, b;
-	if (e < 0)
+	local float i, e, s, f;
+	e = lw_n0[k] + lw_nc[k];
+	s = lw_nn[k] * lw_dir;          // < 0: the plane's front side faces the camera
+	for (i = lw_n0[k]; i < e; i = i + 1)
+	{
+		if (lw_closed && ((lw_tf[i] & 8) ? 0 - s : s) >= 0)
+			continue;
+		R_BeginPolygon("", LS_TWOSIDED, TRUE);
+		R_PolygonVertex(lw_p[lw_ta[i]], '0 0 0', '0 0 0', 1);
+		R_PolygonVertex(lw_p[lw_tb[i]], '0 0 0', '0 0 0', 1);
+		R_PolygonVertex(lw_p[lw_tc[i]], '0 0 0', '0 0 0', 1);
+		R_EndPolygon();
+	}
+	for (i = lw_n0[k]; i < e; i = i + 1)
+	{
+		if (lw_closed && ((lw_tf[i] & 8) ? 0 - s : s) >= 0)
+			continue;
+		f = lw_tf[i];
+		if (f & 1)
+			LW_Seg(lw_ta[i], lw_tb[i]);
+		if (f & 2)
+			LW_Seg(lw_tb[i], lw_tc[i]);
+		if (f & 4)
+			LW_Seg(lw_tc[i], lw_ta[i]);
+	}
+};
+
+// Far side of each plane first, then the plane, then the near side.
+void(float k) LW_Walk =
+{
+	if (k < 0)
 		return;
-	a = lw_p[lw_ea[e]];
-	b = lw_p[lw_eb[e]];
-	LS_Line([a_x, a_y, 0], [b_x, b_y, 0], lw);
+	if (lw_nn[k] * lw_dir < 0)
+	{
+		LW_Walk(lw_nb[k]);
+		LW_Here(k);
+		LW_Walk(lw_nf[k]);
+	}
+	else
+	{
+		LW_Walk(lw_nf[k]);
+		LW_Here(k);
+		LW_Walk(lw_nb[k]);
+	}
 };
 
 void(vector scr) LW_Draw =
 {
-	local float i, b, t, lw, dmax;
-	local vector p, q, r;
+	local float i;
+	local vector p;
 	ls_cen = '0 0 0';
 	ls_org = [scr_x * 0.5, scr_y * 0.5, 0];
 	ls_k = scr_y * 0.42 / 62;    // 1.3x the shapes: models are thin, and a 62 box still projects inside +-44
@@ -497,44 +529,14 @@ void(vector scr) LW_Draw =
 	i = bound(0, cvar("ls_wireangle"), 90) * 0.017453293;    // degrees to radians
 	lw_es = sin(i);
 	lw_ec = cos(i);
-	lw = max(1, scr_y / 540);
+	lw_dir = [ls_sa * lw_ec, ls_ca * lw_ec, 0 - lw_es];      // the camera's (0, ec, -es), unspun
+	lw_lw = max(1, rint(scr_y * sui_style_pixel_ratio_y / 540)) / sui_style_pixel_ratio_y;
 	for (i = 0; i < lw_nv; i = i + 1)
 	{
 		p = LS_Rot(lw_v[i]);
-		lw_p[i] = [ls_org_x + ls_k * p_x, ls_org_y - ls_k * (p_y * lw_es + p_z * lw_ec),
-		           p_y * lw_ec - p_z * lw_es];
+		lw_p[i] = [ls_org_x + ls_k * p_x, ls_org_y - ls_k * (p_y * lw_es + p_z * lw_ec), 0];
 	}
-	// Bucket the triangles by depth, far first: the model fits a 62 box, so |depth| < 44.
-	for (b = 0; b < LW_B; b = b + 1)
-		lw_head[b] = -1;
-	dmax = 44;
-	for (t = 0; t < lw_nt; t = t + 1)
-	{
-		if (!lw_open && !LW_Faces(lw_tn[t]))
-			continue;
-		p = lw_p[lw_ta[t]];
-		q = lw_p[lw_tb[t]];
-		r = lw_p[lw_tc[t]];
-		b = floor((dmax - (p_z + q_z + r_z) * (1 / 3)) * (LW_B / (2 * dmax)));
-		b = bound(0, b, LW_B - 1);
-		lw_next[t] = lw_head[b];
-		lw_head[b] = t;
-	}
-	for (b = 0; b < LW_B; b = b + 1)
-		for (t = lw_head[b]; t >= 0; t = lw_next[t])
-		{
-			R_BeginPolygon("", LS_TWOSIDED, TRUE);
-			q = lw_p[lw_ta[t]];
-			R_PolygonVertex([q_x, q_y, 0], '0 0 0', '0 0 0', 1);
-			q = lw_p[lw_tb[t]];
-			R_PolygonVertex([q_x, q_y, 0], '0 0 0', '0 0 0', 1);
-			q = lw_p[lw_tc[t]];
-			R_PolygonVertex([q_x, q_y, 0], '0 0 0', '0 0 0', 1);
-			R_EndPolygon();
-			LW_Edge(lw_te0[t], lw);
-			LW_Edge(lw_te1[t], lw);
-			LW_Edge(lw_te2[t], lw);
-		}
+	LW_Walk(0);
 };
 
 string(float b) LS_Bytes =

@@ -4,15 +4,23 @@
     python tools/loadwire.py --maps <dir of .bsp> [--picks tools/loadwire_picks.txt] [--out ftesurf/gfx/loadwire]
     python tools/loadwire.py --maps <dir> --suggest [--limit 40]
 
-A pick is `<map> <model path>` (several lines for one map: the loading screen takes one at random). The model
+A pick is `<map> <model path> [flip]` (several lines for one map: the loading screen takes one at random;
+`flip` turns it upside down, for a model stood up head-down -- see STAND_UP). The model
 is read from the map's pakfile (or --content dirs), LOD 0 of every body part's first model, welded, simplified by
 quadric edge collapse to at most --tris triangles, and written as gfx/loadwire/<map>.txt (m_loading.qc reads it):
 
-    FTESURF-LOADWIRE 1
+    FTESURF-LOADWIRE 2
     model <path>
+    closed 0|1       (1: every edge has two triangles, wound outward -- the menu culls back faces)
     v x y z          (centred on the box, longest side 62 units: the lobby avatar's height)
-    t a b c          (triangles, vertex indices)
-    e a b t1 t2      (drawn edges: their two triangles, t2 -1 on a border; near-flat neighbours dropped)
+    t a b c f        (triangles, vertex indices; f: 1 edge ab drawn, 2 bc, 4 ca, 8 faces against its node's plane)
+    n x y z d f b i c  (BSP nodes, root first: plane normal and distance, front and back child (-1 none), and the
+                      triangles i..i+c-1 lying in that plane)
+
+The menu draws the triangles back to front by walking the tree (exact from any side, so no two lines fight as
+the model turns): each one's black fill, then its drawn edges.  Triangles that crossed a splitting plane are
+clipped into pieces that keep their edges' flags; the cuts are never drawn.  An edge is drawn on a border or
+where its two faces bend more than --flat degrees.
 
 No blank lines: the menu's fgets reads one as the end of the file.
 
@@ -30,7 +38,9 @@ import zipfile
 from collections import Counter, defaultdict
 
 LUMP_ENTITIES, LUMP_GAME, LUMP_PAK = 0, 35, 40
-QC_V, QC_T, QC_E = 512, 512, 1024     # m_loading.qc LW_V, LW_T, LW_E: a model over any is refused here
+QC_V, QC_T, QC_N = 1024, 1024, 1024   # m_loading.qc LW_V, LW_T, LW_N: over any, the model is simplified further
+BSP_EPS = 0.01
+STAND_UP = 0.3           # a model this flat (height / width) is turned 90 degrees about x to stand up: butterfly, donut
 TARGET_SIZE = 62.0
 
 
@@ -305,34 +315,222 @@ def normal(v, t):
     return [x / l for x in n]
 
 
-def edges(v, tris, flat_deg):
-    """Every edge with its two triangles; one between near-coplanar neighbours is not drawn."""
+def _sub(a, b):
+    return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
+
+
+def _dot(a, b):
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+
+def _cross(a, b):
+    return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
+
+
+def orient(v, tris):
+    """Consistent winding per connected part, each part turned outward by its signed volume.
+    -> (tris, closed, by): closed when every edge has two triangles and the winding could be made consistent."""
+    tris = [list(t) for t in tris]
     by = defaultdict(list)
     for ti, t in enumerate(tris):
         for a, b in ((t[0], t[1]), (t[1], t[2]), (t[2], t[0])):
             by[(min(a, b), max(a, b))].append(ti)
+    closed = all(len(ts) == 2 for ts in by.values())
+    seen = [False] * len(tris)
+
+    def runs(t, a, b):          # t has the directed edge a->b
+        return any(t[k] == a and t[(k + 1) % 3] == b for k in range(3))
+
+    for s0 in range(len(tris)):
+        if seen[s0]:
+            continue
+        seen[s0] = True
+        part, stack = [s0], [s0]
+        while stack:
+            t = tris[stack.pop()]
+            for a, b in ((t[0], t[1]), (t[1], t[2]), (t[2], t[0])):
+                for tj in by[(min(a, b), max(a, b))]:
+                    u = tris[tj]
+                    if u is t:
+                        continue
+                    if not seen[tj]:
+                        if runs(u, a, b):
+                            u[1], u[2] = u[2], u[1]
+                        seen[tj] = True
+                        part.append(tj)
+                        stack.append(tj)
+                    elif runs(u, a, b):
+                        closed = False      # not orientable: draw both sides
+        vol = sum(_dot(v[tris[k][0]], _cross(v[tris[k][1]], v[tris[k][2]])) for k in part)
+        if vol < 0:
+            for k in part:
+                tris[k][1], tris[k][2] = tris[k][2], tris[k][1]
+    return tris, closed, by
+
+
+def edge_flags(v, tris, by, flat_deg):
+    """Per triangle, which of ab, bc, ca is drawn: a border, or a bend of more than flat_deg."""
     cosflat = math.cos(math.radians(flat_deg))
     out = []
-    for (a, b), ts in sorted(by.items()):
-        if len(ts) == 2:
-            n1, n2 = normal(v, tris[ts[0]]), normal(v, tris[ts[1]])
-            if abs(sum(n1[i] * n2[i] for i in range(3))) > cosflat:
+    for ti, t in enumerate(tris):
+        f = 0
+        for bit, (a, b) in ((1, (t[0], t[1])), (2, (t[1], t[2])), (4, (t[2], t[0]))):
+            ts = by[(min(a, b), max(a, b))]
+            if len(ts) != 2 or ti not in ts:
+                f |= bit
                 continue
-            out.append((a, b, ts[0], ts[1]))
-        else:
-            out.append((a, b, ts[0], -1))
+            o = tris[ts[0] if ts[1] == ti else ts[1]]
+            c = _dot(normal(v, t), normal(v, o))
+            if not any(o[k] == b and o[(k + 1) % 3] == a for k in range(3)):
+                c = -c          # the pair could not be made consistent: compare as if it were
+            if c < cosflat:
+                f |= bit
+        out.append(f)
     return out
 
 
-def wire(files, path, target, flat_deg):
+def _poly_plane(pts):
+    n = [0.0, 0.0, 0.0]
+    for k in range(len(pts)):             # Newell
+        a, b = pts[k], pts[(k + 1) % len(pts)]
+        n[0] += (a[1] - b[1]) * (a[2] + b[2])
+        n[1] += (a[2] - b[2]) * (a[0] + b[0])
+        n[2] += (a[0] - b[0]) * (a[1] + b[1])
+    l = math.sqrt(_dot(n, n))
+    if l < 1e-9:
+        return None
+    n = (n[0] / l, n[1] / l, n[2] / l)
+    return n, sum(_dot(n, p) for p in pts) / len(pts)
+
+
+def _side(x):
+    return 1 if x > BSP_EPS else (-1 if x < -BSP_EPS else 0)
+
+
+def _clip(pts, flags, dist, side):
+    """The `side` (+1 front, -1 back) part of a polygon; each vertex carries the flag of the edge leaving it, a cut
+    edge gets 0.  Only an edge strictly crossing the plane is cut (an end within BSP_EPS of it is on it): cutting
+    by the tolerance instead extrapolated the cut far past the plane (-0.009 to -0.011 put it at -4.5)."""
+    out = []
+    m = len(pts)
+    for k in range(m):
+        p, q, f = pts[k], pts[(k + 1) % m], flags[k]
+        cp, cq = _side(dist[k]) * side, _side(dist[(k + 1) % m]) * side
+        if cp >= 0:
+            out.append((p, f if (cq >= 0 or cp > 0) else 0))
+        if cp * cq < 0:
+            dp, dq = dist[k], dist[(k + 1) % m]
+            x = dp / (dp - dq)
+            i = (p[0] + (q[0] - p[0]) * x, p[1] + (q[1] - p[1]) * x, p[2] + (q[2] - p[2]) * x)
+            out.append((i, 0 if cp > 0 else f))
+    return [o[0] for o in out], [o[1] for o in out]
+
+
+def bsp(v, tris, flags):
+    """Back-to-front order from any side: a BSP tree of the triangles (split where they cross a plane).
+    -> (verts, tris (a, b, c, f), nodes (n, d, front, back, first, count), depth)."""
+    polys = []
+    for t, f in zip(tris, flags):
+        pts = [v[k] for k in t]
+        pl = _poly_plane(pts)
+        if pl:
+            polys.append((pts, [f & 1, (f >> 1) & 1, (f >> 2) & 1], pl[0]))
+    nodes, otris, overts, vindex = [], [], [], {}
+
+    def vid(p):
+        key = (round(p[0], 2), round(p[1], 2), round(p[2], 2))
+        if key not in vindex:
+            vindex[key] = len(overts)
+            overts.append(key)
+        return vindex[key]
+
+    def emit(pts, fl, own, nn):
+        back = _dot(own, nn) < 0
+        for k in range(1, len(pts) - 1):        # a fan: inner diagonals are not drawn
+            ids = (vid(pts[0]), vid(pts[k]), vid(pts[k + 1]))
+            if len(set(ids)) < 3:
+                continue
+            f = (fl[0] if k == 1 else 0) | (fl[k] << 1) | ((fl[k + 1] if k + 1 == len(pts) - 1 else 0) << 2)
+            otris.append(ids + (f | (8 if back else 0),))
+
+    depth = [0]
+
+    def build(ps, lvl):
+        if not ps:
+            return -1
+        depth[0] = max(depth[0], lvl)
+        step = max(1, len(ps) // 24)
+        best = None
+        for c in ps[::step]:
+            n, d = _poly_plane(c[0])
+            fr = bk = sp = 0
+            for q in ps:
+                ds = [_dot(n, p) - d for p in q[0]]
+                if all(x >= -BSP_EPS for x in ds) and not all(abs(x) < BSP_EPS for x in ds):
+                    fr += 1
+                elif all(x <= BSP_EPS for x in ds) and not all(abs(x) < BSP_EPS for x in ds):
+                    bk += 1
+                elif not all(abs(x) < BSP_EPS for x in ds):
+                    sp += 1
+            score = sp * 5 + abs(fr - bk)
+            if best is None or score < best[0]:
+                best = (score, n, d)
+        _, n, d = best
+        on, front, back = [], [], []
+        for q in ps:
+            pts, fl, own = q
+            ds = [_dot(n, p) - d for p in pts]
+            if all(abs(x) < BSP_EPS for x in ds):
+                on.append(q)
+            elif all(x >= -BSP_EPS for x in ds):
+                front.append(q)
+            elif all(x <= BSP_EPS for x in ds):
+                back.append(q)
+            else:
+                for side, sgn in ((front, 1), (back, -1)):
+                    cp, cf = _clip(pts, fl, ds, sgn)
+                    if len(cp) >= 3 and _poly_plane(cp):
+                        side.append((cp, cf, own))
+        me = len(nodes)
+        nodes.append(None)
+        first = len(otris)
+        for pts, fl, own in on:
+            emit(pts, fl, own, n)
+        cnt = len(otris) - first
+        f_i = build(front, lvl + 1)
+        b_i = build(back, lvl + 1)
+        nodes[me] = (n, d, f_i, b_i, first, cnt)
+        return me
+
+    build(polys, 1)
+    return overts, otris, nodes, depth[0]
+
+
+def wire(files, path, target, flat_deg, flip=False):
+    """-> (verts, tris, nodes, closed, depth, source triangle count), within the menu's limits."""
     pos, tris = triangles(files, path)
-    v, t = simplify(pos, tris, target)
-    lo = [min(p[i] for p in v) for i in range(3)]
-    hi = [max(p[i] for p in v) for i in range(3)]
-    c = [(lo[i] + hi[i]) / 2 for i in range(3)]
-    k = TARGET_SIZE / (max(hi[i] - lo[i] for i in range(3)) or 1.0)
-    v = [tuple((p[i] - c[i]) * k for i in range(3)) for p in v]
-    return v, t, edges(v, t, flat_deg), len(tris)
+    while True:
+        v, t = simplify(pos, tris, target)
+        lo = [min(p[i] for p in v) for i in range(3)]
+        hi = [max(p[i] for p in v) for i in range(3)]
+        c = [(lo[i] + hi[i]) / 2 for i in range(3)]
+        k = TARGET_SIZE / (max(hi[i] - lo[i] for i in range(3)) or 1.0)
+        v = [tuple((p[i] - c[i]) * k for i in range(3)) for p in v]
+        e = [(hi[i] - lo[i]) * k for i in range(3)]
+        if e[2] < STAND_UP * max(e[0], e[1]):     # lying flat: side on it would only ever show its edge
+            if e[1] > e[0]:     # stood up with its longer side across (a butterfly's wings), its shorter upright
+                v = [(p[1], p[2], p[0]) for p in v]
+            else:
+                v = [(p[0], -p[2], p[1]) for p in v]
+        if flip:
+            v = [(p[0], -p[1], -p[2]) for p in v]
+        t, closed, by = orient(v, t)
+        ov, ot, nodes, depth = bsp(v, t, edge_flags(v, t, by, flat_deg))
+        if len(ov) <= QC_V and len(ot) <= QC_T and len(nodes) <= QC_N and depth <= 200:
+            return ov, ot, nodes, closed, depth, len(tris)
+        if target < 60:
+            raise ModelError('cannot fit the menu limits (%d verts, %d tris, %d nodes)' % (len(ov), len(ot), len(nodes)))
+        target = int(target * 0.85)
 
 
 def placed_models(bsp):
@@ -402,7 +600,7 @@ def main():
     for ln in open(args.picks, encoding='utf-8'):
         ln = ln.split('#', 1)[0].split()
         if len(ln) >= 2:
-            picks[ln[0].lower()].append(ln[1].lower())
+            picks[ln[0].lower()].append((ln[1].lower(), 'flip' in ln[2:]))
     os.makedirs(args.out, exist_ok=True)
     bad = 0
     for mp, models in sorted(picks.items()):
@@ -414,24 +612,22 @@ def main():
             bad += 1
             continue
         files = Files(pakfile(bsp), args.content)
-        lines = ['FTESURF-LOADWIRE 1']
-        for m in models:
+        lines = ['FTESURF-LOADWIRE 2']
+        for m, flip in models:
             try:
-                v, t, e, n0 = wire(files, m, args.tris, args.flat)
+                v, t, nodes, closed, depth, n0 = wire(files, m, args.tris, args.flat, flip)
             except (ModelError, struct.error, IndexError) as exc:
                 print('%s: %s skipped (%s)' % (mp, m, exc))
                 bad += 1
                 continue
-            if len(v) > QC_V or len(t) > QC_T or len(e) > QC_E:
-                print('%s: %s skipped (%d vertices, %d triangles, %d edges: over the menu limits %d/%d/%d)'
-                      % (mp, m, len(v), len(t), len(e), QC_V, QC_T, QC_E))
-                bad += 1
-                continue
             lines.append('model %s' % m)
-            lines += ['v %.1f %.1f %.1f' % p for p in v]
-            lines += ['t %d %d %d' % x for x in t]
-            lines += ['e %d %d %d %d' % x for x in e]
-            print('%s: %s  %d -> %d triangles, %d vertices, %d edges' % (mp, m, n0, len(t), len(v), len(e)))
+            lines.append('closed %d' % closed)
+            lines += ['v %.2f %.2f %.2f' % p for p in v]
+            lines += ['t %d %d %d %d' % x for x in t]
+            lines += ['n %.5f %.5f %.5f %.3f %d %d %d %d' % (n[0], n[1], n[2], d, f, b, i, c)
+                      for n, d, f, b, i, c in nodes]
+            print('%s: %s  %d -> %d triangles after splits, %d vertices, %d nodes, depth %d, %s'
+                  % (mp, m, n0, len(t), len(v), len(nodes), depth, 'closed' if closed else 'open'))
         if len(lines) > 1:
             with open(os.path.join(args.out, mp + '.txt'), 'w', encoding='ascii', newline='\n') as fh:
                 fh.write('\n'.join(lines) + '\n')
