@@ -366,7 +366,7 @@ void(entity e) SV_TASAutoLink =
 	SV_TASTargetCommand(e, argc);
 	if (!e.topt_tgton) { SV_TASAutoStop(e, "this stretch's target was refused"); return; }
 	if (e.as_route)
-		cl = sprintf("tas optimize %.0f left curve 12 aim%s energy fast", h, (e.as_hop && as_wk[i] == 2) ? " hop" : "");
+		cl = sprintf("tas optimize %.0f left curve 12 aim%s gens %.0f energy fast", h, (e.as_hop && as_wk[i] == 2) ? " hop" : "", min(90, 30 * (1 + e.as_try)));
 	else
 	{
 	ps = strcat(SV_TASAutoPace(e, i), SV_TASAutoEmin(e, i));   // not inside the sprintf's argument list (a call there clobbers the args set)

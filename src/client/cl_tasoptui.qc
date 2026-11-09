@@ -226,24 +226,30 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	sui_text(at, [hint, hint], (tov_rn > 0) ? sprintf("Your route: %g points (aim at each ramp in order, then surf it)", tov_rn)
 		: "Or click your own route: aim at each ramp (or bhop floor) in order and add it.", SUI_THEME_DIM, 1, 0);
 	at_y = at_y + hint * 1.6;
-	if (!running && Profile_Chip("taso_radd", at, chip, "Add at crosshair", hint, FALSE)) TASOptUI_RouteAdd();
-	if (!running && Profile_Chip("taso_rundo", at + [half + 6, 0, 0], chip, "Undo", hint, FALSE)) { localcmd("tas route undo\n"); tov_rn = max(0, tov_rn - 1); }
-	at_y = at_y + row + 3;
-	if (!running && Profile_Chip("taso_rclear", at, chip, "Clear", hint, FALSE)) { localcmd("tas route clear\n"); tov_rn = 0; }
-	if (!running && tov_rn > 0 && Profile_Chip("taso_rgo", at + [half + 6, 0, 0], chip, "Surf my route", tsz, FALSE))
-		localcmd(sprintf("tas autosurf route tries %g backs %g%s\n", taso_tries, taso_backmax, taso_hop ? "" : " nohop"));
+	// nested ifs: && does not short-circuit here (logicops off), and Profile_Chip draws as it tests (review 4).
+	// Undo and Clear move the count only by the server's reply, so a refused one changes nothing.
+	if (!running)
+	{
+		if (Profile_Chip("taso_radd", at, chip, "Add at crosshair", hint, FALSE)) TASOptUI_RouteAdd();
+		if (Profile_Chip("taso_rundo", at + [half + 6, 0, 0], chip, "Undo", hint, FALSE)) localcmd("tas route undo\n");
+		at_y = at_y + row + 3;
+		if (Profile_Chip("taso_rclear", at, chip, "Clear", hint, FALSE)) localcmd("tas route clear\n");
+		if (tov_rn > 0)
+			if (Profile_Chip("taso_rgo", at + [half + 6, 0, 0], chip, "Surf my route", tsz, FALSE))
+				localcmd(sprintf("tas autosurf route tries %g backs %g%s\n", taso_tries, taso_backmax, taso_hop ? "" : " nohop"));
+	}
+	else at_y = at_y + row + 3;
 	at_y = at_y + row + hint;
 	if (taso_n > 0)
 	{	// the run so far, a box a ramp or bhop platform
 		TASOptUI_Strip(at, width, row * 0.6); at_y = at_y + row * 0.6 + hint * 0.5;
-		if (taso_lastk >= 0 && taso_rf[taso_lastk] < 0)
+		if (taso_lastk >= 0)      // nested: && does not short-circuit here, and taso_rf[-1] is out of range
 		{
-			sui_text(at, [hint, hint], sprintf("Point %g: %g u/s", taso_lastk + 1, taso_rb[taso_lastk]), SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.6;
-		}
-		else if (taso_lastk >= 0)
-		{
-			label = sprintf("Ramp %g: %g u/s, farsh %g (%s%g)", taso_lastk + 1, taso_rb[taso_lastk], taso_rf[taso_lastk],
-				(taso_rb[taso_lastk] >= taso_rf[taso_lastk]) ? "+" : "", taso_rb[taso_lastk] - taso_rf[taso_lastk]);
+			if (taso_rf[taso_lastk] < 0)
+				label = sprintf("Point %g: %g u/s", taso_lastk + 1, taso_rb[taso_lastk]);
+			else
+				label = sprintf("Ramp %g: %g u/s, farsh %g (%s%g)", taso_lastk + 1, taso_rb[taso_lastk], taso_rf[taso_lastk],
+					(taso_rb[taso_lastk] >= taso_rf[taso_lastk]) ? "+" : "", taso_rb[taso_lastk] - taso_rf[taso_lastk]);
 			sui_text(at, [hint, hint], label, SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.6;
 		}
 	}
