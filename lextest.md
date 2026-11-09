@@ -11,6 +11,15 @@
   lines fighting; the butterfly and the simpsons2 donut now stand up so side on shows them. `set ls_debug 3` prints
   the frame rate and the model's draw time every 2 s.
 
+## P1452 input restart safety -- both Windows client EXEs 9 Nov (0ec891507); physical/play check pending
+
+- When convenient in a normal game, move/jump, hold then release movement keys, run `in_restart` once, and
+  alt-tab away/back. Keys should not stick, disappear or act twice; mouse movement should still work. Say if
+  any of those happens. Automated NoMap/posted-message checks are NOT confirmation of this physical check.
+- Genuine-keyboard diagnostic calibration below is still pending. A restart marks interrupted observation
+  partial; a queued raw/legacy pair split across resumption can still count as uncorrelated afterward. That
+  is not proof of injected input. No new detection, input blocking, ranking or enforcement policy ships here.
+
 ## P1447 website replays on Strata maps, faster builds -- on main 9 Nov; NOT live until the surfd generation
 - Watch in 3D a run on a Strata map (bhop_ahi, bhop_canals, bhop_2006isback): the map draws instead of "could not be
   drawn". A map with lots of curved ground (ahop_coast, bhop_dunes) builds in a couple of seconds, not ten.
@@ -109,10 +118,11 @@
 
 ## P1424 -- genuine keyboard reads as zero injected (pending, not owner-confirmed)
 
-The engine now counts key presses that reached the game with no matching report from a real
-keyboard, and writes the count into the .hid (a note for a reviewer, never an accusation). An
-injected-key arm proved it counts PostMessage and SendInput keys and takes 0 when nothing is
-injected; what a synthetic arm cannot prove is that YOUR real keyboard reads as zero.
+The engine counts legacy key presses without admitted recent raw corroboration, and writes
+that diagnostic into the .hid (a note for a reviewer, never an accusation or physical-origin
+attestation). Synthetic input and quiet controls show acting/non-acting behavior; they cannot
+prove that YOUR real keyboard reads as zero. P1450/P1452 retain that acceptance limit. Restart
+captures are partial, not whole legacy totals, and queued-transition noise is not yet calibrated.
 
 Small check when the build is installed: run `exec cfg/test/p1424human.cfg` (it loads bhop_eazy,
 then records for 40 s). Click into the window and play normally -- move, jump, strafe, open chat

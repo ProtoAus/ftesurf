@@ -30,6 +30,9 @@
 - The wireframes face you side on; Settings has "Loading-screen models: side on / from above".
 - The map card shows the map's own screenshot instead of the small browser thumbnail.
 
+### P1452 Keyboard input survives an input restart
+- Input restarts protect device resources while they are rebuilt; if Windows refuses to stop raw keyboard input, the game keeps the existing device working.
+
 ### P1451 No string-cleanup hitch early in each map
 - The memory the game code's string cleanup works in is now set up while the map loads, so the first cleanup of each map, usually during your first run, no longer stutters for it.
 
