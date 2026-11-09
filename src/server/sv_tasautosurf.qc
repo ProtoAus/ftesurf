@@ -371,6 +371,8 @@ void(entity e) SV_TASAutoLink =
 	{
 	ps = strcat(SV_TASAutoPace(e, i), SV_TASAutoEmin(e, i));   // not inside the sprintf's argument list (a call there clobbers the args set)
 	ls = (e.as_look > 0) ? sprintf(" look %.0f", e.as_look) : "";
+	// a retry searches longer: 30 generations more a try (the pillar stretch's narrow line came in some searches only)
+	ps = strcat(ps, sprintf(" gens %.0f", min(90, 30 * (1 + e.as_try))));
 	cl = sprintf("tas optimize %.0f left curve 12 demo aim late tube %.0f%s%s%s energy fast", h, e.as_tube, e.as_hop ? " hop" : "", ls, ps);
 	}
 	if (cvar("developer")) sprint(e, PRINT_HIGH, strcat("tas autosurf: ", cl, "\n"));

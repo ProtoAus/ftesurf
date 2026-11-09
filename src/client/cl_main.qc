@@ -2604,14 +2604,15 @@ float(string cmd) CSQC_ConsoleCommand =
 			else
 				localcmd(sprintf("p%g cmd tas target%s\n", tsseat + 1, tsline));
 		}
-		else if (cmdargc >= 4 && cmdargc <= 20 && !strcmp(argv(1), "optimize"))    // P1088; P1092 board/flick; P1097 time; P1443 energy/fast
+		else if (cmdargc >= 4 && cmdargc <= 24 && !strcmp(argv(1), "optimize"))    // P1088; P1092 board/flick; P1097 time; P1443 energy/fast
 		{
 			tsvalue = stof(argv(2));
 			tsline = "";
 			for (tsi = 4; tsi < cmdargc; tsi = tsi + 1)    // the server checks their order; only known words pass
 				if (argv(tsi) == "board" || argv(tsi) == "flick" || argv(tsi) == "time" || argv(tsi) == "energy" ||
-				    argv(tsi) == "fast" || argv(tsi) == "zigzag" || argv(tsi) == "split" || argv(tsi) == "fixedpitch" || argv(tsi) == "follow" || argv(tsi) == "curve" || argv(tsi) == "demo" || argv(tsi) == "aim" || argv(tsi) == "late" || argv(tsi) == "tube" || argv(tsi) == "hop" || argv(tsi) == "look" || argv(tsi) == "pace" || argv(tsi) == "emin" ||
+				    argv(tsi) == "fast" || argv(tsi) == "zigzag" || argv(tsi) == "split" || argv(tsi) == "fixedpitch" || argv(tsi) == "follow" || argv(tsi) == "curve" || argv(tsi) == "demo" || argv(tsi) == "aim" || argv(tsi) == "late" || argv(tsi) == "tube" || argv(tsi) == "hop" || argv(tsi) == "look" || argv(tsi) == "pace" || argv(tsi) == "emin" || argv(tsi) == "gens" ||
 				    ((argv(tsi - 1) == "pace" || argv(tsi - 1) == "emin") && FS_TASNumber(argv(tsi))) ||    // decimals (review)
+				    (argv(tsi - 1) == "gens" && FS_TASNumber(argv(tsi))) ||
 				    (stof(argv(tsi)) >= 1 && stof(argv(tsi)) <= ((argv(tsi - 1) == "tube") ? 4096 : ((argv(tsi - 1) == "look") ? 400 : 32)) && argv(tsi) == ftos(stof(argv(tsi)))))
 					tsline = strcat(tsline, " ", argv(tsi));
 				else tsline = "!";

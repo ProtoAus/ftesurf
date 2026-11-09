@@ -227,9 +227,9 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 		: "Or click your own route: aim at each ramp (or bhop floor) in order and add it.", SUI_THEME_DIM, 1, 0);
 	at_y = at_y + hint * 1.6;
 	if (!running && Profile_Chip("taso_radd", at, chip, "Add at crosshair", hint, FALSE)) TASOptUI_RouteAdd();
-	if (Profile_Chip("taso_rundo", at + [half + 6, 0, 0], chip, "Undo", hint, FALSE)) { localcmd("tas route undo\n"); tov_rn = max(0, tov_rn - 1); }
+	if (!running && Profile_Chip("taso_rundo", at + [half + 6, 0, 0], chip, "Undo", hint, FALSE)) { localcmd("tas route undo\n"); tov_rn = max(0, tov_rn - 1); }
 	at_y = at_y + row + 3;
-	if (Profile_Chip("taso_rclear", at, chip, "Clear", hint, FALSE)) { localcmd("tas route clear\n"); tov_rn = 0; }
+	if (!running && Profile_Chip("taso_rclear", at, chip, "Clear", hint, FALSE)) { localcmd("tas route clear\n"); tov_rn = 0; }
 	if (!running && tov_rn > 0 && Profile_Chip("taso_rgo", at + [half + 6, 0, 0], chip, "Surf my route", tsz, FALSE))
 		localcmd(sprintf("tas autosurf route tries %g backs %g%s\n", taso_tries, taso_backmax, taso_hop ? "" : " nohop"));
 	at_y = at_y + row + hint;
