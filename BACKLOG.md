@@ -1,5 +1,10 @@
 # BACKLOG.md
 
+## Timer zones built from map triggers -- leftovers of P1461 (10 Nov)
+
+- Map data, needs a zone file (zoners): surf_loweffort2_css writes zone_number 5 on two stage triggers ~10,000 u apart and no 6, so stage 6 never splits and its box arms "stage 5"; surf_oompa2 (`timer_start` 2,803 u from `rs_1_end`), surf_angelinaaa (start 695 128 u above end 691) and surf_hope_css carry unlabelled second start/end pairs that still time as main runs; surf_devs_ksf has no start and surf_spooky_css no end. Live boards held no ranked/community row on any of them (10 Nov). Falsifier: `zone_list` after a zone file lands shows one start/end per track.
+- Code, no library map affected (P1461 round 2): Zone_AddLegacy does not floor a fractional key; a checkpoint on a staged track gets segment 0 where Zone_AddTrack gives its containing segment; checkpoints carrying only `checkpoint -1` (surf_axiom_css, surf_hydrogen, surf_zoomboys_css) stay untimed, and a zone-editor save merges them into one gate. Zone_AddTrack (zone files) does not cap bonuses at FS_MAXTRACKS (12) as the legacy path now does: a file with 12+ bonuses indexes run_pb_cp past its track rows (sv_timer.qc). Falsifier: a synthetic map/file per case through tools/fixtures.
+
 ## Save-load brush visibility and short post-release trail observation (P1437, 9 Nov)
 
 - Site: client scene after SaveLead_Camera/SaveLoc_Camera. Owner reports some func brushes remain invisible after a load until another load or reconnect. P1437's acting split-state camera/prefix fixes do not prove or resolve this persistent symptom. Falsifier: capture an affected map/position, distinguish `r_ignorevis 1` (restore 0) from missing draw submission, and compare the same brush before/after reconnect. No global culling workaround or asserted engine root cause.

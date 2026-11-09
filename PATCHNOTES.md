@@ -21,6 +21,24 @@
 
 ## next
 
+### P1462 Save-load key lets go when you let go
+- Releasing the load key now starts you at once. Before, the lead-in held you frozen until a full second after the press, so a quick tap left you stuck for about half a second.
+- The run-up still plays while you keep holding the key; letting go cuts straight to the save.
+
+### P1461 Timer zones built from the map: bonuses, stages and zone lines
+- On maps whose timer zones come from the map itself (no zone file yet, many KSF _css builds), bonus starts and ends are now bonus zones, not extra main starts and ends, so a bonus run no longer times as a main run.
+- Those maps' stage zones are numbered the way zone files number them, and their zone lines now draw where the zones really are; before, they were drawn far away and hidden.
+
+### P1460 Missing textures saved per map
+- When textures on a map do not load, the whole list is saved to data/missing/<map>.txt (the console shows only the first 24), so it can be sent in. The file is removed once the map loads complete.
+
+### P1459 Graphics: Post-process switch
+- The Graphics menu has a Post-process row. Off draws the scene as rendered: no bloom, map colour grading, FXAA, custom post shader or underwater warp. Your gamma and brightness still apply.
+
+### P1458 Blinding light glows fixed; Light glows switch
+- Light glows a map sets to show only up close no longer fill the screen from across the room (surf_beginner2 stage 7).
+- The Graphics menu has a Light glows row, so turning Sprites off no longer leaves the lens-flare glows on.
+
 ### P1454 No "Not Responding" while a big map loads
 - A map whose first load takes several seconds (surf_quarantine with CS:GO content) no longer turns the window grey with "Not Responding" while it loads.
 

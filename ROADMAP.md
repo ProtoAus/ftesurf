@@ -1,5 +1,23 @@
 # ROADMAP.md — maps, demos, run lines and rewind
 
+## Input latency experiments -- asked 10 Nov 2026
+
+Lex asked whether NVIDIA Reflex 2's frame warp could be tried here, whether RawInput2 (Momentum's
+`m_rawinput 2`) is in, and whether a 60 fps client still simulates every tick of a 66-tick server.
+
+- Already true (read 10 Nov): raw input is on by default (`in_rawinput 1`, in_win.c, main thread);
+  Patch 136 takes each usercmd's view angle at that command's tick time; Patch 125 runs movement in
+  whole 15 ms ticks with a carry, so 60 fps simulates every tick. What remains below ~67 fps: about one
+  command in nine carries two ticks with one angle and one set of keys.
+- Proposed: below the tick rate, CL_SendCmd sends one 15 ms command per due tick (each with its own
+  interpolated angle) -- the part of m_rawinput 2 that still matters here.
+- Proposed (test, behind a cvar): late view warp. Render the 3D view a few degrees wider into the
+  scene target, then just before the 2D pass re-read the mouse and draw the scene through a
+  rotation-only reprojection to the newer angles; HUD after. Rotation only (no translation, no
+  inpainting beyond the overscan). Gain is bounded by input-sample-to-present time: small at 300 fps
+  (~3 ms frames), larger at 60. Movement latency (tick, usercmd) is unchanged. Measure with a
+  photodiode-free proxy: the frames between a scripted mouse step and the first changed pixel.
+
 ## Strict pre-run map readiness — partial, requested 4 Nov 2026
 
 Owner asked whether shaders/assets can all be prepared before a run. P1311 seeds
