@@ -49,9 +49,18 @@ The existing genuine-keyboard manual check in lextest.md is still pending.
 
 ## Delivery boundary
 
-Source verification is complete; commit and installed-reader verification are
-recorded separately by the task checkpoint. No engine/progs/lobby restart is
-required for these diagnostic notes. The backend's admitted reader closure must
+Source is published as `b2159d6d` (engine documentation only: `ca9c3a475`).
+At05:11:30UTC on9November2026, that exact reader was installed in both Windows
+`tools/` directories with guarded predecessor/paired-reader hashes and exact
+`.pre-p1450-b2159d6d` rollback copies. Fourteen protected native/progs/config files
+and the other three reader modules stayed unchanged. At05:12:41UTC each ACTUAL
+installed reader passed314HID checks and12snapshot tests. The first verification
+caller lacked the installed tools import prefix and stopped before tests; that
+failure is retained, the caller path was corrected, and verification finished
+without recopying either installed reader. Both final source/evidence reviews
+were CLEAR-with-limits. No engine/progs/lobby restart was needed.
+
+The backend's admitted reader closure must
 not be overwritten or repinned in place: this patch is NOT a claim that a fresh
 source-bound backend generation has been qualified or activated. The previously
 completed P1434 deployment stays healthy and must not be replayed for this patch.
