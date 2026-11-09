@@ -94,7 +94,7 @@ class Fetch(unittest.TestCase):
 
     def test_http_queues_both_sources_on_a_map_with_no_rows(self):
         self.assertEqual(self.db.execute("SELECT COUNT(*) FROM runs WHERE map='surf_fq'").fetchone()[0], 0)
-        with patch.object(K, 'fetch', side_effect=AssertionError('HTTP must not fetch')), \
+        with patch.object(K, 'fetch', side_effect=AssertionError('HTTP must not fetch')),              patch.object(S, 'FETCH_RATE', 100), \
              S.app.test_client() as c:
             r = c.post('/api/board?fetch=1&map=surf_fq')
             self.assertEqual(r.status_code, 202)
@@ -160,21 +160,28 @@ class Fetch(unittest.TestCase):
 
     def test_fetched_profile_takes_its_turn_and_the_cap_holds(self):
         now = int(time.time())
-        view, fetched, acct = str(int(PLAYER) + 1), PLAYER, str(int(PLAYER) + 2)
+        view, fetched, acct, third = (str(int(PLAYER) + k) for k in (1, 0, 2, 3))
         P.enqueue(self.db, view, now - 10)
         P.enqueue(self.db, fetched, now)
         self.assertTrue(F.fetch_profile(self.db, fetched, now))
         self.assertEqual(P.pending(self.db)[0][0], view)                 # by turn, not ahead of views
         self.assertTrue(P.is_account(K, fetched))                        # but it walks fully
+        self.assertFalse(F.fetch_profile(self.db, view, now))            # a view's walk stays a view's
         self.account(acct)
         P.enqueue(self.db, acct, now)
         with patch.object(F, 'MAX_FETCHED', 1):
             self.assertTrue(F.fetch_profile(self.db, acct, now))         # accounts are not counted
-            self.assertFalse(F.fetch_profile(self.db, view, now))
-            self.assertTrue(F.fetch_profile(self.db, fetched, now))      # a re-press is not new
+            P.enqueue(self.db, third, now)
+            self.assertFalse(F.fetch_profile(self.db, third, now))       # the cap
+            self.assertTrue(F.fetch_profile(self.db, fetched, now + 5))  # its own live walk, not new
+        # The mark ends with the walk: a later view's walk of the same player has view limits.
+        self.db.execute("UPDATE ksfprofiles SET state='complete', updated=0 WHERE player=?", (fetched,))
+        self.db.commit()
+        P.enqueue(self.db, fetched, now + 10)
+        self.assertFalse(P.is_account(K, fetched))
         # The KSF slot is the view pool's: fetching never takes an account's slot.
-        with patch.object(P, 'MAX_VIEWED', 2):
-            self.assertEqual(P.enqueue(self.db, str(int(PLAYER) + 3), now)['state'], 'busy')
+        with patch.object(P, 'MAX_VIEWED', 3):
+            self.assertEqual(P.enqueue(self.db, str(int(PLAYER) + 4), now)['state'], 'busy')
         self.db.execute("DROP TABLE profilefetch")                       # an older generation's DB
         self.db.commit()
         self.assertEqual(len(P.pending(self.db)), 3)
@@ -189,9 +196,25 @@ class Fetch(unittest.TestCase):
             self.assertEqual(MP.enqueue(self.db, PLAYER, now, force=True)['state'], 'queued')
             self.assertEqual(MP.enqueue(self.db, str(int(PLAYER) + 1), now, force=True)['state'], 'busy')
             self.assertEqual(MP.enqueue(self.db, acct, now)['state'], 'queued')   # its own pool
-        order = self.db.execute("SELECT player FROM momprofiles p WHERE state IN ('queued','partial')"
-                                " ORDER BY NOT EXISTS (%s), updated" % (MP.ACCOUNT % "p.player")).fetchall()
-        self.assertEqual(order[0][0], acct)
+        asked = []
+        def get(url):
+            asked.append(url)
+            raise RuntimeError('stop')       # one request is all this needs to see the order
+        try:
+            MP.step(self.db, {}, 1, get, delay=0, now=now)
+        except Exception:
+            pass
+        self.assertIn('steamID=' + acct, asked[0])                       # accounts first
+        # A non-account walk unasked for STARVE ranks with the accounts (it cannot starve).
+        self.db.execute("UPDATE momprofiles SET updated=? WHERE player=?", (now - MP.STARVE - 5, PLAYER))
+        self.db.execute("UPDATE momprofiles SET updated=? WHERE player=?", (now, acct))
+        self.db.commit()
+        asked.clear()
+        try:
+            MP.step(self.db, {}, 1, get, delay=0, now=now)
+        except Exception:
+            pass
+        self.assertIn('steamID=' + PLAYER, asked[0])
 
     def test_momwatch_spends_the_queue_first(self):
         boards = Path(T.HOME) / 'momboards-fq'
@@ -238,6 +261,54 @@ class Fetch(unittest.TestCase):
         self.assertEqual(F.mom_pending(self.db)[0][:3], ('surf_fq', 3, 0))      # the refused one went back
         with patch.object(W.subprocess, 'call', side_effect=AssertionError('rested')):
             self.assertEqual(W.topup_step(a), (False, 0))
+
+    def test_momwatch_second_job_given_one_request_is_not_done(self):
+        boards = Path(T.HOME) / 'momboards-fq-slot2'
+        boards.mkdir(exist_ok=True)
+        for f in boards.glob('*'):
+            f.unlink()
+        a = SimpleNamespace(tracks=self.tracks, boards=str(boards), take=100, delay=0, go=True, index=False)
+        for k in ('9_g1_t01', '9_g1_t12'):
+            Path(boards, k + '.json').write_text(json.dumps(dict(rows=[{"rank": r} for r in range(1, 101)],
+                                                                 total=900)))
+            os.utime(Path(boards, k + '.json'), (time.time() - W.TOPUP_FRESH - 5,) * 2)
+        F.mom_enqueue(self.db, ('surf_fq', 0, 0), 100, self.tracks)
+        F.mom_enqueue(self.db, ('surf_fq', 0, 2), 101, self.tracks)
+        self.db.execute("UPDATE momtopup SET target=200")
+        self.db.commit()
+        with patch.object(W.subprocess, 'call', return_value=0), patch.object(W, 'has_extras', return_value=True):
+            W.topup_step(a)
+        self.assertEqual(self.db.execute("SELECT state FROM momtopup WHERE leg=0").fetchone()[0], 'done')
+        # Job 2 had one request, page 1 only: it gained nothing deeper and was never asked to.
+        self.assertEqual(self.db.execute("SELECT state FROM momtopup WHERE leg=2").fetchone()[0], 'partial')
+
+    def test_momwatch_retires_a_board_that_keeps_refusing(self):
+        boards = Path(T.HOME) / 'momboards-fq-strike'
+        boards.mkdir(exist_ok=True)
+        a = SimpleNamespace(tracks=self.tracks, boards=str(boards), take=100, delay=0, go=True, index=False)
+        F.mom_enqueue(self.db, ('surf_fq', 3, 0), 100, self.tracks)
+        for _ in range(F.STRIKES):
+            for f in boards.glob('*'):
+                f.unlink()                   # the rest file too: each try is a new tick
+            with patch.object(W.subprocess, 'call', return_value=3), patch.object(W, 'has_extras', return_value=True):
+                W.topup_step(a)
+        self.assertEqual(self.db.execute("SELECT state, strikes FROM momtopup").fetchone()[:], ('unsupported', 3))
+
+    def test_ksf_half_of_a_port_uses_ksfs_name(self):
+        # surf_fq_ksf is a build of surf_fq; KSF lists only the suffixed name.
+        port = self.meta.with_name('surf_fq_ksf.json')
+        port.write_text(json.dumps([dict(name='surf_fq_ksf', isLinear=True, cp_count=0, b_count=0)]))
+        try:
+            with patch.object(S, 'map_index', return_value=({'surf_fq': 1, 'surf_fq_ksf': 1}, set())), \
+                 patch.object(S, 'variant_base', side_effect=lambda m, now=None: 'surf_fq' if m == 'surf_fq_ksf' else None), \
+                 S.app.test_client() as c:
+                r = c.post('/api/board?fetch=1&map=surf_fq_ksf')
+                self.assertEqual((r.status_code, r.json['ksf']['state'], r.json['momentum']['state']),
+                                 (202, 'queued', 'queued'))
+            self.assertEqual(self.db.execute("SELECT map FROM ksftopup").fetchall()[0][0], 'surf_fq_ksf')
+            self.assertEqual(self.db.execute("SELECT map FROM momtopup").fetchall()[0][0], 'surf_fq')
+        finally:
+            port.unlink()
 
     def test_momwatch_finishes_holed_and_stalled_boards(self):
         boards = Path(T.HOME) / 'momboards-fq-holes'

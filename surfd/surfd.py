@@ -6393,6 +6393,8 @@ def ksf_topup_request():
     style = request.args.get("style", STYLE_CLEAN)
     if mp is None or track is None or leg is None or style not in ksftopup.STYLES:
         return fail(400, "bad board")
+    if mp not in map_index()[0]:
+        return fail(404, "unknown KSF leg")      # P1448: as the Fetch route
     conn = connect()
     try:
         conn.execute("PRAGMA busy_timeout=50")
@@ -6410,7 +6412,7 @@ def ksf_topup_request():
     return resp
 
 
-FETCH_RATE = 10         # P1448: Fetch presses a minute per caller, shared by legs and profiles
+FETCH_RATE = 4          # P1448: Fetch presses a minute per caller, shared by legs and profiles
 
 
 def board_fetch_request():
@@ -6429,15 +6431,18 @@ def board_fetch_request():
     style = request.args.get("style", STYLE_CLEAN)
     if mp is None or track is None or leg is None or style not in ksftopup.STYLES:
         return fail(400, "bad board")
-    mp = variant_base(mp) or mp
     if mp not in map_index()[0]:
         return fail(404, "no such map here")     # nothing is filed for a map this server cannot load
+    base = variant_base(mp) or mp
+    ksfmaps = os.path.join(DATA_DIR, 'ksf', 'maps')
+    # A port: KSF lists the suffixed name (link_ports), Momentum and our boards the base.
+    ksfname = mp if os.path.isfile(os.path.join(ksfmaps, mp + '.json')) else base
+    mp = base
     out, codes = {}, []
     conn = connect()
     try:
         conn.execute("PRAGMA busy_timeout=50")
-        body, code = ksftopup.enqueue(conn, (mp, track, leg, style), now,
-                                     os.path.join(DATA_DIR, 'ksf', 'maps'))
+        body, code = ksftopup.enqueue(conn, (ksfname, track, leg, style), now, ksfmaps)
         out["ksf"] = body if body is not None else {"state": "unknown" if code == 404 else "busy"}
         codes.append(code)
         if style == STYLE_CLEAN:        # Momentum boards have no styles

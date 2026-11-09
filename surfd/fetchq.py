@@ -15,7 +15,7 @@ SQL = """
 CREATE TABLE IF NOT EXISTS momtopup (
     map TEXT NOT NULL, track INTEGER NOT NULL, leg INTEGER NOT NULL,
     target INTEGER NOT NULL, asked INTEGER NOT NULL, updated INTEGER NOT NULL,
-    state TEXT NOT NULL, PRIMARY KEY (map, track, leg)
+    state TEXT NOT NULL, strikes INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (map, track, leg)
 );
 CREATE TABLE IF NOT EXISTS profilefetch (
     player TEXT PRIMARY KEY, asked INTEGER NOT NULL
@@ -27,7 +27,7 @@ MAX_ACTIVE = 64
 RETRY_AFTER = 86400     # an unsupported leg is asked again after a day
 REFRESH_AFTER = 3600    # an exhausted board's Fetch refreshes page 1 after an hour
 ACTIVE = ("queued", "partial")
-FETCH_DAYS = 7          # a fetched profile walks fully for a week after the press
+STRIKES = 3             # refusals in a row before a Momentum board's job is retired
 MAX_FETCHED = 8         # live full walks of non-account profiles
 
 
@@ -121,9 +121,9 @@ def mom_enqueue(db, key, now, tracks):
         if n >= MAX_ACTIVE:
             return None, 429
         target = min(MAX_ROWS, max(old["held"], old["target"]) + (0 if quiet is not None else STEP))
-        db.execute("INSERT INTO momtopup VALUES (?,?,?,?,?,?,'queued')"
+        db.execute("INSERT INTO momtopup (map,track,leg,target,asked,updated,state) VALUES (?,?,?,?,?,?,'queued')"
                    " ON CONFLICT(map,track,leg) DO UPDATE SET target=excluded.target,"
-                   " asked=excluded.asked, updated=excluded.updated, state='queued'",
+                   " asked=excluded.asked, updated=excluded.updated, state='queued', strikes=0",
                    (*key, target, now, now))
         return dict(old, state="queued", target=target, updated=now), 202
 
@@ -165,27 +165,43 @@ def mom_finish(db, key, target, held, total, absent, now, progressed=True):
     else:
         state = "partial"
     with db:
-        db.execute("UPDATE momtopup SET state=?,updated=? WHERE map=? AND track=? AND leg=?"
+        db.execute("UPDATE momtopup SET state=?,updated=?,strikes=0 WHERE map=? AND track=? AND leg=?"
                    " AND target=? AND state IN ('queued','partial')", (state, now, *key, target))
     return state
 
 
+def mom_strike(db, key, target, now):
+    """A refused fetch: STRIKES in a row retire the job (unsupported, asked again after a day)."""
+    with db:
+        db.execute("UPDATE momtopup SET strikes=strikes+1, state=CASE WHEN strikes+1>=? THEN 'unsupported'"
+                   " ELSE state END, updated=? WHERE map=? AND track=? AND leg=? AND target=?"
+                   " AND state IN ('queued','partial')", (STRIKES, now, *key, target))
+
+
 # --- Profiles --------------------------------------------------------------------------
 
+LIVE_MARK = ("SELECT 1 FROM profilefetch f JOIN ksfprofiles p ON p.player=f.player"
+             " WHERE f.player=%s AND f.asked=p.asked")
+
+
 def fetch_profile(db, player, now):
-    """Mark a profile for a full KSF walk. -> False when MAX_FETCHED others are live.
-    An account walks fully anyway and is never counted."""
+    """Mark the KSF walk a press just started (its `asked` is `now`) as a full walk; the mark ends
+    with that walk. -> whether the walk is a full one. Accounts walk fully anyway, uncounted;
+    other players' marked walks are MAX_FETCHED at most."""
     with db:
         db.execute("BEGIN IMMEDIATE")
         ensure_in_tx(db)
-        cut = now - FETCH_DAYS * 86400
+        walk = db.execute("SELECT state, asked FROM ksfprofiles WHERE player=?", (player,)).fetchone()
+        if walk is None or walk[0] not in ACTIVE:
+            return False
+        if walk[1] != now:                  # a walk an earlier press or view started: as it is
+            return db.execute(LIVE_MARK % "?", (player,)).fetchone() is not None
         mine = db.execute("SELECT 1 FROM accounts WHERE steamid=? AND banned_at=0", (player,)).fetchone()
-        if not mine and not db.execute("SELECT 1 FROM profilefetch WHERE player=? AND asked>=?",
-                          (player, cut)).fetchone():
-            n = db.execute("SELECT COUNT(*) FROM profilefetch f JOIN ksfprofiles p"
-                           " ON p.player=f.player WHERE f.asked>=? AND p.state IN ('queued','partial')"
+        if not mine:
+            n = db.execute("SELECT COUNT(*) FROM profilefetch f JOIN ksfprofiles p ON p.player=f.player"
+                           " WHERE f.asked=p.asked AND p.state IN ('queued','partial') AND f.player!=?"
                            " AND NOT EXISTS (SELECT 1 FROM accounts a WHERE a.steamid=f.player"
-                           " AND a.banned_at=0)", (cut,)).fetchone()[0]
+                           " AND a.banned_at=0)", (player,)).fetchone()[0]
             if n >= MAX_FETCHED:
                 return False
         db.execute("INSERT INTO profilefetch VALUES (?,?) ON CONFLICT(player)"
@@ -193,10 +209,10 @@ def fetch_profile(db, player, now):
     return True
 
 
-def fetched(db, player, now):
+def fetched(db, player, now=None):
+    """Is the player's current KSF walk one a Fetch press marked?"""
     try:
-        return db.execute("SELECT 1 FROM profilefetch WHERE player=? AND asked>=?",
-                          (player, now - FETCH_DAYS * 86400)).fetchone() is not None
+        return db.execute(LIVE_MARK % "?", (player,)).fetchone() is not None
     except sqlite3.OperationalError as e:
         if not _missing(e):
             raise

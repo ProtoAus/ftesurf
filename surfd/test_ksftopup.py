@@ -4,6 +4,7 @@ import os
 import struct
 import time
 import unittest
+from unittest.mock import patch
 import sqlite3
 import tempfile
 import json
@@ -30,8 +31,12 @@ class Topup(unittest.TestCase):
         self.key = ('surf_topup', 0, 0, 'clean')
         S._rate.clear()
         self.client = S.app.test_client()
+        # P1448: a press is for a map this server hosts.
+        self.installed = patch.object(S, 'map_index', return_value=({'surf_topup': 1, 'surf_topup_ksf': 1}, set()))
+        self.installed.start()
 
     def tearDown(self):
+        self.installed.stop()
         self.db.close()
         K.fetch = T.REAL_FETCH
 

@@ -29,6 +29,7 @@ TTL = 86400
 FORCE_TTL = 3600
 MAX_ACTIVE = 32             # signed-in accounts' walks...
 MAX_VIEWED = 8              # ...and, apart (P1448), other profiles' Fetch walks
+STARVE = 3600               # one of those unasked for this long ranks with the accounts
 ACCOUNT = "SELECT 1 FROM accounts a WHERE a.steamid = %s AND a.banned_at = 0"
 TAKE = 100                  # the API's own cap
 MAX_PAGES = 200             # 20,000 PBs; past it the walk is 'limited', not complete
@@ -131,8 +132,9 @@ def step(db, tracked, budget, get, delay=1.5, now=None):
     spent = 0
     while spent < budget:
         work = db.execute("SELECT player, momid, cursor, asked, pages FROM momprofiles p"
-                          " WHERE state IN (?, ?) ORDER BY NOT EXISTS (%s), updated, asked, player"
-                          " LIMIT 3" % (ACCOUNT % "p.player"), ACTIVE).fetchall()
+                          " WHERE state IN (?, ?) ORDER BY NOT EXISTS (%s) AND updated > ?,"
+                          " updated, asked, player LIMIT 3" % (ACCOUNT % "p.player"),
+                          ACTIVE + (now - STARVE,)).fetchall()
         if not work:
             break
         for player, momid, cursor, asked, pages in work:

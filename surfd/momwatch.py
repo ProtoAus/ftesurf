@@ -231,10 +231,12 @@ def topup_step(a):
                "--take", str(a.take), "--delay", str(a.delay), "--depth", str(target),
                "--max", str(n), "--board", bk, "--go"]
         try:
-            if state == "queued" and time.time() - os.path.getmtime(path) > TOPUP_FRESH:
-                cmd.append("--refresh")     # page 1 again once per press
+            refresh, missing = state == "queued" and time.time() - os.path.getmtime(path) > TOPUP_FRESH, False
         except OSError:
-            pass                        # never fetched: momfetch asks page 1 anyway
+            refresh, missing = False, True  # never fetched: momfetch asks page 1 anyway
+        if refresh:
+            cmd.append("--refresh")         # page 1 again once per press
+        judged = n > (1 if refresh or missing else 0)   # a tail page was planned: "gained nothing" is done
         before = _depth(momfetch.load_board(path))
         conn = S.connect()
         try:
@@ -249,6 +251,11 @@ def topup_step(a):
         fetched, left = True, left - n
         if rc != 0:
             print("fetch stopped (%d) -- the board goes to the back of the queue" % rc)
+            conn = S.connect()
+            try:
+                fetchq.mom_strike(conn, key, target, int(time.time()))
+            finally:
+                conn.close()
             rest(a.boards, "fetch refused")
             failed = rc
             break
@@ -258,14 +265,14 @@ def topup_step(a):
         conn = S.connect()
         try:
             st = fetchq.mom_finish(conn, key, target, held, total, d is None or bool(d.get("absent")),
-                                   int(time.time()), held > before)
+                                   int(time.time()), held > before or not judged)
         finally:
             conn.close()
         print("fetch                %s: %d of %d places held -> %s" % (bk, held, total, st))
     if fetched and a.index:
         sys.stdout.flush()
-        subprocess.call([sys.executable, os.path.join(HERE, "momboards.py"),
-                         "--boards", a.boards, "--link", "--go"])
+        failed = subprocess.call([sys.executable, os.path.join(HERE, "momboards.py"),
+                                  "--boards", a.boards, "--link", "--go"]) or failed
     return fetched, failed
 
 
@@ -357,7 +364,8 @@ def main():
     cat = momfetch.read_tracks(a.tracks)
     by_lower = {n.lower(): m for n, m in cat.items()}
 
-    topup_step(a)       # a refusal rests the rotation and walks; the live maps still go
+    # A refusal rests the rotation and walks; the live maps still go. Its code is the tick's.
+    top_failed = topup_step(a)[1]
 
     conn = S.connect()
     live = live_maps(conn)
@@ -377,7 +385,7 @@ def main():
     if not cand and a.backfill <= 0:
         print("no live lobby in the last %ds and nothing queued -- nothing to do"
               % LOBBY_FRESH)
-        return 0
+        return top_failed
 
     cut = time.time() - a.stale * 3600.0
     want, fresh_n, unknown, thin, stale_n = [], 0, [], 0, 0
@@ -439,7 +447,7 @@ def main():
         print("\nDRY RUN -- nothing fetched.  Pass --go.")
         return 0
 
-    fetched, failed = False, 0
+    fetched, failed = False, top_failed
 
     if maps:
         cmd = [sys.executable, _momfetch_path(),
