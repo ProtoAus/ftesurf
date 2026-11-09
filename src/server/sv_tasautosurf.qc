@@ -13,7 +13,7 @@
 #define TAS_ASROWS  16384       // demo samples at most (4 minutes at 66.7 a second)
 
 .float as_stage, as_i, as_try, as_backs, as_tprev, as_wait, as_goal;
-.float as_tube, as_look, as_tries, as_backmax, as_hop, as_finish, as_pace;
+.float as_tube, as_look, as_tries, as_backmax, as_hop, as_finish, as_pace, as_emin;
 .float as_backhead, as_backfail;
 .float as_startpause, as_laststate;    // `tas autosurf startpause`: pause on a run's first tick (TAS on), and the state seen last   // the head at the last rewind request, and requests since it last moved
 .string as_file;
@@ -169,6 +169,20 @@ string(entity e, float i) SV_TASAutoPace =
 	return sprintf(" pace %.2f", x);
 };
 
+// The least energy this stretch's reach counts at: the demo's speed at its board times `emin` (0.9), as
+// energy from where the body stands now (the search's own reference); "" when off. A reach well under
+// it left the next stretches tried without the speed to make them (Lex, 10 Nov).
+string(entity e, float i) SV_TASAutoEmin =
+{
+	local float k, v2, x;
+	if (e.as_emin <= 0) return "";
+	for (k = 0; k < as_nrows - 1 && as_rows[k*7] < as_wt[i] - 0.0001; k = k + 1) ;
+	v2 = as_rows[k*7+4] * as_rows[k*7+4] + as_rows[k*7+5] * as_rows[k*7+5] + as_rows[k*7+6] * as_rows[k*7+6];
+	x = 2 * cvar("sv_gravity") * (as_rows[k*7+3] - e.origin_z) + e.as_emin * e.as_emin * v2;
+	x = (x < 0) ? -sqrt(-x) : sqrt(x);
+	return sprintf(" emin %.1f", x);
+};
+
 // One stretch: the demo's rows from where it left off, the target, the search.
 void(entity e) SV_TASAutoLink =
 {
@@ -190,7 +204,7 @@ void(entity e) SV_TASAutoLink =
 	e.topt_tgton = 0;
 	SV_TASTargetCommand(e, argc);
 	if (!e.topt_tgton) { SV_TASAutoStop(e, "this stretch's target was refused"); return; }
-	ps = SV_TASAutoPace(e, i);              // not inside the sprintf's argument list (a call there clobbers the args set)
+	ps = strcat(SV_TASAutoPace(e, i), SV_TASAutoEmin(e, i));   // not inside the sprintf's argument list (a call there clobbers the args set)
 	ls = (e.as_look > 0) ? sprintf(" look %.0f", e.as_look) : "";
 	cl = sprintf("tas optimize %.0f left curve 12 demo aim late tube %.0f%s%s%s energy fast", h, e.as_tube, e.as_hop ? " hop" : "", ls, ps);
 	if (cvar("developer")) sprint(e, PRINT_HIGH, strcat("tas autosurf: ", cl, "\n"));
@@ -298,14 +312,14 @@ void(entity e, float argc) SV_TASAutoCommand =
 	path = argv(2);
 	if (argc < 3 || path == "" || strstrofs(path, "..") >= 0)
 	{
-		sprint(e, PRINT_HIGH, "tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [nohop] [finish] | stop | status | startpause\n");
+		sprint(e, PRINT_HIGH, "tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [emin F] [nohop] [finish] | stop | status | startpause\n");
 		return;
 	}
 	if (e.as_on || e.topt_on || e.tdem_on) { sprint(e, PRINT_HIGH, "tas autosurf: a search, demo or autosurf is running\n"); return; }
 	if (!SV_TASDemoPathOK(path)) { sprint(e, PRINT_HIGH, "tas autosurf: a .rec under data/ or cfg/ksfreplays/\n"); return; }
 	if (!SV_TASToolGate(e, "autosurf")) return;
 	if (SV_TASOptBusy(e)) return;
-	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = 6; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1;
+	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = 6; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1; e.as_emin = 0.9;
 	for (i = 3; i < argc; i = i + 1)
 	{
 		w = argv(i); n = FS_TASNumber(argv(i + 1)) ? stof(argv(i + 1)) : -1;    // not a number: refused below, not 0 (review)
@@ -314,6 +328,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		else if (w == "tries" && n >= 1 && n <= 10) { e.as_tries = rint(n); i = i + 1; }
 		else if (w == "backs" && n >= 0 && n <= 50) { e.as_backmax = rint(n); i = i + 1; }
 		else if (w == "pace" && n >= 0 && n <= 10) { e.as_pace = n; i = i + 1; }    // 0: energy alone
+		else if (w == "emin" && n >= 0 && n <= 1.2) { e.as_emin = n; i = i + 1; }   // 0: any speed counts
 		else if (w == "nohop") e.as_hop = 0;
 		else if (w == "finish") e.as_finish = 1;
 		else { sprint(e, PRINT_HIGH, sprintf("tas autosurf: unknown option '%s'\n", w)); return; }
