@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1443 tas optimize fast / energy -- LIVE 9 Nov (both installs' exe patch-1443 + QC; lobbies' QC); owner check pending
+
+- In a local TAS (pause mid-air, or on a ramp): `tas optimize 64 left board flick fast` (try right too) should finish
+  in about a second and leave you paused on the best try; add `energy` to score speed + height. Say if it ever
+  plays something worse than it reported, or refuses where you think it should work (the message says why).
+
 ## P1440 model parts and prop animations -- LIVE 9 Nov (both installs' exe/plugin + lobbies' QC); owner check pending
 
 - bhop_crash_egypt: the crates are whole boxes; break one and it shatters frame by frame, then goes; the green

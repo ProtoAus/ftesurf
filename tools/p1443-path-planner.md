@@ -113,6 +113,17 @@ board and flick: fast 473 candidates in 0.7 s, exit 163.9 u/s; the played search
 surf_null, the 128-tick drop from the start platform toward ramp 0 (energy): 473 candidates in 3.8 s a side, the
 best replayed bit-equal.
 
+## Delivery
+
+- Engine main a23e3ca9a (tag patch-1443, on patch-1444), QC main d9b8720a, after five review rounds.
+- LIVE 9 Nov ~14:40 local: 12 lobbies qw 7e843d1c + cs e1ac3414 (one player on, warned; 0 QC errors; the lobbies'
+  patch-1353 engine has no tas_rollout, so fast is refused there and TAS itself stays off on lobbies); both
+  installs exe fa65287f (git-8579-patch-1443-0-ga23e3ca9a; .prev/.pre1443 edf50724), C:\FTEQuake fteqwsv64
+  879099d7, QC the lobbies' pair (.pre1443 cafb0be2 / e84310b0); csprogsvers 72c6143 on the Pi and both installs;
+  codes.txt 111 -> 112 (.pre1443). Plugins unchanged (P1440's).
+- Checked on the installed binaries (tools/p1443_rollcheck.py, C:\FTEQuake's server + C:\FTESurf's client + the
+  deployed QC): 44 of 44 bit-equal, 72-86k ticks/s.
+
 ## Next
 
 Point the fast energy search at a surf_null ride (the board and ride, not the drop); then horizons past one 128-tick

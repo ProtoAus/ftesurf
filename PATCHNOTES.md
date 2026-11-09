@@ -21,6 +21,10 @@
 
 ## next
 
+### P1443 TAS: a much faster optimizer, and an energy goal
+- `tas optimize <ticks> <left|right> ... fast` tries hundreds of turns, boards and flicks in a second and plays only the best -- the old search played every try (about two seconds each).
+- `energy` scores speed plus height instead of speed alone, for maps where you need every bit of energy to make the end.
+
 ## 0.1.43 2026-11-09
 
 ### P1444 Find what makes a frame slow: r_spikes
