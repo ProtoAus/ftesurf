@@ -13,7 +13,7 @@
 #define TAS_ASROWS  16384       // demo samples at most (4 minutes at 66.7 a second)
 
 .float as_stage, as_i, as_try, as_backs, as_tprev, as_wait, as_goal;
-.float as_tube, as_look, as_tries, as_backmax, as_hop, as_finish;
+.float as_tube, as_look, as_tries, as_backmax, as_hop, as_finish, as_pace;
 .float as_backhead, as_backfail;   // the head at the last rewind request, and requests since it last moved
 .string as_file;
 float as_n;                     // waypoints
@@ -153,6 +153,21 @@ float(entity e) SV_TASAutoPlan =
 	return s;
 };
 
+// A tick sooner at this stretch's board is worth what the speed for the rest of the demo's route would gain:
+// PM_TICK * (its length left / its time left) / its time left, u/s a tick (surf_null: ~0.6 at board 1, ~1.7
+// at board 6), times the `pace` option; "" when off.
+string(entity e, float i) SV_TASAutoPace =
+{
+	local float k, len, tl, x;
+	if (e.as_pace <= 0) return "";
+	len = 0;
+	for (k = as_nrows - 1; k > 0 && as_rows[k*7] > as_wt[i]; k = k - 1)
+		len = len + vlen(SV_TASAutoRowO(k) - SV_TASAutoRowO(k - 1));
+	tl = max(3, as_rows[(as_nrows - 1) * 7] - as_wt[i]);
+	x = bound(0.05, e.as_pace * PM_TICK * (len / tl) / tl, 20);
+	return sprintf(" pace %.2f", x);
+};
+
 // One stretch: the demo's rows from where it left off, the target, the search.
 void(entity e) SV_TASAutoLink =
 {
@@ -167,16 +182,14 @@ void(entity e) SV_TASAutoLink =
 	if (e.topt_dn < 16) { SV_TASAutoStop(e, "the demo's rows for this stretch did not load"); return; }   // not the last stretch's (review)
 	h = min(h, e.topt_dn);
 	o = [as_wo[i*3], as_wo[i*3+1], as_wo[i*3+2]]; n = [as_wn[i*3], as_wn[i*3+1], as_wn[i*3+2]];
-	// a board within the tube of the demo's: one 346 u off left the next stretch outside its tube at once
-	// (surf_null board 1 -> 2, and 5 -> 6: closest 8357 u / 13961 u at ticks 31 / 18, 10 Nov)
-	r = (as_wk[i] == 2) ? 50 : ((as_wk[i] == 3) ? 400 : min(800, e.as_tube));
+	r = (as_wk[i] == 2) ? 50 : ((as_wk[i] == 3) ? 400 : 800);
 	if (n == '0 0 0') argc = tokenize(sprintf("tas target %.1f %.1f %.1f %.0f", o_x, o_y, o_z, r));
 	else argc = tokenize(sprintf("tas target %.1f %.1f %.1f %.0f %.4f %.4f %.4f", o_x, o_y, o_z, r, n_x, n_y, n_z));
 	e.topt_tgton = 0;
 	SV_TASTargetCommand(e, argc);
 	if (!e.topt_tgton) { SV_TASAutoStop(e, "this stretch's target was refused"); return; }
-	argc = tokenize(sprintf("tas optimize %.0f left curve 12 demo aim late tube %.0f%s%s energy fast", h, e.as_tube,
-		e.as_hop ? " hop" : "", (e.as_look > 0) ? sprintf(" look %.0f", e.as_look) : ""));
+	argc = tokenize(sprintf("tas optimize %.0f left curve 12 demo aim late tube %.0f%s%s%s energy fast", h, e.as_tube,
+		e.as_hop ? " hop" : "", (e.as_look > 0) ? sprintf(" look %.0f", e.as_look) : "", SV_TASAutoPace(e, i)));
 	SV_TASOptCommand(e, argc);
 	if (!e.topt_on) e.topt_outcome = -1;        // refused: a failed try
 	e.as_stage = 2;
@@ -266,14 +279,14 @@ void(entity e, float argc) SV_TASAutoCommand =
 	path = argv(2);
 	if (argc < 3 || path == "" || strstrofs(path, "..") >= 0)
 	{
-		sprint(e, PRINT_HIGH, "tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [nohop] [finish] | stop | status\n");
+		sprint(e, PRINT_HIGH, "tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [nohop] [finish] | stop | status\n");
 		return;
 	}
 	if (e.as_on || e.topt_on || e.tdem_on) { sprint(e, PRINT_HIGH, "tas autosurf: a search, demo or autosurf is running\n"); return; }
 	if (!SV_TASDemoPathOK(path)) { sprint(e, PRINT_HIGH, "tas autosurf: a .rec under data/ or cfg/ksfreplays/\n"); return; }
 	if (!SV_TASToolGate(e, "autosurf")) return;
 	if (SV_TASOptBusy(e)) return;
-	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = 6; e.as_hop = 1; e.as_finish = 0;
+	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = 6; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1;
 	for (i = 3; i < argc; i = i + 1)
 	{
 		w = argv(i); n = FS_TASNumber(argv(i + 1)) ? stof(argv(i + 1)) : -1;    // not a number: refused below, not 0 (review)
@@ -281,6 +294,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		else if (w == "look" && n >= 0 && n <= 400) { e.as_look = rint(n); i = i + 1; }
 		else if (w == "tries" && n >= 1 && n <= 10) { e.as_tries = rint(n); i = i + 1; }
 		else if (w == "backs" && n >= 0 && n <= 50) { e.as_backmax = rint(n); i = i + 1; }
+		else if (w == "pace" && n >= 0 && n <= 10) { e.as_pace = n; i = i + 1; }    // 0: energy alone
 		else if (w == "nohop") e.as_hop = 0;
 		else if (w == "finish") e.as_finish = 1;
 		else { sprint(e, PRINT_HIGH, sprintf("tas autosurf: unknown option '%s'\n", w)); return; }
