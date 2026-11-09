@@ -31,16 +31,23 @@ void() TASAuto_Event =
 	if (rk >= 0 && rk < TASO_STRETCHES) { taso_rb[rk] = rb; taso_rf[rk] = (rf > 0) ? rf : -1; taso_lastk = rk; }   // -1: a route point
 	if (substring(taso_note, 0, 12) == "your route: ")
 	{	// the server's count; a taken add's note carries its point ("N points, added x y z nx ny nz"), every other
-		// note only trims (an undo, a clear) -- the markers are the server's route, typed adds included (review 6)
-		k = tokenize(taso_note);
+		// note only trims (an undo, a clear) -- the markers are the server's route, typed adds included (review 6).
+		// tokenize_console: tokenize splits off ':' and ',' (review 7). Only the next slot is taken, so another
+		// player's adds or a reconnect never draw slots this tab did not write.
+		k = tokenize_console(taso_note);
 		rk = stof(argv(2));
 		if (k >= 11 && argv(4) == "added" && rk >= 1 && rk <= TOV_ROUTE)
 		{
-			tov_rp[rk - 1] = [stof(argv(5)), stof(argv(6)), stof(argv(7))];
-			tov_rk[rk - 1] = (stof(argv(10)) >= 0.99) ? 2 : ((stof(argv(8)) == 0 && stof(argv(9)) == 0 && stof(argv(10)) == 0) ? 3 : 1);
-			tov_rn = rk;
+			if (rk <= tov_rn + 1)
+			{
+				tov_rp[rk - 1] = [stof(argv(5)), stof(argv(6)), stof(argv(7))];
+				tov_rk[rk - 1] = (stof(argv(10)) >= 0.99) ? 2 : ((stof(argv(8)) == 0 && stof(argv(9)) == 0 && stof(argv(10)) == 0) ? 3 : 1);
+				tov_rn = rk;
+			}
 		}
 		else tov_rn = min(tov_rn, max(0, rk));
+		strunzone(taso_note);                      // the status line: the count, not the coordinates
+		taso_note = strzone(sprintf("your route: %g points", rk));
 	}
 };
 

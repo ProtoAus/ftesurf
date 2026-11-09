@@ -2618,7 +2618,7 @@ float(string cmd) CSQC_ConsoleCommand =
 				else tsline = "!";
 			if (!(tsvalue >= 4 && tsvalue <= 768 && tsvalue == floor(tsvalue)) ||       // P1449: the server holds played searches to 128
 			    (strcmp(argv(3), "left") && strcmp(argv(3), "right")) || substring(tsline, 0, 1) == "!")
-				print("tas optimize <ticks 4..128, fast 4..768> <left|right> [board | follow | curve [knots 3..16]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [aim] [hop] [gens N] [demo [late] [tube R [look N]] [pace X] [emin E]] (with curve)\n");
+				print("tas optimize <ticks 4..128, fast 4..768> <left|right> [board | follow | curve [knots 3..16]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [aim [late (with demo)]] [hop] [gens N] [demo [tube R [look N]] [pace X] [emin E]] (with curve)\n");
 			else
 				localcmd(sprintf("p%g cmd tas optimize %g %s%s\n", tsseat + 1, tsvalue, argv(3), tsline));
 		}
