@@ -4,7 +4,7 @@
   blue missed -- the best so far bright yellow, the target a cross. `tas_viz 0` hides them.
 */
 #define TOV_LINES 64
-#define TOV_PTS   32
+#define TOV_PTS   64       // sv_tasoptimize.qc samples up to 64 a path
 vector tov_pt[TOV_LINES * TOV_PTS];
 float tov_n[TOV_LINES];
 float tov_t[TOV_LINES];

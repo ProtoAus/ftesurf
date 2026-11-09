@@ -1068,20 +1068,21 @@ void(entity e, float v) SV_TASOptResult =
 };
 
 // P1449: candidate paths to their own player's view (TAS_EV_OPTVIZ; cl_tasoptviz.qc): the body now and up to
-// 31 points of topt_out's counted ticks; kind 0 a new search (the body, the target), 1 a miss, 2 a reach,
+// 63 points of topt_out's counted ticks; kind 0 a new search (the body, the target), 1 a miss, 2 a reach,
 // 3 a cut, 5 a new best, 4 the one played. Reliable, so RATE-LIMITED: a best and a sampled candidate are
 // kept (topt_vb/vc) and SV_TASOptVizFlush sends one message every 0.25 s -- sending every improvement
 // overflowed the client's reliable backbuffers early in a search and the server dropped it
 // (MAX_BACK_BUFFERS, 9 Nov). Points after the first go as shorts: 4-unit steps from it.
 .float topt_vizt, topt_vbn, topt_vcn, topt_vckind;
-float topt_vp[288];             // three paths of 32 points (x y z): 0 the best waiting, 1 a candidate, 2 scratch
+float topt_vp[576];             // three paths of 64 points (x y z): 0 the best waiting, 1 a candidate, 2 scratch
+                                // (32 left 600 u chords on a lookahead link: the line cut inside its curves)
 float(entity e, float ran, float w) SV_TASOptVizSample =
 {
 	local float st, k, n, t, b;
 	if (ran < 1) return 0;
-	st = max(1, ceil(ran / 31));
+	st = max(1, ceil(ran / 63));
 	n = 1 + ceil(ran / st);
-	b = w * 96;
+	b = w * 192;
 	topt_vp[b] = e.origin_x; topt_vp[b+1] = e.origin_y; topt_vp[b+2] = e.origin_z;
 	for (k = 1; k < n; k = k + 1)
 	{
@@ -1094,7 +1095,7 @@ float(entity e, float ran, float w) SV_TASOptVizSample =
 void(entity e, float kind, float n, float w) SV_TASOptVizWrite =
 {
 	local float k, b;
-	b = w * 96;
+	b = w * 192;
 	WriteByte(MSG_MULTICAST, SVC_CGAMEPACKET); WriteByte(MSG_MULTICAST, TAS_EV_OPTVIZ);
 	WriteByte(MSG_MULTICAST, kind); WriteByte(MSG_MULTICAST, n);
 	if (n >= 1) { WriteFloat(MSG_MULTICAST, topt_vp[b]); WriteFloat(MSG_MULTICAST, topt_vp[b+1]); WriteFloat(MSG_MULTICAST, topt_vp[b+2]); }
@@ -1105,6 +1106,7 @@ void(entity e, float kind, float n, float w) SV_TASOptVizWrite =
 		WriteShort(MSG_MULTICAST, bound(-32767, rint((topt_vp[b+k*3+2] - topt_vp[b+2]) / 4), 32767));
 	}
 	msg_entity = e; multicast(e.origin, MULTICAST_ONE_R);     // reliable: unreliable ones never arrived (a paused client's datagram)
+	if (cvar("developer") >= 2) print(sprintf("tas_viz: sent kind %.0f, %.0f points at %.3f\n", kind, n, time));
 };
 
 // kind 0 (start) and 4 (played) go now; 5 and 1-3 are kept for the flush
@@ -1113,8 +1115,8 @@ void(entity e, float kind, float ran) SV_TASOptVizSend =
 	local float n;
 	if (kind == 0)
 	{
-		topt_vp[192] = e.origin_x; topt_vp[193] = e.origin_y; topt_vp[194] = e.origin_z;
-		topt_vp[195] = e.topt_tgt_x; topt_vp[196] = e.topt_tgt_y; topt_vp[197] = e.topt_tgt_z;
+		topt_vp[384] = e.origin_x; topt_vp[385] = e.origin_y; topt_vp[386] = e.origin_z;
+		topt_vp[387] = e.topt_tgt_x; topt_vp[388] = e.topt_tgt_y; topt_vp[389] = e.topt_tgt_z;
 		SV_TASOptVizWrite(e, 0, e.topt_tgtuse ? 2 : 1, 2);
 		e.topt_vbn = e.topt_vcn = 0;
 		return;
@@ -1385,9 +1387,10 @@ void(entity e, float v) SV_TASOptCurveResult =
 
 void(entity e) SV_TASDemoFrame;
 // After SV_TASProjectFrame: one step of the search a frame.
+float topt_frtime, topt_frstart;  // the server frame the search budget counts in, and its wall-clock start
 void(entity e) SV_TASOptFrame =
 {
-	local float head, k, v, t0, t0v;
+	local float head, k, v, t0v;
 	SV_TASDemoFrame(e);             // P1449
 	if (e.topt_on || e.tdem_on) topt_busyt = time;
 	if (!e.topt_on) return;
@@ -1461,8 +1464,14 @@ void(entity e) SV_TASOptFrame =
 				: "a trigger edge or delayed output is pending at this tick; step a few ticks and retry"));
 			return;
 		}
-		t0 = gettime(1);       // the real clock: gettime(0) is the frame's start and never moves inside it
-		for (k = 0; k < 256 && (k == 0 || gettime(1) - t0 < TOPT_FRAMEBUDGET) && e.topt_on && e.topt_phase != 3; k = k + 1)
+		// The budget is the server FRAME's, not the call's: a call comes with each client packet (~100 a
+		// second), and 40 ms a call kept one frame running for a whole search -- the clock stood still, the
+		// rate-limited drawing sent one best line, and everything else on the server waited (9 Nov).
+		// A frame is marked by the server's clock changing (gettime(0) is realtime, gettime(1) another clock:
+		// their difference measures nothing), its start by gettime(1) at its first call.
+		if (time != topt_frtime) { topt_frtime = time; topt_frstart = gettime(1); }
+		if (gettime(1) - topt_frstart > TOPT_FRAMEBUDGET) return;
+		for (k = 0; k < 256 && (k == 0 || gettime(1) - topt_frstart < TOPT_FRAMEBUDGET) && e.topt_on && e.topt_phase != 3; k = k + 1)
 		{	// P1449: ~40 ms of rollouts a call, not a tick count (a follow candidate rolls up to 12 times to
 			// its fixed point; calls come with the client's packets, a few a second from an unfocused window)
 			if (e.topt_kn) SV_TASOptCurveNext(e);
@@ -1808,6 +1817,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_on = 1; e.topt_head = SV_TimerTicks(e); e.topt_n = n; e.topt_dir = dir;
 	e.topt_yaw0 = e.v_angle_y; e.topt_pitch0 = e.v_angle_x;
 	e.topt_stage = 1; e.topt_phase = 1; e.topt_k = 0; e.topt_cand = 0; e.topt_which = 0;
+	e.topt_tat = e.topt_chunk = 0;      // the last search's played ticks: left over, its successor never sent the played line
 	e.topt_evals = e.topt_iter = 0; e.topt_bestr = 0; e.topt_bestv = -1; e.topt_next = 0;
 	e.topt_backed = e.topt_wait = 0;
 	e.topt_mode = mode; e.topt_fk = fk; e.topt_srch = 0; e.topt_besty = 0; e.topt_bestf = 0; e.topt_bestp = 12;
