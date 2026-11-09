@@ -80,7 +80,7 @@
 .float topt_tgtuse;             // P1449: this search scores by the target (fast with a target set)
 float(entity e, string what) SV_TASToolGate;
 .float topt_outcome;            // P1449: how the last search ended: 0 running, -1 stopped, 1 played, 2 played to the target
-.float as_on;                   // P1449: a `tas autosurf` chain is running (sv_tasautosurf.qc)
+.float as_on, as_stage;        // P1449: a `tas autosurf` chain is running, and its stage (sv_tasautosurf.qc)
 void(entity e) SV_TASAutoFrame;
 .float topt_candk, topt_candd;  // P1449: the last scored candidate's reach tick and closest distance
 .float topt_candw, topt_reachw; // P1449: its wall ticks before the reach (or the scored miss), and the played best's
@@ -149,7 +149,8 @@ float topt_dlen[TOPT_HMAX];     // the demo path's length from its first row to 
 .float topt_look;               // P1449 `look N`: ticks of the demo's route a reach is scored on surviving
 .float topt_emin, topt_weakn;   // P1449 `emin X`: the least energy a reach counts at (internal units; 0 off), weak reaches seen
 .float topt_pace;               // P1449 `pace X`: a reach's score lost per tick it takes (energy alone is nearly flat at
-                                // speed -- free fall keeps it -- so a longer arc cost nothing: Lex, 10 Nov)
+                                // speed -- free fall keeps it -- so a longer arc cost nothing: Lex, 10 Nov), in the score's
+                                // own units: with `energy` one is ~3-6 u/s of speed at 1800-1000 u/s (review)
 // P1449 lookahead warm start: the played best's correction past its reach, tick by tick, for the next
 // demo search that starts there -- its first sample after the demo itself (a board 1 whose lookahead
 // survived handed board 2 a search that found only 30 of 638 survivors from scratch, 9 Nov)
@@ -908,6 +909,10 @@ float(entity e, float ran) SV_TASOptTubeIn =
 	return -1;
 };
 
+// P1449 review: a band's score from its value (energy less penalties, possibly negative): base + x above 1, and
+// below it squashed into (base, base + 1) -- monotonic, so penalties still rank, never across a band's floor.
+float(float base, float x) SV_TASOptBand = { return base + ((x >= 1) ? x : 1 / (2 - x)); };
+
 // P1449: topt_out's counted ticks against the target. The reach is the first tick within the radius
 // that, when the target names a face, also touches that face (a world-ramp contact whose normal is
 // within TOPT_FACEDOT of it: landing on the ramp's flat top beside the point is not boarding it); a
@@ -950,21 +955,24 @@ float(entity e, float ran) SV_TASOptTargetScore =
 	if (e.topt_tgtn != '0 0 0' && e.topt_tgtn_z < 0.99)
 		for (i = 1; i <= bk && i < lim; i = i + 1) if (topt_out[i*13+6]) e.topt_candg = e.topt_candg + 1;
 	if (hit)
-	{
+	{	// review: penalties rank within a band, never across it -- a reach stays above every weak reach, a weak
+		// reach above every miss (60 wall or ground ticks used to sink a reach below TOPT_REACH: autosurf then
+		// retried a stretch it had made)
 		i = bk * 13;
 		e.topt_cande = SV_TASOptStateScore(e, [topt_out[i], topt_out[i+1], topt_out[i+2]], [topt_out[i+3], topt_out[i+4], topt_out[i+5]]);
+		d = e.topt_cande - TOPT_WALLPEN * e.topt_candw - TOPT_GROUNDPEN * e.topt_candg;
 		if (e.topt_emin > 0 && e.topt_cande < e.topt_emin)
 		{	// reached well under the demo's speed there: the stretches after it would not make it (Lex, 10 Nov)
 			e.topt_weakn = e.topt_weakn + 1;
-			return TOPT_WEAK + e.topt_cande - 3 * (e.topt_emin - e.topt_cande) - TOPT_WALLPEN * e.topt_candw - TOPT_GROUNDPEN * e.topt_candg;
+			return SV_TASOptBand(TOPT_WEAK, d - 3 * (e.topt_emin - e.topt_cande));
 		}
-		d = TOPT_REACH + e.topt_cande - TOPT_WALLPEN * e.topt_candw - TOPT_GROUNDPEN * e.topt_candg - e.topt_pace * (bk + 1);
+		d = d - e.topt_pace * (bk + 1);
 		if (e.topt_tgtn_z >= 0.99 && e.topt_tube > 0 && e.topt_tgtj + 4 < e.topt_dn)
 		{	// a hop keeps its horizontal velocity for the next flight: off the demo's heading after its own
 			// hop costs TOPT_HOPDIR a degree (10 deg at the surf_null platform hop was 200 u at ramp 4)
 			dh = vectoyaw([topt_dpos[e.topt_tgtj*3+12] - topt_dpos[e.topt_tgtj*3+3], topt_dpos[e.topt_tgtj*3+13] - topt_dpos[e.topt_tgtj*3+4], 0])
 				- vectoyaw([topt_out[i+3], topt_out[i+4], 0]);
-			d = max(TOPT_REACH + 0.001, d - TOPT_HOPDIR * fabs(dh - 360 * floor((dh + 180) / 360)));   // still a reach (review)
+			d = d - TOPT_HOPDIR * fabs(dh - 360 * floor((dh + 180) / 360));
 		}
 		if (e.topt_look > 0 && e.topt_tube > 0)
 		{	// lookahead: the route this candidate goes on along past the reach before a volume QC acts on
@@ -978,7 +986,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 			for (i = bk + 1; i < lim && i <= bk + e.topt_look; i = i + 1)
 				if (topt_out[i*13+8] == 4 && !topt_out[i*13+6]) d = d - TOPT_WALLPEN;
 		}
-		return d;
+		return SV_TASOptBand(TOPT_REACH, d);
 	}
 	// P1449: a cut miss still says how near it got (half credit) so a curve search has a slope; its play
 	// stops on the closest tick, before the cut. A miss adds its energy there (u/s for u): scored on
@@ -1403,7 +1411,7 @@ void(entity e) SV_TASOptCurveNext =
 		// aim late: the grid tries four starts (0.7, 0.4, 0.55, 0.85 of the way): a line faster than the demo's must
 		// begin a max-rate air turn earlier, and spread 200 round 0.7 almost never sampled 0.4 (surf_null ramp 6 -> 7:
 		// farsh turns 94 deg at 43 deg/s, the air cap's rate; at 2800 u/s that arc is ~490 u wider)
-		if ((e.topt_mode & 256) && e.topt_kidx > 0) topt_kcur[e.topt_kn + 2] = (e.topt_kidx & 2) ? ((e.topt_kidx & 1) ? 250 : -250) : ((e.topt_kidx & 1) ? -500 : 0);
+		if ((e.topt_mode & 256) && e.topt_kidx > 1) topt_kcur[e.topt_kn + 2] = (e.topt_kidx & 2) ? ((e.topt_kidx & 1) ? 250 : -250) : ((e.topt_kidx & 1) ? -500 : 0);
 		if (e.topt_kidx == 0 && (e.topt_mode & 64))
 		{	// the demo itself
 			for (j = 0; j < e.topt_kn; j = j + 1) topt_kcur[j] = 0;
@@ -1546,7 +1554,7 @@ void(entity e) SV_TASOptFrame =
 	local float head, k, v, t0v;
 	SV_TASDemoFrame(e);             // P1449
 	SV_TASAutoFrame(e);             // P1449: an autosurf's next stretch, between its searches
-	if (e.topt_on || e.tdem_on || e.as_on) topt_busyt = time;   // the chain holds the guard across its rewinds
+	if (e.topt_on || e.tdem_on || (e.as_on && e.as_stage != 20)) topt_busyt = time;   // not while armed (review)   // the chain holds the guard across its rewinds
 	if (!e.topt_on) return;
 	if (!e.run_tas_paused || e.run_t_state != TS_RUNNING) { SV_TASOptStop(e, "TAS play/off, or the run ended"); return; }
 	if (e.run_tas_replaystate == TAS_TAPE_ACTIVE || e.run_tas_pending) return;

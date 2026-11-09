@@ -2611,6 +2611,7 @@ float(string cmd) CSQC_ConsoleCommand =
 			for (tsi = 4; tsi < cmdargc; tsi = tsi + 1)    // the server checks their order; only known words pass
 				if (argv(tsi) == "board" || argv(tsi) == "flick" || argv(tsi) == "time" || argv(tsi) == "energy" ||
 				    argv(tsi) == "fast" || argv(tsi) == "zigzag" || argv(tsi) == "split" || argv(tsi) == "fixedpitch" || argv(tsi) == "follow" || argv(tsi) == "curve" || argv(tsi) == "demo" || argv(tsi) == "aim" || argv(tsi) == "late" || argv(tsi) == "tube" || argv(tsi) == "hop" || argv(tsi) == "look" || argv(tsi) == "pace" || argv(tsi) == "emin" ||
+				    ((argv(tsi - 1) == "pace" || argv(tsi - 1) == "emin") && FS_TASNumber(argv(tsi))) ||    // decimals (review)
 				    (stof(argv(tsi)) >= 1 && stof(argv(tsi)) <= ((argv(tsi - 1) == "tube") ? 4096 : ((argv(tsi - 1) == "look") ? 400 : 32)) && argv(tsi) == ftos(stof(argv(tsi)))))
 					tsline = strcat(tsline, " ", argv(tsi));
 				else tsline = "!";

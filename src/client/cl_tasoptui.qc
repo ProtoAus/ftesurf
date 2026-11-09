@@ -28,7 +28,9 @@ void() TASAuto_Event =
 	if (taso_state == 1 && was != 1) { for (k = 0; k < TASO_STRETCHES; k = k + 1) taso_rb[k] = taso_rf[k] = 0; taso_lastk = -1; }
 	else if (taso_state == 1 && taso_i < wasi)      // a backtrack: what came after it is to be done again
 		for (k = taso_i; k < TASO_STRETCHES; k = k + 1) taso_rb[k] = taso_rf[k] = 0;
-	if (rk >= 0 && rk < TASO_STRETCHES) { taso_rb[rk] = rb; taso_rf[rk] = max(1, rf); taso_lastk = rk; }
+	if (rk >= 0 && rk < TASO_STRETCHES) { taso_rb[rk] = rb; taso_rf[rk] = (rf > 0) ? rf : -1; taso_lastk = rk; }   // -1: a route point
+	if (substring(taso_note, 0, 12) == "your route: ")      // the server's count: a refused add or another's clear (review)
+		tov_rn = min(tov_rn, stof(substring(taso_note, 12, -1)));
 };
 
 // One box a stretch: mint at or above farsh's speed there (within 2%), butter within 10%, rose below (a reach
@@ -47,8 +49,9 @@ void(vector at, float width, float h) TASOptUI_Strip =
 			r = taso_rb[k] / taso_rf[k];
 			c = (r >= 0.98) ? SUI_THEME_GOOD : ((r >= 0.9) ? SUI_THEME_WARN : SUI_THEME_BAD);
 		}
+		else if (taso_rf[k] < 0) c = SUI_THEME_GOOD;            // a route point reached
 		if (k == taso_i && taso_state == 1) sui_roundbox(at + [k * w, 0, 0], [w - 2, h, 0], h * 0.3, SUI_THEME_ACCENT, 1);
-		sui_roundbox(at + [k * w + 1, 1, 0], [w - 4, h - 2, 0], h * 0.3, c, (taso_rf[k] > 0) ? 0.9 : 1);
+		sui_roundbox(at + [k * w + 1, 1, 0], [w - 4, h - 2, 0], h * 0.3, c, (taso_rf[k] != 0) ? 0.9 : 1);
 	}
 };
 
@@ -87,7 +90,7 @@ float(string f) TASOptUI_ThisMap =
 // This map's KSF replays (cfg/ksfreplays/ksf_<map without surf_>_<runner>.rec), searched once a map.
 void() TASOptUI_List =
 {
-	local float h, i, n, c;
+	local float h, i, n, c, k;
 	local string m, f, pre;
 	if (taso_listed && taso_listmap == zone_mapname) return;
 	for (i = 0; i < taso_demon; i = i + 1) strunzone(taso_demo[i]);
@@ -114,11 +117,12 @@ void() TASOptUI_List =
 	{
 		h = search_begin(sprintf("data/%s/%s/main/*.rec", i ? "momentum" : "online", zone_mapname), 33, TRUE);
 		if (h < 0) continue;
-		n = search_getsize(h);
-		for (c = 0; c < n && c < 3 && taso_demon < TASO_DEMOS; c = c + 1)
+		n = search_getsize(h); k = 0;
+		for (c = 0; c < n && k < 3 && taso_demon < TASO_DEMOS; c = c + 1)
 		{
 			f = search_getfilename(h, c);
-			if (TASOptUI_SafeName(f)) { taso_demo[taso_demon] = strzone(f); taso_demon = taso_demon + 1; }
+			if (strstrofs(f, "_dnf") >= 0) continue;      // an abandoned run's short time is not the fastest (review)
+			if (TASOptUI_SafeName(f)) { taso_demo[taso_demon] = strzone(f); taso_demon = taso_demon + 1; k = k + 1; }
 		}
 		search_end(h);
 	}
@@ -232,7 +236,11 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	if (taso_n > 0)
 	{	// the run so far, a box a ramp or bhop platform
 		TASOptUI_Strip(at, width, row * 0.6); at_y = at_y + row * 0.6 + hint * 0.5;
-		if (taso_lastk >= 0)
+		if (taso_lastk >= 0 && taso_rf[taso_lastk] < 0)
+		{
+			sui_text(at, [hint, hint], sprintf("Point %g: %g u/s", taso_lastk + 1, taso_rb[taso_lastk]), SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.6;
+		}
+		else if (taso_lastk >= 0)
 		{
 			label = sprintf("Ramp %g: %g u/s, farsh %g (%s%g)", taso_lastk + 1, taso_rb[taso_lastk], taso_rf[taso_lastk],
 				(taso_rb[taso_lastk] >= taso_rf[taso_lastk]) ? "+" : "", taso_rb[taso_lastk] - taso_rf[taso_lastk]);
