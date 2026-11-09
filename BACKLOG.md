@@ -261,10 +261,10 @@
   + pause, r_budget per variant, r_blendtrace now prints per-view ms + verdict counts). Parked, measured: sorting opaque
   meshes for r_multidraw (40-60% fewer sub-draws, no CPU gain: the cost is per batch) and merging same-batch blend
   faces (-0.03 ms). r_blendsort 1 at the same view: transparent 0.28 ms (a different order, not a free switch).
-  NEXT for the failing sorts (still ~0.9 ms/view): pass 1 resolves every strict pair's overlap verdict (1010 of 1311 on
-  fairy t=7.6) though a cycle needs only one confirmed incoming edge per stuck node -- a lazy Kahn (resolve a strict
-  edge only when deciding a pick) keeps the result while the budget lasts. Also fairy csqc 2.4-4.3 ms on paused views
-  (glare rays, Lex's budget call).
+  P1463 INSTALLED 10 Nov (both installs exe 5b1395cb, patch-1463): that lazy Kahn -- pass-1 verdicts 1008 -> 210,
+  face order identical in 6 traced views, transparent ~0.1-0.2 ms less at fairy t=7.6 (worst view now 1.63 ms, was
+  2.31 before P1457). What is left in a failing sort: plane-side tests (~20k units), pass-0 verdicts, projection.
+  Bigger fairy lever now: csqc 2.4-4.3 ms on paused views (glare rays, Lex's budget call).
 - NEXT for water capture frames (why P1455 could not help: a one-view capture frame still costs 3.2-4 ms against
   3.3 at a 300 cap; sys_framepacing 5 already plans by the slowest of 64 frames, so pacing cannot help a frame longer
   than the interval). Each nested view spends ~1 ms in the hl2 plugin's PrepareFrame because (a) gl_rmain.c ~1760
