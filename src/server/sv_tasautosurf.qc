@@ -392,6 +392,9 @@ void(entity e) SV_TASAutoLink =
 };
 
 // After SV_TASDemoFrame (SV_TASOptFrame): the next step of the chain once no search is running.
+// backs unset: twice the stretches, at least 6 (the full surf_null run spent 10 on its first five of 17 stretches)
+void(entity e) SV_TASAutoBacks = { if (e.as_backmax < 0) e.as_backmax = max(6, 2 * as_n); };
+
 void(entity e) SV_TASAutoFrame =
 {
 	local float head, i, best, d, t, s, along, lat, herr, ee, ph;
@@ -517,6 +520,7 @@ void(entity e) SV_TASAutoFrame =
 			s = SV_TASAutoPlan(e);
 			if (s < 0 || as_n < 1) { SV_TASAutoStop(e, "out of the start box off the demo's route (not within 400 u)"); return; }
 			e.as_stage = 1; e.as_i = 0; e.as_try = 0; e.as_backs = 0; e.as_tprev = as_rows[s*7]; e.as_failat = -1;
+			SV_TASAutoBacks(e);
 			sprint(e, PRINT_HIGH, sprintf("tas autosurf: out of the start box at %.0f u/s (tick %.0f); %.0f stretches ahead\n",
 				vlen([e.velocity_x, e.velocity_y, 0]), SV_TimerTicks(e), as_n));
 		}
@@ -632,14 +636,14 @@ void(entity e, float argc) SV_TASAutoCommand =
 	if (path != "route" && !SV_TASDemoPathOK(path)) { sprint(e, PRINT_HIGH, "tas autosurf: a .rec under data/ or cfg/ksfreplays/ (or route)\n"); return; }
 	if (SV_TASOptBusy(e)) return;
 	st = 0; flip = 0; arm = 0; e.as_szone = 0; e.as_sg = 900; e.as_sy = 0; e.as_sside = -1;
-	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = 6; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1; e.as_emin = 0.95;
+	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = -1; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1; e.as_emin = 0.95;
 	for (i = 3; i < argc; i = i + 1)
 	{
 		w = argv(i); n = FS_TASNumber(argv(i + 1)) ? stof(argv(i + 1)) : -1;    // not a number: refused below, not 0 (review)
 		if (w == "tube" && n >= 50 && n <= 2000) { e.as_tube = n; i = i + 1; }
 		else if (w == "look" && n >= 0 && n <= 400) { e.as_look = rint(n); i = i + 1; }
 		else if (w == "tries" && n >= 1 && n <= 10) { e.as_tries = rint(n); i = i + 1; }
-		else if (w == "backs" && n >= 0 && n <= 50) { e.as_backmax = rint(n); i = i + 1; }
+		else if (w == "backs" && n >= 0 && n <= 200) { e.as_backmax = rint(n); i = i + 1; }    // 0: none; unset: auto
 		else if (w == "pace" && n >= 0 && n <= 10) { e.as_pace = n; i = i + 1; }    // 0: energy alone
 		else if (w == "emin" && n >= 0 && n <= 1.2) { e.as_emin = n; i = i + 1; }   // 0: any speed counts
 		else if (w == "nohop") e.as_hop = 0;
@@ -669,6 +673,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		if (e.as_file != "") strunzone(e.as_file);
 		e.as_file = "";
 		e.as_route = 1; e.as_on = 1; e.as_stage = 1; e.as_i = 0; e.as_try = 0; e.as_backs = 0; e.as_tprev = 0; e.as_failat = -1;
+		SV_TASAutoBacks(e);
 		SV_TASAutoNote(e, 1, sprintf("your route: %.0f points ahead", as_n));
 		return;
 	}
@@ -712,5 +717,6 @@ void(entity e, float argc) SV_TASAutoCommand =
 	if (e.as_file != "") strunzone(e.as_file);
 	e.as_file = path;
 	e.as_on = 1; e.as_stage = 1; e.as_i = 0; e.as_try = 0; e.as_backs = 0; e.as_tprev = as_rows[s*7]; e.as_failat = -1;
+	SV_TASAutoBacks(e);
 	SV_TASAutoNote(e, 1, sprintf("%.0f stretches ahead from demo t=%.2f (%.0f u off its route)", as_n, as_rows[s*7], vlen(SV_TASAutoRowO(s) - e.origin)));
 };
