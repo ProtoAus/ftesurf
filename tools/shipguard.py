@@ -228,6 +228,10 @@ DENY_EXACT = {
                                  "not ours to redistribute.",
     "particles/sec": "Not a path: the unit in cl_emit.qc's env_spark budget line "
                      "(\"particles/sec\").",
+    "sound/weapons/explode3.wav": "P1435: HL2's explosion sound from the player's mounted Source "
+                                  "content; Explode_Have probes it first. Not ours to redistribute.",
+    "sound/weapons/debris1.wav": "P1435: CS:S's fallback explosion sound from the player's mounted "
+                                 "Source content; Explode_Have probes it first. Not ours to redistribute.",
 }
 
 # The literal must START WITH the key.  Covers a strcat prefix (`scripts/
