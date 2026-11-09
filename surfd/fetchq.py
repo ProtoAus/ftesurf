@@ -232,6 +232,13 @@ def is_account(db, player):
     return db.execute("SELECT 1 FROM accounts WHERE steamid=? AND banned_at=0", (player,)).fetchone() is not None
 
 
+def walked_as_account(db, player):
+    """Did the player's last KSF walk run as an account's (full), i.e. the account predates it?
+    (Every walk ends at the same mode, so the state cannot tell a view's walk from a full one.)"""
+    return db.execute("SELECT 1 FROM accounts a JOIN ksfprofiles p ON p.player=a.steamid WHERE"
+                      " a.steamid=? AND a.banned_at=0 AND a.created_at<=p.asked", (player,)).fetchone() is not None
+
+
 def can_mark(db, player):
     """Would fetch_profile mark a walk of this player now (an account, or under the cap)?"""
     try:

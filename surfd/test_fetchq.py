@@ -186,10 +186,26 @@ class Fetch(unittest.TestCase):
         with patch.object(F, 'MAX_FETCHED', 0), S.app.test_client() as c:
             r = c.post('/board/api/map?fetch=1&player=' + h)
         self.assertEqual((r.json['ksf_sync']['state'], r.json['full']), ('complete', False))
-        # An account's finished walk was full already: no re-walk inside FORCE_TTL.
-        self.account(PLAYER)
+        # An account's walk (the account predates it) was full: no re-walk inside FORCE_TTL...
+        self.account(PLAYER)                              # created_at 1, before the walk
         S._rate.clear()
         with S.app.test_client() as c:
+            r = c.post('/board/api/map?fetch=1&player=' + h)
+        self.assertEqual(r.json['ksf_sync']['state'], 'complete')
+        # ...but a view's walk of a player who signed in since is walked again, fully.
+        self.db.execute("UPDATE accounts SET created_at=? WHERE steamid=?", (int(time.time()) + 5, PLAYER))
+        self.db.commit()
+        S._rate.clear()
+        with S.app.test_client() as c:
+            r = c.post('/board/api/map?fetch=1&player=' + h)
+        self.assertEqual((r.json['ksf_sync']['state'], r.json['full']), ('queued', True))
+        # A view pool too full for the re-walk keeps the true state in the reply.
+        self.db.execute("DELETE FROM accounts WHERE steamid=?", (PLAYER,))
+        self.db.execute("DELETE FROM profilefetch")
+        self.db.execute("UPDATE ksfprofiles SET state='complete', updated=?", (int(time.time()) - 600,))
+        self.db.commit()
+        S._rate.clear()
+        with patch.object(P, 'MAX_VIEWED', 0), S.app.test_client() as c:
             r = c.post('/board/api/map?fetch=1&player=' + h)
         self.assertEqual(r.json['ksf_sync']['state'], 'complete')
         now = int(time.time())
