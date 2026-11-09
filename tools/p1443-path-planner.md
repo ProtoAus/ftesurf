@@ -124,6 +124,25 @@ best replayed bit-equal.
 - Checked on the installed binaries (tools/p1443_rollcheck.py, C:\FTEQuake's server + C:\FTESurf's client + the
   deployed QC): 44 of 44 bit-equal, 72-86k ticks/s.
 
+## P1449: targets, demo-guided searches, autosurf (engine 9fdeedc2d, QC 87fd4a41)
+
+- Engine tas_rollout rows FOLLOW / PITCHV / AIM and contact kind 4 (ENGINE_PATCHES.md "Patch 1449"; two review
+  rounds). QC: `tas target`, `tas optimize ... curve 12 demo aim late tube R look N hop` (a search over corrections
+  to a replay's own turn commands, held near its path, scored on energy at the reach), `tas autosurf <demo.rec>`
+  (sv_tasautosurf.qc: a replay's boards and bhop platforms as targets, tries and backtracks), the line editor's
+  Optimizer tab (cl_tasoptui.qc). Three QC review rounds, one more on the face fix and the tab's demo list.
+- Rig (tools/p1449_chain3.py, surf_null from ksf_null_farsh's ramp-0 state): the driver chain reached boards 1-4
+  and both platform hops (tbt1, 9 Nov). In-game autosurf (tauto3, 10 Nov): stretch 1 on 6 of 7 visits after the
+  face fix (0 of 2 before); stuck at stretch 2 after 6 backtracks -- a curved pillar (brush 101) 18 u off farsh's
+  line, and 400-580 of each search's 638 candidates cut on a wall touch there.
+- Delivered 10 Nov: both installs exe e47ccec1 (git-8596-patch-1449-0-g9fdeedc2d; .prev/.pre1449 the patch-1452
+  exe), C:\FTEQuake fteqwsv64 54ee2295 (.pre1449 879099d7), csprogs 41a94457 / qwprogs 18dddad9 built from 87fd4a41
+  with P1448's held client files (cl_online, cl_profile, cl_scores) at d9b8720a; menu.dat unchanged (e4f7b1ad);
+  csprogsvers 89bbcb91 in both installs; tasrevd codes.txt 112 -> 113 (.pre1449). Not on the lobbies (TAS is off
+  there). qwprogs grew 1.70 -> 3.16 MB: the search arrays' per-element defs (qwprogs keeps array defs).
+- Next: a wall touch costs score instead of cutting (TOPT_WALLPEN, branch p1449-wall), then monolith's ramp 2
+  corner and surf_null's ramp 4 launch.
+
 ## Next
 
 Point the fast energy search at a surf_null ride (the board and ride, not the drop); then horizons past one 128-tick

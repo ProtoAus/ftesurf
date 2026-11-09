@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1449 TAS autosurf and the Optimizer tab -- both installs 10 Nov (exe e47ccec1, patch-1449; cs 41a94457)
+- `tas optimizer` opens the line editor on the Optimizer tab. In a TAS session paused on a replay's route (play the
+  replay to a ramp, or load a save on it), pick the replay and press "Autosurf from here"; "Stop autosurf" ends it.
+  The replays listed are this map's in cfg/ksfreplays (ksf_<map>_<runner>.rec) and any .rec you put in data/.
+- surf_null with ksf_null_farsh: the rig got past ramp 1's board and stuck at ramp 2 (a pillar 18 u off farsh's line
+  cuts most of each search's candidates) -- the next work. Say how far it gets for you, and whether the green line
+  ("Search lines shown") follows the bot.
+- One stretch: aim at a ramp's face, "Target at crosshair", then "Optimize toward the target".
+
 ## P1453 loading screen: named steps, map wireframes, map picture -- both installs 9 Nov (exe c53078bf, menu e4f7b1ad)
 - Play bhop_landmark (or any CS:GO map) fresh after a launch: "Mounting CS:GO content" shows through the few-second
   wait, then "Loading textures: ..." lists the games the textures come from.
