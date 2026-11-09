@@ -5157,7 +5157,7 @@ void(entity t, entity o, entity act) SV_ApplyInput =
 			SV_SkyAnim(t, pm);
 		else if (SV_ModelAnim(t, pm))
 		{
-			if (cvar("developer"))
+			if (cvar("developer") >= 2)     // map timers repeat it: bhop_crash_egypt's 20 nitro crates
 				dprint(sprintf("prop %s: SetAnimation %s -> frame %g\n", t.targetname, pm, t.frame));
 		}
 		else if (cvar("developer"))
