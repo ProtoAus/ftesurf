@@ -2570,19 +2570,19 @@ float(string cmd) CSQC_ConsoleCommand =
 			else
 				localcmd(sprintf("p%g cmd tas target%s\n", tsseat + 1, tsline));
 		}
-		else if (cmdargc >= 4 && cmdargc <= 11 && !strcmp(argv(1), "optimize"))    // P1088; P1092 board/flick; P1097 time; P1443 energy/fast
+		else if (cmdargc >= 4 && cmdargc <= 15 && !strcmp(argv(1), "optimize"))    // P1088; P1092 board/flick; P1097 time; P1443 energy/fast
 		{
 			tsvalue = stof(argv(2));
 			tsline = "";
 			for (tsi = 4; tsi < cmdargc; tsi = tsi + 1)    // the server checks their order; only known words pass
 				if (argv(tsi) == "board" || argv(tsi) == "flick" || argv(tsi) == "time" || argv(tsi) == "energy" ||
-				    argv(tsi) == "fast" || argv(tsi) == "zigzag" || argv(tsi) == "split" || argv(tsi) == "fixedpitch" || argv(tsi) == "follow" || argv(tsi) == "curve" || argv(tsi) == "demo" || argv(tsi) == "aim" || (stof(argv(tsi)) >= 1 && stof(argv(tsi)) <= 32
-				    && argv(tsi) == ftos(stof(argv(tsi)))))
+				    argv(tsi) == "fast" || argv(tsi) == "zigzag" || argv(tsi) == "split" || argv(tsi) == "fixedpitch" || argv(tsi) == "follow" || argv(tsi) == "curve" || argv(tsi) == "demo" || argv(tsi) == "aim" || argv(tsi) == "late" || argv(tsi) == "tube" || argv(tsi) == "hop" ||
+				    (stof(argv(tsi)) >= 1 && stof(argv(tsi)) <= ((argv(tsi - 1) == "tube") ? 4096 : 32) && argv(tsi) == ftos(stof(argv(tsi)))))
 					tsline = strcat(tsline, " ", argv(tsi));
 				else tsline = "!";
 			if (!(tsvalue >= 4 && tsvalue <= 512 && tsvalue == floor(tsvalue)) ||       // P1449: the server holds played searches to 128
 			    (strcmp(argv(3), "left") && strcmp(argv(3), "right")) || substring(tsline, 0, 1) == "!")
-				print("tas optimize <ticks 4..128, fast 4..512> <left|right> [board | follow | curve [knots 3..12]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch]\n");
+				print("tas optimize <ticks 4..128, fast 4..512> <left|right> [board | follow | curve [knots 3..12]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [demo [aim [late]] [tube R] [hop]]\n");
 			else
 				localcmd(sprintf("p%g cmd tas optimize %g %s%s\n", tsseat + 1, tsvalue, argv(3), tsline));
 		}
