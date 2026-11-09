@@ -11296,7 +11296,7 @@ float(entity to, float sf) SV_TrkPropSend =
 {
 	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
 	WriteByte(MSG_ENTITY, ENTWIRE_TRKPROP);
-	WriteByte(MSG_ENTITY, 1);
+	WriteByte(MSG_ENTITY, 1 | 2);       // P1440: 2, the bodygroup byte at the end
 	WriteEntity(MSG_ENTITY, self.vbsp_trkr_par);
 	WriteFloat(MSG_ENTITY, self.vbsp_trkr_lo_x);
 	WriteFloat(MSG_ENTITY, self.vbsp_trkr_lo_y);
@@ -11313,6 +11313,7 @@ float(entity to, float sf) SV_TrkPropSend =
 	WriteFloat(MSG_ENTITY, self.colormod_x);
 	WriteFloat(MSG_ENTITY, self.colormod_y);
 	WriteFloat(MSG_ENTITY, self.colormod_z);
+	WriteByte(MSG_ENTITY, self.body);
 	return TRUE;
 };
 
@@ -11887,7 +11888,7 @@ float(entity to, float sf) SV_SpSend =
 
 	WriteByte(MSG_ENTITY, ENTWIRE_TYPED);
 	WriteByte(MSG_ENTITY, ENTWIRE_SPSTATE);
-	WriteByte(MSG_ENTITY, sf & 3);
+	WriteByte(MSG_ENTITY, (sf & 3) | ((sf & 1) ? 4 : 0));   // P1440: 4, the identity ends in the bodygroup
 	if (sf & 1)
 	{
 		p = self.vbsp_sp_parent;
@@ -11915,6 +11916,7 @@ float(entity to, float sf) SV_SpSend =
 		WriteFloat(MSG_ENTITY, self.colormod_x);
 		WriteFloat(MSG_ENTITY, self.colormod_y);
 		WriteFloat(MSG_ENTITY, self.colormod_z);
+		WriteByte(MSG_ENTITY, self.body);
 	}
 	if (sf & 2)
 	{

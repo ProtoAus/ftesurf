@@ -179,9 +179,13 @@ float() Trk_PropPredraw =
 	return PREDRAW_AUTOADD;
 };
 
+.float body;                        // P1440: the engine draws a Source model's bodyparts by it (copied from CSQC)
+
 void(entity e) Trk_NetProp =
 {
-	readbyte();                     // flags: one send, the identity
+	local float fl;
+
+	fl = readbyte();                // flags: 1 the identity (always), 2 the bodygroup byte at the end (P1440)
 	e.trkp_par = readentitynum();
 	e.trkp_lo_x = readfloat();
 	e.trkp_lo_y = readfloat();
@@ -198,6 +202,9 @@ void(entity e) Trk_NetProp =
 	e.colormod_x = readfloat();
 	e.colormod_y = readfloat();
 	e.colormod_z = readfloat();
+	e.body = (fl & 2) ? readbyte() : 0;
+	if (e.body && cvar("developer"))
+		print(sprintf("trk: rider #%g body %g\n", e.entnum, e.body));
 	e.classname = "trk_prop";
 	e.trkp_pent = world;
 	e.drawmask = MASK_ENGINE;

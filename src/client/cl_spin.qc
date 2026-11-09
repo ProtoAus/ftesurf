@@ -166,6 +166,9 @@ void(entity e) Sp_NetState =
 		e.colormod_x = readfloat();
 		e.colormod_y = readfloat();
 		e.colormod_z = readfloat();
+		e.body = (sf & 4) ? readbyte() : 0;     // P1440
+		if (e.body && cvar("developer"))
+			print(sprintf("sp: mover #%g body %g\n", e.entnum, e.body));
 		// Linked by a box any turn stays inside (SV_SpWrite's reason), and on its first frame even near
 		// the origin (Trk_Relink links on a move of 64).
 		r = max(vlen(e.mins), vlen(e.maxs));
