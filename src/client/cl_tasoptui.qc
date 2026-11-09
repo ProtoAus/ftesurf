@@ -8,7 +8,7 @@ var float taso_tube = 300, taso_look = 100, taso_tries = 2, taso_backmax = 6, ta
 var float taso_ticks = 300;
 float taso_listed;              // the demo list was searched for this map
 string taso_listmap;
-#define TASO_DEMOS 8
+#define TASO_DEMOS 12
 string taso_demo[TASO_DEMOS];
 float taso_demon, taso_pick;
 float taso_adv;                 // the advanced settings and one-stretch tools shown
@@ -87,7 +87,7 @@ float(string f) TASOptUI_ThisMap =
 // This map's KSF replays (cfg/ksfreplays/ksf_<map without surf_>_<runner>.rec), searched once a map.
 void() TASOptUI_List =
 {
-	local float h, i, n;
+	local float h, i, n, c;
 	local string m, f, pre;
 	if (taso_listed && taso_listmap == zone_mapname) return;
 	for (i = 0; i < taso_demon; i = i + 1) strunzone(taso_demo[i]);
@@ -105,6 +105,20 @@ void() TASOptUI_List =
 		{
 			f = search_getfilename(h, i);
 			if (strstrofs(strtolower(f), pre) >= 0 && TASOptUI_SafeName(f)) { taso_demo[taso_demon] = strzone(f); taso_demon = taso_demon + 1; }
+		}
+		search_end(h);
+	}
+	// this map's leaderboard and Momentum replays (data/online, data/momentum: the same .rec rows), three of each,
+	// fastest first (their names start with the time or rank; SB_NAMESORT 32)
+	for (i = 0; i < 2; i = i + 1)
+	{
+		h = search_begin(sprintf("data/%s/%s/main/*.rec", i ? "momentum" : "online", zone_mapname), 33, TRUE);
+		if (h < 0) continue;
+		n = search_getsize(h);
+		for (c = 0; c < n && c < 3 && taso_demon < TASO_DEMOS; c = c + 1)
+		{
+			f = search_getfilename(h, c);
+			if (TASOptUI_SafeName(f)) { taso_demo[taso_demon] = strzone(f); taso_demon = taso_demon + 1; }
 		}
 		search_end(h);
 	}
@@ -159,6 +173,8 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	{
 		label = taso_demo[i];
 		if (substring(label, 0, 15) == "cfg/ksfreplays/") label = substring(label, 15, -1);
+		else if (substring(label, 0, 12) == "data/online/") label = strcat("board ", substring(label, strstrofs(label, "/main/") + 6, -1));
+		else if (substring(label, 0, 14) == "data/momentum/") label = strcat("momentum ", substring(label, strstrofs(label, "/main/") + 6, -1));
 		if (Profile_Chip(sprintf("taso_demo%g", i), at + [(i & 1) * (half + 6), floor(i / 2) * (row + 3), 0], chip, label, hint, taso_pick == i))
 			taso_pick = i;
 	}
