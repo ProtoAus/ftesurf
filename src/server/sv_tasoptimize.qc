@@ -44,7 +44,7 @@
 #define TOPT_EAIM  1024         // P1449: tas_rollout AIM rows -- a flight steers to the aim point (sv_tas_rollout.inc)
 #define TOPT_AIMR  500          // P1449 curve aim: the aim point's offset from the target, units either way (x, y)
 #define TOPT_AIMGAIN 10         // ...degrees off the bearing for the hardest speed-keeping turn
-#define TOPT_HMAX  512          // P1449: a fast search's horizon (a ramp ride or a flight is ~150 ticks); played
+#define TOPT_HMAX  768          // P1449: a fast search's horizon (a ramp ride or a flight is ~150 ticks; a link and its lookahead ~600); played
                                 // as consecutive TAS_TAPE_MAX tapes
 
 .float topt_on, topt_head, topt_n, topt_dir, topt_yaw0, topt_pitch0;
@@ -80,6 +80,9 @@
 #define TOPT_REACH 100000       // P1449: a reached target scores this + speed/energy at the reach tick
 #define TOPT_NEAR  50000        // P1449: a miss scores this - its closest distance
 #define TOPT_HOPDIR 20          // P1449: a hop target's score lost per degree off the demo's heading after it
+#define TOPT_LOOKW 0.01         // P1449 `look N`: a reach's score per unit of demo route survived after it (a reach scores
+                                // sqrt(E + EREF) ~ 5700: 40 u/s at 1800 is ~13; 100 ticks survived ~27 -- at 0.5 survival
+                                // swamped energy and boards gave up 50 u/s for it, 9 Nov)
 float(entity e, float ran) SV_TASOptTargetScore;
 float(entity e, float p) SV_TASOptValue;
 .float topt_energy, topt_z0;    // P1443: score energy (the speed it is worth at the start height), start z
@@ -122,6 +125,14 @@ float topt_dlen[TOPT_HMAX];     // the demo path's length from its first row to 
                                 // platform hop at 17.5 s: +284 u/s up, no jump bit) and surf ramps are
                                 // too steep to jump from, so holding it costs a ride nothing
 .float topt_tubebest, topt_tubebk;  // a candidate's least path still to go (SV_TASOptTubeIn) and its tick
+.float topt_tubejend;           // the demo row its last checked tick matched
+.float topt_look;               // P1449 `look N`: ticks of the demo's route a reach is scored on surviving
+// P1449 lookahead warm start: the played best's correction past its reach, tick by tick, for the next
+// demo search that starts there -- its first sample after the demo itself (a board 1 whose lookahead
+// survived handed board 2 a search that found only 30 of 638 survivors from scratch, 9 Nov)
+float topt_wseed[TOPT_HMAX];
+.float topt_wseedn, topt_wseedhead;
+.float topt_cande, topt_reache; // P1449: a reach's own energy (the score adds lookahead and heading terms)
 float topt_kseed[TOPT_KMAX];
 .float topt_kgen, topt_kidx;    // generation (-1 the seeding grid) and sample
 .float topt_kd;                 // P1449: the searched vector: the knots, then (aim) the aim offset x, y
@@ -237,7 +248,7 @@ string(entity e) SV_TASOptExtra =
 		s = strcat(s, ", curve");
 		for (i = 0; i < e.topt_kn; i = i + 1) s = strcat(s, sprintf(" %.2f", topt_kbest[i]));
 		if (e.topt_mode & 128) s = strcat(s, sprintf(", aimed %.0f %.0f u off the target in flight", topt_kbest[e.topt_kn], topt_kbest[e.topt_kn + 1]));
-		if (e.topt_mode & 256) s = strcat(s, sprintf(" from tick %.0f", rint(0.6 * e.topt_n + topt_kbest[e.topt_kn + 2] * 0.1)));
+		if (e.topt_mode & 256) s = strcat(s, sprintf(" from tick %.0f", rint(((e.topt_tube > 0 && e.topt_tgtj > 0) ? 0.75 * e.topt_tgtj : 0.6 * e.topt_n) + topt_kbest[e.topt_kn + 2] * 0.1)));
 		s = strcat(s, (e.topt_mode & 64) ? (e.topt_efol ? " (added to the demo's own turn command each tick, from this run's velocity)"
 			: " (degrees added to the demo's yaw, + left; knots over the ticks)")
 			: " (turn command: + left, 30 most speed, 60 hardest speed-keeping turn; knots over the ticks)");
@@ -464,7 +475,12 @@ float(entity e, float r, float f) SV_TASOptFollow =
 // P1449 `demo aim late`: the tick the aim takes over -- 0.6 of the horizon (the demo's board is near 0.8:
 // the driver gives it 1.25x + 10) moved +-50 ticks by the searched value, so the demo's own strafes fly
 // the flight and the aim only the approach onto the face (the whole-flight aim gave up their gain).
-float(entity e) SV_TASOptAimFrom = { return rint(0.6 * e.topt_n + topt_kcur[e.topt_kn + 2] * 0.1); };
+// With a tube the demo's own row nearest the target is known: 0.75 of it, so a lookahead's longer
+// horizon does not move the aim (0.75 * (0.8 n - 8) ~ 0.6 n without one).
+float(entity e) SV_TASOptAimFrom =
+{
+	return rint(((e.topt_tube > 0 && e.topt_tgtj > 0) ? 0.75 * e.topt_tgtj : 0.6 * e.topt_n) + topt_kcur[e.topt_kn + 2] * 0.1);
+};
 
 float(entity e) SV_TASOptDemoRoll =
 {
@@ -557,6 +573,21 @@ float(entity e, float r, float y, float f) SV_TASOptRoll =
 
 // The same rows before the tape plays; SV_TASOptFrame checks the tape's landing against the
 // prediction's last tick (topt_pn -2: no rollout, else ticks that count, or the refusal).
+// P1449: the best's correction (its knots as SV_TASOptDemoRoll spreads them) from the tick after its reach
+// to the horizon, for a search that starts at the reach (SV_TASOptCurveNext).
+void(entity e) SV_TASOptWarmKeep =
+{
+	local float i, d, k;
+	e.topt_wseedn = 0;
+	for (i = e.topt_reachk; i < e.topt_n; i = i + 1)
+	{
+		d = min(i, e.topt_kspan - 1) * (e.topt_kn - 1) / max(1, e.topt_kspan - 1); k = floor(d);
+		topt_wseed[e.topt_wseedn] = (k >= e.topt_kn - 1) ? topt_kbest[e.topt_kn - 1] : topt_kbest[k] + (d - k) * (topt_kbest[k + 1] - topt_kbest[k]);
+		e.topt_wseedn = e.topt_wseedn + 1;
+	}
+	e.topt_wseedhead = e.topt_head + e.topt_reachk;
+};
+
 // P1449 (developer 2): the played prediction's ticks to data/topt_dump.txt, appended -- origin,
 // velocity, contact kind and normal -- for lining a link up against its demo offline.
 void(entity e, float ran) SV_TASOptDump =
@@ -621,7 +652,9 @@ void(entity e, float r, float y, float f) SV_TASOptPredict =
 	if (ran >= 0 && e.topt_tgtuse)
 	{
 		e.topt_reachv = SV_TASOptTargetScore(e, ran);
-		e.topt_reachk = e.topt_candk; e.topt_reachd = e.topt_candd;
+		e.topt_reachk = e.topt_candk; e.topt_reachd = e.topt_candd; e.topt_reache = e.topt_cande;
+		if (e.topt_phase == 3 && e.topt_look > 0 && e.topt_kn && (e.topt_mode & 64) && e.topt_reachv >= TOPT_REACH)
+			SV_TASOptWarmKeep(e);
 	}
 	if (ran >= 1 && cvar("developer") >= 2) SV_TASOptDump(e, ran);
 	if (ran >= 1)
@@ -660,7 +693,7 @@ float(entity e, float ran) SV_TASOptTubeIn =
 	local float i, j, d, d2;
 	local vector p;
 	j = 0;
-	e.topt_tubebest = 1000000; e.topt_tubebk = -1;
+	e.topt_tubebest = 1000000; e.topt_tubebk = -1; e.topt_tubejend = 0;
 	if (ran < 1) return -1;
 	p = [topt_out[0], topt_out[1], topt_out[2]];
 	d = vlen(p - [topt_dpos[0], topt_dpos[1], topt_dpos[2]]);
@@ -680,6 +713,7 @@ float(entity e, float ran) SV_TASOptTubeIn =
 			d = d2; j = j + 1;
 		}
 		if (d > e.topt_tube) return i;
+		e.topt_tubejend = j;
 		d2 = max(0, topt_dlen[e.topt_tgtj] - topt_dlen[j]) + d;
 		if (d2 < e.topt_tubebest) { e.topt_tubebest = d2; e.topt_tubebk = i; }
 		if (j + 1 >= e.topt_dn) return -1;
@@ -726,13 +760,22 @@ float(entity e, float ran) SV_TASOptTargetScore =
 	if (hit)
 	{
 		i = bk * 13;
-		d = TOPT_REACH + SV_TASOptStateScore(e, [topt_out[i], topt_out[i+1], topt_out[i+2]], [topt_out[i+3], topt_out[i+4], topt_out[i+5]]);
+		e.topt_cande = SV_TASOptStateScore(e, [topt_out[i], topt_out[i+1], topt_out[i+2]], [topt_out[i+3], topt_out[i+4], topt_out[i+5]]);
+		d = TOPT_REACH + e.topt_cande;
 		if (e.topt_tgtn_z >= 0.99 && e.topt_tube > 0 && e.topt_tgtj + 4 < e.topt_dn)
 		{	// a hop keeps its horizontal velocity for the next flight: off the demo's heading after its own
 			// hop costs TOPT_HOPDIR a degree (10 deg at the surf_null platform hop was 200 u at ramp 4)
 			dh = vectoyaw([topt_dpos[e.topt_tgtj*3+12] - topt_dpos[e.topt_tgtj*3+3], topt_dpos[e.topt_tgtj*3+13] - topt_dpos[e.topt_tgtj*3+4], 0])
 				- vectoyaw([topt_out[i+3], topt_out[i+4], 0]);
 			d = d - TOPT_HOPDIR * fabs(dh - 360 * floor((dh + 180) / 360));
+		}
+		if (e.topt_look > 0 && e.topt_tube > 0)
+		{	// lookahead: the route this candidate goes on along past the reach before a wall, a volume QC
+			// acts on or the tube ends it (SV_TASOptLimit's scan of the whole rollout), up to `look` ticks
+			// of the demo's -- a board whose energy wins and whose next stretch dies loses to one that
+			// carries on (surf_null: a fast board 2 cut inside ramp 3's curve; a steep ramp 4 launch)
+			dh = topt_dlen[min(e.topt_tgtj + e.topt_look, e.topt_dn - 1)] - topt_dlen[e.topt_tgtj];
+			d = d + TOPT_LOOKW * bound(0, topt_dlen[e.topt_tubejend] - topt_dlen[e.topt_tgtj], dh);
 		}
 		return d;
 	}
@@ -879,7 +922,7 @@ void(entity e, float v) SV_TASOptResult =
 		{	// P1449: the search scored the reach, the line above the end of the tape
 			if (e.topt_reachv >= TOPT_REACH)
 				sprint(e, PRINT_HIGH, sprintf("tas optimize: target reached at tick %.0f of %.0f (%.1f u from it), %s %.1f u/s there\n",
-					e.topt_reachk, e.topt_n, e.topt_reachd, e.topt_energy ? "energy" : "speed", SV_TASOptEnergyShow(e, e.topt_reachv - TOPT_REACH)));
+					e.topt_reachk, e.topt_n, e.topt_reachd, e.topt_energy ? "energy" : "speed", SV_TASOptEnergyShow(e, e.topt_reache)));
 			else
 				sprint(e, PRINT_HIGH, sprintf("tas optimize: target not reached: closest %.1f u at tick %.0f of %.0f\n",
 					e.topt_reachd, e.topt_reachk, e.topt_n));
@@ -1116,6 +1159,15 @@ void(entity e) SV_TASOptCurveNext =
 		if (e.topt_kidx == 0 && (e.topt_mode & 64))
 		{	// the demo itself
 			for (j = 0; j < e.topt_kn; j = j + 1) topt_kcur[j] = 0;
+			return;
+		}
+		if (e.topt_kidx == 1 && (e.topt_mode & 64) && e.topt_wseedn > 0 && e.topt_wseedhead == e.topt_head)
+		{	// the last search's lookahead from here (SV_TASOptWarmKeep), each knot at its own tick
+			for (j = 0; j < e.topt_kn; j = j + 1)
+			{
+				u = rint(j * (e.topt_kspan - 1) / max(1, e.topt_kn - 1));
+				topt_kcur[j] = topt_wseed[min(u, e.topt_wseedn - 1)];
+			}
 			return;
 		}
 		if (e.topt_kidx == 0 && e.topt_kseedn == e.topt_kn)
@@ -1578,11 +1630,11 @@ void(entity e) SV_TASOptReset =
 // tas optimize <ticks> <left|right> [board] [flick [k]] [time] [energy] [fast]
 void(entity e, float argc) SV_TASOptCommand =
 {
-	local float n, dir, i, mode, fk, searches, obj, fast, energy, fixp, kn, tube, hop;
+	local float n, dir, i, mode, fk, searches, obj, fast, energy, fixp, kn, tube, hop, look;
 	local string w;
 	n = stof(argv(2));
 	dir = !strcmp(argv(3), "left") ? 1 : (!strcmp(argv(3), "right") ? -1 : 0);
-	mode = 0; fk = 0; obj = 0; fast = 0; energy = 0; fixp = 0; kn = 0; tube = 0; hop = 0;
+	mode = 0; fk = 0; obj = 0; fast = 0; energy = 0; fixp = 0; kn = 0; tube = 0; hop = 0; look = 0;
 	for (i = 4; i < argc; i = i + 1)
 	{
 		w = argv(i);
@@ -1599,6 +1651,8 @@ void(entity e, float argc) SV_TASOptCommand =
 		else if (w == "late" && (mode & 192) == 192 && !(mode & 256)) mode = mode | 256;   // demo aim late: the approach only
 		else if (w == "tube" && (mode & 64) && !tube) tube = -1;                 // P1449: stay near the demo's path
 		else if (w == "hop" && (mode & 64) && !hop) hop = 1;                     // P1449: hold jump (topt_hop)
+		else if (w == "look" && (mode & 64) && !look) look = -1;                 // P1449: score a reach's continuation
+		else if (look == -1 && argv(i - 1) == "look" && stof(w) >= 1 && stof(w) <= 400 && w == ftos(stof(w))) look = stof(w);
 		else if (tube == -1 && argv(i - 1) == "tube" && stof(w) >= 16 && stof(w) <= 4096 && w == ftos(stof(w))) tube = stof(w);
 		else if (w == "zigzag" && !(mode & 30)) mode = mode | 4;    // P1449: not with flick, split or follow
 		else if (w == "follow" && !(mode & 21)) mode = mode | 16;   // P1449: the view on the velocity; not with board or zigzag
@@ -1606,7 +1660,7 @@ void(entity e, float argc) SV_TASOptCommand =
 		else if ((mode & 2) && fk == 4 && argv(i - 1) == "flick" && stof(w) >= 1 && stof(w) <= 32 && stof(w) == floor(stof(w)) && w == ftos(stof(w))) fk = stof(w);
 		else { mode = -1; break; }
 	}
-	if (tube == -1) mode = -1;
+	if (tube == -1 || look == -1 || (look && !tube)) mode = -1;      // look scores route: it needs a tube
 	if (mode > 0 && (mode & 128) && (!e.topt_tgton || kn > TOPT_KMAX - ((mode & 256) ? 3 : 2)))
 	{
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: aim steers to the tas target (set one) and takes up to %.0f knots\n", TOPT_KMAX - ((mode & 256) ? 3 : 2)));
@@ -1628,14 +1682,14 @@ void(entity e, float argc) SV_TASOptCommand =
 			: "tas optimize: fast needs an engine with tas_rollout\n");
 		return;
 	}
-	if (argc >= 4 && argc <= 15 && n >= 4 && n <= (fast ? TOPT_HMAX : TAS_TAPE_MAX) && n == floor(n) && dir && mode >= 0 && fk >= n)
+	if (argc >= 4 && argc <= 17 && n >= 4 && n <= (fast ? TOPT_HMAX : TAS_TAPE_MAX) && n == floor(n) && dir && mode >= 0 && fk >= n)
 	{
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: the flick (%.0f ticks) must be shorter than the run (%.0f ticks)\n", fk, n));
 		return;
 	}
-	if (argc < 4 || argc > 15 || !(n >= 4 && n <= (fast ? TOPT_HMAX : TAS_TAPE_MAX) && n == floor(n)) || !dir || mode < 0)
+	if (argc < 4 || argc > 17 || !(n >= 4 && n <= (fast ? TOPT_HMAX : TAS_TAPE_MAX) && n == floor(n)) || !dir || mode < 0)
 	{
-		sprint(e, PRINT_HIGH, "tas optimize <ticks 4..128, fast 4..512> <left|right> [board | follow | curve [knots 3..12]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [demo [aim [late]] [tube R] [hop]]: best turn for exit speed (energy: speed + height), or with time the next segment soonest; fast searches by rollout and plays only the best\n");
+		sprint(e, PRINT_HIGH, "tas optimize <ticks 4..128, fast 4..768> <left|right> [board | follow | curve [knots 3..12]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [demo [aim [late]] [tube R [look N]] [hop]]: best turn for exit speed (energy: speed + height), or with time the next segment soonest; fast searches by rollout and plays only the best\n");
 		return;
 	}
 	if (!e.run_tas_rwcap || !SV_TASInputReady(e) || !SV_TASCanPause(e)) return;
@@ -1663,7 +1717,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_mode = mode; e.topt_fk = fk; e.topt_srch = 0; e.topt_besty = 0; e.topt_bestf = 0; e.topt_bestp = 12;
 	e.topt_pfoff = fixp; e.topt_pfon = 0;
 	e.topt_kn = kn; e.topt_kgen = -1; e.topt_kidx = 0; e.topt_wok = e.topt_bok = 0; e.topt_vizt = 0;   // vizt before the clear below
-	e.topt_efol = 0; e.topt_tube = tube; e.topt_tubeout = e.topt_wallhit = 0; e.topt_hop = hop;
+	e.topt_efol = 0; e.topt_tube = tube; e.topt_tubeout = e.topt_wallhit = 0; e.topt_hop = hop; e.topt_look = look;
 	e.topt_tgtj = 0;
 	if (tube)
 		for (i = 1; i < e.topt_dn; i = i + 1)
@@ -1706,7 +1760,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	for (searches = 0; SV_TASOptParam(e, searches); searches = searches + 1) ;
 	if (kn)
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: from tick %.0f, %.0f ticks, starting %s, a turn command through %.0f knots (side and view from the velocity%s): %.0f candidates by rollout, the best played\n",
-			e.topt_head, n, argv(3), kn, (mode & 64) ? (tube ? sprintf("; demo, within %.0f u of its path", tube) : "; demo: degrees added to its yaw") : (e.topt_efol ? ", exact in the engine" : ", approximated in passes: an older server engine"),
+			e.topt_head, n, argv(3), kn, (mode & 64) ? (tube ? sprintf("; demo, within %.0f u of its path%s", tube, look ? sprintf(", %.0f ticks of it looked ahead", look) : "") : "; demo: degrees added to its yaw") : (e.topt_efol ? ", exact in the engine" : ", approximated in passes: an older server engine"),
 			TOPT_CEGRID + TOPT_CEGEN * TOPT_CEPOP));
 	else
 	sprint(e, PRINT_HIGH, sprintf("tas optimize: from tick %.0f, %.0f ticks turning %s, 0..%.2f deg/tick, %.0f candidates%s\n",

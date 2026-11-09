@@ -22,9 +22,13 @@ p.add_argument('--out', type=Path, required=True); p.add_argument('--progs', typ
 p.add_argument('--svexe', type=Path, required=True); p.add_argument('--clexe', type=Path, default=ROOT / 'ftesurf64.exe')
 p.add_argument('--targets', type=Path, default=None); p.add_argument('--demo', type=Path, required=True)
 p.add_argument('--port', type=int, default=27618); p.add_argument('--ramps', type=int, default=3)
+p.add_argument('--backtrack', type=int, default=0, help='times a failed link may send the chain back to search the link before it again')
 p.add_argument('--tries', type=int, default=5); p.add_argument('--radius', type=int, default=160)
 p.add_argument('--budget', type=float, default=500, help='seconds of chaining before stopping')
-p.add_argument('--ledger', type=Path, required=True, help='surfledger.py JSON of the demo')
+p.add_argument('--ledger', type=Path, default=None, help='surfledger.py JSON of the demo (its segments are the rides)')
+p.add_argument('--rides', choices=['ledger', 'physics'], default='ledger',
+               help="physics: rides are the demo's contact stretches of 0.3 s or more (vz off free fall), for maps whose "
+               "ramps bend between faces and the ledger splits one ride in two (surf_monolith)")
 p.add_argument('--developer', type=int, default=0)
 p.add_argument('--noviz', action='store_true', help='client tas_viz 0 (the search drawing off)')
 p.add_argument('--shots', type=int, default=0, help='screenshots of the drawn search (pairs: mid-search, played)')
@@ -40,7 +44,12 @@ p.add_argument('--hop', action='store_true', help="demo modes hold jump (pm_auto
 p.add_argument('--hop-tube', type=int, default=0, help='the tube for links that end at a hop and the link after one (0: --tube); '
                "a hop chain needs the demo's timing: 300 u let the platform link fly a wider arc, 90 u low")
 p.add_argument('--hop-radius', type=int, default=100, help='radius of the hop waypoints (a jump within it)')
+p.add_argument('--look', type=int, default=0, help='with --tube: ticks of the demo route past each waypoint a reach is scored on surviving '
+               '(the horizon grows by as much)')
+p.add_argument('--map', default='surf_null', help='the map (its .bsp from the Momentum maps folder, its zones from ftesurf/maps/zones/local)')
+p.add_argument('--bsp', type=Path, default=None, help='the .bsp to use instead of <maps>/<map>.bsp')
 p.add_argument('--tube', type=int, default=0, help="demo modes: candidates stay within this many units of the demo's path (0 off)")
+p.add_argument('--finish', action='store_true', help="after the last ride, a waypoint at the demo's last sample (the end zone)")
 p.add_argument('--midair', action='store_true', help="a waypoint at each flight's middle (no face), so steered flights follow the demo's route")
 p.add_argument('--boards-only', action='store_true', help='each link is board to next board: ride and flight in one search')
 p.add_argument('--bottoms', action='store_true', help="also a waypoint at each ride's lowest point (default: the ride is one link)")
@@ -60,7 +69,7 @@ r = {'utc': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'svexe': [
      'progs': {n: sha(a.progs / n) for n in ['qwprogs.dat', 'csprogs.dat', 'menu.dat']}, 'checks': checks}
 def check(name, ok, data=None):
     checks.append({'name': name, 'pass': bool(ok), 'data': data}); print(('PASS ' if ok else 'FAIL ') + name, data if not ok else '', flush=True); assert ok, name
-Z0 = 13376.03
+Z0 = None                                        # the demo's first row's height (demo_rows sets it)
 def ve(o, v):
     q = v[0]**2 + v[1]**2 + v[2]**2 + 1600 * (o[2] - Z0)   # signed: the speed worth at the demo's start height
     return math.copysign(math.sqrt(abs(q)), q)
@@ -72,6 +81,8 @@ def demo_rows():
             try: v = [float(x) for x in q[:7]]
             except ValueError: continue
             rows[round(v[0] / 0.015)] = v
+    global Z0
+    if Z0 is None and rows: Z0 = rows[min(rows)][3]
     return rows
 def prepare(name):
     base = a.out / name; game = base / 'ftesurf'
@@ -81,8 +92,9 @@ def prepare(name):
         if (ROOT / 'ftesurf/gfx' / folder).is_dir(): shutil.copytree(ROOT / 'ftesurf/gfx' / folder, game / 'gfx' / folder)
     for folder in ('cfg', 'maps/zones/local', 'logs', 'data', 'downloads/csprogsvers'): (game / folder).mkdir(parents=True)
     (game / 'data/consent.txt').write_text('version 4\n')
-    shutil.copy2(MOM / 'surf_null.bsp', game / 'maps/surf_null.bsp')
-    shutil.copy2(ROOT / 'ftesurf/maps/zones/local/surf_null.json', game / 'maps/zones/local/surf_null.json')
+    shutil.copy2(a.bsp or MOM / f'{a.map}.bsp', game / f'maps/{a.map}.bsp')
+    if (ROOT / f'ftesurf/maps/zones/local/{a.map}.json').is_file():
+        shutil.copy2(ROOT / f'ftesurf/maps/zones/local/{a.map}.json', game / f'maps/zones/local/{a.map}.json')
     for f in ('qwprogs.dat', 'menu.dat', 'csprogs.dat'): shutil.copy2(a.progs / f, game / f)
     shutil.copy2(ROOT / 'ftesurf/cfg/default.cfg', game / 'cfg/default.cfg')
     shutil.copy2(a.demo, game / 'data/tasdemo.rec')   # the server's tas demo reads it
@@ -137,7 +149,7 @@ try:
         base = prepare(side)
         lines = common + ([f'sv_port {a.port}', 'sv_playerslots 4', 'sv_maxclients 4', 'sv_demoAutoRecord 0', 'developer 1',
                            'log_developer 1', 'pm_physicsmode 1', 'pm_ticrate 0.015', 'sv_tickparts 1', 'set sv_gamemode surf',
-                           'set rec_stream 0', 'sv_cheats 1', f'developer {a.developer}', 'map surf_null'] if side == 'sv' else
+                           'set rec_stream 0', 'sv_cheats 1', f'developer {a.developer}', f'map {a.map}'] if side == 'sv' else
                           ['cl_hid 0', 'vid_renderer gl', 'developer 1', 'name ChainProbe'] + (['set tas_viz 0'] if a.noviz else []) + [f'connect 127.0.0.1:{a.port}'])
         (base / 'ftesurf/probe.cfg').write_text('\n'.join(lines) + '\n')
         peer = Peer(a.svexe if side == 'sv' else a.clexe, base, 'probe.cfg', side == 'sv', headless=False); peers.append(peer)
@@ -150,7 +162,9 @@ try:
             try: v = [float(x) for x in q[:14]]
             except ValueError: continue
             rows.append(v)
-    L = json.load(open(a.ledger)); L = L[next(iter(L))]; segs = L['segments']
+    if a.rides == 'ledger':
+        assert a.ledger, '--rides ledger needs --ledger'
+        L = json.load(open(a.ledger)); L = L[next(iter(L))]; segs = L['segments']
     # the demo's turn command per sample (sv_tasoptimize.qc SV_TASOptFollow's q): its strafe side and the
     # wish direction against the velocity before the sample's move; 0 where no side key is held
     kbs = []; kb = 0
@@ -191,6 +205,19 @@ try:
         if not c: return fallback, None
         k = min(c, key=lambda k: abs(k['t'] - t))
         return list(k['n']), k['t']
+    if a.rides == 'physics':
+        # a ride: samples whose vz is off free fall (g * dt a sample) for 0.3 s or more, entered falling
+        # (a ground start or a platform hop is not one); its face from the demo's clip at the board
+        segs = []; st = None
+        for r0, r1 in zip(rows, rows[1:]):
+            off = abs((r1[6] - r0[6]) + 800 * 0.015) > 1.5
+            if off and st is None: st = r1
+            if not off and st is not None:
+                if r0[0] - st[0] >= 0.3 - 1e-6 and st[6] < -100:
+                    n, _ = face(st[0], None)
+                    if n: segs.append({'t_board': st[0], 't_leave': r0[0], 'n': n})
+                st = None
+        print('      rides from physics: ' + ', '.join(f"{x['t_board']:.2f}-{x['t_leave']:.2f}" for x in segs), flush=True)
     W = []
     for k in range(a.first, min(len(segs), a.first + a.ramps)):
         sg = segs[k]
@@ -214,6 +241,8 @@ try:
                 # the landing sample can read vz 0 (a grounded tick) before the jump's sample
                 if fl[i - 1][6] < -100 and fl[i][6] > -1 and any(x[6] > 150 for x in fl[i:i + 3])                         and abs(fl[i][3] - fl[i - 1][3]) < 40:
                     W.append(('hop', k, fl[i], [0.0, 0.0, 1.0]))
+    if a.finish and a.first + a.ramps >= len(segs):
+        W.append(('finish', len(segs), rows[-1], None))   # the run's last sample: in the end zone
     if a.first + a.ramps < len(segs):
         sg = segs[a.first + a.ramps]
         W.append(('board', a.first + a.ramps, next(x for x in rows if x[0] >= sg['t_board'] - 1e-6), sg['n']))
@@ -293,9 +322,12 @@ try:
     chain = []; t_start = time.monotonic(); tprev = rows[bi - a.lead + 1][0]
     print('      point     try  side  result                          | demo there', flush=True)
     prev_what = 'board'
-    for (what, k, wr, n) in W:
+    i = 0; starts = {}; tprevs = {}; prevs = {}; backs = 0
+    while i < len(W):
+        what, k, wr, n = W[i]
+        starts[i] = tick(); tprevs[i] = tprev; prevs[i] = prev_what
         # the horizon: the demo's own ticks for this stretch, with room (--horizon 0), or fixed
-        H = a.horizon or min(512, max(16, round(1.25 * (wr[0] - tprev) / 0.015) + 10))
+        H = a.horizon or min(768, max(16, round(1.25 * (wr[0] - tprev) / 0.015) + 10 + (a.look if a.tube else 0)))
         if 'demo' in a.modes.split():
             # a row's input produced it: the link's first input is the row after its state
             off = len(cl.text()); cl.send(f'tas demorows tasdemo.rec {tprev + 0.015:.4f}')
@@ -325,7 +357,8 @@ try:
                 for mode in MODES:
                     tb = a.hop_tube if a.hop_tube and (what == 'hop' or prev_what == 'hop') else a.tube
                     how = f'{side} {mode}' + (f' tube {tb}' if tb and 'demo' in mode.split() else '') \
-                        + (' hop' if a.hop and 'demo' in mode.split() else '')
+                        + (' hop' if a.hop and 'demo' in mode.split() else '') \
+                        + (f' look {a.look}' if a.look and tb and 'demo' in mode.split() else '')
                     m, t, rm, mm = optimize(f'{H} {how} energy fast')
                     if not m.group(0).startswith('tas optimize: best'):
                         results.append((how, None, None, m.group(0)))
@@ -359,11 +392,21 @@ try:
             e1 = endpoint()
             print(f'      {tg:9} {tr:4d} {side:>18}  miss, closest {(-key[1]):.0f} u; now at {tuple(round(x) for x in e1[:3])} speed {math.hypot(e1[3], e1[4]):.0f}', flush=True)
             if tick() != h: back(tick() - h)   # the next try searches again from the link's start (the search is random)
-        prev_what = what
         if not reached:
+            if backs < a.backtrack and i > 0 and time.monotonic() - t_start <= a.budget:
+                # back to the previous link's start and search it again: the search is random, and a
+                # different state there may let this link through
+                backs += 1
+                print(f'      {tg:9}  not reached in {a.tries} tries; backtrack {backs}: {W[i - 1][0]} {W[i - 1][1]} again', flush=True)
+                if tick() != starts[i - 1]: back(tick() - starts[i - 1])
+                i -= 1; tprev = tprevs[i]; prev_what = prevs[i]
+                if chain and chain[-1].get('point') == f'{W[i][0]} {W[i][1]}': chain.pop()
+                continue
             chain.append({'point': tg, 'reached': False})
-            print(f'      {tg:9}  not reached in {a.tries} links; stopping the chain', flush=True)
+            print(f'      {tg:9}  not reached in {a.tries} tries; stopping the chain', flush=True)
             break
+        prev_what = what
+        i += 1
     r['chain'] = chain
     r['result'] = 'PASS'
 except BaseException as e: r['result'] = 'FAIL'; r['failure'] = str(e); raise
