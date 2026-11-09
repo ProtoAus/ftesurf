@@ -10393,6 +10393,18 @@ script rather than passing it as an argument, where `ps` would show it.
   before application entry while CLOSED. Use a new sealed generation and qualify
   the actual prior application on the same schema/nonempty queues before stopping
   serving. Never mutate an old generation or relabel a failed DATA comparison.
+- **Current wrapper targets are not the legacy schema hash set (9 Nov).**
+  The dispatcher must render seven targets including the persistent `momgrab.py`
+  importer, but schema19/20 keep their exact original six/eight dependency sets.
+  Require the requested target in the selected manifest before compilation. Real
+  synthetic collectors84/fetch85 Mom imports must act OPEN and refuse CLOSED;
+  an unsealed legacy Mom target must refuse before its marker. Check renderer
+  coverage before preparing a cutover, not after stopping the current importer.
+- **A new host directory can still be read-only in the service namespace.**
+  Probe the actual PID's mount flags, with an existing writable state as control.
+  New nested generation state needs explicit writable scope plus immutable manifest
+  pins; the fixed one-plain-root/five-pin installer cannot represent every layout.
+  Do not assume host writes, old epoch preflight or source RO proves new state RW.
 - **Persistent request workers need exception-safe lock ownership (9 Nov).**
   `lock_file` must close a locally opened fd when metadata/fstat validation raises;
   its caller cannot close a descriptor that was never returned. Synthetic invalid

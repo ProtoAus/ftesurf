@@ -16,7 +16,7 @@ import sys
 import types
 
 
-FILES = frozenset({"surfd.py", "ksfimport.py", "ksfgrab.py", "ksfprofile.py",
+FILES = frozenset({"surfd.py", "ksfimport.py", "ksfgrab.py", "ksfprofile.py", "momgrab.py",
                    "tools/ksfconvert.py", "tools/ksfreplay_info.py"})
 
 
@@ -48,7 +48,7 @@ def render_wrapper(*, dispatch_path, dispatch_sha256, guard_path, guard_sha256,
         if not isinstance(value, str) or not re.fullmatch("[0-9a-f]{%d}" % length, value):
             raise ValueError("invalid fixed digest/generation")
     if source_relative not in FILES:
-        raise ValueError("not one of the six entrypoints")
+        raise ValueError("not a sealed entrypoint")
     # Keep imports and bootstrap scratch out of the application's original globals.
     stub = '''# Generated pre-import gate: application effects only, not interpreter startup.
 def _surfd_bootstrap(namespace):
@@ -84,7 +84,7 @@ _surfd_bootstrap(globals())
 
 def _reject_stale_modules(home, namespace):
     # Include unchanged local runtime modules: a preloaded legacy dependency is
-    # just as dangerous as a stale one of the six entrypoints. Do not evict it.
+    # just as dangerous as a stale sealed entrypoint. Do not evict it.
     local_names = {p.stem for p in home.glob("*.py")}
     local_names.update(p.stem for p in (home / "tools").glob("*.py"))
     for name, module in tuple(sys.modules.items()):
@@ -104,7 +104,7 @@ def dispatch(namespace, *, guard_path, guard_sha256, state_dir, generation,
         raise ValueError("POSIX admission required")
     import fcntl
     if source_relative not in FILES:
-        raise ValueError("not one of the six entrypoints")
+        raise ValueError("not a sealed entrypoint")
     guard = types.ModuleType("_surfd_pinned_guard")
     guard.__file__ = guard_path
     exec(compile(_source(guard_path, guard_sha256), guard_path, "exec"), guard.__dict__)
@@ -133,6 +133,7 @@ def dispatch(namespace, *, guard_path, guard_sha256, state_dir, generation,
             data = _source(str(home / relative), digest)
             if relative == source_relative:
                 target_data = data
+        guard.require(target_data is not None, "entrypoint not sealed in manifest")
         _reject_stale_modules(home, namespace)
         target = str(home / source_relative)
         code = compile(target_data, target, "exec")
