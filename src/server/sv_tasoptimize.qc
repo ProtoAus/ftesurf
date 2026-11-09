@@ -34,6 +34,8 @@
 #define TOPT_CEPOP 20           // P1449 curve: samples a generation
 #define TOPT_CEEL  5            // ...the best kept
 #define TOPT_CEGEN 30           // ...generations after the seeding grid
+#define TOPT_CEMIN 12           // P1449: at least these, then a search ends after TOPT_CESTALL generations without a gain
+#define TOPT_CESTALL 8          // over 0.5 (surf_null's searches mostly settled by generation 5-10 and ran 20 more)
 #define TOPT_CEGRID 38          // the seeding grid: 13 constant commands, then 25 two-part ones (q1 then q2,
                                 // sides changing included: a flight steers by switching sides)
 #define TOPT_FRAMEBUDGET 0.04   // P1449: wall seconds of rollouts per call (a shared server stalls meanwhile)
@@ -152,6 +154,7 @@ float topt_wseed[TOPT_HMAX];
 .float topt_cande, topt_reache; // P1449: a reach's own energy (the score adds lookahead and heading terms)
 float topt_kseed[TOPT_KMAX];
 .float topt_kgen, topt_kidx;    // generation (-1 the seeding grid) and sample
+.float topt_kprev, topt_kstall;  // the best when it last gained, and generations since
 .float topt_kd;                 // P1449: the searched vector: the knots, then (aim) the aim offset x, y
 .float topt_efol;               // P1449: this server's tas_rollout takes FOLLOW rows (exact, one rollout)
 .float topt_kspan;              // P1449: the ticks the knots spread over (aim: the ride, ~0.45 of the horizon)
@@ -1502,9 +1505,11 @@ void(entity e, float v) SV_TASOptCurveResult =
 		else topt_ksig[j] = bound((e.topt_mode & 64) ? (e.topt_efol ? 1.5 : 0.1) : 0.2, 0.7 * sqrt(s / w) + 0.3 * topt_ksig[j], (e.topt_mode & 64) ? (e.topt_efol ? 16 : 4) : 60);
 	}
 	e.topt_kgen = e.topt_kgen + 1; e.topt_kidx = 0;
+	if (e.topt_kgen == 1 || e.topt_bestv > e.topt_kprev + 0.5) { e.topt_kprev = e.topt_bestv; e.topt_kstall = 0; }
+	else e.topt_kstall = e.topt_kstall + 1;
 	if (cvar("developer"))
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: curve generation %.0f, best %.1f, %.0f candidates, %.1f s\n", e.topt_kgen, SV_TASOptEnergyShow(e, e.topt_bestv), e.topt_evals, gettime(1)));
-	if (e.topt_kgen >= TOPT_CEGEN)
+	if (e.topt_kgen >= TOPT_CEGEN || (e.topt_kgen >= TOPT_CEMIN && e.topt_kstall >= TOPT_CESTALL))
 	{
 		for (j = 0; j < e.topt_kd; j = j + 1) topt_kcur[j] = topt_kbest[j];
 		e.topt_phase = 3;
