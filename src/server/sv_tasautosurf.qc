@@ -341,8 +341,10 @@ void(entity e) SV_TASAutoFrame =
 					if (d < best) { best = d; t = as_rows[i*7]; }
 				}
 			for (i = 0; i < as_nrows - 1 && as_rows[i*7] < as_wt[e.as_i] - 0.0001; i = i + 1) ;
-			sprint(e, PRINT_HIGH, sprintf("tas autosurf: stretch %.0f reached: energy %.0f u/s, farsh %.0f at his (both from the demo's start height)\n",
-				e.as_i + 1, SV_TASAutoVE(e.velocity, e.origin_z), SV_TASAutoVE([as_rows[i*7+4], as_rows[i*7+5], as_rows[i*7+6]], as_rows[i*7+3])));
+			// speed at farsh's board height (the energy carried there) against his own: vE near 0 magnified the gap
+			d = e.velocity * e.velocity + 2 * cvar("sv_gravity") * (e.origin_z - as_rows[i*7+3]);
+			sprint(e, PRINT_HIGH, sprintf("tas autosurf: stretch %.0f reached: %.0f u/s at farsh's board height, farsh %.0f\n", e.as_i + 1,
+				(d < 0) ? -sqrt(-d) : sqrt(d), vlen([as_rows[i*7+4], as_rows[i*7+5], as_rows[i*7+6]])));
 			e.as_tprev = t; e.as_i = e.as_i + 1; e.as_try = 0;
 			if (e.as_i >= as_n)
 			{
