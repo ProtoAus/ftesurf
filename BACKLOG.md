@@ -232,6 +232,18 @@
   stagger reads groups a frame apart; planes past BE_WATERPLANES). Lead instead: frame pacing that knows a capture
   frame is coming (capture due is known before the frame) and starts it earlier, rather than splitting it.
 - P1451 (QC GC buffers at load) and P1454 (no window ghosting) are in both installs; see ENGINE.txt.
+- Worst maps re-measured 9 Nov, capped 300 / framepacing 5, installed exe P1454 (avg, 1%, 0.1%): fairy 230-237 /
+  82-98 / 56-77, mesa_revo 254 / 128 / 102, jumble 284 / 166 / 126, colony 299 / 235 / 172, pantheon 297 / 237 / 178.
+  fairy and jumble: csqc ~2 ms a frame (nuclear 0.78). Hiding every HUD panel saves only 0.17 ms (nuclear).
+  fairy (460 glows), cvars set AFTER csprogs loads and read back (launch-time vbsp_* are 'Unknown command'):
+  sprites+glows off 273 / 140 / 122; vbsp_glare 0 259 / 117 / 85; vbsp_sprite_skyrays 0 235 / 93 / 67;
+  vbsp_glare_traces 8 vs 40: 251 / 112 / 89 vs 230 / 82 / 56, but the census sweep goes from median 8 frames
+  (5-15) to 18 (8-61) -- glows re-checked ~2x less often, worst ~4x. The 8-9 ms bursts are Sprite_Glare +
+  Sprite_SkyTest with rays at ~100-200 us (profile includes builtins; only renderscene/entity setup excluded).
+  P1456 PARKED (origin branch p1456-glarefade 143fcc9d): glare skips glows the draw loop cannot draw (sky,
+  one-sided back, distance ramp); census shows 13-45 skipped on some frames, but fairy csqc 2.13 -> 2.09 and
+  lows unchanged: the 40-ray budget is saturated, saved rays go to other glows. Lead: cap glare/sky rays by TIME
+  (gettime(1) is ms-rounded; needs an engine microsecond time-into-frame, old engines keep the ray count).
 - NEXT for water capture frames (why P1455 could not help: a one-view capture frame still costs 3.2-4 ms against
   3.3 at a 300 cap; sys_framepacing 5 already plans by the slowest of 64 frames, so pacing cannot help a frame longer
   than the interval). Each nested view spends ~1 ms in the hl2 plugin's PrepareFrame because (a) gl_rmain.c ~1760
