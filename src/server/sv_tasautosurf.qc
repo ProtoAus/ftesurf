@@ -173,6 +173,7 @@ void(entity e) SV_TASAutoLink =
 {
 	local float i, h, argc, r;
 	local vector o, n;
+	local string ps, ls, cl;
 	i = e.as_i;
 	as_ws[i] = SV_TimerTicks(e); as_wp[i] = e.as_tprev;
 	h = min(TOPT_HMAX, max(16, rint(1.25 * (as_wt[i] - e.as_tprev) / PM_TICK) + 10 + e.as_look));
@@ -188,8 +189,11 @@ void(entity e) SV_TASAutoLink =
 	e.topt_tgton = 0;
 	SV_TASTargetCommand(e, argc);
 	if (!e.topt_tgton) { SV_TASAutoStop(e, "this stretch's target was refused"); return; }
-	argc = tokenize(sprintf("tas optimize %.0f left curve 12 demo aim late tube %.0f%s%s%s energy fast", h, e.as_tube,
-		e.as_hop ? " hop" : "", (e.as_look > 0) ? sprintf(" look %.0f", e.as_look) : "", SV_TASAutoPace(e, i)));
+	ps = SV_TASAutoPace(e, i);              // not inside the sprintf's argument list (a call there clobbers the args set)
+	ls = (e.as_look > 0) ? sprintf(" look %.0f", e.as_look) : "";
+	cl = sprintf("tas optimize %.0f left curve 12 demo aim late tube %.0f%s%s%s energy fast", h, e.as_tube, e.as_hop ? " hop" : "", ls, ps);
+	if (cvar("developer")) sprint(e, PRINT_HIGH, strcat("tas autosurf: ", cl, "\n"));
+	argc = tokenize(cl);
 	SV_TASOptCommand(e, argc);
 	if (!e.topt_on) e.topt_outcome = -1;        // refused: a failed try
 	e.as_stage = 2;

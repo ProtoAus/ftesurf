@@ -2558,7 +2558,7 @@ float(string cmd) CSQC_ConsoleCommand =
 			else
 				localcmd(sprintf("p%g cmd tas seed%s\n", tsseat + 1, tsline));
 		}
-		else if (cmdargc >= 3 && cmdargc <= 14 && !strcmp(argv(1), "autosurf"))  // P1449: a path, then known words and numbers
+		else if (cmdargc >= 3 && cmdargc <= 16 && !strcmp(argv(1), "autosurf"))  // P1449: a path, then known words and numbers
 		{
 			tsline = argv(2);
 			for (tsi = 0; tsi < strlen(tsline); tsi = tsi + 1)
@@ -2591,7 +2591,7 @@ float(string cmd) CSQC_ConsoleCommand =
 			else
 				localcmd(sprintf("p%g cmd tas target%s\n", tsseat + 1, tsline));
 		}
-		else if (cmdargc >= 4 && cmdargc <= 17 && !strcmp(argv(1), "optimize"))    // P1088; P1092 board/flick; P1097 time; P1443 energy/fast
+		else if (cmdargc >= 4 && cmdargc <= 20 && !strcmp(argv(1), "optimize"))    // P1088; P1092 board/flick; P1097 time; P1443 energy/fast
 		{
 			tsvalue = stof(argv(2));
 			tsline = "";
