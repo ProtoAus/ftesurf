@@ -22,7 +22,8 @@
 ## next
 
 ### P1444 Find what makes a frame slow: r_spikes
-- `r_spikes 1` (with `r_frametime 1`) keeps the slowest frames since `r_frametime_reset`, and `r_frametime_dump` now lists what each one spent its time on: game code, draw calls, map visibility, the display, the network, late shader compiles, water and glass views.
+- `r_spikes 1` (with `r_frametime 1`) keeps the slowest frames since `r_frametime_reset`.
+- `r_frametime_dump` now lists what each one spent its time on: game code, draw calls, map visibility, the display, the network, late shader compiles, water and glass views.
 - For tracking down the stutters behind the 0.1% lows.
 
 ### P1440 Model parts and animations maps switch
