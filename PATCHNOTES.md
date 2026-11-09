@@ -21,6 +21,9 @@
 
 ## next
 
+### P1464 Join message names the map
+- When someone joins a lobby, the others now see "<name> joined <map>" instead of "server: <name> joined".
+
 ### P1462 Save-load key lets go when you let go
 - Releasing the load key now starts you at once. Before, the lead-in held you frozen until a full second after the press, so a quick tap left you stuck for about half a second.
 - The run-up still plays while you keep holding the key; letting go cuts straight to the save.
