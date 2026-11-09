@@ -6,3 +6,6 @@ PARKED 9 Nov (ftesurf-1d): no frame-time gain (budget saturated); origin branch 
 
 TIME CAP TRIED AND PARKED 10 Nov (ftesurf-1d): origin branch p1456-glarefade (time cap + review fix + record);
 no measurable change in fairy's lows over 4 runs against 6 (BACKLOG). Not deployed.
+
+NOTE 10 Nov: Sprite_GlowDrawable (branch only) copies the glow draw loop's distance ramp; P1458 (ftesurf-49) changes
+that ramp (MaxDist<MinDist = always on). A revival must copy the new rule.
