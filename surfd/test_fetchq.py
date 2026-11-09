@@ -30,7 +30,7 @@ class Fetch(unittest.TestCase):
         F.ensure(self.db)
         for t in ("momtopup", "profilefetch", "ksftopup", "ksfprofiles", "momprofiles", "mapwant"):
             self.db.execute("DELETE FROM %s" % t)
-        self.db.execute("DELETE FROM runs WHERE map='surf_fq' OR player=?", (PLAYER,))
+        self.db.execute("DELETE FROM runs WHERE map='surf_fq' OR player IN (?, '76561198000000078')", (PLAYER,))
         self.db.commit()
         self.tracks = os.path.join(T.HOME, "momtracks-fq.tsv")
         Path(self.tracks).write_text(TSV)
@@ -88,6 +88,13 @@ class Fetch(unittest.TestCase):
             self.assertEqual(c.post('/api/board?fetch=1&map=surf_nowhere').status_code, 404)
             self.assertEqual(c.post('/api/board?fetch=1&map=surf_fq&style=segmented').status_code, 400)
             self.assertEqual(c.post('/api/board?ksfmore=1&map=surf_fq').status_code, 202)   # old clients
+            # The site's button state. It shows maps with a row or an installed zoned build only.
+            self.db.execute("INSERT INTO runs(map,track,leg,tier,style,player,name,ticks,tickrate,millis,"
+                            "flags,node,runid,submitted,replay_id) VALUES ('surf_fq',0,0,'ranked','clean',"
+                            "'76561198000000078','fx',100,100,1000,0,'n','fqr',1000,0)")
+            self.db.commit()
+            g = c.get('/board/api/map?map=surf_fq&track=3').json
+            self.assertEqual((g['mom_topup']['state'], g['mom_topup']['eligible']), ('queued', True))
         self.assertEqual(self.db.execute("SELECT map FROM mapwant").fetchall()[0][0], 'surf_fq')
         self.assertEqual(KT_recent(self.db), {('surf_fq', 0, 0, 'clean'), ('surf_fq', 3, 0, 'clean'),
                                               ('surf_fq', 0, 2, 'sw'), ('surf_fq', 0, 3, 'clean')})

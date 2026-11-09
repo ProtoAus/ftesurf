@@ -414,35 +414,50 @@
     });
   }
 
+  // P1448: one source's queue state, as the note says it.
+  function fetchWord(x) {
+    var st = (x || {}).state;
+    return st === 'queued' || st === 'partial' ? 'queued'
+      : st === 'done' || st === 'exhausted' ? 'up to date'
+      : st === 'limited' ? 'at its limit' : st === 'busy' ? 'busy' : 'not listed';
+  }
+
+  function postFetch(q) {
+    return fetch(q + '&fetch=1', { method: 'POST', credentials: 'omit',
+      headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(function (r) {
+      if (r.status === 404) { throw new Error('Neither KSF nor Momentum lists this.'); }
+      if (r.status === 429) { throw new Error('Busy; try again in a minute.'); }
+      if (!r.ok) { throw new Error('Fetch returned HTTP ' + r.status); }
+      return r.json();
+    });
+  }
+
+  // P1448: Fetch asks KSF and Momentum for this leg (refreshed, up to 100 more times,
+  // KSF's replays first), whichever lists it, including a leg with no times here yet.
   function renderKsfTopup(v, body) {
     var box = $('ksftopup');
     box.textContent = '';
-    if (v.style === 'segmented' || !(body.ksf_topup || {}).eligible) { return; }
-    var info = body.ksf_topup || { state: 'idle' };
-    var button = tabButton('Fetch +100 KSF records', null, false, function () {
+    var ksf = body.ksf_topup || { state: 'idle' }, mom = body.mom_topup || { state: 'idle' };
+    if (v.style === 'segmented' || !(ksf.eligible || mom.eligible && v.style === 'clean')) { return; }
+    var busy = function (x) { return ['queued', 'partial'].indexOf(x.state) >= 0; };
+    var button = tabButton('Fetch', null, false, function () {
       button.disabled = true;
       note.textContent = 'Queuing…';
       var h = { m: v.key, t: v.track, l: v.leg, s: v.style, tier: v.tier };
-      fetch(mapQuery(h, 0) + '&ksfmore=1', { method: 'POST', credentials: 'omit',
-        headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(function (r) {
-        if (!r.ok) { throw new Error('KSF queue returned HTTP ' + r.status); }
-        return r.json();
-      }).then(function (r) {
+      postFetch(mapQuery(h, 0)).then(function (r) {
         if (state.view !== v) { return; }
-        note.textContent = r.state === 'exhausted' ? 'All currently available KSF records fetched.'
-          : r.state === 'limited' ? 'Per-board fetch limit reached.'
-          : 'Queued for the paced background crawl. Refresh in a few minutes.';
+        note.textContent = 'KSF ' + fetchWord(r.ksf) + ', Momentum ' + fetchWord(r.momentum) +
+          '. Times and replays arrive in the background; refresh in a few minutes.';
       }, function (e) {
         if (state.view !== v) { return; }
         note.textContent = e.message; button.disabled = false;
       });
     });
-    button.disabled = ['queued', 'partial', 'limited'].indexOf(info.state) >= 0 ||
-      info.state === 'exhausted' && Date.now() / 1000 - n0(info.updated) < 86400;
-    var note = el('span', 'muted', info.state === 'exhausted'
-      ? 'All currently available KSF records fetched.'
-      : info.state === 'queued' || info.state === 'partial'
-      ? 'Queued for the background crawl. Refresh shortly.' : 'Fetches this leg/style into our database, not just this page.');
+    button.disabled = busy(ksf) || busy(mom);
+    button.title = 'Ask KSF and Momentum Mod for this leg: refreshed, up to 100 more times, and KSF replays';
+    var note = el('span', 'muted', busy(ksf) || busy(mom)
+      ? 'Queued for the background crawl. Refresh shortly.'
+      : 'Fetches this leg from KSF and Momentum Mod into our database, not just this page.');
     box.appendChild(button); box.appendChild(note);
     box.appendChild(tabButton('Refresh', null, false, function () {
       var h = { m: v.key, t: v.track, l: v.leg, s: v.style, tier: v.tier };
@@ -815,7 +830,28 @@
     }
     if (kt) {
       if (n0(ks.unavailable)) { kt += '; ' + ks.unavailable + ' unavailable records excluded'; }
-      sub.appendChild(el('span', 'why', kt));
+    }
+    var ms = body.mom_sync || {};
+    if (ms.state === 'queued' || ms.state === 'partial') { kt += (kt ? '; ' : '') + 'Momentum records being fetched'; }
+    var kspan = el('span', 'why', kt);
+    sub.appendChild(kspan);
+    // P1448: Fetch asks KSF and Momentum Mod for every record of this player.
+    if (body.ext || body.momid || body.ksfid) {
+      var fb = tabButton('Fetch records', null, false, function () {
+        fb.disabled = true;
+        kspan.textContent = 'Queuing…';
+        postFetch('api/map?player=' + encodeURIComponent(body.who)).then(function (r) {
+          var w = function (x) {
+            var st = (x || {}).state;
+            return st === 'queued' || st === 'partial' ? 'queued' : st === 'complete' ? 'up to date'
+              : st === 'limited' || st === 'busy' ? 'busy' : 'no records there';
+          };
+          kspan.textContent = 'KSF ' + w(r.ksf_sync) + ', Momentum ' + w(r.mom_sync) +
+            '. Records arrive in the background; refresh later.';
+        }, function (e) { kspan.textContent = e.message; fb.disabled = false; });
+      });
+      fb.title = 'Ask KSF and Momentum Mod for all of this player\'s records';
+      sub.appendChild(fb);
     }
 
     var st = $('pstats');

@@ -6625,6 +6625,7 @@ def web_map():
            "tier": tier, "counts": counts,
            "ksf_topup": ksftopup.status(db, (base or mapname, track, leg, style),
                                        os.path.join(DATA_DIR, 'ksf', 'maps')),
+           "mom_topup": fetchq.mom_status(db, (base or mapname, track, leg), MOMTRACKS_PATH),
            "track": track, "leg": leg, "style": style, "n": n,
            "have": 1 if (mapname in bsp and mapname in zoned) else 0,
            "bsp": 1 if mapname in bsp else 0,

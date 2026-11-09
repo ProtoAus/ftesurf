@@ -275,7 +275,9 @@ float(float c) Profile_SyncState =
 void() Profile_Fetch =
 {
 	local string url;
-	if (strlen(pf_handle) != 12 || cltime < pf_f_after || !Online_MomAllowed()) return;
+	if (strlen(pf_handle) != 12 || cltime < pf_f_after) return;
+	if (ui_consent_ver < FS_TERMS_ONLINE)          // Online_MomAllowed; this file also builds into menu
+	if (cvar("rec_terms") < FS_TERMS_ONLINE) return;
 	if (!pf_base)
 		pf_base = 8000000 + floor(random() * 1000) * 4000;
 	pf_seq = (pf_seq >= 3999) ? 1 : pf_seq + 1;
