@@ -1,12 +1,15 @@
 # lextest.md — things waiting on a human
 
-## P1453 loading screen: named steps, map wireframes, map picture -- both installs 9 Nov (exe c53078bf, menu dc515a4e)
+## P1453 loading screen: named steps, map wireframes, map picture -- both installs 9 Nov (exe c53078bf, menu e4f7b1ad)
 - Play bhop_landmark (or any CS:GO map) fresh after a launch: "Mounting CS:GO content" shows through the few-second
   wait, then "Loading textures: ..." lists the games the textures come from.
 - Play surf_gigapede, bhop_ceaseless, surf_bikini_bottom: a model from the map spins in the middle, side on. Settings
   "Loading-screen models: from above" tilts it back to 45 degrees.
 - The bottom-left card shows the map's own screenshot (maps you have opened in the browser, or online).
 - Preview without loading: `set ls_preview surf_gigapede`, then `set ls_preview ""`.
+- Follow-up (BSP draw order): the dragon (bhop_ceaseless) and the dagger handle (surf_gigapede) should turn without
+  lines fighting; the butterfly and the simpsons2 donut now stand up so side on shows them. `set ls_debug 3` prints
+  the frame rate and the model's draw time every 2 s.
 
 ## P1447 website replays on Strata maps, faster builds -- on main 9 Nov; NOT live until the surfd generation
 - Watch in 3D a run on a Strata map (bhop_ahi, bhop_canals, bhop_2006isback): the map draws instead of "could not be
