@@ -4,7 +4,8 @@
 #define TAS_TAB_SHARED 2
 #define TAS_TAB_PROJECT 3
 #define TAS_TAB_SECTIONS 4
-#define TAS_TAB_COUNT 5
+#define TAS_TAB_OPTIMIZE 5      // P1449: tas autosurf and the one-stretch optimizer (cl_tasoptui.qc)
+#define TAS_TAB_COUNT 6
 float tasu_open, tasu_nextclick, tasu_frames, tasu_advanced, tasu_dirty;
 var float tasu_mode = TAS_PLAN_HOLD;
 float tasu_forward, tasu_side, tasu_pitch, tasu_yaw, tasu_bits;
@@ -40,6 +41,7 @@ float(float argc, float seat) TASSections_ConsoleCommand;
 void() TASProject_SignPress;
 void() TASProject_IntentRequest;
 void(vector at, float width, float tsz, float hint, float row) TASShare_Draw;
+void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw;
 void(float offset, string sha) TASShare_Request;
 float(float argc, float seat) TASShare_ConsoleCommand;
 
@@ -303,7 +305,7 @@ void(vector scr) TASUI_Draw =
 	if (seat != 0) return;
 	if (numclientseats > 1 || UI_CursorHeld() != UIC_TAS || rec_sb_open || !LT_StatsAreMine()) { TASUI_Close(); return; }
 	tasu_frames = tasu_frames+1;
-	panelrows = tasu_tab == TAS_TAB_SECTIONS ? 65 : (tasu_advanced ? 58 : 46);
+	panelrows = tasu_tab == TAS_TAB_SECTIONS ? 65 : ((tasu_advanced || tasu_tab == TAS_TAB_OPTIMIZE) ? 58 : 46);
 	sc = max(.5,ui_cv_scale);
 	while (sc > .5 && (Font_Px(8*sc)*48 > scr_x-12 || Font_Px(8*sc)*panelrows > scr_y-12)) sc = sc-.5;
 	oldfont = drawfont; Font_Set(ui_font_ui);
@@ -317,7 +319,7 @@ void(vector scr) TASUI_Draw =
 	at = pos+[pad,tsz*3,0]; chip = [(width-6*(TAS_TAB_COUNT-1))/TAS_TAB_COUNT,row,0];
 	for (i=0;i<TAS_TAB_COUNT;i=i+1)
 	{
-		label = i == TAS_TAB_CONTROLS ? "Controls" : (i == TAS_TAB_TIMELINE ? "Timeline" : (i == TAS_TAB_SHARED ? "Shared" : (i == TAS_TAB_PROJECT ? "Project" : "Sections")));
+		label = i == TAS_TAB_CONTROLS ? "Controls" : (i == TAS_TAB_TIMELINE ? "Timeline" : (i == TAS_TAB_SHARED ? "Shared" : (i == TAS_TAB_PROJECT ? "Project" : (i == TAS_TAB_OPTIMIZE ? "Optimizer" : "Sections"))));
 		if (Profile_Chip(sprintf("tasu_tab%g",i),at+[i*(width+6)/TAS_TAB_COUNT,0,0],chip,label,tsz,tasu_tab==i))
 			TASUI_SelectTab(i);
 	}
@@ -336,6 +338,7 @@ void(vector scr) TASUI_Draw =
 	if (tasu_tab != TAS_TAB_CONTROLS)
 	{
 		if (tasu_tab == TAS_TAB_SHARED) TASShare_Draw(at,width,tsz,hint,row);
+		else if (tasu_tab == TAS_TAB_OPTIMIZE) TASOptUI_Draw(at,width,tsz,hint,row);
 		else if (tasu_tab == TAS_TAB_PROJECT) TASProject_Draw(at,width,tsz,hint,row);
 		else if (tasu_tab == TAS_TAB_SECTIONS) TASSections_Draw(at,width,tsz,hint,row);
 		else TASTimeline_Draw(at,width,tsz,hint,row);

@@ -2558,6 +2558,27 @@ float(string cmd) CSQC_ConsoleCommand =
 			else
 				localcmd(sprintf("p%g cmd tas seed%s\n", tsseat + 1, tsline));
 		}
+		else if (cmdargc >= 3 && cmdargc <= 14 && !strcmp(argv(1), "autosurf"))  // P1449: a path, then known words and numbers
+		{
+			tsline = argv(2);
+			for (tsi = 0; tsi < strlen(tsline); tsi = tsi + 1)
+			{
+				tsvalue = str2chr(tsline, tsi);
+				if (!((tsvalue >= 48 && tsvalue <= 57) || (tsvalue >= 65 && tsvalue <= 90) || (tsvalue >= 97 && tsvalue <= 122) ||
+				      tsvalue == 95 || tsvalue == 45 || tsvalue == 46 || tsvalue == 47)) tsline = "!";
+			}
+			if (strstrofs(tsline, "..") >= 0) tsline = "!";
+			tsline = strcat(" ", tsline);
+			for (tsi = 3; tsi < cmdargc; tsi = tsi + 1)
+				if (argv(tsi) == "tube" || argv(tsi) == "look" || argv(tsi) == "tries" || argv(tsi) == "backs" || argv(tsi) == "nohop" ||
+				    argv(tsi) == "finish" || FS_TASNumber(argv(tsi)))
+					tsline = strcat(tsline, " ", argv(tsi));
+				else tsline = " !";
+			if (strstrofs(tsline, "!") >= 0)
+				print("tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [nohop] [finish] | stop | status\n");
+			else
+				localcmd(sprintf("p%g cmd tas autosurf%s\n", tsseat + 1, tsline));
+		}
 		else if (cmdargc >= 2 && cmdargc <= 9 && !strcmp(argv(1), "target"))     // P1449: numbers, clear or show only
 		{
 			tsline = "";
@@ -2605,7 +2626,7 @@ float(string cmd) CSQC_ConsoleCommand =
 				localcmd(sprintf("p%g cmd tas speed %.9g\n", tsseat + 1, tsvalue));
 		}
 		else
-			print("tas: menu | timeline | undo/redo | mouse [on/off] | on/off | pause/play | step/back [1..128] | plan/next mode forward side pitch yaw bits [count] | inputs [N] | replay first | edit first [last] field value | optimize ticks left/right [board | follow] [split] [flick [k] | zigzag] [time | energy] [fast] [fixedpitch] | target x y z [r [nx ny nz]] / clear / show | demo file [rows [from]] | status | speed 0.1..1\n");
+			print("tas: menu | optimizer | autosurf demo.rec [options] / stop | timeline | undo/redo | mouse [on/off] | on/off | pause/play | step/back [1..128] | plan/next mode forward side pitch yaw bits [count] | inputs [N] | replay first | edit first [last] field value | optimize ticks left/right [board | follow] [split] [flick [k] | zigzag] [time | energy] [fast] [fixedpitch] | target x y z [r [nx ny nz]] / clear / show | demo file [rows [from]] | status | speed 0.1..1\n");
 		return TRUE;
 	}
 	if (!strcmp(argv(0), "host_timescale"))

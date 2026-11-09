@@ -50,6 +50,8 @@ p.add_argument('--map', default='surf_null', help='the map (its .bsp from the Mo
 p.add_argument('--bsp', type=Path, default=None, help='the .bsp to use instead of <maps>/<map>.bsp')
 p.add_argument('--tube', type=int, default=0, help="demo modes: candidates stay within this many units of the demo's path (0 off)")
 p.add_argument('--name', default='', help='targetname the placed body carries (pe_state), as the route before the placement would set it')
+p.add_argument('--autosurf', action='store_true', help='hand the chain to the game (`tas autosurf`, sv_tasautosurf.qc) instead of '
+               'driving it from here; --tube/--look/--tries/--backtrack/--hop/--finish are its options; a shot of the Optimizer tab first')
 p.add_argument('--finish', action='store_true', help="after the last ride, a waypoint at the demo's last sample (the end zone)")
 p.add_argument('--midair', action='store_true', help="a waypoint at each flight's middle (no face), so steered flights follow the demo's route")
 p.add_argument('--boards-only', action='store_true', help='each link is board to next board: ride and flight in one search')
@@ -337,6 +339,20 @@ try:
     if a.chase:
         cb, cu = a.chase.split(',')
         cl.send(f'chase_active 1; chase_back {cb}; chase_up {cu}; scr_sshot_type png'); time.sleep(1)
+    if a.autosurf:
+        # the in-game chain: the Optimizer tab drawn (a shot), then one command and its own reports
+        off = len(cl.text()); cl.send('tas optimizer'); time.sleep(2.5); cl.send('screenshot'); time.sleep(2.5)
+        cl.send('tas menu'); time.sleep(1)
+        opts = f' tube {a.tube or 300} look {a.look} tries {a.tries} backs {a.backtrack}' + ('' if a.hop else ' nohop') + (' finish' if a.finish else '')
+        off = len(cl.text()); cl.send('tas autosurf data/tasdemo.rec' + opts)
+        m = cl.wait(r'tas autosurf: (\d+) stretches ahead[^\n]*|tas autosurf: (?:cannot|that demo|the body|no ramp|pause|a search)[^\n]*', off, 60)
+        print('      ' + m.group(0), flush=True)
+        check('autosurf started', m.group(1) is not None, m.group(0))
+        m = cl.wait(r'tas autosurf: (finished|stuck|stopped|TAS play)[^\n]*', off, a.budget)
+        for line in re.findall(r'tas autosurf: [^\n]*|tas optimize: target (?:reached|not reached)[^\n]*', cl.text()[off:]):
+            print('      ' + line, flush=True)
+        r['autosurf'] = m.group(0)
+        W = []                                      # the chain below has nothing left to do
     chain = []; t_start = time.monotonic(); tprev = rows[bi - a.lead + 1][0]
     print('      point     try  side  result                          | demo there', flush=True)
     prev_what = 'board'

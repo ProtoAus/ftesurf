@@ -75,6 +75,10 @@
 .float topt_tgtr, topt_tgton;
 .vector topt_tgtn;              // P1449: the face to board there (its plane normal); '0 0 0': any contact or none
 .float topt_tgtuse;             // P1449: this search scores by the target (fast with a target set)
+float(entity e, string what) SV_TASToolGate;
+.float topt_outcome;            // P1449: how the last search ended: 0 running, -1 stopped, 1 played, 2 played to the target
+.float as_on;                   // P1449: a `tas autosurf` chain is running (sv_tasautosurf.qc)
+void(entity e) SV_TASAutoFrame;
 .float topt_candk, topt_candd;  // P1449: the last scored candidate's reach tick and closest distance
 .float topt_reachk, topt_reachd, topt_reachv;   // P1449: the played best's prediction, the same three
 #define TOPT_REACH 100000       // P1449: a reached target scores this + speed/energy at the reach tick
@@ -283,7 +287,7 @@ void(entity e, string why) SV_TASOptStop =
 	if (!e.topt_on) return;
 	if (e.run_tas_replaystate == TAS_TAPE_ACTIVE || e.run_tas_replaystate == TAS_TAPE_STAGING)
 		tas_tape(e, 0, 0, 0, '0 0 0', '0 0 0', 0);
-	e.topt_on = 0;
+	e.topt_on = 0; e.topt_outcome = -1;
 	sprint(e, PRINT_HIGH, sprintf("tas optimize: stopped after %.0f candidates: %s\n", e.topt_evals, why));
 	SV_TASOptRollReport(e);
 	if (e.topt_bestv >= 0 && e.topt_obj)
@@ -504,7 +508,7 @@ float(entity e) SV_TASOptAimFrom =
 
 float(entity e) SV_TASOptDemoRoll =
 {
-	local float i, d, k, off, j, ran;
+	local float i, d, k, off, j, ran, a;
 	if (e.topt_efol)
 	{	// the demo's own command each tick plus the curve, applied by the engine from the body's velocity:
 		// its technique (side switches included) on this run's state, so drift does not compound
@@ -519,8 +523,14 @@ float(entity e) SV_TASOptDemoRoll =
 			// flipped its right-hand flight strafes left: Lex, 9 Nov)
 			topt_rows[i*7+4] = (topt_dq[j] == 0) ? 0 : ((topt_dq[j] > 0) ? 1 : -1) * bound(0, fabs(topt_dq[j]) + off, TOPT_QMAX);
 			topt_rows[i*7+5] = 0;
-			topt_rows[i*7+6] = (e.topt_hop ? (topt_drow[j*5+4] | 1) : topt_drow[j*5+4]) + TOPT_EFOLLOW + (e.topt_pfoff ? 0 : TOPT_EPITCHV)
-				+ (((e.topt_mode & 128) && (!(e.topt_mode & 256) || i >= SV_TASOptAimFrom(e))) ? TOPT_EAIM : 0);
+			a = ((e.topt_mode & 128) && (!(e.topt_mode & 256) || i >= SV_TASOptAimFrom(e)));    // this row aims
+			topt_rows[i*7+6] = (e.topt_hop ? (topt_drow[j*5+4] | 1) : topt_drow[j*5+4]) + (e.topt_pfoff ? 0 : TOPT_EPITCHV)
+				+ ((topt_dq[j] || a) ? TOPT_EFOLLOW : 0) + (a ? TOPT_EAIM : 0);
+			if (!topt_dq[j] && !a)
+			{	// no side key held: FOLLOW would strafe (the engine reads side 0 as 450 left) -- the demo's own view (review)
+				topt_rows[i*7+1] = 0;
+				topt_rows[i*7+4] = SV_TASPWord(topt_drow[j*5+3]);     // off is a command correction here, not degrees
+			}
 		}
 		SV_NoColPre(e);
 		if ((e.topt_mode & 128) && e.topt_tgtn != '0 0 0')   // demo aim at a face: arrive along it
@@ -551,15 +561,19 @@ float(entity e) SV_TASOptDemoRoll =
 
 // P1449: map sequencing a rollout can follow (surf_monolith's bonus): a trigger whose every output
 // renames its toucher (!activator AddOutput targetname X) gives the name it leaves; else "".
+float topt_renamenow;            // the last SV_TASOptRename's output fires on touch, not on leaving
 string(entity t) SV_TASOptRename =
 {
 	local entity o;
 	local string nm;
-	nm = "";
+	nm = ""; topt_renamenow = FALSE;
 	for (o = t.vbsp_io_out; o; o = o.vbsp_io_next)
 	{
 		if (o.vbsp_io_target != "!activator" || strcasecmp(o.vbsp_io_input, "AddOutput")
 		    || substring(o.vbsp_io_param, 0, 11) != "targetname ") return "";
+		if (o.vbsp_io_delay > 0) return "";             // a delayed rename: not one to model
+		if (o.vbsp_io_name == "onstarttouch" || o.vbsp_io_name == "ontrigger" || o.vbsp_io_name == "onstarttouchall") topt_renamenow = TRUE;
+		else if (o.vbsp_io_name != "onendtouch" && o.vbsp_io_name != "onendtouchall") return "";
 		nm = substring(o.vbsp_io_param, 11, -1);
 	}
 	return nm;
@@ -581,11 +595,17 @@ float(entity e, entity t) SV_TASOptVolumeEnds =
 	keep = e.targetname; e.targetname = topt_simname;
 	pass = SV_PassesFilter(t, e);
 	e.targetname = keep;
-	if (t.classname == "trigger_teleport" && t.filtername != "" && !pass) return FALSE;
+	// a velocity or progress filter reads the paused body, not this tick: only a name filter's refusal passes
+	if (t.classname == "trigger_teleport" && t.filtername != "" && !pass && t.ui_filter.classname == "filter_activator_name") return FALSE;
 	if (t.classname == "trigger_multiple" && t.vbsp_io_out)
 	{
 		nm = SV_TASOptRename(t);
-		if (nm != "") { if (pass) topt_simpend = nm; return FALSE; }
+		if (nm != "")
+		{
+			if (pass && topt_renamenow) topt_simname = nm;      // OnStartTouch / OnTrigger: now
+			else if (pass) topt_simpend = nm;                   // OnEndTouch: on leaving
+			return FALSE;
+		}
 	}
 	return TRUE;
 };
@@ -605,7 +625,7 @@ void(entity e) SV_TASOptSimStart =
 	for (t = nextent(world); t; t = nextent(t))
 		if (t.classname == "trigger_multiple" && t.vbsp_io_out)
 		if (t.vbsp_touch_who == e || ((t.vbsp_touch_in | t.vbsp_touch_seen | t.vbsp_touch_out) & bit))
-		if (SV_TASOptRename(t) != "")
+		if (SV_TASOptRename(t) != "" && !topt_renamenow)      // an OnStartTouch rename already happened
 		{
 			keep = e.targetname; e.targetname = topt_simname;
 			if (SV_PassesFilter(t, e)) topt_simpend = SV_TASOptRename(t);
@@ -854,7 +874,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 			// hop costs TOPT_HOPDIR a degree (10 deg at the surf_null platform hop was 200 u at ramp 4)
 			dh = vectoyaw([topt_dpos[e.topt_tgtj*3+12] - topt_dpos[e.topt_tgtj*3+3], topt_dpos[e.topt_tgtj*3+13] - topt_dpos[e.topt_tgtj*3+4], 0])
 				- vectoyaw([topt_out[i+3], topt_out[i+4], 0]);
-			d = d - TOPT_HOPDIR * fabs(dh - 360 * floor((dh + 180) / 360));
+			d = max(TOPT_REACH + 0.001, d - TOPT_HOPDIR * fabs(dh - 360 * floor((dh + 180) / 360)));   // still a reach (review)
 		}
 		if (e.topt_look > 0 && e.topt_tube > 0)
 		{	// lookahead: the route this candidate goes on along past the reach before a wall, a volume QC
@@ -988,6 +1008,7 @@ void(entity e, float v) SV_TASOptResult =
 	if (e.topt_phase == 3)
 	{
 		e.topt_on = 0;
+		e.topt_outcome = (e.topt_tgtuse && e.topt_reachv >= TOPT_REACH) ? 2 : 1;
 		if (e.topt_obj)
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: best %s turn %.3f deg/tick over %.0f ticks: %s (%.0f candidates); paused at %.0f\n",
 				(e.topt_dir > 0) ? "left" : "right", e.topt_bestr, e.topt_n, SV_TASOptDesc(e, v), e.topt_evals, SV_TimerTicks(e)));
@@ -1144,12 +1165,32 @@ void(entity e, float argc) SV_TASSeedCommand =
 		sprint(e, PRINT_HIGH, sprintf("tas seed <q1> .. <qk> (3..%.0f knots, each -%.0f..%.0f) | clear\n", TOPT_KMAX, TOPT_QMAX, TOPT_QMAX));
 		return;
 	}
+	if (!SV_TASToolGate(e, "seed")) return;
 	if (e.topt_on) { sprint(e, PRINT_HIGH, "tas seed: the optimizer is running\n"); return; }
 	for (i = 2; i < argc; i = i + 1)
 		if (!FS_TASNumber(argv(i))) { sprint(e, PRINT_HIGH, "tas seed: numbers only\n"); return; }
 	for (i = 2; i < argc; i = i + 1) topt_kseed[i - 2] = bound(-TOPT_QMAX, stof(argv(i)), TOPT_QMAX);
 	e.topt_kseedn = argc - 2;
 	sprint(e, PRINT_HIGH, sprintf("tas seed: %.0f knots kept for the next `curve %.0f` search\n", e.topt_kseedn, e.topt_kseedn));
+};
+
+// P1449 review: the demo, search and autosurf tools are local practice. Refused on a lobby server (any
+// player could pause there: a search takes 40 ms of every server frame, and file reads stall it), and
+// only from a paused running TAS attempt (SV_TASInputReady says why not).
+float(entity e, string what) SV_TASToolGate =
+{
+	if (Lobby_Active()) { sprint(e, PRINT_HIGH, strcat("tas ", what, ": a local practice tool; not on lobby servers\n")); return FALSE; }
+	if (!e.run_tas_rwcap || !SV_TASInputReady(e)) return FALSE;
+	return TRUE;
+};
+// Demo files a tool may read: .rec under data/ (a bare name is data/'s) or cfg/ksfreplays/ -- not the
+// lobby cfgs or maps the engine's read path would otherwise reach (review). Lines read a call are capped.
+#define TAS_DEMOLINES 40000
+float(string p) SV_TASDemoPathOK =
+{
+	if (p == "" || strstrofs(p, "..") >= 0 || strstrofs(p, "\\") >= 0 || strstrofs(p, ":") >= 0) return FALSE;
+	if (strlen(p) < 5 || strtolower(substring(p, strlen(p) - 4, 4)) != ".rec") return FALSE;
+	return strstrofs(p, "/") < 0 || substring(p, 0, 5) == "data/" || substring(p, 0, 15) == "cfg/ksfreplays/";
 };
 
 // P1449: a KSF import's move column as a command: some imports store only its direction (-1..1: the
@@ -1166,21 +1207,22 @@ float(float m) SV_TASDemoMove =
 void(entity e, float argc) SV_TASDemoRowsCommand =
 {
 	local string path, line;
-	local float fh, from, n, c, kb, blank, yaw, pvx, pvy, sd, x, wy;
+	local float fh, from, n, c, kb, blank, yaw, pvx, pvy, sd, x, wy, lines;
 	path = argv(2); from = stof(argv(3));
-	if (argc != 4 || path == "" || strstrofs(path, "..") >= 0 || !FS_TASNumber(argv(3)))
+	if (argc != 4 || !SV_TASDemoPathOK(path) || !FS_TASNumber(argv(3)))
 	{
-		sprint(e, PRINT_HIGH, "tas demorows <file> <from>: a recording's rows from time `from` for `tas optimize ... curve k demo`\n");
+		sprint(e, PRINT_HIGH, "tas demorows <file.rec> <from>: a recording's rows from time `from` for `tas optimize ... curve k demo` (under data/ or cfg/ksfreplays/)\n");
 		return;
 	}
 	if (e.topt_on || e.tdem_on) { sprint(e, PRINT_HIGH, "tas demorows: the optimizer or a demo is running\n"); return; }
+	if (!SV_TASToolGate(e, "demorows")) return;
 	if (SV_TASOptBusy(e)) return;
 	fh = fopen(path, FILE_READ);
 	if (fh < 0) { sprint(e, PRINT_HIGH, sprintf("tas demorows: cannot open %s\n", path)); return; }
-	n = 0; kb = 0; blank = 0; pvx = pvy = 0;
-	while (n < TOPT_HMAX && blank < 64)
+	n = 0; kb = 0; blank = 0; pvx = pvy = 0; lines = 0;
+	while (n < TOPT_HMAX && blank < 64 && lines < TAS_DEMOLINES)
 	{
-		line = fgets(fh);
+		line = fgets(fh); lines = lines + 1;
 		if (line == "") { blank = blank + 1; continue; }
 		blank = 0;
 		c = tokenize(line);
@@ -1392,7 +1434,8 @@ void(entity e) SV_TASOptFrame =
 {
 	local float head, k, v, t0v;
 	SV_TASDemoFrame(e);             // P1449
-	if (e.topt_on || e.tdem_on) topt_busyt = time;
+	SV_TASAutoFrame(e);             // P1449: an autosurf's next stretch, between its searches
+	if (e.topt_on || e.tdem_on || e.as_on) topt_busyt = time;   // the chain holds the guard across its rewinds
 	if (!e.topt_on) return;
 	if (!e.run_tas_paused || e.run_t_state != TS_RUNNING) { SV_TASOptStop(e, "TAS play/off, or the run ended"); return; }
 	if (e.run_tas_replaystate == TAS_TAPE_ACTIVE || e.run_tas_pending) return;
@@ -1456,6 +1499,7 @@ void(entity e) SV_TASOptFrame =
 	e.topt_backed = 0;
 	if (e.topt_fast && e.topt_phase != 3)
 	{	// P1443: up to ~4000 rollout ticks a frame, at the head; the best is played below once found
+		if (time == topt_frtime && gettime(1) - topt_frstart > TOPT_FRAMEBUDGET) return;   // the frame's spent: not even the walk below
 		v = SV_TASRollPending(e);
 		if (v)
 		{
@@ -1509,6 +1553,7 @@ void(entity e) SV_TASOptFrame =
 		e.topt_pv = [topt_out[k+3], topt_out[k+4], topt_out[k+5]];
 		e.topt_play = e.topt_pn = e.topt_reachk; e.topt_pcut = 0;
 	}
+	if (e.topt_fast && e.topt_pn >= 1 && e.topt_play > e.topt_pn) e.topt_play = e.topt_pn;    // an engine stop: its later rows were never written back
 	if (e.topt_phase == 3 && e.topt_fast && e.topt_pn >= 1 && e.topt_tat == 0) SV_TASOptVizSend(e, 4, e.topt_play);
 	e.topt_tat = 0;
 	// The back's holds release over a frame or two: a refused tape waits up to a second.
@@ -1625,11 +1670,11 @@ void(entity e, string why) SV_TASDemoStop =
 float(entity e) SV_TASDemoRead =
 {
 	local string line;
-	local float n, c, yaw;
-	n = 0;
-	while (n < TAS_TAPE_MAX && n < e.tdem_left && e.tdem_blank < 64)
+	local float n, c, yaw, lines;
+	n = 0; lines = 0;
+	while (n < TAS_TAPE_MAX && n < e.tdem_left && e.tdem_blank < 64 && lines < TAS_DEMOLINES)
 	{
-		line = fgets(tdem_fh);
+		line = fgets(tdem_fh); lines = lines + 1;
 		if (line == "") { e.tdem_blank = e.tdem_blank + 1; continue; }
 		e.tdem_blank = 0;
 		c = tokenize(line);
@@ -1709,14 +1754,14 @@ void(entity e, float argc) SV_TASDemoCommand =
 	path = argv(2);
 	rows = (argc >= 4) ? stof(argv(3)) : 100000;
 	from = (argc >= 5) ? stof(argv(4)) : -1000000;
-	if (argc < 3 || argc > 5 || path == "" || strstrofs(path, "..") >= 0 || rows < 1 || rows != floor(rows) ||
+	if (argc < 3 || argc > 5 || !SV_TASDemoPathOK(path) || rows < 1 || rows != floor(rows) ||
 	    (argc >= 5 && !FS_TASNumber(argv(4))))
 	{
 		sprint(e, PRINT_HIGH, "tas demo <file> [rows [from]]: a recording's inputs as TAS tapes, from its first row or time `from` (stand where it is then)\n");
 		return;
 	}
 	if (e.topt_on || e.tdem_on) { sprint(e, PRINT_HIGH, "tas demo: the optimizer or a demo is running\n"); return; }
-	if (!e.run_tas_rwcap || !SV_TASInputReady(e) || !SV_TASCanPause(e)) return;
+	if (!SV_TASToolGate(e, "demo")) return;
 	if (SV_TASOptBusy(e)) return;
 	tdem_fh = fopen(path, FILE_READ);
 	if (tdem_fh < 0) { sprint(e, PRINT_HIGH, sprintf("tas demo: cannot open %s\n", path)); return; }
@@ -1781,6 +1826,7 @@ void(entity e, float argc) SV_TASOptCommand =
 		sprint(e, PRINT_HIGH, "tas optimize: follow is solved by rollouts: add fast\n");
 		return;
 	}
+	if (fast && Lobby_Active()) { sprint(e, PRINT_HIGH, "tas optimize: fast is a local practice tool; not on lobby servers\n"); return; }
 	if ((obj && (fast || energy)) || (fast && !checkbuiltin(tas_rollout)))
 	{
 		sprint(e, PRINT_HIGH, obj ? "tas optimize: time scores stages, which only the real mover reaches: not with fast or energy\n"
@@ -1794,7 +1840,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	}
 	if (argc < 4 || argc > 17 || !(n >= 4 && n <= (fast ? TOPT_HMAX : TAS_TAPE_MAX) && n == floor(n)) || !dir || mode < 0)
 	{
-		sprint(e, PRINT_HIGH, "tas optimize <ticks 4..128, fast 4..768> <left|right> [board | follow | curve [knots 3..12]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [demo [aim [late]] [tube R [look N]] [hop]]: best turn for exit speed (energy: speed + height), or with time the next segment soonest; fast searches by rollout and plays only the best\n");
+		sprint(e, PRINT_HIGH, "tas optimize <ticks 4..128, fast 4..768> <left|right> [board | follow | curve [knots 3..16]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [demo [aim [late]] [tube R [look N]] [hop]]: best turn for exit speed (energy: speed + height), or with time the next segment soonest; fast searches by rollout and plays only the best\n");
 		return;
 	}
 	if (!e.run_tas_rwcap || !SV_TASInputReady(e) || !SV_TASCanPause(e)) return;
@@ -1818,6 +1864,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_yaw0 = e.v_angle_y; e.topt_pitch0 = e.v_angle_x;
 	e.topt_stage = 1; e.topt_phase = 1; e.topt_k = 0; e.topt_cand = 0; e.topt_which = 0;
 	e.topt_tat = e.topt_chunk = 0;      // the last search's played ticks: left over, its successor never sent the played line
+	e.topt_outcome = 0;
 	e.topt_evals = e.topt_iter = 0; e.topt_bestr = 0; e.topt_bestv = -1; e.topt_next = 0;
 	e.topt_backed = e.topt_wait = 0;
 	e.topt_mode = mode; e.topt_fk = fk; e.topt_srch = 0; e.topt_besty = 0; e.topt_bestf = 0; e.topt_bestp = 12;

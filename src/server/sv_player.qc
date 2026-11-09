@@ -423,8 +423,10 @@ void() ClientConnect =
 	VM_SVConnect(self);
 };
 
+void(entity e) SV_TASToolsDisconnect;   // P1449: sv_tasautosurf.qc
 void() ClientDisconnect =
 {
+	SV_TASToolsDisconnect(self);        // P1449 review: a demo's file handle, a search, an autosurf
 	SV_TASContactSpansFree(self);
 	SV_TASShareCancel(self);           // callbacks/deferred opens belong to this connection
 	SV_PeClose(self);                  // Patch 1195: a report still uploading
@@ -1548,6 +1550,7 @@ void(entity e, float count, float ticket) SV_TASQueueSteps =
 #include "sv_tassolvetest.qc"
 #include "sv_tasshare.qc"
 #include "sv_tasoptimize.qc"
+#include "sv_tasautosurf.qc"
 #include "sv_taslegal.qc"
 
 // The control switch and retained ancestry deliberately have different lifetimes.
@@ -1622,6 +1625,7 @@ void(entity e, float argc) SV_TASCommand =
 	if (!strcmp(action, "seed")) { SV_TASSeedCommand(e, argc); return; }      // P1449
 	if (!strcmp(action, "demorows")) { SV_TASDemoRowsCommand(e, argc); return; }   // P1449
 	if (!strcmp(action, "demo")) { SV_TASDemoCommand(e, argc); return; }      // P1449
+	if (!strcmp(action, "autosurf")) { SV_TASAutoCommand(e, argc); return; }  // P1449
 	if (!strcmp(action, "project") || !strcmp(action, "cp")) { SV_TASProjectCommand(e, argc); return; }
 	if (!strcmp(action, "inputs")) { SV_TASInputs(e, argc); return; }
 	if (!strcmp(action,"sections2")) { SV_TASSectionsCommand(e,argc); return; }
