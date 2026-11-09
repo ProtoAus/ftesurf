@@ -26,6 +26,7 @@ p.add_argument('--tries', type=int, default=5); p.add_argument('--radius', type=
 p.add_argument('--budget', type=float, default=500, help='seconds of chaining before stopping')
 p.add_argument('--ledger', type=Path, required=True, help='surfledger.py JSON of the demo')
 p.add_argument('--developer', type=int, default=0)
+p.add_argument('--noviz', action='store_true', help='client tas_viz 0 (the search drawing off)')
 p.add_argument('--shots', type=int, default=0, help='screenshots of the drawn search (pairs: mid-search, played)')
 p.add_argument('--shot-after', type=float, default=12.0)
 p.add_argument('--chase', default='', help='client chase camera: back,up (e.g. 400,250) for the shots')
@@ -33,6 +34,8 @@ p.add_argument('--sides', default='right,left', help='sides each try searches (c
 p.add_argument('--bench', action='store_true', help='time rollouts at the placed state (developer 1), then stop')
 p.add_argument('--horizon', type=int, default=0, help='ticks a link searches (fast: up to 512, played as tapes); 0: the demo stretch x1.25 + 10')
 p.add_argument('--seed', action='store_true', help="start each curve search from the demo's own command over the link (tas seed)")
+p.add_argument('--mid-radius', type=int, default=300, help='radius of the mid-air waypoints (boards use --radius)')
+p.add_argument('--midair', action='store_true', help="a waypoint at each flight's middle (no face), so steered flights follow the demo's route")
 p.add_argument('--boards-only', action='store_true', help='each link is board to next board: ride and flight in one search')
 p.add_argument('--bottoms', action='store_true', help="also a waypoint at each ride's lowest point (default: the ride is one link)")
 p.add_argument('--demo-check', action='store_true', help="replay the demo's own inputs from the save to each waypoint, then stop")
@@ -129,7 +132,7 @@ try:
         lines = common + ([f'sv_port {a.port}', 'sv_playerslots 4', 'sv_maxclients 4', 'sv_demoAutoRecord 0', 'developer 1',
                            'log_developer 1', 'pm_physicsmode 1', 'pm_ticrate 0.015', 'sv_tickparts 1', 'set sv_gamemode surf',
                            'set rec_stream 0', 'sv_cheats 1', f'developer {a.developer}', 'map surf_null'] if side == 'sv' else
-                          ['cl_hid 0', 'vid_renderer gl', 'developer 1', 'name ChainProbe', f'connect 127.0.0.1:{a.port}'])
+                          ['cl_hid 0', 'vid_renderer gl', 'developer 1', 'name ChainProbe'] + (['set tas_viz 0'] if a.noviz else []) + [f'connect 127.0.0.1:{a.port}'])
         (base / 'ftesurf/probe.cfg').write_text('\n'.join(lines) + '\n')
         peer = Peer(a.svexe if side == 'sv' else a.clexe, base, 'probe.cfg', side == 'sv', headless=False); peers.append(peer)
         if side == 'sv': sv = peer; sv.wait(r'Server spawned\.', timeout=180)
@@ -191,11 +194,17 @@ try:
         lo = min(R, key=lambda x: x[3])
         if a.bottoms and R.index(lo) not in (0, len(R) - 1): W.append(('bottom', k, lo, sg['n']))
         if not a.boards_only: W.append(('leave', k, R[-1], sg['n']))
+        if a.midair and k + 1 < len(segs):
+            # the flight's middle (by time, leave to the next board), no face: steered flights follow the demo's route
+            tm = (sg['t_leave'] + segs[k + 1]['t_board']) / 2
+            W.append(('mid', k, min(rows, key=lambda x: abs(x[0] - tm)), None))
     if a.first + a.ramps < len(segs):
         sg = segs[a.first + a.ramps]
         W.append(('board', a.first + a.ramps, next(x for x in rows if x[0] >= sg['t_board'] - 1e-6), sg['n']))
     W2 = []
     for (what, k, wr, n) in W:
+        if n is None:
+            W2.append((what, k, wr, None)); continue
         fn, ft = face(wr[0], n)
         print(f'      waypoint {what} {k}: demo t={wr[0]:.3f} o {tuple(round(x) for x in wr[1:4])}; face from t={ft} '
               f'({sum(x * y for x, y in zip(fn, n)):.3f} against the board plane)', flush=True)
@@ -269,7 +278,8 @@ try:
         # the horizon: the demo's own ticks for this stretch, with room (--horizon 0), or fixed
         H = a.horizon or min(512, max(16, round(1.25 * (wr[0] - tprev) / 0.015) + 10))
         if 'demo' in a.modes.split():
-            off = len(cl.text()); cl.send(f'tas demorows tasdemo.rec {tprev:.4f}')
+            # a row's input produced it: the link's first input is the row after its state
+            off = len(cl.text()); cl.send(f'tas demorows tasdemo.rec {tprev + 0.015:.4f}')
             m = cl.wait(r'tas demorows: (\d+) rows', off, 15)
             check(f'demo rows for {what} {k}', int(m.group(1)) >= H, m.group(0))
         if a.seed:
@@ -281,7 +291,8 @@ try:
             print(f'      seed for {what} {k}: ' + ' '.join(f'{x:.0f}' for x in sk), flush=True)
         tprev = wr[0]
         o = wr[1:4]; off = len(cl.text())
-        cl.send(f'tas target {o[0]:.1f} {o[1]:.1f} {o[2]:.1f} {a.radius} {n[0]:.4f} {n[1]:.4f} {n[2]:.4f}')
+        cl.send(f'tas target {o[0]:.1f} {o[1]:.1f} {o[2]:.1f} {a.radius} {n[0]:.4f} {n[1]:.4f} {n[2]:.4f}' if n is not None
+                else f'tas target {o[0]:.1f} {o[1]:.1f} {o[2]:.1f} {a.mid_radius}')
         cl.wait(r"tas target: '", off, 10)
         demo_tick = round(wr[0] / 0.015); dr = D.get(demo_tick)
         dv = ve(dr[1:4], dr[4:7]) if dr else float('nan')
