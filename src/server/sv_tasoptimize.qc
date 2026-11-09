@@ -530,8 +530,9 @@ float(entity e) SV_TASOptAimFrom = { return SV_TASOptAimFromK(e, topt_kcur[e.top
 
 // P1449: topt_dmap from a rollout of `ran` ticks: tick i takes the keys of the demo row after the one
 // nearest where tick i starts (the pointer only moves on, as `tube`'s); past the rollout, one row a tick.
-// TRUE if any tick's row changed. By the clock, a line faster than the demo's kept its strafe side past the
-// ramp's end and ducked late under a ceiling (surf_null ramps 6 and 7, Lex 10 Nov).
+// TRUE if some tick's row moved more than 2 from the clock's (closer, the second roll changes little and
+// costs a whole rollout). By the clock, a line faster than the demo's kept its strafe side past the ramp's end
+// and ducked late under a ceiling (surf_null ramps 6 and 7, Lex 10 Nov).
 float(entity e, float ran) SV_TASOptDemoMap =
 {
 	local float i, j, m, d, d2, ch;
@@ -553,7 +554,7 @@ float(entity e, float ran) SV_TASOptDemoMap =
 		}
 		else
 			m = min(topt_dmap[i-1] + 1, e.topt_dn - 1);
-		if (m != topt_dmap[i]) ch = TRUE;
+		if (fabs(m - topt_dmap[i]) > 2) ch = TRUE;
 		topt_dmap[i] = m;
 	}
 	return ch;

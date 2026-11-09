@@ -176,10 +176,10 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 			localcmd(sprintf("tas autosurf %s tube %g look %g tries %g backs %g%s%s start\n", taso_demo[taso_pick], taso_tube, taso_look,
 				taso_tries, taso_backmax, taso_hop ? "" : " nohop", taso_finish ? " finish" : ""));
 		at_y = at_y + row + 3;
-		if (Profile_Chip("taso_gojump", at, chip, "On my jump", hint, FALSE))
+		if (Profile_Chip("taso_gojump", at, chip, "On my jump", tsz, FALSE))
 			localcmd(sprintf("tas autosurf %s tube %g look %g tries %g backs %g%s%s onjump\n", taso_demo[taso_pick], taso_tube, taso_look,
 				taso_tries, taso_backmax, taso_hop ? "" : " nohop", taso_finish ? " finish" : ""));
-		if (Profile_Chip("taso_goexit", at + [half + 6, 0, 0], chip, "On leaving the box", hint, FALSE))
+		if (Profile_Chip("taso_goexit", at + [half + 6, 0, 0], chip, "On leaving the box", tsz, FALSE))
 			localcmd(sprintf("tas autosurf %s tube %g look %g tries %g backs %g%s%s onexit\n", taso_demo[taso_pick], taso_tube, taso_look,
 				taso_tries, taso_backmax, taso_hop ? "" : " nohop", taso_finish ? " finish" : ""));
 	}
