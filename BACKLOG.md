@@ -218,9 +218,14 @@
   96, hourglass 107 (64), lovetunnel 117, colony 118.
 - The long single frames are first-play costs: orgrimmar and tendies in a new session had none (worst 6.5 and 8 ms).
   Shader compiles and cold file reads both fit; the fixture's warm list grew 460 -> 844 entries over the survey.
-  The starter list (glsl/warmseed.txt, P1282) came from a patch-1284 exe and 41 of its maps never ran. Lead:
-  re-seed from these 58 maps on a current build, counting late compiles (r_mapready_info) on a first play with an
-  empty data/glslwarm.txt.
+  DONE as P1441 (60 maps, 768 entries) + P1442 (budget 6 with a responsive window). CAVEAT for this survey's
+  first-play numbers: its settings were exec'd after the load, which voids the activation warm-up ("mapready:
+  invalidated"), so its late compiles were inflated (quarantine 255 vs a real 75).
+- Remaining first-play work: 3-8 late compiles a map are shaders registered after activation (not warmable at load);
+  surf_quarantine's first load spends ~7 s in one call (CS:GO VPK mount + BSP load) and Windows flags the window
+  hung for ~2.5 s of it (tools/p1442-warmbudget.md).
+- P1427 (PVS skip for sprites, local branch p1427-spritepvs in lows2-20261107-opus/qc) parked: correct, but checkpvs
+  + Portal_EyesSee at ~3 us a check ate the gain on tensor2; would need an entity per sprite or an engine builtin.
 - Slow-throughout maps (artifacts/run_twopass.py, r_budget 3; twopass/<map>-budget.txt) are all CPU-bound:
   - fairy, jumble: cl_sprites 1.0-2.8 ms -> P1422 for the sky test (fairy 222 -> 303). Sprite_Glare is the next
     ~0.46 ms on fairy (338 -> 400 with vbsp_glare 0): 40 rays a frame, the same per-frame scaling, but its response

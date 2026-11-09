@@ -2457,6 +2457,13 @@ void() HE_MigrateDefaults =
 			print("surf_view/ent_view: translucent planes with edges now (surf_view_style 3; 1 was dither with edges)\n");
 		localcmd("seta r_video_rev 1402\n");
 	}
+	// Patch 1442: a config still on the warm-up budget's old 2 s takes 6, once the engine stays responsive through it
+	registercvar("r_mapready_rev", "0", CVAR_ARCHIVE);
+	if (strstrofs(cvar_description("r_mapready_budget"), "Patch 1442") >= 0 && cvar("r_mapready_rev") < 1442)
+	{
+		HE_MoveOne("r_mapready_budget", 2, "6");
+		localcmd("seta r_mapready_rev 1442\n");
+	}
 	registercvar("hud_layout_rev", "0", CVAR_ARCHIVE);
 	/*
 	  Patch 898: Lex's layout of 21 Oct for every setting still on the default it replaced.  The

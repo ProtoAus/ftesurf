@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1442 warm-up budget 6 s, window stays responsive -- engine in both installs (9 Nov), QC migration on main; owner check pending
+
+- `r_mapready_budget` in the console: 6 after your next connect to a lobby running the migration (your config held 2).
+- On your PC a map's first load is not longer: the warm-up finishes in about 2 s here at most.
+- Nothing should ever show "Not Responding" while the shaders are prepared (a first load of surf_quarantine can
+  still flash it during the map file load itself -- BACKLOG, not this patch).
+
 ## P1441 first-play shader list -- C:\FTEQuake (and C:\FTESurf with main) from 9 Nov; owner check pending
 
 - Your PC's own list already holds what you have played, so you will see little change. The test is a PC (or a

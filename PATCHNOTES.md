@@ -21,6 +21,10 @@
 
 ## next
 
+### P1442 More shaders prepared while loading, without "Not Responding"
+- A map's load may now spend up to 6 seconds (was 2) preparing shaders, so slower PCs finish preparing them during the load instead of stuttering through the first run. The window stays responsive meanwhile: Windows no longer marks it "Not Responding" while shaders are prepared.
+- A saved setting still on the old 2 seconds moves to 6 once you have this version; a different value you chose is kept.
+
 ### P1441 Fewer stutters the first time you play a map
 - The game now prepares the shaders of all 60 tested maps while a map loads, instead of the first time each one is drawn. The first run on a map, after a new install or a graphics driver update, stutters far less: surf_tendies went from 64 small freezes (up to 71 ms) to 4, and its slowest frames from 58 to 139 fps.
 - The first load of each map can take about a second longer on such a PC; later loads are as before.

@@ -101,7 +101,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   a3de0326f00af8154d4f8820a96f25ab9cc783ff
+commit   a48d1d2ba635a0ffbc30217e1ce9912ac1ae0187
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -113,8 +113,9 @@ commit   a3de0326f00af8154d4f8820a96f25ab9cc783ff
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
-tag      patch-1424
-patch    1437
+tag      patch-1442
+patch    1442
+# Patch 1442 (engine client gl_shader.c, sys_win.c, sys.h; QC cl_hudedit.qc): the activation warm-up keeps the window responsive -- Sys_KeepAlive peeks the queue (PM_NOREMOVE) every 0.25 s inside GLSLWarm_MapActive/MapReady_Drain, so r_mapready_budget defaults to 6 (was 2) without Windows ghosting the window past 5 s; HE_MigrateDefaults moves a saved 2 to 6 only when the engine's description names Patch 1442 (r_mapready_rev 1442). Stress list at budget 10, IsHungAppWindow every 0.1 s: patch-1413 hung 5.4 s in the warm-up, P1442 0. Native: tag patch-1442 = df1444c99 (engine main a48d1d2ba); both installs run client exe 7e7564ae (git-8569-patch-1442-0-gdf1444c99), fteqwsv64 and hl2 plugin unchanged. Rides the next release. tools/p1442-warmbudget.md.
 # Patch 1424 (engine client in_win.c, in_generic.c, client.h): the .hid journal counts legacy key presses no keyboard device reported -- the keyboard half of Patch 307. Raw keyboard is registered observe-only (dwFlags 0) while in_rawinput_keyboard is 0, so legacy messages still drive the game; a legacy press unmatched by a real device's raw down within 100 ms is counted (in_raw_legacykey), repeats judged by held state not the lParam bit, expiry on the window thread. New .hid records: kbdobserve header, dt-0 'y <keys> <nohandle>' and 'o <state>' (observation changed); tools/hidcheck.py reads them as a note, never a fault, and the 'end' trailer is unchanged so older readers do not fault. Native: tag patch-1424 = a3de0326f (engine main); both installs run exe c61f874b (git-8565-patch-1424-0-ga3de0326f), fteqwsv64 d99cbbcb and hl2 plugin 3b085f6c unchanged. Rides the next release. Six-arm falsifier ftesurf/cfg/test/p1424keys.cfg; three review rounds.
 # Patch 1421 (engine common log.c; server sv_sys_win.c): Con_Log keeps the last 64 console lines in a fixed array and Log_Fatal writes them into data/crash/error.txt with the error and the engine version, leaving out typed commands and lines naming a password, key=, token or secret -- P1418's crash report reads that instead of an always-on console log. Native: tag patch-1421 = 14f993f85 (engine main); both installs run exe 5798b897 / fteqwsv64 d99cbbcb (git-8564-patch-1421-0-g14f993f85), hl2 plugin 3b085f6c (patch-1417, unchanged source). Rides the next release.
 # Patch 1417 (engine common fs.c, log.c; client image.c, sys_win.c, sys_linux.c; plugins/hl2 fs_vpk.c): a file length past 2 GB is refused by name ("<file>: reports N bytes; not loaded") where FS_LoadMallocGroupFile's int sent it to BZ_Malloc sign-extended -- MetalGio's "BZ_Malloc: Failed on allocation of 18446744071578836992 bytes", reproduced exactly by a dedicated server loading a 0x80FFDFFF-byte map; VPK entry sizes unsigned; Sys_Error writes its text to the log and data/crash/error.txt (P1418). Native: tag patch-1417 = 6fa8523ce (engine main c8189d03b merges it); both installs run exe d439b716 / fteqwsv64 0d87d497 / fteplug_hl2 3b085f6c (git-8560-patch-1417-0-g6fa8523ce). Rides the next release.
