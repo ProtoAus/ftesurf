@@ -12,6 +12,7 @@ string taso_listmap;
 string taso_demo[TASO_DEMOS];
 float taso_demon, taso_pick;
 float taso_adv;                 // the advanced settings and one-stretch tools shown
+float taso_rtn;                 // points added to the clicked route here (tas route; the server keeps the route)
 #define TASO_STRETCHES 64
 float taso_rb[TASO_STRETCHES], taso_rf[TASO_STRETCHES];   // each reached stretch: speed at farsh's board height, and his (0: none)
 var float taso_lastk = -1;          // the stretch last reached (the line under the strip)
@@ -141,6 +142,21 @@ void(float v) TASOptUI_Tries = { taso_tries = rint(v); };
 void(float v) TASOptUI_Backs = { taso_backmax = rint(v); };
 void(float v) TASOptUI_Ticks = { taso_ticks = rint(v / 10) * 10; };
 
+// A route point where the crosshair points: a surf face to board, a floor to bhop on, else a point.
+void() TASOptUI_RouteAdd =
+{
+	local vector o, n;
+	o = getproperty(VF_ORIGIN);
+	makevectors(getproperty(VF_ANGLES));
+	traceline(o, o + v_forward * 16384, MOVE_NOMONSTERS, world);
+	if (trace_fraction >= 1) { print("tas route: the crosshair is on nothing\n"); return; }
+	n = trace_plane_normal;
+	if (fabs(n_z) >= 0.1 && fabs(n_z) <= 0.72) localcmd(sprintf("tas route add %.1f %.1f %.1f %.4f %.4f %.4f\n", trace_endpos_x, trace_endpos_y, trace_endpos_z, n_x, n_y, n_z));
+	else if (n_z > 0.72) localcmd(sprintf("tas route add %.1f %.1f %.1f 0 0 1\n", trace_endpos_x, trace_endpos_y, trace_endpos_z + 1));
+	else localcmd(sprintf("tas route add %.1f %.1f %.1f 0 0 0\n", trace_endpos_x, trace_endpos_y, trace_endpos_z));
+	taso_rtn = taso_rtn + 1;
+};
+
 // The target where the crosshair points: the face it hits when that is a surf slope.
 void() TASOptUI_Target =
 {
@@ -199,6 +215,17 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 			localcmd(sprintf("tas autosurf %s tube %g look %g tries %g backs %g%s%s onexit\n", taso_demo[taso_pick], taso_tube, taso_look,
 				taso_tries, taso_backmax, taso_hop ? "" : " nohop", taso_finish ? " finish" : ""));
 	}
+	at_y = at_y + row + hint;
+	// your own route, no replay: ramps (and bhop floors) clicked in order, then surfed
+	sui_text(at, [hint, hint], (taso_rtn > 0) ? sprintf("Your route: %g points (aim at each ramp in order, then surf it)", taso_rtn)
+		: "Or click your own route: aim at each ramp (or bhop floor) in order and add it.", SUI_THEME_DIM, 1, 0);
+	at_y = at_y + hint * 1.6;
+	if (Profile_Chip("taso_radd", at, chip, "Add at crosshair", hint, FALSE)) TASOptUI_RouteAdd();
+	if (Profile_Chip("taso_rundo", at + [half + 6, 0, 0], chip, "Undo", hint, FALSE)) { localcmd("tas route undo\n"); taso_rtn = max(0, taso_rtn - 1); }
+	at_y = at_y + row + 3;
+	if (Profile_Chip("taso_rclear", at, chip, "Clear", hint, FALSE)) { localcmd("tas route clear\n"); taso_rtn = 0; }
+	if (!running && taso_rtn > 0 && Profile_Chip("taso_rgo", at + [half + 6, 0, 0], chip, "Surf my route", tsz, FALSE))
+		localcmd(sprintf("tas autosurf route tries %g backs %g%s\n", taso_tries, taso_backmax, taso_hop ? "" : " nohop"));
 	at_y = at_y + row + hint;
 	if (taso_n > 0)
 	{	// the run so far, a box a ramp or bhop platform

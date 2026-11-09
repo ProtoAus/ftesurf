@@ -427,7 +427,7 @@ float(entity e, float r, float f) SV_TASOptFollow =
 			q = (k >= e.topt_kn - 1) ? topt_kcur[e.topt_kn - 1] : topt_kcur[k] + (d - k) * (topt_kcur[k + 1] - topt_kcur[k]);
 			topt_rows[i*7] = 0; topt_rows[i*7+1] = -450 * e.topt_dir; topt_rows[i*7+2] = 0;
 			topt_rows[i*7+3] = SV_TASPWord(e.topt_pitch0); topt_rows[i*7+4] = bound(-TOPT_QMAX, q, TOPT_QMAX);
-			topt_rows[i*7+5] = 0; topt_rows[i*7+6] = TOPT_EFOLLOW + (e.topt_pfoff ? 0 : TOPT_EPITCHV) + ((e.topt_mode & 128) ? TOPT_EAIM : 0);
+			topt_rows[i*7+5] = 0; topt_rows[i*7+6] = TOPT_EFOLLOW + (e.topt_pfoff ? 0 : TOPT_EPITCHV) + ((e.topt_mode & 128) ? TOPT_EAIM : 0) + (e.topt_hop ? 1 : 0);
 		}
 		SV_NoColPre(e);
 		if ((e.topt_mode & 128) && e.topt_tgtn != '0 0 0')   // aim at a face: arrive along it (sv_tas_rollout.inc)
@@ -1911,7 +1911,7 @@ void(entity e, float argc) SV_TASOptCommand =
 		else if (w == "aim" && (mode & 32) && !(mode & 128)) mode = mode | 128;  // P1449: flights steer to the target (demo aim: its ride, then this)
 		else if (w == "late" && (mode & 192) == 192 && !(mode & 256)) mode = mode | 256;   // demo aim late: the approach only
 		else if (w == "tube" && (mode & 64) && !tube) tube = -1;                 // P1449: stay near the demo's path
-		else if (w == "hop" && (mode & 64) && !hop) hop = 1;                     // P1449: hold jump (topt_hop)
+		else if (w == "hop" && (mode & 32) && !hop) hop = 1;                     // P1449: hold jump (topt_hop); a route's too
 		else if (w == "look" && (mode & 64) && !look) look = -1;                 // P1449: score a reach's continuation
 		else if (w == "pace" && (mode & 64) && !pace) pace = -1;                 // P1449: score lost a tick to the reach
 		else if (pace == -1 && argv(i - 1) == "pace" && FS_TASNumber(w) && stof(w) > 0 && stof(w) <= 20) pace = stof(w);

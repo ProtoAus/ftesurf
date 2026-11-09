@@ -2580,6 +2580,18 @@ float(string cmd) CSQC_ConsoleCommand =
 			else
 				localcmd(sprintf("p%g cmd tas autosurf%s\n", tsseat + 1, tsline));
 		}
+		else if (cmdargc >= 3 && cmdargc <= 9 && !strcmp(argv(1), "route"))      // P1449: add (six numbers), undo, clear, show
+		{
+			tsline = "";
+			for (tsi = 2; tsi < cmdargc; tsi = tsi + 1)
+				if ((tsi == 2 && (argv(2) == "add" || argv(2) == "undo" || argv(2) == "clear" || argv(2) == "show")) || (tsi > 2 && FS_TASNumber(argv(tsi))))
+					tsline = strcat(tsline, " ", argv(tsi));
+				else tsline = "!";
+			if (substring(tsline, 0, 1) == "!")
+				print("tas route add <x y z> <nx ny nz> | undo | clear | show\n");
+			else
+				localcmd(sprintf("p%g cmd tas route%s\n", tsseat + 1, tsline));
+		}
 		else if (cmdargc >= 2 && cmdargc <= 9 && !strcmp(argv(1), "target"))     // P1449: numbers, clear or show only
 		{
 			tsline = "";

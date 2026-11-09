@@ -30,6 +30,11 @@
 .vector as_exd;                 // and its horizontal heading there: the start steers onto that line
 void(entity e, float z) SV_TASLegalStart;
 .string as_file;
+.float as_route;                // the chain is the player's clicked route (tas route), not a demo's plan
+// P1449: a route clicked in the world (the Optimizer tab's "Add at crosshair"): points and the face to board there
+// ('0 0 1' a bhop floor, '0 0 0' a point); `tas autosurf route` surfs it with no demo (Lex, 10 Nov: point and click).
+float rt_n;
+float rt_o[TAS_ASMAX * 3], rt_nn[TAS_ASMAX * 3];
 float as_n;                     // waypoints
 float as_wt[TAS_ASMAX];         // the demo's time there
 float as_wo[TAS_ASMAX * 3];     // its origin
@@ -293,6 +298,29 @@ string(entity e, float i) SV_TASAutoEmin =
 	return sprintf(" emin %.1f", x);
 };
 
+// tas route add <x y z> <nx ny nz> | undo | clear | show -- the clicked route `tas autosurf route` surfs.
+void(entity e, float argc) SV_TASRouteCommand =
+{
+	local float i;
+	if (Lobby_Active()) { sprint(e, PRINT_HIGH, "tas route: a local practice tool; not on lobby servers\n"); return; }
+	if (e.as_on && e.as_route) { sprint(e, PRINT_HIGH, "tas route: autosurf is surfing it; stop it first\n"); return; }
+	if (argc == 9 && argv(2) == "add")
+	{
+		for (i = 3; i < 9; i = i + 1) if (!FS_TASNumber(argv(i)) || fabs(stof(argv(i))) > 65536) { sprint(e, PRINT_HIGH, "tas route add <x y z> <nx ny nz>\n"); return; }
+		if (rt_n >= TAS_ASMAX) { sprint(e, PRINT_HIGH, sprintf("tas route: %.0f points at most\n", TAS_ASMAX)); return; }
+		rt_o[rt_n*3] = stof(argv(3)); rt_o[rt_n*3+1] = stof(argv(4)); rt_o[rt_n*3+2] = stof(argv(5));
+		rt_nn[rt_n*3] = stof(argv(6)); rt_nn[rt_n*3+1] = stof(argv(7)); rt_nn[rt_n*3+2] = stof(argv(8));
+		rt_n = rt_n + 1;
+	}
+	else if (argc == 3 && argv(2) == "undo") { if (rt_n > 0) rt_n = rt_n - 1; }
+	else if (argc == 3 && argv(2) == "clear") rt_n = 0;
+	else if (argc == 3 && argv(2) == "show")
+		for (i = 0; i < rt_n; i = i + 1)
+			sprint(e, PRINT_HIGH, sprintf("tas route %.0f: %v, %v\n", i + 1, [rt_o[i*3], rt_o[i*3+1], rt_o[i*3+2]], [rt_nn[i*3], rt_nn[i*3+1], rt_nn[i*3+2]]));
+	else { sprint(e, PRINT_HIGH, "tas route add <x y z> <nx ny nz> | undo | clear | show\n"); return; }
+	SV_TASAutoNote(e, e.as_on ? 1 : 0, sprintf("your route: %.0f points", rt_n));
+};
+
 // One stretch: the demo's rows from where it left off, the target, the search.
 void(entity e) SV_TASAutoLink =
 {
@@ -301,28 +329,43 @@ void(entity e) SV_TASAutoLink =
 	local string ps, ls, cl;
 	i = e.as_i;
 	as_ws[i] = SV_TimerTicks(e); as_wp[i] = e.as_tprev;
+	o = [as_wo[i*3], as_wo[i*3+1], as_wo[i*3+2]]; n = [as_wn[i*3], as_wn[i*3+1], as_wn[i*3+2]];
+	if (e.as_route)
+	{	// a clicked point: the horizon from its distance at this speed (1.5x and 40 ticks over), a radius for a click
+		h = bound(64, rint(1.5 * vlen(o - e.origin) / max(500, vlen(e.velocity)) / PM_TICK) + 40, TOPT_HMAX);
+		r = (as_wk[i] == 2) ? 90 : ((as_wk[i] == 3) ? 200 : 300);
+	}
+	else
+	{
 	h = min(TOPT_HMAX, max(16, rint(1.25 * (as_wt[i] - e.as_tprev) / PM_TICK) + 10 + e.as_look));
 	argc = tokenize(sprintf("tas demorows %s %.4f", e.as_file, e.as_tprev + PM_TICK));    // a row's input produced it
 	e.topt_dn = 0;
 	SV_TASDemoRowsCommand(e, argc);
 	if (e.topt_dn < 16) { SV_TASAutoStop(e, "the demo's rows for this stretch did not load"); return; }   // not the last stretch's (review)
 	h = min(h, e.topt_dn);
-	o = [as_wo[i*3], as_wo[i*3+1], as_wo[i*3+2]]; n = [as_wn[i*3], as_wn[i*3+1], as_wn[i*3+2]];
 	r = (as_wk[i] == 2) ? 50 : ((as_wk[i] == 3) ? 400 : 800);
+	}
 	if (n == '0 0 0') argc = tokenize(sprintf("tas target %.1f %.1f %.1f %.0f", o_x, o_y, o_z, r));
 	else argc = tokenize(sprintf("tas target %.1f %.1f %.1f %.0f %.4f %.4f %.4f", o_x, o_y, o_z, r, n_x, n_y, n_z));
 	e.topt_tgton = 0;
 	SV_TASTargetCommand(e, argc);
 	if (!e.topt_tgton) { SV_TASAutoStop(e, "this stretch's target was refused"); return; }
+	if (e.as_route)
+		cl = sprintf("tas optimize %.0f left curve 12 aim%s energy fast", h, (e.as_hop && as_wk[i] == 2) ? " hop" : "");
+	else
+	{
 	ps = strcat(SV_TASAutoPace(e, i), SV_TASAutoEmin(e, i));   // not inside the sprintf's argument list (a call there clobbers the args set)
 	ls = (e.as_look > 0) ? sprintf(" look %.0f", e.as_look) : "";
 	cl = sprintf("tas optimize %.0f left curve 12 demo aim late tube %.0f%s%s%s energy fast", h, e.as_tube, e.as_hop ? " hop" : "", ls, ps);
+	}
 	if (cvar("developer")) sprint(e, PRINT_HIGH, strcat("tas autosurf: ", cl, "\n"));
 	argc = tokenize(cl);
 	SV_TASOptCommand(e, argc);
 	if (!e.topt_on) e.topt_outcome = -1;        // refused: a failed try
 	e.as_stage = 2;
-	SV_TASAutoNote(e, 1, sprintf("stretch %.0f of %.0f (%s at demo t=%.2f), try %.0f", i + 1, as_n,
+	if (e.as_route) SV_TASAutoNote(e, 1, sprintf("point %.0f of %.0f (%s), try %.0f", i + 1, as_n,
+		(as_wk[i] == 1) ? "ramp" : ((as_wk[i] == 2) ? "bhop" : "point"), e.as_try + 1));
+	else SV_TASAutoNote(e, 1, sprintf("stretch %.0f of %.0f (%s at demo t=%.2f), try %.0f", i + 1, as_n,
 		(as_wk[i] == 1) ? "board" : ((as_wk[i] == 2) ? "hop" : "finish"), as_wt[i], e.as_try + 1));
 };
 
@@ -462,11 +505,19 @@ void(entity e) SV_TASAutoFrame =
 					d = vlen(SV_TASAutoRowO(i) - e.origin);
 					if (d < best) { best = d; t = as_rows[i*7]; }
 				}
+			if (e.as_route)
+			{
+				as_rk = e.as_i; as_rb = vlen(e.velocity); as_rf = 0;
+				SV_TASAutoNote(e, 1, sprintf("point %.0f reached at %.0f u/s", e.as_i + 1, as_rb));
+			}
+			else
+			{
 			for (i = 0; i < as_nrows - 1 && as_rows[i*7] < as_wt[e.as_i] - 0.0001; i = i + 1) ;
 			// speed at farsh's board height (the energy carried there) against his own: vE near 0 magnified the gap
 			d = e.velocity * e.velocity + 2 * cvar("sv_gravity") * (e.origin_z - as_rows[i*7+3]);
 			as_rk = e.as_i; as_rb = (d < 0) ? -sqrt(-d) : sqrt(d); as_rf = vlen([as_rows[i*7+4], as_rows[i*7+5], as_rows[i*7+6]]);
 			SV_TASAutoNote(e, 1, sprintf("stretch %.0f reached: %.0f u/s at farsh's board height, farsh %.0f", e.as_i + 1, as_rb, as_rf));
+			}
 			e.as_tprev = t; e.as_i = e.as_i + 1; e.as_try = 0;
 			if (e.as_i >= as_n)
 			{
@@ -543,7 +594,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		return;
 	}
 	if (e.as_on || e.topt_on || e.tdem_on) { sprint(e, PRINT_HIGH, "tas autosurf: a search, demo or autosurf is running\n"); return; }
-	if (!SV_TASDemoPathOK(path)) { sprint(e, PRINT_HIGH, "tas autosurf: a .rec under data/ or cfg/ksfreplays/\n"); return; }
+	if (path != "route" && !SV_TASDemoPathOK(path)) { sprint(e, PRINT_HIGH, "tas autosurf: a .rec under data/ or cfg/ksfreplays/ (or route)\n"); return; }
 	if (SV_TASOptBusy(e)) return;
 	st = 0; flip = 0; arm = 0; e.as_szone = 0; e.as_sg = 900; e.as_sy = 0; e.as_sside = -1;
 	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = 6; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1; e.as_emin = 0.9;
@@ -572,6 +623,25 @@ void(entity e, float argc) SV_TASAutoCommand =
 	if (st || arm) { if (Lobby_Active() || !e.run_tas_rwcap) { SV_TASToolGate(e, "autosurf"); return; } }
 	else if (!SV_TASToolGate(e, "autosurf")) return;
 	e.as_sair = flip ? -e.as_sside : e.as_sside;
+	if (path == "route")
+	{	// the clicked route: no demo, no plan to make; from here (a running attempt, paused)
+		if (st || arm) { sprint(e, PRINT_HIGH, "tas autosurf route: from a pause on the route (the start options follow a demo)\n"); return; }
+		if (rt_n < 1) { sprint(e, PRINT_HIGH, "tas autosurf route: no points yet -- tas route add, or the tab's Add at crosshair\n"); return; }
+		as_nrows = 0; as_n = rt_n;
+		for (i = 0; i < rt_n; i = i + 1)
+		{
+			as_wo[i*3] = rt_o[i*3]; as_wo[i*3+1] = rt_o[i*3+1]; as_wo[i*3+2] = rt_o[i*3+2];
+			as_wn[i*3] = rt_nn[i*3]; as_wn[i*3+1] = rt_nn[i*3+1]; as_wn[i*3+2] = rt_nn[i*3+2];
+			as_wk[i] = (rt_nn[i*3+2] >= 0.99) ? 2 : ((rt_nn[i*3+2] == 0 && rt_nn[i*3] == 0 && rt_nn[i*3+1] == 0) ? 3 : 1);
+			as_wt[i] = 0;
+		}
+		if (e.as_file != "") strunzone(e.as_file);
+		e.as_file = "";
+		e.as_route = 1; e.as_on = 1; e.as_stage = 1; e.as_i = 0; e.as_try = 0; e.as_backs = 0; e.as_tprev = 0;
+		SV_TASAutoNote(e, 1, sprintf("your route: %.0f points ahead", as_n));
+		return;
+	}
+	e.as_route = 0;
 	path = strzone(path);                       // argv is clobbered by the reads and searches below
 	as_nrows = SV_TASAutoRead(path);
 	if (as_nrows < 0)
