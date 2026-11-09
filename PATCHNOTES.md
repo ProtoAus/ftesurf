@@ -36,6 +36,13 @@
 ### P1451 No string-cleanup hitch early in each map
 - The memory the game code's string cleanup works in is now set up while the map loads, so the first cleanup of each map, usually during your first run, no longer stutters for it.
 
+### P1449 TAS: autosurf a replay, and an Optimizer tab
+- The TAS editor has an Optimizer tab (or type tas optimizer): pick a replay for the map and press Autosurf from here, and the bot searches its way ramp by ramp along that route.
+- A stretch that fails is tried again, and if it keeps failing the bot goes back and searches the stretch before it; the tab shows which stretch it is on.
+- The bot follows the replay's own strafing, lands parallel on the next ramp's face, and hops bhop platforms at their far end.
+- One stretch at a time: aim at a ramp, press Target at crosshair, then Optimize toward it. The search draws its candidates, its best line and the line it plays.
+- These are local practice tools: they are refused on the lobby servers.
+
 ### P1447 Website replays play on Strata maps, and load faster
 - The website's 3D replay viewer now draws Strata Source maps (and a dozen other maps that failed): every map in the library loads.
 - Maps with lots of curved terrain build up to 5x faster in the viewer (ahop_coast 11 s to 2 s).
