@@ -398,6 +398,8 @@ float  spr_gbrush;                      // traces stopped by one, since the last
 */
 float  spr_gcull;                       // glares skipped by the view test this frame
 float  spr_gnodraw;                     // P1456: glows skipped as undrawable this frame
+float  spr_tt0, spr_tcap;               // P1456: this frame's sprite-ray start on gettime(1), and the cap (s)
+float  spr_tcapn;                       // P1456: loops the cap stopped (glare and sky), since load
 float  spr_gtraced_n;                   // glares actually traced this frame
 /*
   BUILD 60 -- THE DENOMINATOR, and adding it corrects a number I have been
@@ -2287,6 +2289,14 @@ float(float margin, vector fwd) Sprite_ConeTan =
 	return best * margin;
 };
 
+// P1456: the frame's glare and sky rays have run past the cap. gettime(1) is whole ms, a float of seconds
+// since launch (~1 ms steps after 2.3 h), so the cap is at least two of its steps: a 0.3-0.6 ms frame of
+// rays never trips it; surf_fairy's 4-9 ms bursts (rays at 100-200 us) stop at 1-3 ms.
+float() Sprite_TraceOver =
+{
+	return spr_tcap > 0 && gettime(1) - spr_tt0 >= spr_tcap;
+};
+
 // P1456: FALSE for a glow the glow draw loop skips whatever its occlusion says -- behind the sky, a
 // one-sided glow seen from behind, or outside its distance ramp. That loop's own tests, in its order;
 // change them together.
@@ -2325,7 +2335,7 @@ void() Sprite_Glare =
 	// BUILD 61: the interval-targeted budget.
 	local float  interval, vmax, ft;
 	local entity pass;              // P799: carries SPR_GLARE_MASK
-	local float skyon;              // P1456
+	local float skyon, gtcap;       // P1456
 
 	eye = getproperty(VF_ORIGIN);
 	if (!spr_gtracer)
@@ -2572,12 +2582,19 @@ void() Sprite_Glare =
 	wrapped = FALSE;
 	spr_gcull = 0;
 	spr_gnodraw = 0;
+	gtcap = FALSE;
 	spr_gtraced_n = 0;
 	spr_gcheap = 0;
 	spr_gforce = 0;
 	spr_grays = 0;
 	while (n < budget && visits < vmax && spr_n > 0)
 	{
+		if (n > 0 && Sprite_TraceOver())
+		{
+			gtcap = TRUE;
+			spr_tcapn = spr_tcapn + 1;
+			break;
+		}
 		i = spr_gnext;
 		spr_gnext = spr_gnext + 1;
 		if (spr_gnext >= spr_n)
@@ -2843,7 +2860,9 @@ void() Sprite_Glare =
 	  cvar that would fix it.
 	*/
 	spr_glimit = 0;
-	if (n >= budget)
+	if (gtcap)
+		spr_glimit = 3;
+	else if (n >= budget)
 		spr_glimit = 1;
 	else if (visits >= vmax)
 		spr_glimit = 2;
@@ -2986,7 +3005,7 @@ float(vector eye, vector p, float st) Sprite_SkyTest =
 // call per visit cost ~4% on surf_fairy.
 void(vector eye) Sprite_SkyTick =
 {
-	local float i, k, n, rays, look, st, tanx, maxdist, slope, glowcos, zc;
+	local float i, k, n, rays, look, st, tanx, maxdist, slope, glowcos, zc, burst;
 	local vector d, fwd;
 
 	n = spr_n + beam_n;
@@ -3001,10 +3020,12 @@ void(vector eye) Sprite_SkyTick =
 	slope = sqrt(1 + tanx * tanx);
 	glowcos = Sprite_GlowCos(tanx);
 	maxdist = cvar("vbsp_sprite_dist");
+	burst = FALSE;
 	if (spr_skyburst > 0)
 	{
 		rays = rays * 4;
 		spr_skyburst = spr_skyburst - rays;
+		burst = TRUE;
 	}
 	if (!spr_skyat)
 		spr_skyat = memalloc(sizeof(vector) * (SPR_MAX + BEAM_MAX));
@@ -3058,6 +3079,13 @@ void(vector eye) Sprite_SkyTick =
 				if (vlen(d - fwd * zc) - zc * tanx > spr_rad[i] * slope)
 					continue;
 			}
+		}
+		if (Sprite_TraceOver())
+		{
+			spr_tcapn = spr_tcapn + 1;
+			if (burst)
+				spr_skyburst = spr_skyburst + rays;	// the burst's unfired rays stay owed
+			break;
 		}
 		spr_skyat[i] = eye;
 		rays = rays - 1;
@@ -3168,6 +3196,10 @@ void() Sprite_Draw =
 	eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
 	fwd = v_forward;
+	spr_tt0 = gettime(1);
+	spr_tcap = cvar("vbsp_sprite_tracems") * 0.001;
+	if (spr_tcap > 0)
+		spr_tcap = max(spr_tcap, spr_tt0 * 0.00000024);	// two float steps of the clock
 	if (cvar("vbsp_sprite_skyrays") > 0)
 		Sprite_SkyTick(eye);
 	skyon = cvar("vbsp_sprite_skyrays") > 0;
@@ -3767,8 +3799,8 @@ void() Sprite_Draw =
 		*/
 		if (useglare_on)
 			print(sprintf("vbsp_sprite_debug: glare sweep %g FRAMES measured (last full pass);"
-			              " this frame %g of %g visited (%g culled, %g undrawable, %g traced)\n",
-			              spr_gsweep, spr_gvisits, spr_n, spr_gcull, spr_gnodraw, spr_gtraced_n));
+			              " this frame %g of %g visited (%g culled, %g undrawable, %g traced); %g time caps\n",
+			              spr_gsweep, spr_gvisits, spr_n, spr_gcull, spr_gnodraw, spr_gtraced_n, spr_tcapn));
 		/*
 		  BUILD 60.  The adaptive rays, and the LAST number is the measurement:
 		  rays/glare is what the 27.1us is multiplied by, so it is the only figure
@@ -3829,6 +3861,8 @@ void() Sprite_Draw =
 				glimtxt = "THE RAY CEILING (interval not met)";
 			else if (spr_glimit == 2)
 				glimtxt = "the interval quota";
+			else if (spr_glimit == 3)
+				glimtxt = "THE TIME CAP (vbsp_sprite_tracems)";
 			else
 				glimtxt = "running out of map (interval finer than needed)";
 			print(sprintf("vbsp_sprite_debug: glare interval %gs -> quota %g visits,"
