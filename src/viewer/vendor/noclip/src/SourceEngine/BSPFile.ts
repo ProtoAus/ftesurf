@@ -1774,7 +1774,7 @@ export class BSPFile {
                     canMerge = false;
                 else if (this.lightmapData[prevFace.index].pageIndex !== this.lightmapData[face.index].pageIndex)
                     canMerge = false;
-                else if (faceToModelIdx[prevFace.index] !== faceToModelIdx[face.index])
+                else if ((faceToModelIdx[prevFace.index] ?? 0) !== (faceToModelIdx[face.index] ?? 0))
                     canMerge = false;
 
                 if (canMerge)
@@ -1928,7 +1928,7 @@ export class BSPFile {
 
                 addVertexDataToBuffer(vertex, tex, center, tangentW);
 
-                indexCount = getTriangleIndexCountForTopologyIndexCount(GfxTopology.TriFans, numedges);
+                indexCount = numedges >= 3 ? getTriangleIndexCountForTopologyIndexCount(GfxTopology.TriFans, numedges) : 0; // FTESurf P1447
                 const indexData = indexBuffer.addUint32(indexCount);
                 if (m_NumPrims !== 0) {
                     let primType, primFirstIndex, primIndexCount, primFirstVert, primVertCount;
@@ -1993,9 +1993,8 @@ export class BSPFile {
             const surfaceIndex = this.surfaces.length - 1;
             faceInfo.surfaceIndex = surfaceIndex;
 
-            const model = this.models[faceToModelIdx[face.index]];
-            if (model !== undefined) // FTESurf P1447: a face no model lists
-                ensureInList(model.surfaces, surfaceIndex);
+            const model = this.models[faceToModelIdx[face.index] ?? 0]; // FTESurf P1447: unlisted = world
+            ensureInList(model.surfaces, surfaceIndex);
 
             if (dispinfo >= 0) {
                 // Displacements don't come with surface leaf information.

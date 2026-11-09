@@ -747,13 +747,19 @@ PATCHES += [
      '                        continue;\n'
      '                    }\n',
      ''),
-    # ...which shows faces no model lists (df_sdc-uk_26: 135): drawn in no model, not a throw.
+    # ...which shows faces no model lists (df_sdc-uk_26: 135, which 12 world leaves list): the
+    # world's, as the engine draws them -- in the surface and in the merge test.
     ('SourceEngine/BSPFile.ts',
-     '            const model = this.models[faceToModelIdx[face.index]];\n'
-     '            ensureInList(model.surfaces, surfaceIndex);\n',
-     '            const model = this.models[faceToModelIdx[face.index]];\n'
-     '            if (model !== undefined) // FTESurf P1447: a face no model lists\n'
-     '                ensureInList(model.surfaces, surfaceIndex);\n'),
+     '            const model = this.models[faceToModelIdx[face.index]];\n',
+     '            const model = this.models[faceToModelIdx[face.index] ?? 0]; // FTESurf P1447: unlisted = world\n'),
+    ('SourceEngine/BSPFile.ts',
+     '                else if (faceToModelIdx[prevFace.index] !== faceToModelIdx[face.index])\n',
+     '                else if ((faceToModelIdx[prevFace.index] ?? 0) !== (faceToModelIdx[face.index] ?? 0))\n'),
+    # A face with fewer than three edges (df_elco-gbparadise's are edge-less) gets no indices; the
+    # fan count was negative (-6 at 0 edges). It stays in the loop so the merge test stays exact.
+    ('SourceEngine/BSPFile.ts',
+     '                indexCount = getTriangleIndexCountForTopologyIndexCount(GfxTopology.TriFans, numedges);\n',
+     '                indexCount = numedges >= 3 ? getTriangleIndexCountForTopologyIndexCount(GfxTopology.TriFans, numedges) : 0; // FTESurf P1447\n'),
 ]
 
 ROOTS = [

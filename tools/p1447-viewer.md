@@ -30,7 +30,8 @@ slow". Every change is a tools/vendor.py PATCH (or stubs/), re-vendored from noc
 - All 133 v25 maps and both odd v20/v21 maps parse. Review 1 found that "parses" is not "draws": upstream skipped a
   face with primitive vertices by a `continue` after its vertices and indices were added and before dstIndexBase
   moved, so the seven df_ maps (the library's only PRIMVERTS) drew nothing or misplaced geometry. Such a face now
-  draws its polygon's fan (and a face no model lists no longer throws, df_sdc-uk_26); the review's geometry probe
+  draws its polygon's fan; a face no model lists (df_sdc-uk_26: 135, which 12 world leaves list) is the world's, as
+  the engine draws it; an edge-less face gets no indices (the fan count was -6). The review's geometry probe
   (faces drawn, displacement vertices inside their boxes, no index past the vertices) is clean on six of seven.
   Shot in Chrome (tools/shot.mjs): bhop_2006isback and bhop_ahi
   draw (textures, lightmaps, sky, props), error "" and contextLost false.

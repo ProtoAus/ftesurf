@@ -29,7 +29,7 @@ a8ea2964158b3ea2 upstream Program.ts
 dd0968e2b8e1db8c upstream SaveManager.ts
 5448a220b6d9a319 upstream SaveState.ts
 5ee7bfa33d892668 upstream SceneBase.ts
-763171d5f560f8a5 patched  SourceEngine/BSPFile.ts
+e705758bc97ab9a8 patched  SourceEngine/BSPFile.ts
 247326764aaa4093 upstream SourceEngine/DMX.ts
 52dba90cf64a8001 patched  SourceEngine/EntitySystem.ts
 d8f9b475252c7efb upstream SourceEngine/GMA.ts
