@@ -1,10 +1,10 @@
 # lextest.md — things waiting on a human
 
-## P1432 sprites a map spawns -- LIVE 9 Nov (lobbies + both installs, cs d24ffb5c); owner check pending
+## P1432 sprites and particles a map spawns -- LIVE 9 Nov (lobbies + both installs, cs 72715416); owner check pending
 
 - bhop_crash_egypt: reach a checkpoint; the word CHECKPOINT appears at you for about 5 s. bhop_exodus: the
   pictures a trigger shows. Say if the letters are missing, in the wrong place, or stay after they should go.
-- Particles (pending deploy): bhop_crash_egypt's TNT crates explode where you set them off; booster puffs where
+- Particles: bhop_crash_egypt's TNT crates explode where you set them off; booster puffs where
   you boost on bhop_lego2, bhop_japan, bhop_nature, bhop_rin, bhop_epiphany2, bhop_angst. Say if an effect is
   missing, at the wrong spot, or keeps going after it should stop.
 

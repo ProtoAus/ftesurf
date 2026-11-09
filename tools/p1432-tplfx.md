@@ -127,4 +127,9 @@ Measured (bhop_crash_egypt, the letters' vantage -8 -680 98, copies spawned at t
   one post-Kill frame of a TNT run moved 386k px when the window took focus, same brightness: left out.)
 - Sprites re-measured on every fix build: shown 87k px, hidden back to background, removed by the map's Kill.
 
+Delivery: LIVE 9 Nov ~11:38 local (00:38Z): 12 lobbies (build.ps1 -Pi from main d079fb0b; nobody on; warned;
+0 QC errors in server1-12.log) qw 9cad7952 + cs 72715416; both installs the same (.prev 418199d4 / d24ffb5c,
+menu 997553ed unchanged); csprogsvers cbb19469 on the Pi and both installs; codes.txt 108 -> 109
+(.pre1432b). C:\FTESurf fast-forwarded to d079fb0b.
+
 Left: point_spotlight (1, kz_bhop_yonkoma, in a template with movers).
