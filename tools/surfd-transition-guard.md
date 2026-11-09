@@ -220,6 +220,39 @@ previous-schema receipt refusal. This is synthetic guard evidence, not live
 inventory migration/acceptance. Deployments with a separately sealed full-runtime
 profile must independently add the new dependency and retain their complete pins.
 
+## Schema26 Fetch runtime closure
+
+The explicit `"runtime_profile":"fetch85-v1"` requires explicit integer
+`"target_schema":26`. Its exact raw hash set is `CURRENT_FAMILY_FILES` (81
+members) plus `inventory.py`, `playstats.py`, `momprofile.py` and `fetchq.py`:
+85 members. This is exactly the existing `collectors84-v1` set plus Fetch's
+new module. The old profile still means exactly84; it is not an alias and cannot
+admit Fetch. Earlier profiles, schemas and the schema19 default are unchanged.
+
+Like the earlier full-runtime profiles, Fetch requires `external_python` with
+exactly `momimport`, `momreimport` and `momreplay`, each an exact `origin`/`sha256`
+object selecting the same canonical converter directory. The existing external
+owner/type/link/mode and byte-hash verification applies unchanged. No runtime
+profile is inferred from a dependency count. Candidate, ordinary launch and
+reopen use the same manifest/hash validators; legacy dispatch validates the
+manifest and hashes every listed local source before execution. This addition
+changes no lock, grant, receipt, candidate identity or lifetime contract. It is an offline
+generation-admission prerequisite, not generation activation or acceptance.
+
+Focused controls (no application imports, DB, network or receipt creation):
+
+```
+python3 -B tools/test_surfd_guard_fetch_profile.py --out /owned/NEW-fetch-profile --preimage /owned/surfd_transition_guard.preimage.py
+```
+
+Supply the frozen pre-change guard, not a rewritten approximation. The suite
+requires an OWNER.md ancestor and retains preimage/fixed/test/Fetch bytes, input
+hashes and per-case verdicts. On Windows only `--parser-only` is supported; that
+mode qualifies manifest parsing, **not POSIX hash/admission runtime**. The full
+POSIX mode acts the existing hash verifier on copied actual `surfd/fetchq.py`
+bytes and synthetic never-imported closure members; no candidate/lock/receipt
+or live acceptance claim follows from those focused controls.
+
 ## Offline acceptance tests
 
 Run only on local Linux/POSIX, with an exclusively NEW absolute synthetic output
