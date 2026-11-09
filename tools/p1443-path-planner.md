@@ -143,6 +143,42 @@ best replayed bit-equal.
 - Next: a wall touch costs score instead of cutting (TOPT_WALLPEN, branch p1449-wall), then monolith's ramp 2
   corner and surf_null's ramp 4 launch.
 
+## P1449 follow-ups on branch p1449-wall (10 Nov, not installed yet)
+
+What each change answered (rig runs under rigs/, surf_null with ksf_null_farsh unless named):
+
+- Search scoring. A wall or ceiling touch costs TOPT_WALLPEN 120 a tick instead of cutting the candidate (the cut
+  left board 2's pillar, 18 u off farsh's line, unreachable: 400-580 of 638 candidates died there); ground ticks
+  cost 60 on board stretches (ramp 0's angled segment tops, normal z 0.85); a reach pays `pace` a tick (energy is
+  near flat at speed, so a longer arc cost nothing); `emin` (autosurf 0.95 x farsh's speed at the board) puts a
+  slow reach between reaches and misses; the lookahead pays for its walls (a hop whose next 1.4 s ended against the
+  next platform's side scored as surviving). SV_TASOptBand keeps penalties inside their band (review 2-3).
+- Demo keys by route position (SV_TASOptDemoMap, a second roll when a tick's row moves > 2): by the clock a line
+  faster than farsh kept his strafe side past ramp 6's end and ducked late (Lex).
+- Tube: free on ramp rides and within 2x its radius of the target; after a ride it starts as wide as the ride left it.
+- Early aim seeds (0.4-1.0 of the way): farsh's air arcs run at the 30 u/s cap's turn rate (94 deg at 43 deg/s
+  to ramp 6), so a faster line must start earlier. Ramp 6 then at 3235 u/s, farsh's own.
+- Plan: rides entered rising onto a surf face are stretches (the ramp past the ceiling after ramp 6); backtracks
+  deepen on repeat failures and default to twice the stretches; retries search longer (`gens`, 30 more a try);
+  a search stops early only once it has a reach.
+- Start box (`tas autosurf <demo> start`): a legal start (`tas start 0`, P1100) with the native guide (P1308) --
+  land from the spawn's clip cage, a speed circle (289.6 u/s), capture farsh's exit line like a runway, one jump,
+  clear the map's own main_map_startzone trigger and 48 u past the edge (zones are positions: a body paused on the
+  edge was put back in the start), then the chain. Also `onjump` / `onexit` for a player's own prestrafe. An
+  offline model of the guide's physics (scratch startsim*.py) found the line capture; in the game each strafe-side
+  change costs speed, which the model does not show.
+- Clicked routes: `tas route add/undo/clear/show`, `tas autosurf route`; a curve search without a demo rolls twice
+  when it rides, strafing into the ramp (with no keys the ride slid off ramp 1 into the teleport under it).
+- The Optimizer tab: the replay (this map's KSF, leaderboard and Momentum replays), four starts, a progress strip
+  against farsh, your route with markers in the world, Advanced for the rest.
+- Reviews: seven rounds (scores, armed starts, the start's counters, the tab's chips and route sync; QC's && does
+  not short-circuit here and CSQC tokenize splits ':' -- both met in the tab).
+
+Results: from the start box, ramps 0-5 and the first platform pair within 1-2% of farsh in one chain; placed at
+ramp 5, ramps 6-8 with the rising ramps within 1%; placed at the ceiling ramp, ramp 7 to the last ramp finished
+with no backtracks (hops and the last ramp above farsh's speed). A full start-box run reached 11 of 17 stretches
+before its backtracks ran out (the budget now scales).
+
 ## Next
 
 Point the fast energy search at a surf_null ride (the board and ride, not the drop); then horizons past one 128-tick
