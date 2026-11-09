@@ -22,7 +22,10 @@ float  ls_seq;                  // the last scr_loadingseq taken
 float  ls_shape;                // 0 avatar, 1 ramp
 float  ls_last;                 // when LS_Draw last ran (ls_debug)
 var float ls_idle = 1;          // m_draw saw no load since: the next LS_Draw starts one (var: an initialised global is a constant)
+string(string s) LS_Base;       // below
 string ls_fkey;                 // LS_Friendly's merge key
+string ls_fdet;                 // ...and the step's detail: a game, a file's name (P1453; temp string)
+string ls_tsrc;                 // P1453: the games this run of texture steps came from, zoned
 string ls_prev;                 // ls_debug: the step at the last redraw, zoned
 vector ls_ring[5];              // the shape: a convex ring in one plane...
 float  ls_rn;
@@ -41,6 +44,8 @@ float  ls_in;
 // P1265: the map card above them, for engine P1265's scr_loadingmap (none on an older engine).
 string ls_cardmap, ls_cardinfo; // the map's name and its detail line, zoned
 float  ls_cardpage, ls_cardcell;   // its thumbnail cell, -1 for none
+string ls_cardpic;              // P1453: its real picture (local, or the R2 copy online), zoned; "" none
+float  ls_cardpicown;           // ...TRUE when this screen loaded it (the browser's own is not ours to free)
 float(string nm) ui_map_index;  // m_main.qc
 void(float row) ui_load_card;   // m_main.qc: fills ls_cardinfo/page/cell
 void(vector pos, vector size, float page, float cell) ui_thumb;  // m_main.qc
@@ -72,7 +77,7 @@ string(string s) LS_Friendly =
 {
 	local float n;
 	local string e;
-	ls_fkey = "";
+	ls_fkey = ls_fdet = "";
 	n = strlen(s);
 	e = (n > 4) ? strtolower(substring(s, n - 4, 4)) : "";
 	if (s == "waiting for connection...")
@@ -114,12 +119,30 @@ string(string s) LS_Friendly =
 		ls_fkey = "prep";
 		return "Preparing the map";
 	}
-	if (s == "wads" || s == "external textures")
+	// P1453: "wads" is the entity lump's parse for a Source map (Quake's wad list); textures are named
+	// by the game they come from (engine P1453: "textures CS:S"), mounts by the game mounted.
+	if (s == "wads")
+		return "Reading the map's entities";
+	if (s == "external textures")
 	{
 		ls_fkey = "tex";
 		return "Loading textures";
 	}
-	if (s == "automount" || s == "loading content")
+	if (substring(s, 0, 9) == "textures ")
+	{
+		ls_fkey = "tex";
+		ls_fdet = substring(s, 9, n - 9);
+		return "Loading textures";
+	}
+	if (substring(s, 0, 6) == "mount ")
+	{
+		if (substring(s, n - 7, 7) == " cached")
+			return sprintf("Mounting %s content (cached copy)", substring(s, 6, n - 13));
+		return sprintf("Mounting %s content", substring(s, 6, n - 6));
+	}
+	if (s == "automount")
+		return "Finding the content the map needs";
+	if (s == "loading content")
 	{
 		ls_fkey = "content";
 		return "Loading map content";
@@ -127,6 +150,7 @@ string(string s) LS_Friendly =
 	if (substring(s, 0, 9) == "download ")     // engine P1258, one per file
 	{
 		ls_fkey = "dl";
+		ls_fdet = LS_Base(substring(s, 9, n - 9));
 		return "Downloading files";
 	}
 	if (e == ".bsp")
@@ -139,11 +163,13 @@ string(string s) LS_Friendly =
 	if (e == ".mdl" || e == ".iqm" || e == ".md3" || e == ".md2" || e == ".spr" || e == ".obj" || e == ".dpm")
 	{
 		ls_fkey = "models";
+		ls_fdet = LS_Base(substring(s, 0, n - 4));
 		return "Loading models";
 	}
 	if (e == ".wav" || e == ".ogg" || e == ".mp3" || e == "flac")
 	{
 		ls_fkey = "sounds";
+		ls_fdet = LS_Base(substring(s, 0, (e == "flac") ? n - 5 : n - 4));
 		return "Loading sounds";
 	}
 	return s;
@@ -163,6 +189,29 @@ void() LS_Clear =
 	}
 };
 
+// A merged run's line (P1453).
+string(string line, float cnt) LS_RunLine =
+{
+	if (ls_fkey == "tex")
+	{
+		if (ls_fdet != "" && strstrofs(strcat(", ", ls_tsrc, ","), strcat(", ", ls_fdet, ",")) < 0)
+		{
+			line = (ls_tsrc != "") ? strcat(ls_tsrc, ", ", ls_fdet) : ls_fdet;
+			if (ls_tsrc != "")
+				strunzone(ls_tsrc);
+			ls_tsrc = strzone(line);
+		}
+		return (ls_tsrc != "") ? strcat("Loading textures: ", ls_tsrc) : "Loading textures";
+	}
+	if (ls_fkey == "models" || ls_fkey == "sounds" || ls_fkey == "dl" || ls_fkey == "brush")
+	{
+		if (cnt > 1)
+			line = sprintf("%s (%g)", line, cnt);
+		return (ls_fdet != "") ? strcat(line, ": ", ls_fdet) : line;
+	}
+	return line;
+};
+
 // One step (`steps` of them since the last draw, if several passed unseen).
 void(string raw, float steps) LS_Step =
 {
@@ -172,11 +221,19 @@ void(string raw, float steps) LS_Step =
 	if (ls_fkey != "" && ls_key[0] == ls_fkey)
 	{
 		ls_cnt[0] = ls_cnt[0] + steps;
-		top = sprintf("%s (%g)", line, ls_cnt[0]);
+		top = LS_RunLine(line, ls_cnt[0]);
+		if (cvar("ls_debug") >= 2 && top != ls_log[0])
+			print(sprintf("loadscreen line: %s  (step %s)\n", top, raw));
 		strunzone(ls_log[0]);
 		ls_log[0] = strzone(top);
 		return;
 	}
+	if (ls_fkey == "tex" && ls_tsrc != "")
+	{	// a new run of texture steps lists its own games
+		strunzone(ls_tsrc);
+		ls_tsrc = "";
+	}
+	line = LS_RunLine(line, 1);
 	if (ls_log[LS_LOG - 1] != "")
 		strunzone(ls_log[LS_LOG - 1]);
 	if (ls_key[LS_LOG - 1] != "")
@@ -190,6 +247,8 @@ void(string raw, float steps) LS_Step =
 	ls_log[0] = strzone(line);
 	ls_key[0] = (ls_fkey != "") ? strzone(ls_fkey) : "";
 	ls_cnt[0] = 1;
+	if (cvar("ls_debug") >= 2)
+		print(sprintf("loadscreen line: %s  (step %s)\n", line, raw));
 };
 
 void() LS_Shape =
@@ -280,6 +339,200 @@ void(vector scr) LS_DrawShape =
 		if (vi || vj)
 			LS_Line(LS_Proj(ls_ring[i]), LS_Proj(ls_ring[i] + ls_ext), lw);
 	}
+};
+
+/*
+  P1453: the map's own model in the middle, when tools/loadwire.py made one for it (gfx/loadwire/<map>.txt:
+  v x y z, t a b c, e a b t1 t2 -- picks in tools/loadwire_picks.txt; one model at random if it has several).
+  Not convex, so painted: triangles far to near, each filled black and then its edges in white, which hides
+  what is behind.  A closed model (no border edge) skips the triangles facing away -- always hidden anyway.
+*/
+string(string s, float n) LS_Tok;   // below
+#define LW_V 512
+#define LW_T 512
+#define LW_E 1024
+#define LW_B 32
+vector lw_v[LW_V];
+vector lw_p[LW_V];              // this frame: screen position, and z the depth (larger is farther)
+float  lw_ta[LW_T], lw_tb[LW_T], lw_tc[LW_T];
+float  lw_te0[LW_T], lw_te1[LW_T], lw_te2[LW_T];    // the edges drawn with each triangle, -1 none
+vector lw_tn[LW_T];             // outward normal
+float  lw_next[LW_T];
+float  lw_head[LW_B];
+float  lw_ea[LW_E], lw_eb[LW_E];
+float  lw_nv, lw_nt, lw_ne, lw_open, lw_ok;
+float  lw_es, lw_ec;    // sin, cos of the view's elevation (ls_wireangle: 0 side on, 45 as the shapes)
+string lw_map;                  // the map the model is for (zoned); "" none tried
+
+void(float t, float e) LW_TriEdge =
+{
+	if (t < 0 || t >= lw_nt)
+		return;
+	if (lw_te0[t] < 0)
+		lw_te0[t] = e;
+	else if (lw_te1[t] < 0)
+		lw_te1[t] = e;
+	else if (lw_te2[t] < 0)
+		lw_te2[t] = e;
+};
+
+// Read model `want` (0-based) of the file; -> how many models the file holds.  LS_Tok, not tokenize (see it).
+float(string path, float want) LW_Read =
+{
+	local float f, models, n, a, b, c;
+	local string l, k;
+	local vector ctr, d;
+	f = fopen(path, FILE_READ);
+	if (f < 0)
+		return 0;
+	models = 0;
+	while ((l = fgets(f)) != __NULL__)
+	{
+		k = LS_Tok(l, 0);
+		if (k == "model")
+		{
+			models = models + 1;
+			continue;
+		}
+		if (models - 1 != want)
+			continue;
+		if (k == "v" && lw_nv < LW_V)
+		{
+			lw_v[lw_nv] = [stof(LS_Tok(l, 1)), stof(LS_Tok(l, 2)), stof(LS_Tok(l, 3))];
+			lw_nv = lw_nv + 1;
+		}
+		else if (k == "t" && lw_nt < LW_T)
+		{
+			a = stof(LS_Tok(l, 1));
+			b = stof(LS_Tok(l, 2));
+			c = stof(LS_Tok(l, 3));
+			if (a < lw_nv && b < lw_nv && c < lw_nv)
+			{
+				lw_ta[lw_nt] = a;
+				lw_tb[lw_nt] = b;
+				lw_tc[lw_nt] = c;
+				lw_te0[lw_nt] = lw_te1[lw_nt] = lw_te2[lw_nt] = -1;
+				lw_nt = lw_nt + 1;
+			}
+		}
+		else if (k == "e" && lw_ne < LW_E)
+		{
+			lw_ea[lw_ne] = stof(LS_Tok(l, 1));
+			lw_eb[lw_ne] = stof(LS_Tok(l, 2));
+			a = stof(LS_Tok(l, 3));
+			b = stof(LS_Tok(l, 4));
+			if (b < 0)
+				lw_open = TRUE;
+			LW_TriEdge(a, lw_ne);
+			LW_TriEdge(b, lw_ne);
+			lw_ne = lw_ne + 1;
+		}
+	}
+	fclose(f);
+	// Normals, turned outward: the winding is whatever the model's was, so the majority decides.
+	n = 0;
+	for (a = 0; a < lw_nt; a = a + 1)
+	{
+		lw_tn[a] = normalize(crossproduct(lw_v[lw_tb[a]] - lw_v[lw_ta[a]], lw_v[lw_tc[a]] - lw_v[lw_ta[a]]));
+		ctr = (lw_v[lw_ta[a]] + lw_v[lw_tb[a]] + lw_v[lw_tc[a]]) * (1 / 3);
+		d = ctr;                // the model is centred on its box
+		n = n + ((lw_tn[a] * d > 0) ? 1 : -1);
+	}
+	if (n < 0)
+		for (a = 0; a < lw_nt; a = a + 1)
+			lw_tn[a] = lw_tn[a] * -1;
+	return models;
+};
+
+// For the card's map: its model, if gfx/loadwire has one.  Once a map.
+void(string mp) LW_Load =
+{
+	local string path;
+	local float models;
+	if (mp == lw_map)
+		return;
+	if (lw_map != "")
+		strunzone(lw_map);
+	lw_map = (mp != "") ? strzone(mp) : "";
+	lw_ok = lw_open = FALSE;
+	lw_nv = lw_nt = lw_ne = 0;
+	if (mp == "")
+		return;
+	path = strcat("gfx/loadwire/", mp, ".txt");
+	models = LW_Read(path, -1);
+	if (models <= 0)
+		return;
+	LW_Read(path, floor(random() * models));
+	lw_ok = (lw_nt > 0);
+};
+
+// LS_Faces at the wire's elevation: the camera looks along (0, ec, -es).
+float(vector n) LW_Faces =
+{
+	n = [n_x * ls_ca - n_y * ls_sa, n_x * ls_sa + n_y * ls_ca, n_z];
+	return n_z * lw_es - n_y * lw_ec > 0.0001;
+};
+
+void(float e, float lw) LW_Edge =
+{
+	local vector a, b;
+	if (e < 0)
+		return;
+	a = lw_p[lw_ea[e]];
+	b = lw_p[lw_eb[e]];
+	LS_Line([a_x, a_y, 0], [b_x, b_y, 0], lw);
+};
+
+void(vector scr) LW_Draw =
+{
+	local float i, b, t, lw, dmax;
+	local vector p, q, r;
+	ls_cen = '0 0 0';
+	ls_org = [scr_x * 0.5, scr_y * 0.5, 0];
+	ls_k = scr_y * 0.42 / 62;    // 1.3x the shapes: models are thin, and a 62 box still projects inside +-44
+	ls_sa = sin(time * 0.8);
+	ls_ca = cos(time * 0.8);
+	i = bound(0, cvar("ls_wireangle"), 90) * 0.017453293;    // degrees to radians
+	lw_es = sin(i);
+	lw_ec = cos(i);
+	lw = max(1, scr_y / 540);
+	for (i = 0; i < lw_nv; i = i + 1)
+	{
+		p = LS_Rot(lw_v[i]);
+		lw_p[i] = [ls_org_x + ls_k * p_x, ls_org_y - ls_k * (p_y * lw_es + p_z * lw_ec),
+		           p_y * lw_ec - p_z * lw_es];
+	}
+	// Bucket the triangles by depth, far first: the model fits a 62 box, so |depth| < 44.
+	for (b = 0; b < LW_B; b = b + 1)
+		lw_head[b] = -1;
+	dmax = 44;
+	for (t = 0; t < lw_nt; t = t + 1)
+	{
+		if (!lw_open && !LW_Faces(lw_tn[t]))
+			continue;
+		p = lw_p[lw_ta[t]];
+		q = lw_p[lw_tb[t]];
+		r = lw_p[lw_tc[t]];
+		b = floor((dmax - (p_z + q_z + r_z) * (1 / 3)) * (LW_B / (2 * dmax)));
+		b = bound(0, b, LW_B - 1);
+		lw_next[t] = lw_head[b];
+		lw_head[b] = t;
+	}
+	for (b = 0; b < LW_B; b = b + 1)
+		for (t = lw_head[b]; t >= 0; t = lw_next[t])
+		{
+			R_BeginPolygon("", LS_TWOSIDED, TRUE);
+			q = lw_p[lw_ta[t]];
+			R_PolygonVertex([q_x, q_y, 0], '0 0 0', '0 0 0', 1);
+			q = lw_p[lw_tb[t]];
+			R_PolygonVertex([q_x, q_y, 0], '0 0 0', '0 0 0', 1);
+			q = lw_p[lw_tc[t]];
+			R_PolygonVertex([q_x, q_y, 0], '0 0 0', '0 0 0', 1);
+			R_EndPolygon();
+			LW_Edge(lw_te0[t], lw);
+			LW_Edge(lw_te1[t], lw);
+			LW_Edge(lw_te2[t], lw);
+		}
 };
 
 string(float b) LS_Bytes =
@@ -411,19 +664,43 @@ void() LS_Card =
 {
 	local string m;
 	m = cvar_string("scr_loadingmap");
+	if (m == "" && !LS_Active())
+		m = cvar_string("ls_preview");     // P1453: set ls_preview <map> -- this screen, no load (screenshots)
 	if (m == ls_cardmap)
 		return;
 	if (ls_cardmap != "")
 		strunzone(ls_cardmap);
 	ls_cardmap = (m != "") ? strzone(m) : "";
 	ui_load_card((m != "") ? ui_map_index(m) : -1);
+	LW_Load(m);     // P1453
+};
+
+// P1453: the picture cropped to 16:9 into the card's box (the R2 copy is 16:9; a local one may not be).
+vector(string pic) drawgetimagesize_async;     // m_main.qc
+void(vector pos, vector size, vector isz) LS_CardPic =
+{
+	local float ar, u0, v0, u1, v1;
+	ar = isz_x / isz_y;
+	u0 = v0 = 0;
+	u1 = v1 = 1;
+	if (ar > 16 / 9)
+	{
+		u0 = (1 - (16 / 9) / ar) * 0.5;
+		u1 = 1 - u0;
+	}
+	else if (ar < 16 / 9)
+	{
+		v0 = (1 - ar / (16 / 9)) * 0.5;
+		v1 = 1 - v0;
+	}
+	drawsubpic(pos, size, ls_cardpic, [u0, v0, 0], [u1 - u0, v1 - v0, 0], '1 1 1', 1, 0);
 };
 
 void(vector scr) LS_Draw =
 {
 	local float i, seq, y, dots, bw, bh, phys, x0, th;
 	local string raw, word;
-	local vector sz, nsz;
+	local vector sz, nsz, pic;
 	if (ls_idle || time < ls_last)
 	{	// a new load
 		ls_idle = FALSE;
@@ -443,6 +720,19 @@ void(vector scr) LS_Draw =
 			strunzone(ls_prev);
 		ls_prev = (raw != "") ? strzone(raw) : "";
 	}
+	if (raw == "" && cvar_string("ls_preview") != "" && ls_log[0] == "")
+	{	// P1453: ls_preview's sample, the engine's own strings in a typical order
+		LS_Step("receiving map info", 1);
+		LS_Step("automount", 1);
+		LS_Step("mount CS:GO", 1);
+		LS_Step("wads", 1);
+		LS_Step("textures World of Surf", 1);
+		LS_Step("textures CS:S", 1);
+		LS_Step("textures HL2", 1);
+		LS_Step("textures the map", 1);
+		LS_Step("models/props/de_dust/dust_crate.mdl", 1);
+		LS_Step("models/disres_models/dagger.mdl", 1);
+	}
 	seq = cvar("scr_loadingseq");
 	if (raw != "" && seq != ls_seq)
 	{
@@ -453,7 +743,11 @@ void(vector scr) LS_Draw =
 	LS_Gather();
 
 	drawfill('0 0 0', scr, '0 0 0', 1, 0);
-	LS_DrawShape(scr);
+	LS_Card();      // P1453: before the shape, which may be the card's map's model
+	if (lw_ok)
+		LW_Draw(scr);
+	else
+		LS_DrawShape(scr);
 
 	// Text on the UI face's physical (pixels=1) bake at a baked size, on whole pixels: a size between
 	// rungs is a resample.  Physical sizes from the screen's height; 1080 p: steps and the map's name
@@ -499,11 +793,15 @@ void(vector scr) LS_Draw =
 	if (ls_cardmap != "")
 	{
 		y = y - sz_y * 0.75;
-		if (ls_cardpage >= 0 && ls_cardcell >= 0)
+		pic = (ls_cardpic != "") ? drawgetimagesize_async(ls_cardpic) : '0 0 0';
+		if ((ls_cardpage >= 0 && ls_cardcell >= 0) || (pic_x > 0 && pic_y > 0))
 		{
 			th = floor(phys / 6.75) / sui_style_pixel_ratio_y;
 			y = y - th;
-			ui_thumb(_sui_pixel_align([x0, y]), [th * 16 / 9, th], ls_cardpage, ls_cardcell);
+			if (pic_x > 0 && pic_y > 0)
+				LS_CardPic(_sui_pixel_align([x0, y]), [th * 16 / 9, th], pic);
+			else
+				ui_thumb(_sui_pixel_align([x0, y]), [th * 16 / 9, th], ls_cardpage, ls_cardcell);
 			y = y - sz_y * 0.6;
 		}
 		if (ls_cardinfo != "")

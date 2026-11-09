@@ -2288,18 +2288,48 @@ void(vector pos, vector size, float page, float cell) ui_thumb =
 // P1265: the loading screen's map card (m_loading.qc LS_Card): the row's thumbnail cell and the
 // detail line the map list words, once per map.  LS_Tok, not tokenize: the loading screen draws
 // inside other VMs' builtins.
+float(string uuid) ui_bguuid;                 // below
+string(string uuid, string size) ui_bgprobe;
+string(string uuid, float scrw) ui_bgpick;
 void(float row) ui_load_card =
 {
-	local string meta, s, au, mt, kt;
+	local string meta, s, au, mt, kt, uuid, want;
 	local float stages, bonus, linear;
 	ls_cardpage = ls_cardcell = -1;
 	if (ls_cardinfo != "")
 		strunzone(ls_cardinfo);
 	ls_cardinfo = "";
+	if (ls_cardpic != "")
+	{
+		if (ls_cardpicown)
+			free_pic(ls_cardpic);
+		strunzone(ls_cardpic);
+		ls_cardpic = "";
+	}
+	ls_cardpicown = FALSE;
 	if (row < 0)
 		return;
 	meta = bufstr_get(ms_meta, row);
 	stages = bonus = linear = -1;
+	// P1453: the map's own picture, as ui_map_backdrop picks one -- the browser's if it holds this
+	// map's, else the smallest local copy (the card is about 284x160 at 1080p), else the R2 copy online.
+	uuid = LS_Tok(meta, MT_UUID);
+	if (row == ms_bgfor && ms_bgpic != "")
+		ls_cardpic = strzone(ms_bgpic);
+	else if (ui_bguuid(uuid))
+	{
+		want = ui_bgprobe(uuid, "small");
+		if (want == "")
+			want = ui_bgpick(uuid, 1280);
+		if (want == "" && ms_consent >= FS_TERMS_ONLINE && checkbuiltin(drawgetimagesize_async))
+			want = strcat("https://dl.proto.bar/ftesurf/mapshots/", uuid, "-bg.jpg");
+		if (want != "")
+		{
+			ls_cardpic = strzone(want);
+			ls_cardpicown = TRUE;
+			precache_pic(ls_cardpic, 0);
+		}
+	}
 	if (LS_Tok(meta, MT_UUID) != "")
 	{
 		if (LS_Tok(meta, MT_PAGE) != "-" && LS_Tok(meta, MT_CELL) != "-")
@@ -8074,6 +8104,7 @@ void() m_init =
 	  Run it after anything registers and the default would win instead.
 	*/
 	FS_CvarsMoved();
+	registercvar("ls_wireangle", "0", 32);     // P1453: loading-screen map models, degrees above side on
 	Crash_Init();       // P1418: a crash report from the engine's Sys_Error record, if one is waiting
 
 	Font_Init();
@@ -8328,7 +8359,8 @@ void(vector screensize) m_draw =
 		LS_Draw(fullsize);
 	else
 	{
-		ls_idle = TRUE;
+		if (cvar_string("ls_preview") == "")
+			ls_idle = TRUE;             // P1453: a preview is one load, not one per frame
 		Font_NativeSlot(ui_font_ui);    // P1258: baked here, not first inside a loading pump
 	}
 
@@ -8511,6 +8543,8 @@ void(vector screensize) m_draw =
 		ui_boot_first_ms = rint((gettime(1) - bootstart) * 1000);
 		ui_boot_measured = TRUE;
 	}
+	if (!LS_Active() && cvar_string("ls_preview") != "")
+		LS_Draw(fullsize);      // P1453: set ls_preview <map> -- the loading screen over everything, no load
 };
 
 void() m_open =
@@ -8905,6 +8939,20 @@ float(string cmd) m_consolecommand =
 		else if (argv(1) == "player") MStats_Player(argv(2));   // P1198: as a player click
 		else if (argv(1) == "inv") MStats_InvToggle();
 		MStats_Probe();
+		return TRUE;
+	}
+
+	if (argv(0) == "ui_play")          // P1453: the Play button's local start (m_close included), for arms
+	{
+		if (argv(1) != "")
+			ui_playlocal_now(argv(1));
+		return TRUE;
+	}
+
+	if (argv(0) == "ui_settings")      // P1453: the Settings screen, for arms
+	{
+		menu_screen = SCREEN_SETTINGS;
+		print("ui_settings: open\n");
 		return TRUE;
 	}
 

@@ -1,0 +1,26 @@
+# P1453: the loading screen's map models. One line a model; several for a map and each load picks one.
+# <map> <model path in the map's pakfile>       (python tools/loadwire.py --maps <dir> --suggest lists more)
+# Tried and dropped (unreadable at loading-screen size): surf_centipedes centipede2 (a thin line),
+# surf_eternity pg_schmetterlinge and surf_surreal pg_fish_group (scattered groups), surf_starvald dragontest2.
+surf_gigapede        models/disres_models/dagger.mdl
+surf_gigapede        models/disres_models/boid3.mdl
+surf_gigapede        models/ddhand/hand3blue.mdl
+surf_gigapede_css    models/disres_models/dagger.mdl
+surf_gigapede_css    models/disres_models/boid3.mdl
+surf_centipedes      models/disres_models/boids/boid3_anim.mdl
+bhop_ceaseless       models/plar/butterfly.mdl
+bhop_ceaseless       models/plar/spider.mdl
+bhop_ceaseless       models/plar/dragon.mdl
+surf_starvald        models/disres_models/dragon_skull1.mdl
+surf_bikini_bottom   models/bikinibottom/patrick.mdl
+surf_bikini_bottom   models/bikinibottom/jellydynamic.mdl
+surf_bikini_bottom_css models/bikinibottom/patrick.mdl
+surf_bikini_bottom_css models/bikinibottom/jellydynamic.mdl
+surf_pride           models/pride/whitemonsta.mdl
+surf_pride_css       models/pride/whitemonsta.mdl
+surf_affliction      models/proxychains/decay_props/skulldemon01.mdl
+surf_affliction_css  models/proxychains/decay_props/skulldemon01.mdl
+surf_simpsons2       models/que/simpsons_homer_last.mdl
+surf_simpsons2       models/props/simpsonswooddonut.mdl
+surf_simpsons2_css   models/que/simpsons_homer_last.mdl
+surf_simpsons2_css   models/props/simpsonswooddonut.mdl

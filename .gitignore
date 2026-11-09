@@ -295,6 +295,10 @@ __pycache__/
 !/ftesurf/gfx/winter/surf_christmas.txt
 !/ftesurf/gfx/winter/surf_frost.txt
 !/ftesurf/gfx/winter/surf_bluewinter.txt
+# P1453: the loading screen's map models, made by tools/loadwire.py from tools/loadwire_picks.txt.
+!/ftesurf/gfx/loadwire/
+/ftesurf/gfx/loadwire/*
+!/ftesurf/gfx/loadwire/*.txt
 # The selectable crosshairs ship in release archives (P1408: 1-5, each its own slot).
 !/ftesurf/gfx/crosshairs/
 /ftesurf/gfx/crosshairs/*

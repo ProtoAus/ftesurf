@@ -613,7 +613,11 @@ void(vector screensize) MH_Settings =
 	sui_text('24 182 0', SZ_LABEL, sprintf("Effects volume: %g%%", floor(v * 100 + 0.5)), COL_TEXT, 1, 0);
 	if (ui_button("home_vol_down", '320 172 0', '48 32 0', "-")) cvar_set("volume", ftos(max(0, v - 0.05)));
 	if (ui_button("home_vol_up", '380 172 0', '48 32 0', "+")) cvar_set("volume", ftos(min(1, v + 0.05)));
-	sui_text('24 244 0', SZ_LABEL, "Use the tabs above to return to lobbies, maps or your progress.", COL_DIM, 1, 0);
+	v = MM_ChipRow('24 222 0', "home_lwire", "Loading-screen models", "side on|from above",
+	               cvar("ls_wireangle") >= 22.5, 296);
+	if (v >= 0)
+		MM_Seta("ls_wireangle", v ? "45" : "0");     // P1453
+	sui_text('24 286 0', SZ_LABEL, "Use the tabs above to return to lobbies, maps or your progress.", COL_DIM, 1, 0);
 	sui_pop_frame();
 };
 
