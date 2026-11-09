@@ -35,7 +35,8 @@
 #define TOPT_CEEL  5            // ...the best kept
 #define TOPT_CEGEN 30           // ...generations after the seeding grid
 #define TOPT_CEMIN 12           // P1449: at least these, then a search ends after TOPT_CESTALL generations without a gain
-#define TOPT_CESTALL 8          // over 0.5 (surf_null's searches mostly settled by generation 5-10 and ran 20 more)
+#define TOPT_CESTALL 8          // over 0.5 (surf_null's searches mostly settled by generation 5-10 and ran 20 more);
+                                // a target search only once it has a reach (the pillar stretch's first came at 10-20)
 #define TOPT_CEGRID 38          // the seeding grid: 13 constant commands, then 25 two-part ones (q1 then q2,
                                 // sides changing included: a flight steers by switching sides)
 #define TOPT_FRAMEBUDGET 0.04   // P1449: wall seconds of rollouts per call (a shared server stalls meanwhile)
@@ -1509,7 +1510,7 @@ void(entity e, float v) SV_TASOptCurveResult =
 	else e.topt_kstall = e.topt_kstall + 1;
 	if (cvar("developer"))
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: curve generation %.0f, best %.1f, %.0f candidates, %.1f s\n", e.topt_kgen, SV_TASOptEnergyShow(e, e.topt_bestv), e.topt_evals, gettime(1)));
-	if (e.topt_kgen >= TOPT_CEGEN || (e.topt_kgen >= TOPT_CEMIN && e.topt_kstall >= TOPT_CESTALL))
+	if (e.topt_kgen >= TOPT_CEGEN || (e.topt_kgen >= TOPT_CEMIN && e.topt_kstall >= TOPT_CESTALL && (!e.topt_tgtuse || e.topt_bestv >= TOPT_REACH)))
 	{
 		for (j = 0; j < e.topt_kd; j = j + 1) topt_kcur[j] = topt_kbest[j];
 		e.topt_phase = 3;
