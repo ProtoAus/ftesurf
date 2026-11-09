@@ -14,11 +14,11 @@
 
 .float as_stage, as_i, as_try, as_backs, as_tprev, as_wait, as_goal;
 .float as_tube, as_look, as_tries, as_backmax, as_hop, as_finish, as_pace, as_emin;
-.float as_backhead, as_backfail;
-.float as_startpause, as_laststate;
+.float as_backhead, as_backfail;   // the head at the last rewind request, and requests since it last moved
+.float as_startpause, as_laststate;    // `tas autosurf startpause`: pause on a run's first tick (TAS on), and the state seen last
 // `start`: a legal start (tas start <zone>) driven by the native guide (P1308: each tick's best-gain yaw, ground
-// friction included) -- as_sg ground ticks of W + strafe key from yaw as_sy, one jump (the start's one hop), then
-// guided air strafing (side as_sair) in 2-tick steps until the run starts, where the chain begins.
+// friction included): a speed circle, the demo's exit line captured, one jump (the start's one hop), guided air
+// strafing out of the box, then the chain. as_sg caps the ground ticks; as_sair is the strafe side held last.
 .float as_szone, as_sg, as_sy, as_sside, as_sair, as_sn;
 // `onjump` / `onexit`: armed in the start box while the player prestrafes live; paused at their jump (then guided
 // air strafing toward the demo's exit point) or at the exit, the chain takes over (Lex, 10 Nov).
@@ -28,7 +28,7 @@
 .vector as_runo;                // where the run started (the start box's edge): the start steers 48 u past it before planning
 .vector as_ex;                  // the demo's position as its run starts (its first sample at t >= 0)
 .vector as_exd;                 // and its horizontal heading there: the start steers onto that line
-void(entity e, float z) SV_TASLegalStart;    // `tas autosurf startpause`: pause on a run's first tick (TAS on), and the state seen last   // the head at the last rewind request, and requests since it last moved
+void(entity e, float z) SV_TASLegalStart;
 .string as_file;
 float as_n;                     // waypoints
 float as_wt[TAS_ASMAX];         // the demo's time there
@@ -41,14 +41,19 @@ float *as_rows;                 // the demo's samples: t x y z vx vy vz
 float as_nrows;
 
 // The menu's status (cl_tasoptui.qc): state (0 idle, 1 running, 2 finished, 3 stopped), stretch, of,
-// try, backtracks, and a line of text.
+// try, backtracks, a line of text, then a reach's record (stretch or -1, its speed at farsh's board height and
+// his: the tab's progress strip) -- set as_rk/as_rb/as_rf just before.
+var float as_rk = -1;
+float as_rb, as_rf;
 void(entity e, float state, string note) SV_TASAutoNote =
 {
 	sprint(e, PRINT_HIGH, strcat("tas autosurf: ", note, "\n"));
 	WriteByte(MSG_MULTICAST, SVC_CGAMEPACKET); WriteByte(MSG_MULTICAST, TAS_EV_AUTOSURF);
 	WriteByte(MSG_MULTICAST, state); WriteShort(MSG_MULTICAST, e.as_i); WriteShort(MSG_MULTICAST, as_n);
 	WriteByte(MSG_MULTICAST, e.as_try); WriteByte(MSG_MULTICAST, e.as_backs); WriteString(MSG_MULTICAST, note);
+	WriteShort(MSG_MULTICAST, as_rk); WriteShort(MSG_MULTICAST, bound(-30000, rint(as_rb), 30000)); WriteShort(MSG_MULTICAST, bound(0, rint(as_rf), 30000));
 	msg_entity = e; multicast(e.origin, MULTICAST_ONE_R);
+	as_rk = -1;
 };
 
 void(entity e, string why) SV_TASAutoStop =
@@ -455,8 +460,8 @@ void(entity e) SV_TASAutoFrame =
 			for (i = 0; i < as_nrows - 1 && as_rows[i*7] < as_wt[e.as_i] - 0.0001; i = i + 1) ;
 			// speed at farsh's board height (the energy carried there) against his own: vE near 0 magnified the gap
 			d = e.velocity * e.velocity + 2 * cvar("sv_gravity") * (e.origin_z - as_rows[i*7+3]);
-			sprint(e, PRINT_HIGH, sprintf("tas autosurf: stretch %.0f reached: %.0f u/s at farsh's board height, farsh %.0f\n", e.as_i + 1,
-				(d < 0) ? -sqrt(-d) : sqrt(d), vlen([as_rows[i*7+4], as_rows[i*7+5], as_rows[i*7+6]])));
+			as_rk = e.as_i; as_rb = (d < 0) ? -sqrt(-d) : sqrt(d); as_rf = vlen([as_rows[i*7+4], as_rows[i*7+5], as_rows[i*7+6]]);
+			SV_TASAutoNote(e, 1, sprintf("stretch %.0f reached: %.0f u/s at farsh's board height, farsh %.0f", e.as_i + 1, as_rb, as_rf));
 			e.as_tprev = t; e.as_i = e.as_i + 1; e.as_try = 0;
 			if (e.as_i >= as_n)
 			{

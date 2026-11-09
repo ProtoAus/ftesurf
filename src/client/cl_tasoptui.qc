@@ -11,13 +11,45 @@ string taso_listmap;
 #define TASO_DEMOS 8
 string taso_demo[TASO_DEMOS];
 float taso_demon, taso_pick;
+float taso_adv;                 // the advanced settings and one-stretch tools shown
+#define TASO_STRETCHES 64
+float taso_rb[TASO_STRETCHES], taso_rf[TASO_STRETCHES];   // each reached stretch: speed at farsh's board height, and his (0: none)
+var float taso_lastk = -1;          // the stretch last reached (the line under the strip)
 
 void() TASAuto_Event =
 {
+	local float was, wasi, rk, rb, rf, k;
+	was = taso_state; wasi = taso_i;
 	taso_state = readbyte(); taso_i = readshort(); taso_n = readshort();
 	taso_try = readbyte(); taso_backs = readbyte();
 	if (taso_note != "") strunzone(taso_note);
 	taso_note = strzone(readstring());
+	rk = readshort(); rb = readshort(); rf = readshort();
+	if (taso_state == 1 && was != 1) { for (k = 0; k < TASO_STRETCHES; k = k + 1) taso_rb[k] = taso_rf[k] = 0; taso_lastk = -1; }
+	else if (taso_state == 1 && taso_i < wasi)      // a backtrack: what came after it is to be done again
+		for (k = taso_i; k < TASO_STRETCHES; k = k + 1) taso_rb[k] = taso_rf[k] = 0;
+	if (rk >= 0 && rk < TASO_STRETCHES) { taso_rb[rk] = rb; taso_rf[rk] = max(1, rf); taso_lastk = rk; }
+};
+
+// One box a stretch: mint at or above farsh's speed there (within 2%), butter within 10%, rose below (a reach
+// the minimum would let through), dim to come; the current stretch outlined.
+void(vector at, float width, float h) TASOptUI_Strip =
+{
+	local float k, w, r;
+	local vector c;
+	if (taso_n < 1) return;
+	w = width / taso_n;
+	for (k = 0; k < taso_n && k < TASO_STRETCHES; k = k + 1)
+	{
+		c = SUI_THEME_CHIP;
+		if (taso_rf[k] > 0)
+		{
+			r = taso_rb[k] / taso_rf[k];
+			c = (r >= 0.98) ? SUI_THEME_GOOD : ((r >= 0.9) ? SUI_THEME_WARN : SUI_THEME_BAD);
+		}
+		if (k == taso_i && taso_state == 1) sui_roundbox(at + [k * w, 0, 0], [w - 2, h, 0], h * 0.3, SUI_THEME_ACCENT, 1);
+		sui_roundbox(at + [k * w + 1, 1, 0], [w - 4, h - 2, 0], h * 0.3, c, (taso_rf[k] > 0) ? 0.9 : 1);
+	}
 };
 
 // A name the console line can carry whole: letters, digits, _ - . / (the server's own rule, review).
@@ -118,9 +150,9 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	TASOptUI_List();
 	running = (taso_state == 1);
 	half = (width - 6) / 2; chip = [half, row, 0];
-	sui_text(at, [tsz, tsz], "Autosurf a demo's route", SUI_THEME_TEXT, 1, 0); at_y = at_y + tsz * 1.6;
-	label = (taso_note == "") ? "Pick the demo. From here: paused on its route. Start box: I do it all. On my jump / leaving the box: you prestrafe, I take over." : taso_note;
-	if (running) label = sprintf("Stretch %g of %g, try %g, %g backtracks -- %s", taso_i + 1, taso_n, taso_try + 1, taso_backs, taso_note);
+	sui_text(at, [tsz, tsz], "Autosurf", SUI_THEME_TEXT, 1, 0); at_y = at_y + tsz * 1.6;
+	label = (taso_note == "") ? "Pick a replay, then how to start. The bot surfs its route, ramp by ramp." : taso_note;
+	if (running) label = sprintf("Ramp %g of %g, try %g -- %s", taso_i + 1, taso_n, taso_try + 1, taso_note);
 	sui_text(at, [hint, hint], label, running ? SUI_THEME_TEXT : SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.8;
 	if (!taso_demon) { sui_text(at, [hint, hint], "No replay for this map in cfg/ksfreplays or data/.", SUI_THEME_MUTED, 1, 0); at_y = at_y + hint * 1.8; }
 	for (i = 0; i < taso_demon; i = i + 1)
@@ -131,23 +163,13 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 			taso_pick = i;
 	}
 	at_y = at_y + ceil(taso_demon / 2) * (row + 3) + hint * 0.6;
-	WPU_Slider("taso_tube", "Route tube (u)", at, width, taso_tube, '100 600 50', TASOptUI_Tube, tsz); at_y = at_y + tsz * 2.2;
-	WPU_Slider("taso_look", "Look ahead", at, width, taso_look, '0 200 20', TASOptUI_Look, tsz); at_y = at_y + tsz * 2.2;
-	WPU_Slider("taso_tries", "Tries", at, width, taso_tries, '1 5 4', TASOptUI_Tries, tsz); at_y = at_y + tsz * 2.2;
-	WPU_Slider("taso_backs", "Backtracks", at, width, taso_backmax, '0 12 12', TASOptUI_Backs, tsz); at_y = at_y + tsz * 2.2;
-	if (Profile_Chip("taso_hop", at, chip, taso_hop ? "Bhop platforms: hop" : "Bhop platforms: off", hint, taso_hop)) taso_hop = !taso_hop;
-	if (Profile_Chip("taso_finish", at + [half + 6, 0, 0], chip, taso_finish ? "To the end zone" : "Ramps only", hint, taso_finish)) taso_finish = !taso_finish;
-	at_y = at_y + row + 3;
-	if (Profile_Chip("taso_viz", at, [width, row, 0], cvar("tas_viz") ? "Search lines shown" : "Search lines hidden", hint, cvar("tas_viz")))
-		localcmd(cvar("tas_viz") ? "set tas_viz 0\n" : "set tas_viz 1\n");
-	at_y = at_y + row + hint;
 	if (running)
 	{
 		if (Profile_Chip("taso_stop", at, [width, row, 0], "Stop autosurf", tsz, TRUE)) localcmd("tas autosurf stop\n");
 	}
 	else if (taso_demon)
 	{	// from a pause on the demo's route, or from the start box: a legal start, guided prestrafe and one jump
-		if (Profile_Chip("taso_go", at, chip, "Autosurf from here", tsz, FALSE))
+		if (Profile_Chip("taso_go", at, chip, "From here (paused)", tsz, FALSE))
 			localcmd(sprintf("tas autosurf %s tube %g look %g tries %g backs %g%s%s\n", taso_demo[taso_pick], taso_tube, taso_look,
 				taso_tries, taso_backmax, taso_hop ? "" : " nohop", taso_finish ? " finish" : ""));
 		if (Profile_Chip("taso_gostart", at + [half + 6, 0, 0], chip, "From the start box", tsz, FALSE))
@@ -161,6 +183,29 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 			localcmd(sprintf("tas autosurf %s tube %g look %g tries %g backs %g%s%s onexit\n", taso_demo[taso_pick], taso_tube, taso_look,
 				taso_tries, taso_backmax, taso_hop ? "" : " nohop", taso_finish ? " finish" : ""));
 	}
+	at_y = at_y + row + hint;
+	if (taso_n > 0)
+	{	// the run so far, a box a ramp or bhop platform
+		TASOptUI_Strip(at, width, row * 0.6); at_y = at_y + row * 0.6 + hint * 0.5;
+		if (taso_lastk >= 0)
+		{
+			label = sprintf("Ramp %g: %g u/s, farsh %g (%s%g)", taso_lastk + 1, taso_rb[taso_lastk], taso_rf[taso_lastk],
+				(taso_rb[taso_lastk] >= taso_rf[taso_lastk]) ? "+" : "", taso_rb[taso_lastk] - taso_rf[taso_lastk]);
+			sui_text(at, [hint, hint], label, SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.6;
+		}
+	}
+	if (Profile_Chip("taso_adv", at, [width, row, 0], taso_adv ? "Advanced settings (hide)" : "Advanced settings", hint, taso_adv)) taso_adv = !taso_adv;
+	at_y = at_y + row + hint;
+	if (!taso_adv) return;
+	WPU_Slider("taso_tube", "Route tube (u)", at, width, taso_tube, '100 600 50', TASOptUI_Tube, tsz); at_y = at_y + tsz * 2.2;
+	WPU_Slider("taso_look", "Look ahead", at, width, taso_look, '0 200 20', TASOptUI_Look, tsz); at_y = at_y + tsz * 2.2;
+	WPU_Slider("taso_tries", "Tries", at, width, taso_tries, '1 5 4', TASOptUI_Tries, tsz); at_y = at_y + tsz * 2.2;
+	WPU_Slider("taso_backs", "Backtracks", at, width, taso_backmax, '0 12 12', TASOptUI_Backs, tsz); at_y = at_y + tsz * 2.2;
+	if (Profile_Chip("taso_hop", at, chip, taso_hop ? "Bhop platforms: hop" : "Bhop platforms: off", hint, taso_hop)) taso_hop = !taso_hop;
+	if (Profile_Chip("taso_finish", at + [half + 6, 0, 0], chip, taso_finish ? "To the end zone" : "Ramps only", hint, taso_finish)) taso_finish = !taso_finish;
+	at_y = at_y + row + 3;
+	if (Profile_Chip("taso_viz", at, [width, row, 0], cvar("tas_viz") ? "Search lines shown" : "Search lines hidden", hint, cvar("tas_viz")))
+		localcmd(cvar("tas_viz") ? "set tas_viz 0\n" : "set tas_viz 1\n");
 	at_y = at_y + row + hint * 1.4;
 	sui_text(at, [tsz, tsz], "One stretch", SUI_THEME_TEXT, 1, 0); at_y = at_y + tsz * 1.6;
 	sui_text(at, [hint, hint], "Aim at a ramp's face (or a point), set the target, then optimize toward it.", SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.8;
