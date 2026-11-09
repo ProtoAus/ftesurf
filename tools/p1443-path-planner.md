@@ -76,7 +76,27 @@ All three ride the same 12 ramps in the same order. As speed (higher is better):
 
 The route (ramp order) comes from a demo or the target points; on these linear hard maps it is fixed.
 
+## Stage 2: tas_rollout (engine, a075767a9 on patch-1440)
+
+`float tas_rollout(entity player, float *rows, float ticks, float *out)`: from the paused TAS body, ticks rows of
+tas_tape words (7 floats) through SV_RunCmd's own mover setup and one PM_PlayerMove a tick; 13 floats a tick out
+(origin, velocity, onground, ducked, contact kind and normal, the first trigger the hull overlaps). Nothing is
+kept: pmove, movevars, pmove_mins/maxs and frametime are restored. It refuses (a negative code per reason) where
+SV_RunCmd's inputs are not the plain ones. QC cuts a prediction at the first trigger it meets (QC runs touches the
+rollout does not).
+
+- `tas optimize` now predicts every candidate before its tape plays and, under developer, reports how the real
+  landing matched. tools/p1443_rollcheck.py (bhop_eazy, a ground search and an air search): 44 of 44 landings
+  bit-equal in origin and velocity; a mutant mirroring the strafe gives 0 of 22 (18.3 u, 253 u/s off); the
+  installed server, without the builtin, prints no check.
+- Speed (`cmd tas rollbench <ticks> <count>`, developer): 70-75k ticks/s on this PC -- 588 rollouts/s of 128 ticks,
+  117/s of 600 -- about a thousand times the optimizer's one candidate per couple of seconds.
+- Traps met: P1129's SV_BankGravityEnabled() is true whenever QC defines the callback, so a guard on it refused
+  everything; QW progs hand the mover waterjumptime = teleport_time (normally 0), not teleport_time - sv.time; an
+  arm's trigger stop must not end the engine's rollout (zones are triggers too); restoring a source file by copy
+  keeps its old mtime and make relinks the mutant -- touch before rebuilding.
+
 ## Next
 
-Stage 2's rollout op (engine + plugin + QC builtin), checked tick-exact against `tas` replays; then a
-`tas optimize` that uses it for one ride and one airtime on surf_null, scored by this ledger.
+Stage 3: link optimizers on tas_rollout (a ride's rate/board/flick and an airtime's strafe profile searched by
+rollouts, the best played as a tape), first on surf_null against the KSF runs' ledger.

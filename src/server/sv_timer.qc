@@ -266,6 +266,10 @@ float(string fname) fremove         = #0:fremove;
 float(entity player, float slot, float token, float op) tas_rewind = #0:tas_rewind;
 vector(entity player, float slot, float token, float field) tas_input = #0:tas_input;
 float(entity player, float op, float a, float b, vector moves, vector angles, float buttons) tas_tape = #0:tas_tape;
+// P1443: ticks rows of tas_tape words (7 floats) through the mover from the paused body, nothing
+// kept; 13 floats a tick out (origin, velocity, onground, ducked, contact kind and normal, trigger).
+float(entity player, float *rows, float ticks, float *out) tas_rollout = #0:tas_rollout;
+float(optional float timetype) gettime = #519;  // P1443: 1 = wall clock, milliseconds (tas rollbench)
 
 /*
   Patch 419 (engine): the OS entropy the master-server challenge code already

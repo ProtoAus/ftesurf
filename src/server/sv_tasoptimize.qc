@@ -37,6 +37,11 @@
 .float topt_besty, topt_bestf;  // P1092: the best's boarding offset and flick rate (-1: no flick)
 .float topt_srch;               // P1092: which 1-D search of SV_TASOptParam's list is running
 .float topt_obj, topt_seg0;     // P1097: 1 = time; run_t_seg at the start
+.float topt_pn;                 // P1443: the candidate's rollout: ticks run (-2 none)
+.vector topt_po, topt_pv;       // P1443: its last tick's origin and velocity
+.float topt_rchk, topt_rshort, topt_rbado, topt_rbadv;  // P1443: landings checked, rollouts short, worst gaps
+.float topt_rref, topt_rwhy;    // P1443: rollouts refused, and the last refusal's code (SV_TASRollout)
+.float topt_rexact;             // P1443: landings bit-equal to the prediction (origin and velocity)
 
 // P1092: the numbers searched, in order: 1 rate, 2 boarding offset, 3 flick rate; 0 = done.
 float(entity e, float i) SV_TASOptParam =
@@ -85,6 +90,16 @@ string(entity e) SV_TASOptExtra =
 	return s;
 };
 
+// P1443: how the rollouts matched the real mover's landings.
+void(entity e) SV_TASOptRollReport =
+{
+	if (!cvar("developer") || (!e.topt_rchk && !e.topt_rshort && !e.topt_rref)) return;
+	sprint(e, PRINT_HIGH, sprintf("tas optimize: rollout check: %.0f landings predicted (%.0f bit-equal), worst %.5f u and %.5f u/s off%s%s\n",
+		e.topt_rchk, e.topt_rexact, e.topt_rbado, e.topt_rbadv,
+		e.topt_rshort ? sprintf("; %.0f stopped early (a trigger)", e.topt_rshort) : "",
+		e.topt_rref ? sprintf("; %.0f refused (code %.0f)", e.topt_rref, e.topt_rwhy) : ""));
+};
+
 void(entity e, string why) SV_TASOptStop =
 {
 	if (!e.topt_on) return;
@@ -92,6 +107,7 @@ void(entity e, string why) SV_TASOptStop =
 		tas_tape(e, 0, 0, 0, '0 0 0', '0 0 0', 0);
 	e.topt_on = 0;
 	sprint(e, PRINT_HIGH, sprintf("tas optimize: stopped after %.0f candidates: %s\n", e.topt_evals, why));
+	SV_TASOptRollReport(e);
 	if (e.topt_bestv >= 0 && e.topt_obj)
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: best so far turn %.3f deg/tick%s (not applied)\n", e.topt_bestr, SV_TASOptExtra(e)));
 	else if (e.topt_bestv >= 0)
@@ -99,23 +115,67 @@ void(entity e, string why) SV_TASOptStop =
 			SV_TASOptExtra(e), e.topt_bestv));
 };
 
-// The candidate's inputs onto the native tape: yaw0 + board, then turning r a tick, and over the
-// last topt_fk ticks turning f a tick instead.
+// Row i's yaw: yaw0 + board, then turning r a tick, and over the last topt_fk ticks f a tick instead.
+float(entity e, float r, float y, float f, float i) SV_TASOptYaw =
+{
+	local float yaw, m;
+	m = e.topt_n - e.topt_fk;
+	if (i < m || f == r) yaw = e.topt_yaw0 + e.topt_dir * (y + r * (i + 1));
+	else yaw = e.topt_yaw0 + e.topt_dir * (y + r * m + f * (i + 1 - m));
+	return yaw - 360 * floor((yaw + 180) / 360);        // SV_TASPWord unwraps only one turn
+};
+
+// P1443: the same rows through tas_rollout before the tape plays; SV_TASOptFrame checks the
+// tape's landing against the prediction's last tick (topt_pn -2: no rollout, else ticks run).
+void(entity e, float r, float y, float f) SV_TASOptPredict =
+{
+	local float *rows;
+	local float *out;
+	local float i, ran;
+	e.topt_pn = -2;
+	if (!checkbuiltin(tas_rollout)) return;
+	rows = (float*)memalloc(e.topt_n * 7 * 4);
+	out = (float*)memalloc(e.topt_n * 13 * 4);
+	if (rows && out)
+	{
+		for (i = 0; i < e.topt_n; i = i + 1)
+		{
+			rows[i*7] = 0; rows[i*7+1] = -450 * e.topt_dir; rows[i*7+2] = 0;
+			rows[i*7+3] = SV_TASPWord(e.topt_pitch0); rows[i*7+4] = SV_TASPWord(SV_TASOptYaw(e, r, y, f, i));
+			rows[i*7+5] = 0; rows[i*7+6] = 0;
+		}
+		ran = tas_rollout(e, rows, e.topt_n, out);
+		for (i = 0; i < ran; i = i + 1)
+			if (out[i*13 + 12])
+			{	// a trigger: QC runs touches the rollout does not, so the prediction ends with this tick
+				if (cvar("developer") && !e.topt_rshort)
+					sprint(e, PRINT_HIGH, sprintf("tas optimize: rollout meets %s at tick %.0f of %.0f\n",
+						edict_num(out[i*13 + 12]).classname, i + 1, e.topt_n));
+				ran = i + 1;
+				break;
+			}
+		e.topt_pn = ran;
+		if (ran >= 1)
+		{
+			i = (ran - 1) * 13;
+			e.topt_po = [out[i], out[i+1], out[i+2]];
+			e.topt_pv = [out[i+3], out[i+4], out[i+5]];
+		}
+	}
+	if (rows) memfree(rows);
+	if (out) memfree(out);
+};
+
+// The candidate's inputs onto the native tape (SV_TASOptYaw's yaws, strafing to the turn's side).
 float(entity e, float r, float y, float f) SV_TASOptTape =
 {
-	local float i, tx, ok, yaw, m;
+	local float i, tx, ok;
 	if (!tas_tape(e, 2, e.topt_n, 0, '0 0 0', '0 0 0', 0)) return FALSE;
 	tx = tas_tape(e, 3, e.topt_n, 0, '0 0 0', '0 0 0', 0);
 	ok = tx > 0;
-	m = e.topt_n - e.topt_fk;
 	for (i = 0; i < e.topt_n && ok; i = i + 1)
-	{
-		if (i < m || f == r) yaw = e.topt_yaw0 + e.topt_dir * (y + r * (i + 1));
-		else yaw = e.topt_yaw0 + e.topt_dir * (y + r * m + f * (i + 1 - m));
-		yaw = yaw - 360 * floor((yaw + 180) / 360);     // SV_TASPWord unwraps only one turn
 		ok = tas_tape(e, 4, tx, i, [0, -450 * e.topt_dir, 0],
-			[SV_TASPWord(e.topt_pitch0), SV_TASPWord(yaw), 0], 0);
-	}
+			[SV_TASPWord(e.topt_pitch0), SV_TASPWord(SV_TASOptYaw(e, r, y, f, i)), 0], 0);
 	if (ok) ok = tas_tape(e, 5, tx, 0, '0 0 0', '0 0 0', 0);
 	if (!ok)
 	{
@@ -181,6 +241,7 @@ void(entity e, float v) SV_TASOptResult =
 				(e.topt_dir > 0) ? "left" : "right", e.topt_bestr, e.topt_n, v, e.topt_evals, SV_TimerTicks(e)));
 		if (e.topt_mode)
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: with%s\n", substring(SV_TASOptExtra(e), 1, -1)));
+		SV_TASOptRollReport(e);
 		if (e.topt_obj && fabs(v - e.topt_bestv) > 0.35)   // the score's speed step at one stage is 0.31 u/s
 			sprint(e, PRINT_HIGH, "tas optimize: the replay differs from the search: the world moved between them\n");
 		else if (!e.topt_obj && fabs(v - e.topt_bestv) > 0.05)  // a moving world can differ between two plays
@@ -238,6 +299,24 @@ void(entity e) SV_TASOptFrame =
 			return;
 		}
 		e.topt_stage = 1;
+		if (e.topt_pn == e.topt_n)
+		{	// P1443: the real mover's landing against the rollout's last tick
+			e.topt_rchk = e.topt_rchk + 1;
+			e.topt_rbado = max(e.topt_rbado, vlen(e.origin - e.topt_po));
+			e.topt_rbadv = max(e.topt_rbadv, vlen(e.velocity - e.topt_pv));
+			if (e.origin == e.topt_po && e.velocity == e.topt_pv)
+				e.topt_rexact = e.topt_rexact + 1;
+			if (cvar("developer"))
+				sprint(e, PRINT_HIGH, sprintf("tas optimize: rollout %.0f off by %.5f u, %.5f u/s\n", e.topt_evals + 1,
+					vlen(e.origin - e.topt_po), vlen(e.velocity - e.topt_pv)));
+		}
+		else if (e.topt_pn >= 0)
+			e.topt_rshort = e.topt_rshort + 1;
+		else if (e.topt_pn != -2)
+		{
+			e.topt_rref = e.topt_rref + 1;
+			e.topt_rwhy = e.topt_pn;
+		}
 		SV_TASOptResult(e, SV_TASOptScore(e));
 		return;
 	}
@@ -252,6 +331,7 @@ void(entity e) SV_TASOptFrame =
 		return;
 	}
 	e.topt_backed = 0;
+	SV_TASOptPredict(e, SV_TASOptValue(e, 1), SV_TASOptValue(e, 2), SV_TASOptValue(e, 3));
 	// The back's holds release over a frame or two: a refused tape waits up to a second.
 	if (!SV_TASOptTape(e, SV_TASOptValue(e, 1), SV_TASOptValue(e, 2), SV_TASOptValue(e, 3)))
 	{
@@ -261,6 +341,45 @@ void(entity e) SV_TASOptFrame =
 	}
 	e.topt_wait = 0;
 	e.topt_stage = 2;
+};
+
+// P1443: `cmd tas rollbench <ticks> <count>` (developer): count rollouts of a strafing turn from the
+// paused body, timed on the wall clock -- what a search can afford.
+void(entity e, float argc) SV_TASRollBench =
+{
+	local float n, c, i, k, ran, total, t0, t1;
+	local float *rows;
+	local float *out;
+	n = stof(argv(2)); c = stof(argv(3));
+	if (!cvar("developer") || !checkbuiltin(tas_rollout) || argc != 4 ||
+		!(n >= 1 && n <= 2048 && n == floor(n)) || !(c >= 1 && c <= 20000 && c == floor(c)))
+	{
+		sprint(e, PRINT_HIGH, "tas rollbench <ticks 1..2048> <count 1..20000> (developer 1, an engine with tas_rollout)\n");
+		return;
+	}
+	rows = (float*)memalloc(n * 7 * 4);
+	out = (float*)memalloc(n * 13 * 4);
+	if (!rows || !out) { if (rows) memfree(rows); if (out) memfree(out); return; }
+	for (i = 0; i < n; i = i + 1)
+	{
+		rows[i*7] = 0; rows[i*7+1] = 450; rows[i*7+2] = 0;
+		rows[i*7+3] = SV_TASPWord(e.v_angle_x);
+		rows[i*7+4] = SV_TASPWord(e.v_angle_y - 360 * floor((e.v_angle_y - 0.5 * (i + 1) + 180) / 360) - 0.5 * (i + 1));
+		rows[i*7+5] = 0; rows[i*7+6] = 0;
+	}
+	total = 0; ran = 0;
+	t0 = gettime(1);
+	for (k = 0; k < c; k = k + 1)
+	{
+		ran = tas_rollout(e, rows, n, out);
+		if (ran < 0) break;
+		total = total + ran;
+	}
+	t1 = gettime(1);
+	memfree(rows); memfree(out);
+	if (ran < 0) { sprint(e, PRINT_HIGH, sprintf("tas rollbench: refused (code %.0f)\n", ran)); return; }
+	sprint(e, PRINT_HIGH, sprintf("tas rollbench: %.0f rollouts of %.0f ticks (%.0f ticks) in %.3f s: %.0f rollouts/s, %.0f ticks/s\n",
+		c, n, total, t1 - t0, c / max(0.001, t1 - t0), total / max(0.001, t1 - t0)));
 };
 
 void(entity e) SV_TASOptReset =
@@ -317,6 +436,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_backed = e.topt_wait = 0;
 	e.topt_mode = mode; e.topt_fk = fk; e.topt_srch = 0; e.topt_besty = 0; e.topt_bestf = 0;
 	e.topt_obj = obj; e.topt_seg0 = e.run_t_seg;
+	e.topt_pn = -2; e.topt_rchk = e.topt_rshort = e.topt_rbado = e.topt_rbadv = e.topt_rref = e.topt_rwhy = e.topt_rexact = 0;
 	// Source's air wish speed cap is 30: the speed-holding turn is asin(30 / v) a tick.
 	e.topt_rmax = bound(1, 2 * asin(min(1, 30 / max(30, vlen([e.velocity_x, e.velocity_y, 0])))) * 180 / M_PI, 45);
 	e.topt_bestf = -1;                  // no flick until its search finds a faster one
