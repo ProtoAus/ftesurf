@@ -973,6 +973,10 @@ float(entity e, float ran) SV_TASOptTargetScore =
 			// carries on (surf_null: a fast board 2 cut inside ramp 3's curve; a steep ramp 4 launch)
 			dh = topt_dlen[min(e.topt_tgtj + e.topt_look, e.topt_dn - 1)] - topt_dlen[e.topt_tgtj];
 			d = d + TOPT_LOOKW * bound(0, topt_dlen[e.topt_tubejend] - topt_dlen[e.topt_tgtj], dh);
+			// and its walls: once a wall stopped cutting, a launch whose next 1.4 s ended against the side of the
+			// next bhop platform still "survived" the route (surf_null's second platform pair, 10 Nov)
+			for (i = bk + 1; i < lim && i <= bk + e.topt_look; i = i + 1)
+				if (topt_out[i*13+8] == 4 && !topt_out[i*13+6]) d = d - TOPT_WALLPEN;
 		}
 		return d;
 	}
