@@ -21,6 +21,10 @@
 
 ## next
 
+### P1441 Fewer stutters the first time you play a map
+- The game now prepares the shaders of all 60 tested maps while a map loads, instead of the first time each one is drawn. The first run on a map, after a new install or a graphics driver update, stutters far less: surf_tendies went from 64 small freezes (up to 71 ms) to 4, and its slowest frames from 58 to 139 fps.
+- The first load of each map can take about a second longer on such a PC; later loads are as before.
+
 ### P1432 Sprites and particles maps spawn
 - Sprites a map spawns when something happens now appear where it spawns them: bhop_crash_egypt's CHECKPOINT letters at each checkpoint, bhop_exodus's pictures. Before, they never showed.
 - The same for particle effects: booster puffs on bhop_lego2, bhop_japan, bhop_nature, bhop_rin, bhop_epiphany2 and bhop_angst, and bhop_crash_egypt's TNT and Nitro explosions.

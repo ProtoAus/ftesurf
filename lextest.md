@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1441 first-play shader list -- C:\FTEQuake (and C:\FTESurf with main) from 9 Nov; owner check pending
+
+- Your PC's own list already holds what you have played, so you will see little change. The test is a PC (or a
+  driver update) that has never run a map: first runs of surf_tendies / surf_quarantine / surf_pantheon should
+  have no visible freezes past the spawn.
+- Loading a map for the first time after a driver update may take about a second longer.
+
 ## P1432 sprites and particles a map spawns -- LIVE 9 Nov (lobbies + both installs, cs 72715416); owner check pending
 
 - bhop_crash_egypt: reach a checkpoint; the word CHECKPOINT appears at you for about 5 s. bhop_exodus: the
