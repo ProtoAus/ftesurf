@@ -35,6 +35,12 @@ p.add_argument('--bench', action='store_true', help='time rollouts at the placed
 p.add_argument('--horizon', type=int, default=0, help='ticks a link searches (fast: up to 512, played as tapes); 0: the demo stretch x1.25 + 10')
 p.add_argument('--seed', action='store_true', help="start each curve search from the demo's own command over the link (tas seed)")
 p.add_argument('--mid-radius', type=int, default=300, help='radius of the mid-air waypoints (boards use --radius)')
+p.add_argument('--hop', action='store_true', help="demo modes hold jump (pm_autobunny hops platforms), and each of the demo's "
+               "platform hops between ramps is a waypoint just after it")
+p.add_argument('--hop-tube', type=int, default=0, help='the tube for links that end at a hop and the link after one (0: --tube); '
+               "a hop chain needs the demo's timing: 300 u let the platform link fly a wider arc, 90 u low")
+p.add_argument('--hop-radius', type=int, default=100, help='radius of the hop waypoints (a jump within it)')
+p.add_argument('--tube', type=int, default=0, help="demo modes: candidates stay within this many units of the demo's path (0 off)")
 p.add_argument('--midair', action='store_true', help="a waypoint at each flight's middle (no face), so steered flights follow the demo's route")
 p.add_argument('--boards-only', action='store_true', help='each link is board to next board: ride and flight in one search')
 p.add_argument('--bottoms', action='store_true', help="also a waypoint at each ride's lowest point (default: the ride is one link)")
@@ -198,13 +204,25 @@ try:
             # the flight's middle (by time, leave to the next board), no face: steered flights follow the demo's route
             tm = (sg['t_leave'] + segs[k + 1]['t_board']) / 2
             W.append(('mid', k, min(rows, key=lambda x: abs(x[0] - tm)), None))
+        if a.hop and k + 1 < len(segs):
+            # a landing the demo hopped off between this ramp and the next (vz down -> up at one height): a
+            # waypoint that asks for a jump near where it landed (floor normal) -- a point in the air after
+            # it was reached by hopping at the platform's near edge, 240 u low at the next one (Lex: hop at
+            # the end of the platform)
+            fl = [x for x in rows if sg['t_leave'] < x[0] < segs[k + 1]['t_board']]
+            for i in range(1, len(fl) - 7):
+                # the landing sample can read vz 0 (a grounded tick) before the jump's sample
+                if fl[i - 1][6] < -100 and fl[i][6] > -1 and any(x[6] > 150 for x in fl[i:i + 3])                         and abs(fl[i][3] - fl[i - 1][3]) < 40:
+                    W.append(('hop', k, fl[i], [0.0, 0.0, 1.0]))
     if a.first + a.ramps < len(segs):
         sg = segs[a.first + a.ramps]
         W.append(('board', a.first + a.ramps, next(x for x in rows if x[0] >= sg['t_board'] - 1e-6), sg['n']))
+    W.sort(key=lambda w: w[2][0])                   # time order (hops, mids and boards interleave)
     W2 = []
     for (what, k, wr, n) in W:
-        if n is None:
-            W2.append((what, k, wr, None)); continue
+        if n is None or what == 'hop':
+            if what == 'hop': print(f'      waypoint hop {k}: demo t={wr[0]:.3f} o {tuple(round(x) for x in wr[1:4])} (a jump within {a.hop_radius} u)', flush=True)
+            W2.append((what, k, wr, n)); continue
         fn, ft = face(wr[0], n)
         print(f'      waypoint {what} {k}: demo t={wr[0]:.3f} o {tuple(round(x) for x in wr[1:4])}; face from t={ft} '
               f'({sum(x * y for x, y in zip(fn, n)):.3f} against the board plane)', flush=True)
@@ -274,6 +292,7 @@ try:
         cl.send(f'chase_active 1; chase_back {cb}; chase_up {cu}; scr_sshot_type png'); time.sleep(1)
     chain = []; t_start = time.monotonic(); tprev = rows[bi - a.lead + 1][0]
     print('      point     try  side  result                          | demo there', flush=True)
+    prev_what = 'board'
     for (what, k, wr, n) in W:
         # the horizon: the demo's own ticks for this stretch, with room (--horizon 0), or fixed
         H = a.horizon or min(512, max(16, round(1.25 * (wr[0] - tprev) / 0.015) + 10))
@@ -291,8 +310,8 @@ try:
             print(f'      seed for {what} {k}: ' + ' '.join(f'{x:.0f}' for x in sk), flush=True)
         tprev = wr[0]
         o = wr[1:4]; off = len(cl.text())
-        cl.send(f'tas target {o[0]:.1f} {o[1]:.1f} {o[2]:.1f} {a.radius} {n[0]:.4f} {n[1]:.4f} {n[2]:.4f}' if n is not None
-                else f'tas target {o[0]:.1f} {o[1]:.1f} {o[2]:.1f} {a.mid_radius}')
+        cl.send(f'tas target {o[0]:.1f} {o[1]:.1f} {o[2]:.1f} {a.hop_radius if what == "hop" else a.radius} {n[0]:.4f} {n[1]:.4f} {n[2]:.4f}' if n is not None
+                else f'tas target {o[0]:.1f} {o[1]:.1f} {o[2]:.1f} {a.hop_radius if what == "hop" else a.mid_radius}')
         cl.wait(r"tas target: '", off, 10)
         demo_tick = round(wr[0] / 0.015); dr = D.get(demo_tick)
         dv = ve(dr[1:4], dr[4:7]) if dr else float('nan')
@@ -301,9 +320,12 @@ try:
         for tr in range(a.tries):
             if time.monotonic() - t_start > a.budget: break
             h = tick(); results = []
+            single = len(a.sides.split(',')) * len(MODES) == 1   # nothing to choose: keep the search's play
             for side in a.sides.split(','):
                 for mode in MODES:
-                    how = f'{side} {mode}'
+                    tb = a.hop_tube if a.hop_tube and (what == 'hop' or prev_what == 'hop') else a.tube
+                    how = f'{side} {mode}' + (f' tube {tb}' if tb and 'demo' in mode.split() else '') \
+                        + (' hop' if a.hop and 'demo' in mode.split() else '')
                     m, t, rm, mm = optimize(f'{H} {how} energy fast')
                     if not m.group(0).startswith('tas optimize: best'):
                         results.append((how, None, None, m.group(0)))
@@ -312,13 +334,15 @@ try:
                     if rm: results.append((how, (1, float(rm.group(4))), int(rm.group(1)), m.group(0)))
                     elif mm: results.append((how, (0, -float(mm.group(1))), int(mm.group(2)), m.group(0)))
                     else: results.append((how, None, None, m.group(0)))
-                    back(tick() - h)
+                    if single: kept = (m, t, rm, mm)
+                    else: back(tick() - h)
             ok = [x for x in results if x[1] is not None]
             if not ok:
                 print(f'      {tg:9} {tr:4d}  both stopped: {results[0][3][:80]}', flush=True); break
             side, key, kt, line = max(ok, key=lambda x: x[1])
-            m, t, rm, mm = optimize(f'{H} {side} energy fast')
-            check(f'{tg} try {tr}: the replay is the search', 'world moved' not in t and 'differs from the search' not in t
+            # the search is random (CEM): a second search is not a replay of the first
+            m, t, rm, mm = kept if single else optimize(f'{H} {side} energy fast')
+            check(f'{tg} try {tr}: the played best is the searched one', 'world moved' not in t and 'differs from the search' not in t
                   and 'the real move ended' not in t, t[-300:])
             if rm:
                 kt = int(rm.group(1))
@@ -327,9 +351,15 @@ try:
                 chain.append({'point': tg, 'try': tr, 'side': side, 'tick': T, 'vE': v, 'pos': e1, 'demo_vE': dv, 'demo_tick': demo_tick})
                 sp = math.hypot(e1[3], e1[4]); dsp = math.hypot(dr[4], dr[5]) if dr else float('nan')
                 print(f'      {tg:9} {tr:4d} {side:>18}  reached at run tick {T}, vE {v:7.1f}, speed {sp:6.0f}   | tick {demo_tick}, vE {dv:7.1f}, speed {dsp:6.0f}', flush=True)
+                # the next link's demo rows (its commands, the tube) start where the demo came nearest this state
+                near = min((x for x in rows if abs(x[0] - wr[0]) <= 2.0), key=lambda x: math.dist(x[1:4], e1[:3]))
+                tprev = near[0]
+                print(f'      {tg:9}      next link from demo t={tprev:.3f} ({math.dist(near[1:4], e1[:3]):.0f} u from here; the board was t={wr[0]:.3f})', flush=True)
                 reached = True; break
             e1 = endpoint()
             print(f'      {tg:9} {tr:4d} {side:>18}  miss, closest {(-key[1]):.0f} u; now at {tuple(round(x) for x in e1[:3])} speed {math.hypot(e1[3], e1[4]):.0f}', flush=True)
+            if tick() != h: back(tick() - h)   # the next try searches again from the link's start (the search is random)
+        prev_what = what
         if not reached:
             chain.append({'point': tg, 'reached': False})
             print(f'      {tg:9}  not reached in {a.tries} links; stopping the chain', flush=True)

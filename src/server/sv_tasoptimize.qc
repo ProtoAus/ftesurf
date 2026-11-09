@@ -79,6 +79,7 @@
 .float topt_reachk, topt_reachd, topt_reachv;   // P1449: the played best's prediction, the same three
 #define TOPT_REACH 100000       // P1449: a reached target scores this + speed/energy at the reach tick
 #define TOPT_NEAR  50000        // P1449: a miss scores this - its closest distance
+#define TOPT_HOPDIR 20          // P1449: a hop target's score lost per degree off the demo's heading after it
 float(entity e, float ran) SV_TASOptTargetScore;
 float(entity e, float p) SV_TASOptValue;
 .float topt_energy, topt_z0;    // P1443: score energy (the speed it is worth at the start height), start z
@@ -696,7 +697,7 @@ float(entity e, float ran) SV_TASOptTubeIn =
 // prediction could not follow to the end (cut) -1.
 float(entity e, float ran) SV_TASOptTargetScore =
 {
-	local float i, d, best, bk, hit, lim, tx;
+	local float i, d, best, bk, hit, lim, tx, dh;
 	best = 1000000; bk = -1; hit = FALSE;
 	lim = (e.topt_rollcut == 1) ? ran - 1 : ran;        // the tick QC acts on is not one the prediction holds
 	tx = SV_TASOptLimit(e, lim);
@@ -725,7 +726,15 @@ float(entity e, float ran) SV_TASOptTargetScore =
 	if (hit)
 	{
 		i = bk * 13;
-		return TOPT_REACH + SV_TASOptStateScore(e, [topt_out[i], topt_out[i+1], topt_out[i+2]], [topt_out[i+3], topt_out[i+4], topt_out[i+5]]);
+		d = TOPT_REACH + SV_TASOptStateScore(e, [topt_out[i], topt_out[i+1], topt_out[i+2]], [topt_out[i+3], topt_out[i+4], topt_out[i+5]]);
+		if (e.topt_tgtn_z >= 0.99 && e.topt_tube > 0 && e.topt_tgtj + 4 < e.topt_dn)
+		{	// a hop keeps its horizontal velocity for the next flight: off the demo's heading after its own
+			// hop costs TOPT_HOPDIR a degree (10 deg at the surf_null platform hop was 200 u at ramp 4)
+			dh = vectoyaw([topt_dpos[e.topt_tgtj*3+12] - topt_dpos[e.topt_tgtj*3+3], topt_dpos[e.topt_tgtj*3+13] - topt_dpos[e.topt_tgtj*3+4], 0])
+				- vectoyaw([topt_out[i+3], topt_out[i+4], 0]);
+			d = d - TOPT_HOPDIR * fabs(dh - 360 * floor((dh + 180) / 360));
+		}
+		return d;
 	}
 	// P1449: a cut miss still says how near it got (half credit) so a curve search has a slope; its play
 	// stops on the closest tick, before the cut. A miss adds its energy there (u/s for u): scored on
