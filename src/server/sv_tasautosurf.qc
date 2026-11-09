@@ -25,6 +25,7 @@
 .float as_arm, as_nolegal, as_lastground;
 .float as_sn2;                  // ticks steered since the run started (the start clears the box's triggers first)
 .float as_sph;                  // the start's ground phase: 0 speed (a left circle), 1 onto the line, 2 around again
+.vector as_runo;                // where the run started (the start box's edge): the start steers 48 u past it before planning
 .vector as_ex;                  // the demo's position as its run starts (its first sample at t >= 0)
 .vector as_exd;                 // and its horizontal heading there: the start steers onto that line
 void(entity e, float z) SV_TASLegalStart;    // `tas autosurf startpause`: pause on a run's first tick (TAS on), and the state seen last   // the head at the last rewind request, and requests since it last moved
@@ -418,8 +419,11 @@ void(entity e) SV_TASAutoFrame =
 			SV_TASAutoStep(e, 400, d, 0, 3, vectoyaw(e.as_exd) - 90);      // from rest: across the line (startsim4: 240-330 deg)
 			e.as_sn = e.as_sn + 3;
 		}
-		else if (e.run_t_state == TS_RUNNING && e.as_sn2 < 30 && (e.as_sn2 < 4 || SV_TASAutoTouching(e)))
-		{	// out of the box: on until clear of its volumes (at least 4 ticks, at most 30)
+		else if (e.run_t_state == TS_RUNNING && e.as_sn2 < 30 && (e.as_sn2 < 4 || SV_TASAutoTouching(e) || vlen(e.origin - e.as_runo) < 48))
+		{	// out of the box: on until clear of its volumes and 48 u past where the run started (at least 4 ticks, at most
+			// 30) -- the zones are positions, not volumes, and a body paused over the box's edge was put back in the
+			// start, cancelling the run mid-search (rig tstart10)
+			if (!e.as_sn2) e.as_runo = e.origin;
 			SV_TASAutoSteer(e, (e.flags & FL_ONGROUND) ? 400 : 0, 0, 2, 3, 0, vectoyaw(e.as_exd)); e.as_sn2 = e.as_sn2 + 2;
 		}
 		else if (e.run_t_state == TS_RUNNING)

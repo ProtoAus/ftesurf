@@ -84,6 +84,7 @@ float(entity e, string what) SV_TASToolGate;
 void(entity e) SV_TASAutoFrame;
 .float topt_candk, topt_candd;  // P1449: the last scored candidate's reach tick and closest distance
 .float topt_candw, topt_reachw; // P1449: its wall ticks before the reach (or the scored miss), and the played best's
+.float topt_candg;              // P1449: its ground ticks before them (board targets only: a hop's landing is its point)
 .float topt_reachk, topt_reachd, topt_reachv;   // P1449: the played best's prediction, the same three
 #define TOPT_REACH 100000       // P1449: a reached target scores this + speed/energy at the reach tick
 #define TOPT_NEAR  50000        // P1449: a miss scores this - its closest distance
@@ -95,6 +96,8 @@ void(entity e) SV_TASAutoFrame;
 #define TOPT_WALLPEN 120        // P1449: score lost per tick a wall or ceiling is touched in flight (kind 4): a graze, not a
                                 // cut (surf_null board 2: a pillar 18 u off farsh's line cut 400-580 of 638 candidates and
                                 // autosurf stuck there after 6 backtracks, 10 Nov); 40 left lines brushing walls 1-18 ticks
+#define TOPT_GROUNDPEN 60       // P1449: a board target's score lost per tick on the ground before the reach (surf_null ramp 0's
+                                // segments have angled tops, normal z 0.85: a high arrival stood on one; Lex, 10 Nov)
 #define TOPT_HOPDIR 20          // P1449: a hop target's score lost per degree off the demo's heading after it
 #define TOPT_LOOKW 0.01         // P1449 `look N`: a reach's score per unit of demo route survived after it (a reach scores
                                 // sqrt(E + EREF) ~ 5700: 40 u/s at 1800 is ~13; 100 ticks survived ~27 -- at 0.5 survival
@@ -936,6 +939,9 @@ float(entity e, float ran) SV_TASOptTargetScore =
 	e.topt_candk = bk + 1; e.topt_candd = best;
 	e.topt_candw = SV_TASOptWallTicks(bk + 1);
 	if (e.topt_candw) e.topt_wallhit = e.topt_wallhit + 1;
+	e.topt_candg = 0;
+	if (e.topt_tgtn != '0 0 0' && e.topt_tgtn_z < 0.99)
+		for (i = 1; i <= bk && i < lim; i = i + 1) if (topt_out[i*13+6]) e.topt_candg = e.topt_candg + 1;
 	if (hit)
 	{
 		i = bk * 13;
@@ -943,9 +949,9 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		if (e.topt_emin > 0 && e.topt_cande < e.topt_emin)
 		{	// reached well under the demo's speed there: the stretches after it would not make it (Lex, 10 Nov)
 			e.topt_weakn = e.topt_weakn + 1;
-			return TOPT_WEAK + e.topt_cande - 3 * (e.topt_emin - e.topt_cande) - TOPT_WALLPEN * e.topt_candw;
+			return TOPT_WEAK + e.topt_cande - 3 * (e.topt_emin - e.topt_cande) - TOPT_WALLPEN * e.topt_candw - TOPT_GROUNDPEN * e.topt_candg;
 		}
-		d = TOPT_REACH + e.topt_cande - TOPT_WALLPEN * e.topt_candw - e.topt_pace * (bk + 1);
+		d = TOPT_REACH + e.topt_cande - TOPT_WALLPEN * e.topt_candw - TOPT_GROUNDPEN * e.topt_candg - e.topt_pace * (bk + 1);
 		if (e.topt_tgtn_z >= 0.99 && e.topt_tube > 0 && e.topt_tgtj + 4 < e.topt_dn)
 		{	// a hop keeps its horizontal velocity for the next flight: off the demo's heading after its own
 			// hop costs TOPT_HOPDIR a degree (10 deg at the surf_null platform hop was 200 u at ramp 4)
@@ -970,7 +976,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 	if (best >= TOPT_NEAR) return -1;
 	i = bk * 13;
 	d = TOPT_NEAR - best + SV_TASOptStateScore(e, [topt_out[i], topt_out[i+1], topt_out[i+2]], [topt_out[i+3], topt_out[i+4], topt_out[i+5]])
-		- TOPT_WALLPEN * e.topt_candw;
+		- TOPT_WALLPEN * e.topt_candw - TOPT_GROUNDPEN * e.topt_candg;
 	return (ran < e.topt_n || e.topt_rollcut == 1 || tx >= 0) ? d * 0.5 : d;
 };
 
