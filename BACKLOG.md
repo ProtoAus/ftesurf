@@ -5,26 +5,16 @@
 - Site: client scene after SaveLead_Camera/SaveLoc_Camera. Owner reports some func brushes remain invisible after a load until another load or reconnect. P1437's acting split-state camera/prefix fixes do not prove or resolve this persistent symptom. Falsifier: capture an affected map/position, distinguish `r_ignorevis 1` (restore 0) from missing draw submission, and compare the same brush before/after reconnect. No global culling workaround or asserted engine root cause.
 - Site: Trail_Frame after release in tools/p817failrewind.py. At explicit 100 fps/lead-in0, the 300 ms trail-growth check intermittently sees identical counts in BOTH untouched edef and candidate; later candidates can also pass it. Retain this baseline failure, not a universal fix claim. Falsifier: record body clock/position, HOLD/frozen state and sampled trail timestamps across that interval without changing the fixture's acceptance into a pass.
 
-## P1434 receipt diagnostics — backend activation pending (8 Nov)
-
-- Site: captured receipt snapshot / authenticated admin detail. Source8e4978c4 is
-  reviewed and Windows+isolatedARM verified; both Windows reader cohorts installed.
-  Live backend is unchanged: activation needs the existing source-bound generation
-  and privileged service-namespace installation unavailable to this SSH account.
-  Do not overwrite an admitted runtime or change its pins in place. Falsifier:
-  qualify the exact fresh candidate/reader cohort, preserve CURRENT data and prove
-  valid-zero/partial/malformed-unavailable controls on the installed guarded path;
-  authenticate review, preserve public policy/history and record actual activation.
-  tools/p1434-input-observations.md records verification, delivery and limits.
-
 ## P1424 injected-keystroke counter -- follow-ups (8 Nov; engine patch-1424, installed both installs)
 
-- hidcheck's opt-in-raw-keyboard exemption reads the grant (rawkbds>0), but the grant counts ENUMERATED keyboards,
-  not whether Patch 306's NOLEGACY registration succeeded. With in_rawinput_keyboard 1 and registration refused (or
-  DirectInput, or before the first mouse grab) keys take the legacy path unchecked while rawkbds>0, so the note
-  "'i' covers it" is optimistic. Narrow (registration refusal is rare); base the engine observer skip on "raw
-  keyboard actually registered" and the reader note on the same if it ever matters. Falsifier: in_rawinput_keyboard 1
-  with a refused RegisterRawInputDevices.
+- Site: Windows raw-keyboard registration/observation lifecycle (`in_win.c`). P1450 corrects the reader's
+  registration/provenance claims only; enumeration still does not prove an active keyboard registration. Native
+  follow-up must keep transitions/pairing state on the input/window thread, preserve a previous binding when
+  Windows refuses replacement/removal, and prove exactly-once game-key dispatch. A count-to-latch substitution
+  plus main-thread reset is not qualified. Falsifier: acting native controls cover refused replacement/removal,
+  observation-to-opt-in transitions and shutdown/reinit with window-thread event interleavings; no duplicated
+  game input, false measured zero or counter race. See tools/p1450-keyboard-registration.md. The existing
+  genuine-keyboard manual check remains pending in lextest.md.
 - Arm C (SendInput) cannot be driven in automation: SetForegroundWindow from a background process is refused by
   Windows' foreground lock, so injected input does not reach an unfocused window. A focused human run is the clean
   arm C; S4 measured it at 20 keys / 40 nohandle on the byte-identical KeyObserve path.

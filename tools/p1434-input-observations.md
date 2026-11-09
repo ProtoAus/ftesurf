@@ -42,7 +42,19 @@ The existing genuine-keyboard manual check remains pending in lextest.md.
 - An initial 120-second recording-test timeout is retained, not called a pass;
   the longer completed invocation reports949 checks, zero failures.
 
-## Delivery status
+## Delivery status — completed 9 November 2026
+
+The existing guarded backend activation completed at04:15:00UTC and read-only
+postflight verified the accepted primary OPEN at04:20:08UTC. Actual runtime84/
+external3 and installed input-diagnostics controls passed in the service namespace;
+CURRENT schema26/data and identity invariants were preserved. The original
+privilege/source-admission blocker below is historical, not a reason to replay a
+healthy activation. Rollback is code-only against CURRENT data, never an old DB
+restore. See tools/surfd-generation-p996.md for the dated delivery/retention record.
+No automatic historical backfill, new capture, detector or ranking change occurred.
+The genuine-keyboard check in lextest.md remains pending.
+
+### Historical source/activation boundary — 8 November 2026
 
 Source/platform verification and installed delivery are distinct. Product source
 is published as QC8e4978c4; the engine's documentation-only entry is81695faef.

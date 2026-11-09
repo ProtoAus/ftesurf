@@ -93,11 +93,11 @@ HEAD_P293 = {"sensitivity", "sensitivityscale", "m_yaw", "m_pitch", "m_filter",
              "m_accel", "m_accel_style", "m_accel_power", "m_accel_offset",
              "m_accel_senscap"}
 
-# Engine Patch 301 appended the GRANT beside the request: `rawinput`/`rawkbd` are
-# the cvars this client asked for, `rawmice`/`rawkbds` are what INS_RawInput_Init
-# actually bound.  Additive, so a pre-301 file simply has neither and the check
-# below is skipped -- which is the honest outcome, because for those files the
-# question genuinely cannot be answered from the header.
+# Engine Patch 301 appended device bindings beside the request: `rawinput`/`rawkbd`
+# are the requested cvars; `rawmice`/`rawkbds` count devices INS_RawInput_Init
+# enumerated and bound into its tables. In particular, rawkbds does not prove
+# Windows accepted a keyboard registration. Additive: pre-301 files lack these
+# counts, so checks needing them are skipped rather than assuming a grant.
 HEAD_P301 = {"rawmice", "rawkbds"}
 
 # Engine Patch 303 appended the device table:
@@ -1202,10 +1202,11 @@ def check_hid(path, verbose=False, *, data=None):
                    "only the observed spans" % (kbdobserve, len(obs_changes),
                    " ".join(str(s) for s in obs_changes)))
         elif kbds_bound > 0:
-            r.note("kbdobserve %d -- the key observer was off because the opt-in "
-                   "raw keyboard was bound (rawkbds %d); Patch 306's 'i' counts "
-                   "handle-less key reports only while that is registered"
-                   % (kbdobserve, kbds_bound))
+            r.note("kbdobserve %d -- legacy keys were not checked. rawkbds %d "
+                   "counts enumerated/bound keyboards and does not prove successful "
+                   "registration. Patch 306's 'i' counts handle-less key reports "
+                   "only while raw-keyboard input is registered; this header "
+                   "cannot establish that coverage." % (kbdobserve, kbds_bound))
         elif nonwin:
             r.note("kbdobserve %d -- this input backend does not check legacy "
                    "keys" % kbdobserve)
@@ -1585,14 +1586,15 @@ def check_hid(path, verbose=False, *, data=None):
             r.info["key_devids"] = ", ".join(
                 "%d(%d)" % (d, n) for d, n in sorted(devids_key.items()))
             if kbds_live > 0:
-                # Raw keyboard IS bound, so these devids are real identities and
-                # the table must account for them.
+                # Enumeration does not establish registration or a raw-key identity.
+                # Legacy input still uses constant devid 0, not a device identity.
                 for did, n in sorted(devids_key.items()):
-                    if str(did) not in claimed:
+                    if did != 0 and str(did) not in claimed:
                         r.note("devid %d produced %d key events but no device "
-                               "in the table claims it, and raw keyboard was "
-                               "live (rawkbds %d) -- so this devid should have "
-                               "been a real keyboard." % (did, n, kbds_live))
+                               "in the table claims it. rawkbds %d counts "
+                               "enumerated/bound keyboards and does not prove "
+                               "successful registration; this header alone "
+                               "cannot establish raw-key identity." % (did, n, kbds_live))
             else:
                 # The legacy path. devid 0 is a constant, not an identity.
                 # Patch 468: an 'x' carries no key, so a hidden tap on the pad

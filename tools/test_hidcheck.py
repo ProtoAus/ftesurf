@@ -690,8 +690,12 @@ def case_keys_not_observed():
         check("legacy_keys" not in r.info,
               "kbdobserve %d: no key count claimed (got %s)" % (v, r.info.get("legacy_keys")))
     r = run(_clickrun(kbdobserve=0, rawkbd="1", rawkbds=1).end())
-    check(has_note(r, "opt-in raw keyboard was bound"),
-          "opt-in raw keyboard granted: says 'i' covers it, and only while registered")
+    check(r.ok and has_note(r, "does not prove successful registration"),
+          "enumerated raw keyboards: registration is not established by the header")
+    check(has_note(r, "legacy keys were not checked") and "legacy_keys" not in r.info,
+          "enumerated raw keyboards: observer off remains unavailable, never measured zero")
+    check(not has_note(r, "off because") and not has_note(r, "raw keyboard was bound"),
+          "enumerated raw keyboards: does not invent a reason the observer was off")
     r = run(_clickrun(kbdobserve=0, rawkbd="1", rawkbds=0).end())
     check(has_note(r, "were not checked"),
           "opt-in requested but not granted: still unmeasured, not exempt")
@@ -882,14 +886,28 @@ def case_pointer_devid_still_unclaimed():
 
 
 def case_key_devid_unclaimed_when_raw_is_live():
-    """With raw keyboard bound, a key devid IS an identity and must be claimed."""
+    """Enumeration alone does not establish raw-key identity or registration."""
     j = Journal(rawkbds=1, devices=[MOUSE0])
     j.frame(3000)
     j.key(True, 101, prev=0, dev=3)
     j.view(0, 0, 10.0, 0.0)
     r = run(j.end())
-    check(has_note(r, "should have been a real keyboard"),
-          "raw keyboard: an unclaimed key devid IS reported when raw is live")
+    check(r.ok and has_note(r, "no device in the table claims it"),
+          "enumerated raw keyboard: an unclaimed nonzero key devid is still noted")
+    check(has_note(r, "does not prove successful registration")
+          and not has_note(r, "should have been a real keyboard"),
+          "enumerated raw keyboard: note does not assert raw-key provenance")
+    for state in (0, 1):
+        j = Journal(rawkbds=1, kbdobserve=state,
+                    devices=[("mouse", "1", MOUSE0[2])])
+        j.frame(3000)
+        j.key(True, 101, prev=0, dev=0)
+        j.view(0, 0, 10.0, 0.0)
+        r = run(j.end())
+        check(r.ok and not has_note(r, "no device in the table claims it"),
+              "observer %d beside enumeration: legacy key devid 0 is not an unclaimed identity" % state)
+        check(r.info.get("legacy_keys") == 0 if state else "legacy_keys" not in r.info,
+              "observer %d beside enumeration: existing measured/unavailable scope is preserved" % state)
 
 
 DEFAULTS = [("r_fog_progless", "1", "1"), ("r_fullbright", "0", "0")]

@@ -6984,6 +6984,16 @@ must require42checks and exact8baseline labels, and catch unnumbered warnings.
 
 ## Anti-cheat and run evidence
 
+P1450 reader-only accuracy (9 Nov2026): rawkbds counts enumerated/table-bound
+keyboards, not a successful Windows registration. Do not infer why observation
+was off, promise handle-less-key coverage, or treat legacy devid0 as a raw identity
+from that count. Native correction needs input/window-thread-owned transitions:
+ordinary main-thread pairing resets race the window thread; failed Windows
+replacement/removal preserves the previous binding. Do not ship a trivial latch
+fix or claim that diagnostic wording fixes collection. Reader314/receipt268/
+snapshots12/recording949 pass; same-buffer561REC/179VIEW/25HID reports/faults
+unchanged346/5/0. Native follow-up is OPEN in BACKLOG.md; human check pending.
+
 ### Implementation behaviour: value before machinery (owner, 9 Nov 2026)
 
 Mandatory for anti-cheat planning, implementation and reporting:
