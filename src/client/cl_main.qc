@@ -2516,18 +2516,19 @@ float(string cmd) CSQC_ConsoleCommand =
 				localcmd(sprintf("p%g cmd tas %s %g %.0f\n", tsseat + 1, argv(1), tsvalue, run_tas_request[tsseat]));
 			}
 		}
-		else if (cmdargc >= 4 && cmdargc <= 8 && !strcmp(argv(1), "optimize"))     // P1088; P1092 board/flick; P1097 time
+		else if (cmdargc >= 4 && cmdargc <= 10 && !strcmp(argv(1), "optimize"))    // P1088; P1092 board/flick; P1097 time; P1443 energy/fast
 		{
 			tsvalue = stof(argv(2));
 			tsline = "";
 			for (tsi = 4; tsi < cmdargc; tsi = tsi + 1)    // the server checks their order; only known words pass
-				if (argv(tsi) == "board" || argv(tsi) == "flick" || argv(tsi) == "time" || (stof(argv(tsi)) >= 1 && stof(argv(tsi)) <= 32
+				if (argv(tsi) == "board" || argv(tsi) == "flick" || argv(tsi) == "time" || argv(tsi) == "energy" ||
+				    argv(tsi) == "fast" || (stof(argv(tsi)) >= 1 && stof(argv(tsi)) <= 32
 				    && argv(tsi) == ftos(stof(argv(tsi)))))
 					tsline = strcat(tsline, " ", argv(tsi));
 				else tsline = "!";
 			if (!(tsvalue >= 4 && tsvalue <= 128 && tsvalue == floor(tsvalue)) ||
 			    (strcmp(argv(3), "left") && strcmp(argv(3), "right")) || substring(tsline, 0, 1) == "!")
-				print("tas optimize <ticks 4..128> <left|right> [board] [flick [ticks 1..32]] [time]\n");
+				print("tas optimize <ticks 4..128> <left|right> [board] [flick [ticks 1..32]] [time | energy] [fast]\n");
 			else
 				localcmd(sprintf("p%g cmd tas optimize %g %s%s\n", tsseat + 1, tsvalue, argv(3), tsline));
 		}
