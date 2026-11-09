@@ -50,3 +50,12 @@ Crate_generic1 and a stack of two. Changed pixels against the first frame:
 - Guard: the installed P1442 exe with only the new hl2 plugin beside it loads the map, draws every alternative as
   before (2.3k px from the control frame) and SetBodyGroup changes nothing.
 - SetAnimation: the map's own timers set nitro_idle on the nitro crates (frame 4).
+
+## Delivery
+
+LIVE 9 Nov ~12:40 local (01:40Z): 12 lobbies QC from main 35c82ca7 (build.ps1 -Pi; nobody on; warned; 0 QC errors
+in server1-12.log): qw bd235ab4 (.prev 9cad7952), cs 8ab47d50 unchanged (server-side QC only; in codes.txt since
+P1442). Both installs: exe edf50724 (git-8573-patch-1440-0-gae448df27; .prev 1d's P1442 7e7564ae), C:\FTEQuake
+fteqwsv64 0388bbe7 (.prev d99cbbcb), fteplug_hl2 8d47ecb8 (.prev 3b085f6c), ui_imgui 6e968603, C:\FTEQuake's
+cod/box3d/ode rebuilt (build.ps1's list); qwprogs bd235ab4 in both. The Pi's server engine and plugin are unchanged
+(body is networked by the existing PEXT2_BODYGROUP). Players see the parts with the next release.
