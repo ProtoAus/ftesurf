@@ -235,7 +235,7 @@ void() SaveLoc_RegisterCvars =
 	registercommand("-sl_hold");    // the `-` form on release (keys.c:4199-4203)
 
 	registercvar("cl_slpredict", "1", CVAR_ARCHIVE);    // Patch 430: draw the load at once
-	registercvar("cl_sl_leadin", "1", CVAR_ARCHIVE); // visual pre-roll/minimum hold; existing preferences retained
+	registercvar("cl_sl_leadin", "1", CVAR_ARCHIVE); // visual run-up while held (P1462: never a hold); existing preferences retained
 };
 
 /*
@@ -643,10 +643,10 @@ void(float scan) SaveLoc_LoadKey =
 };
 
 /*
-  P1227: a load key let go is a release only once the hold has stood cl_sl_leadin and the
-  server has answered its load. A tap let go before the answer was released at the save's
-  speed a round trip early, and the view jumped ahead to where the server had the body
-  (Lex, 3 Nov). An answer that never comes releases a second past the lead-in.
+  P1227: a load key let go is a release only once the server has answered its load. A tap
+  let go before the answer was released at the save's speed a round trip early, and the view
+  jumped ahead to where the server had the body (Lex, 3 Nov). An answer that never comes
+  releases a second after the press. (P1462 dropped the cl_sl_leadin minimum hold.)
 */
 // P1384: the server has answered this hold's load press.
 float() SaveLoc_LoadAnswered =
@@ -656,33 +656,21 @@ float() SaveLoc_LoadAnswered =
 	return (rec_sl_holdack > 0 && getstatf(STAT_FS_SLACK) >= rec_sl_holdack);
 };
 
+// P1462: the lead-in no longer holds a key let go (lead-in 1: a 0.6 s press stayed frozen to 1.015 s). The
+// run-up plays while the key is held; SaveLoc_Release clears it. Only the server's answer still gates.
 float() SaveLoc_LeadDone =
 {
-	local float t, lead, answered;
-	t = cltime - rec_sl_holdt0;
-	lead = bound(0, cvar("cl_sl_leadin"), 2);
-	if (t < lead)
-		return FALSE;
-	if (!SaveLead_Done())
-		return FALSE;
+	local float answered;
 	// P1384: a predicted load and its release ride commands in order; the client already drew both.
 	answered = (rec_sl_wophold && rec_sl_pred) || SaveLoc_LoadAnswered();
-	return (answered || t >= lead + 1);
+	return (answered || cltime - rec_sl_holdt0 >= 1);
 };
 
 string() SaveLoc_LeadText =
 {
-	local float travel, left;
-
 	if (!rec_sl_holding || Spec_Active() || cvar("cl_sl_leadin") <= 0) return "";
-	if (!(rec_sl_wophold && rec_sl_pred) && !SaveLoc_LoadAnswered())
-		return "Loading save";
-	travel = SaveLead_Remaining();
-	if (travel < 0) return "Loading save";
-	left = max(bound(0, cvar("cl_sl_leadin"), 2) - (cltime - rec_sl_holdt0), travel);
-	if (left > 0) return sprintf("%.0f ms", ceil(left * 1000));
 	if (!SaveLoc_LeadDone()) return "Loading save";
-	return rec_sl_upwait ? "" : "Release to play";
+	return rec_sl_upwait ? "" : "Release to play";    // P1462: no countdown; letting go is never held
 };
 
 void() SaveLoc_KeyUp =
