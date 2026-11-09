@@ -76,27 +76,45 @@ All three ride the same 12 ramps in the same order. As speed (higher is better):
 
 The route (ramp order) comes from a demo or the target points; on these linear hard maps it is fixed.
 
-## Stage 2: tas_rollout (engine, a075767a9 on patch-1440)
+## Stage 2: tas_rollout (engine p1443: a075767a9, review 1 64433c923, review 2 0e7fa9afb; on patch-1440)
 
 `float tas_rollout(entity player, float *rows, float ticks, float *out)`: from the paused TAS body, ticks rows of
 tas_tape words (7 floats) through SV_RunCmd's own mover setup and one PM_PlayerMove a tick; 13 floats a tick out
-(origin, velocity, onground, ducked, contact kind and normal, the first trigger the hull overlaps). Nothing is
-kept: pmove, movevars, pmove_mins/maxs and frametime are restored. It refuses (a negative code per reason) where
-SV_RunCmd's inputs are not the plain ones. QC cuts a prediction at the first trigger it meets (QC runs touches the
-rollout does not).
+(origin, velocity, onground, ducked, contact kind and normal as SV_RunCmd publishes them, and the first entity
+per-command QC could act on: a touched solid whose touch would run, a non-world ground, any trigger volume with or
+without .touch -- negated for a volume the body starts in, which PreThink acts on before tick 1). pmove, movevars,
+pmove_mins/maxs and frametime are restored. It refuses (codes -1..-10) where SV_RunCmd's inputs are not the plain
+ones: a carrier (run_basevel, non-world ground), a QC limit or forced duck, a gravity direction, water/ladder/duck
+transition, non-default gravity, the TAS clock. QC (SV_TASOptRoll) also refuses while per-command state is pending
+at the head (trigger edges run_tl*/SV_TrigPending, delayed outputs, the Monolith latch: -31/-32), lends P1193's
+no-collide barrier around a rollout as the real command does, and cuts a prediction at the first named entity.
 
-- `tas optimize` now predicts every candidate before its tape plays and, under developer, reports how the real
-  landing matched. tools/p1443_rollcheck.py (bhop_eazy, a ground search and an air search): 44 of 44 landings
-  bit-equal in origin and velocity; a mutant mirroring the strafe gives 0 of 22 (18.3 u, 253 u/s off); the
+- Measured (tools/p1443_rollcheck.py, p1443_fast.py, p1443_null.py): every played landing that a rollout predicted
+  in full was bit-equal in origin and velocity -- 44 in the two-search arm (ground and air), 85 + 2 in the fast arm,
+  2 on surf_null (the drop onto ramp 0); a mutant mirroring the strafe gives 0 of 22 (18.3 u, 253 u/s off); the
   installed server, without the builtin, prints no check.
-- Speed (`cmd tas rollbench <ticks> <count>`, developer): 70-75k ticks/s on this PC -- 588 rollouts/s of 128 ticks,
-  117/s of 600 -- about a thousand times the optimizer's one candidate per couple of seconds.
-- Traps met: P1129's SV_BankGravityEnabled() is true whenever QC defines the callback, so a guard on it refused
-  everything; QW progs hand the mover waterjumptime = teleport_time (normally 0), not teleport_time - sv.time; an
-  arm's trigger stop must not end the engine's rollout (zones are triggers too); restoring a source file by copy
-  keeps its old mtime and make relinks the mutant -- touch before rebuilding.
+- Read-verified only, not made to happen by an arm: the refusals for pending trigger edges, delayed outputs and the
+  Monolith latch, the barrier lending, and the cut before a start volume.
+- Speed (`cmd tas rollbench <ticks> <count>`, developer, ticks x count <= 1,000,000): 72-86k ticks/s on this PC --
+  ~650 rollouts/s of 128 ticks, ~120/s of 600 -- about a thousand times one played candidate per couple of seconds.
+- Reviews: round 1 (carrier field, no-touch limit volumes, touch loop and contact kind), round 2 (pending QC edges
+  and delays, the barrier, last-tick cuts, an allowlist that could mask a teleport) -- all fixed.
+- Traps met: P1129's SV_BankGravityEnabled() is true whenever QC defines the callback (guard on the entgravity ratio);
+  QW progs hand the mover waterjumptime = teleport_time; the engine's run_basevelocity is read-and-clear (always 0
+  while paused) -- QC's carrier is run_basevel; restoring a source file by copy keeps its old mtime and make relinks
+  the mutant (touch before rebuilding); fteqcc reads `float *a, *b` with b as float**.
+
+## Stage 3: `tas optimize ... [energy] [fast]` (QC 8fd5e63b)
+
+`fast` scores each candidate by rollout (a finer search: 33 grid points and 24 golden steps per number, the
+number list run twice) and plays only the best through the real mover, which the landing check compares with its
+prediction. `energy` scores |v|^2 + 2g(z - z_start) as a speed. bhop_eazy, from one airborne start, 24 ticks with
+board and flick: fast 473 candidates in 0.7 s, exit 163.9 u/s; the played search 85 candidates in 35.7 s, 163.7.
+surf_null, the 128-tick drop from the start platform toward ramp 0 (energy): 473 candidates in 3.8 s a side, the
+best replayed bit-equal.
 
 ## Next
 
-Stage 3: link optimizers on tas_rollout (a ride's rate/board/flick and an airtime's strafe profile searched by
-rollouts, the best played as a tape), first on surf_null against the KSF runs' ledger.
+Point the fast energy search at a surf_null ride (the board and ride, not the drop); then horizons past one 128-tick
+tape (rollouts take 2048; the best plays as successive tapes); then target points (a human mark on a ramp the air
+link before it must reach, and the mark refined by moving it); then backward windows and the whole-path search.
