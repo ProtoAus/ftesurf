@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P1458-P1462 Lex's list of 10 Nov -- on main 10 Nov (engine patch-1460 7ab4e81a2, QC 647c05f7); C:\FTEQuake installed (exe a1fd4c50, hl2 adaa24d7, cs 36a67934 / qw 338e252c); C:\FTESurf installs when your game closes; lobbies HELD (surfd stopped by another agent 18:06Z)
+- P1458: surf_beginner2 stage 7 (your save 4) should look like a normal stage now; walk right up to the doorway
+  light and its glow should fade in only within ~150 units. Graphics menu (X) page 6: "Light glows" Off, with
+  Sprites Off, should leave no flares on surf_tensor2.
+- P1459: Graphics page 7 "Post-process" Off: surf_tensor2 loses its blue colour grade at once (bloom/FXAA too if
+  you use them); On brings it back. Gamma stays.
+- P1460: load surf_ferros, then open data/missing/surf_ferros.txt in the install: the two ELDEN RING prop skins
+  with "a prop skin". Any map with missing textures leaves its own file there; send the folder.
+- P1461: surf_domain / surf_nova_css: the zone editor lists one start and one end per track (bonuses on their own
+  tracks), and the start box shows its zone lines. A bonus start no longer starts a main run.
+- P1462: with Lead-in at 1000 ms (hud_edit > Save & load), tap the load key: you move the moment you let go; hold
+  it to see the run-up. (Your own config has Lead-in 0, which already released at once.)
+
 ## P1449 TAS autosurf and the Optimizer tab -- both installs 10 Nov (exe e47ccec1, patch-1449; cs 41a94457)
 - `tas optimizer` opens the line editor on the Optimizer tab. In a TAS session paused on a replay's route (play the
   replay to a ramp, or load a save on it), pick the replay and press "Autosurf from here"; "Stop autosurf" ends it.
