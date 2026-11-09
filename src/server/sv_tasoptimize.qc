@@ -433,6 +433,7 @@ float(entity e, float r, float f) SV_TASOptFollow =
 		// the velocity, the wish across it on the ramp's side), as a human holds the key in -- with no demo's keys the
 		// knots slid a clicked route's ride off ramp 1 into the teleport under it (rig troute1, 10 Nov)
 		for (i = 0; i < e.topt_n; i = i + 1) topt_ride[i] = 0;
+		ran = -1;
 		for (pass = 0; pass < 2; pass = pass + 1)
 		{
 		for (i = 0; i < e.topt_n; i = i + 1)
