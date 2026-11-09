@@ -31,7 +31,9 @@ r = {'utc': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'svexe': [
 def check(name, ok, data=None):
     checks.append({'name': name, 'pass': bool(ok), 'data': data}); print(('PASS ' if ok else 'FAIL ') + name, data if not ok else '', flush=True); assert ok, name
 Z0 = 13376.03
-def ve(o, v): return math.sqrt(max(0.0, v[0]**2 + v[1]**2 + v[2]**2 + 1600 * (o[2] - Z0)))
+def ve(o, v):
+    q = v[0]**2 + v[1]**2 + v[2]**2 + 1600 * (o[2] - Z0)   # signed: the speed worth at the demo's start height
+    return math.copysign(math.sqrt(abs(q)), q)
 def demo_rows():
     rows = {}
     for line in open(a.demo, encoding='latin-1'):
@@ -75,8 +77,8 @@ def endpoint():
     off = len(cl.text()); cl.send('cmd viewpos')
     m = cl.wait(r'setpos ([\d.-]+) ([\d.-]+) ([\d.-]+)', off); v = cl.wait(r'velocity ([\d.-]+) ([\d.-]+) ([\d.-]+)', off)
     return [float(x) for x in m.groups() + v.groups()]
-BEST = r'tas optimize: best (left|right) turn ([\d.]+) deg/tick over (\d+) ticks: (exit|energy) ([\d.]+) u/s \((\d+) candidates\); paused at (\d+)'
-REACH = r'tas optimize: target reached at tick (\d+) of (\d+) \(([\d.]+) u from it\), (?:energy|speed) ([\d.]+) u/s there'
+BEST = r'tas optimize: best (left|right) turn ([\d.]+) deg/tick over (\d+) ticks: (exit|energy) (-?[\d.]+) u/s \((\d+) candidates\); paused at (\d+)'
+REACH = r'tas optimize: target reached at tick (\d+) of (\d+) \(([\d.]+) u from it\), (?:energy|speed) (-?[\d.]+) u/s there'
 MISS = r'tas optimize: target not reached: closest ([\d.]+) u at tick (\d+) of (\d+)'
 def optimize(line):
     off = len(cl.text()); cl.send(f'tas optimize {line}')
@@ -141,7 +143,8 @@ try:
                 print(f'      {k:4d} {tr:4d}  both stopped: {results[0][3][:80]}', flush=True); break
             side, key, kt, line = max(ok, key=lambda x: x[1])
             m, t, rm, mm = optimize(f'128 {side} energy fast')
-            check(f'ramp {k} try {tr}: the replay is the search', 'world moved' not in t and 'differs from the search' not in t, t[-300:])
+            check(f'ramp {k} try {tr}: the replay is the search', 'world moved' not in t and 'differs from the search' not in t
+                  and 'the real move ended' not in t, t[-300:])
             if rm:
                 kt = int(rm.group(1)); back(128 - kt)
                 e1 = endpoint(); T = tick(); v = ve(e1[:3], e1[3:])

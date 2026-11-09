@@ -2516,6 +2516,21 @@ float(string cmd) CSQC_ConsoleCommand =
 				localcmd(sprintf("p%g cmd tas %s %g %.0f\n", tsseat + 1, argv(1), tsvalue, run_tas_request[tsseat]));
 			}
 		}
+		else if (cmdargc >= 3 && cmdargc <= 5 && !strcmp(argv(1), "demo"))       // P1449: a path (letters, digits, _ - . /), rows, from
+		{
+			tsline = argv(2);
+			for (tsi = 0; tsi < strlen(tsline); tsi = tsi + 1)
+			{
+				tsvalue = str2chr(tsline, tsi);
+				if (!((tsvalue >= 48 && tsvalue <= 57) || (tsvalue >= 65 && tsvalue <= 90) || (tsvalue >= 97 && tsvalue <= 122) ||
+				      tsvalue == 95 || tsvalue == 45 || tsvalue == 46 || tsvalue == 47)) tsline = "";
+			}
+			if (tsline == "" || strstrofs(tsline, "..") >= 0 || (cmdargc >= 4 && !FS_TASNumber(argv(3))) || (cmdargc == 5 && !FS_TASNumber(argv(4))))
+				print("tas demo <file> [rows [from]]\n");
+			else
+				localcmd(sprintf("p%g cmd tas demo %s%s%s\n", tsseat + 1, tsline, (cmdargc >= 4) ? strcat(" ", argv(3)) : "",
+					(cmdargc == 5) ? strcat(" ", argv(4)) : ""));
+		}
 		else if (cmdargc >= 2 && cmdargc <= 9 && !strcmp(argv(1), "target"))     // P1449: numbers, clear or show only
 		{
 			tsline = "";
@@ -2528,19 +2543,19 @@ float(string cmd) CSQC_ConsoleCommand =
 			else
 				localcmd(sprintf("p%g cmd tas target%s\n", tsseat + 1, tsline));
 		}
-		else if (cmdargc >= 4 && cmdargc <= 10 && !strcmp(argv(1), "optimize"))    // P1088; P1092 board/flick; P1097 time; P1443 energy/fast
+		else if (cmdargc >= 4 && cmdargc <= 11 && !strcmp(argv(1), "optimize"))    // P1088; P1092 board/flick; P1097 time; P1443 energy/fast
 		{
 			tsvalue = stof(argv(2));
 			tsline = "";
 			for (tsi = 4; tsi < cmdargc; tsi = tsi + 1)    // the server checks their order; only known words pass
 				if (argv(tsi) == "board" || argv(tsi) == "flick" || argv(tsi) == "time" || argv(tsi) == "energy" ||
-				    argv(tsi) == "fast" || argv(tsi) == "zigzag" || argv(tsi) == "split" || (stof(argv(tsi)) >= 1 && stof(argv(tsi)) <= 32
+				    argv(tsi) == "fast" || argv(tsi) == "zigzag" || argv(tsi) == "split" || argv(tsi) == "fixedpitch" || argv(tsi) == "follow" || argv(tsi) == "curve" || (stof(argv(tsi)) >= 1 && stof(argv(tsi)) <= 32
 				    && argv(tsi) == ftos(stof(argv(tsi)))))
 					tsline = strcat(tsline, " ", argv(tsi));
 				else tsline = "!";
-			if (!(tsvalue >= 4 && tsvalue <= 128 && tsvalue == floor(tsvalue)) ||
+			if (!(tsvalue >= 4 && tsvalue <= 512 && tsvalue == floor(tsvalue)) ||       // P1449: the server holds played searches to 128
 			    (strcmp(argv(3), "left") && strcmp(argv(3), "right")) || substring(tsline, 0, 1) == "!")
-				print("tas optimize <ticks 4..128> <left|right> [board] [flick [ticks 1..32]] [time | energy] [fast]\n");
+				print("tas optimize <ticks 4..128, fast 4..512> <left|right> [board | follow | curve [knots 3..12]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch]\n");
 			else
 				localcmd(sprintf("p%g cmd tas optimize %g %s%s\n", tsseat + 1, tsvalue, argv(3), tsline));
 		}
@@ -2563,7 +2578,7 @@ float(string cmd) CSQC_ConsoleCommand =
 				localcmd(sprintf("p%g cmd tas speed %.9g\n", tsseat + 1, tsvalue));
 		}
 		else
-			print("tas: menu | timeline | undo/redo | mouse [on/off] | on/off | pause/play | step/back [1..128] | plan/next mode forward side pitch yaw bits [count] | inputs [N] | replay first | edit first [last] field value | optimize ticks left/right [board] [split] [flick [k] | zigzag] [time | energy] [fast] | target x y z [r] / clear | status | speed 0.1..1\n");
+			print("tas: menu | timeline | undo/redo | mouse [on/off] | on/off | pause/play | step/back [1..128] | plan/next mode forward side pitch yaw bits [count] | inputs [N] | replay first | edit first [last] field value | optimize ticks left/right [board | follow] [split] [flick [k] | zigzag] [time | energy] [fast] [fixedpitch] | target x y z [r [nx ny nz]] / clear / show | demo file [rows [from]] | status | speed 0.1..1\n");
 		return TRUE;
 	}
 	if (!strcmp(argv(0), "host_timescale"))
