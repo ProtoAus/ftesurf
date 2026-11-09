@@ -14,6 +14,8 @@ quadric edge collapse to at most --tris triangles, and written as gfx/loadwire/<
     t a b c          (triangles, vertex indices)
     e a b t1 t2      (drawn edges: their two triangles, t2 -1 on a border; near-flat neighbours dropped)
 
+No blank lines: the menu's fgets reads one as the end of the file.
+
 --suggest lists, for maps whose pakfile carries models, the most-placed custom model (static props and
 prop_dynamic entities) and its triangle count, to choose picks from.
 """
@@ -28,6 +30,7 @@ import zipfile
 from collections import Counter, defaultdict
 
 LUMP_ENTITIES, LUMP_GAME, LUMP_PAK = 0, 35, 40
+QC_V, QC_T, QC_E = 512, 512, 1024     # m_loading.qc LW_V, LW_T, LW_E: a model over any is refused here
 TARGET_SIZE = 62.0
 
 
@@ -417,6 +420,11 @@ def main():
                 v, t, e, n0 = wire(files, m, args.tris, args.flat)
             except (ModelError, struct.error, IndexError) as exc:
                 print('%s: %s skipped (%s)' % (mp, m, exc))
+                bad += 1
+                continue
+            if len(v) > QC_V or len(t) > QC_T or len(e) > QC_E:
+                print('%s: %s skipped (%d vertices, %d triangles, %d edges: over the menu limits %d/%d/%d)'
+                      % (mp, m, len(v), len(t), len(e), QC_V, QC_T, QC_E))
                 bad += 1
                 continue
             lines.append('model %s' % m)

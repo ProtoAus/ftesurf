@@ -25,7 +25,6 @@ var float ls_idle = 1;          // m_draw saw no load since: the next LS_Draw st
 string(string s) LS_Base;       // below
 string ls_fkey;                 // LS_Friendly's merge key
 string ls_fdet;                 // ...and the step's detail: a game, a file's name (P1453; temp string)
-string ls_tsrc;                 // P1453: the games this run of texture steps came from, zoned
 string ls_prev;                 // ls_debug: the step at the last redraw, zoned
 vector ls_ring[5];              // the shape: a convex ring in one plane...
 float  ls_rn;
@@ -192,17 +191,8 @@ void() LS_Clear =
 // A merged run's line (P1453).
 string(string line, float cnt) LS_RunLine =
 {
-	if (ls_fkey == "tex")
-	{
-		if (ls_fdet != "" && strstrofs(strcat(", ", ls_tsrc, ","), strcat(", ", ls_fdet, ",")) < 0)
-		{
-			line = (ls_tsrc != "") ? strcat(ls_tsrc, ", ", ls_fdet) : ls_fdet;
-			if (ls_tsrc != "")
-				strunzone(ls_tsrc);
-			ls_tsrc = strzone(line);
-		}
-		return (ls_tsrc != "") ? strcat("Loading textures: ", ls_tsrc) : "Loading textures";
-	}
+	if (ls_fkey == "tex")       // the engine's step carries this load's games so far
+		return (ls_fdet != "") ? strcat("Loading textures: ", ls_fdet) : "Loading textures";
 	if (ls_fkey == "models" || ls_fkey == "sounds" || ls_fkey == "dl" || ls_fkey == "brush")
 	{
 		if (cnt > 1)
@@ -227,11 +217,6 @@ void(string raw, float steps) LS_Step =
 		strunzone(ls_log[0]);
 		ls_log[0] = strzone(top);
 		return;
-	}
-	if (ls_fkey == "tex" && ls_tsrc != "")
-	{	// a new run of texture steps lists its own games
-		strunzone(ls_tsrc);
-		ls_tsrc = "";
 	}
 	line = LS_RunLine(line, 1);
 	if (ls_log[LS_LOG - 1] != "")
@@ -360,9 +345,11 @@ vector lw_tn[LW_T];             // outward normal
 float  lw_next[LW_T];
 float  lw_head[LW_B];
 float  lw_ea[LW_E], lw_eb[LW_E];
-float  lw_nv, lw_nt, lw_ne, lw_open, lw_ok;
+float  lw_nv, lw_nt, lw_ne, lw_open, lw_ok, lw_bad;
 float  lw_es, lw_ec;    // sin, cos of the view's elevation (ls_wireangle: 0 side on, 45 as the shapes)
 string lw_map;                  // the map the model is for (zoned); "" none tried
+
+float(float i, float n) LW_In = { return i >= 0 && i < n && i == floor(i); };
 
 void(float t, float e) LW_TriEdge =
 {
@@ -394,33 +381,46 @@ float(string path, float want) LW_Read =
 			models = models + 1;
 			continue;
 		}
-		if (models - 1 != want)
+		if (want < 0 || models - 1 != want)
 			continue;
-		if (k == "v" && lw_nv < LW_V)
+		if (k == "v")
 		{
+			if (lw_nv >= LW_V)
+			{
+				lw_bad = TRUE;
+				continue;
+			}
 			lw_v[lw_nv] = [stof(LS_Tok(l, 1)), stof(LS_Tok(l, 2)), stof(LS_Tok(l, 3))];
 			lw_nv = lw_nv + 1;
 		}
-		else if (k == "t" && lw_nt < LW_T)
+		else if (k == "t")
 		{
 			a = stof(LS_Tok(l, 1));
 			b = stof(LS_Tok(l, 2));
 			c = stof(LS_Tok(l, 3));
-			if (a < lw_nv && b < lw_nv && c < lw_nv)
+			if (lw_nt >= LW_T || !LW_In(a, lw_nv) || !LW_In(b, lw_nv) || !LW_In(c, lw_nv))
 			{
-				lw_ta[lw_nt] = a;
-				lw_tb[lw_nt] = b;
-				lw_tc[lw_nt] = c;
-				lw_te0[lw_nt] = lw_te1[lw_nt] = lw_te2[lw_nt] = -1;
-				lw_nt = lw_nt + 1;
+				lw_bad = TRUE;
+				continue;
 			}
+			lw_ta[lw_nt] = a;
+			lw_tb[lw_nt] = b;
+			lw_tc[lw_nt] = c;
+			lw_te0[lw_nt] = lw_te1[lw_nt] = lw_te2[lw_nt] = -1;
+			lw_nt = lw_nt + 1;
 		}
-		else if (k == "e" && lw_ne < LW_E)
+		else if (k == "e")
 		{
-			lw_ea[lw_ne] = stof(LS_Tok(l, 1));
-			lw_eb[lw_ne] = stof(LS_Tok(l, 2));
 			a = stof(LS_Tok(l, 3));
 			b = stof(LS_Tok(l, 4));
+			lw_ea[lw_ne] = stof(LS_Tok(l, 1));
+			lw_eb[lw_ne] = stof(LS_Tok(l, 2));
+			if (lw_ne >= LW_E || !LW_In(lw_ea[lw_ne], lw_nv) || !LW_In(lw_eb[lw_ne], lw_nv)
+			    || !LW_In(a, lw_nt) || (b != -1 && !LW_In(b, lw_nt)))
+			{
+				lw_bad = TRUE;
+				continue;
+			}
 			if (b < 0)
 				lw_open = TRUE;
 			LW_TriEdge(a, lw_ne);
@@ -454,7 +454,7 @@ void(string mp) LW_Load =
 	if (lw_map != "")
 		strunzone(lw_map);
 	lw_map = (mp != "") ? strzone(mp) : "";
-	lw_ok = lw_open = FALSE;
+	lw_ok = lw_open = lw_bad = FALSE;
 	lw_nv = lw_nt = lw_ne = 0;
 	if (mp == "")
 		return;
@@ -463,7 +463,9 @@ void(string mp) LW_Load =
 	if (models <= 0)
 		return;
 	LW_Read(path, floor(random() * models));
-	lw_ok = (lw_nt > 0);
+	lw_ok = (lw_nt > 0 && !lw_bad);
+	if (lw_bad)
+		print(sprintf("loadscreen: %s is malformed or over the limits; the shape draws\n", path));
 };
 
 // LS_Faces at the wire's elevation: the camera looks along (0, ec, -es).
@@ -660,6 +662,24 @@ void() LS_Gather =
 };
 
 // The card is looked up once a map: ui_map_index scans the whole list.
+// ls_debug 3 (P1453): the centre drawing's QC time and the frame rate, every 2 s.
+float ls_pfn, ls_pft, ls_pf0;
+void(float dt) LS_Perf =
+{
+	local float now;
+	now = gettime(1);
+	if (!ls_pf0)
+		ls_pf0 = now;
+	ls_pfn = ls_pfn + 1;
+	ls_pft = ls_pft + dt;
+	if (now - ls_pf0 < 2)
+		return;
+	print(sprintf("loadscreen perf: %s %.1f fps, centre %.3f ms a frame\n", lw_ok ? "wire" : "shape",
+	              ls_pfn / (now - ls_pf0), ls_pft * 1000 / ls_pfn));
+	ls_pf0 = now;
+	ls_pfn = ls_pft = 0;
+};
+
 void() LS_Card =
 {
 	local string m;
@@ -698,7 +718,7 @@ void(vector pos, vector size, vector isz) LS_CardPic =
 
 void(vector scr) LS_Draw =
 {
-	local float i, seq, y, dots, bw, bh, phys, x0, th;
+	local float i, seq, y, dots, bw, bh, phys, x0, th, t0;
 	local string raw, word;
 	local vector sz, nsz, pic;
 	if (ls_idle || time < ls_last)
@@ -727,9 +747,9 @@ void(vector scr) LS_Draw =
 		LS_Step("mount CS:GO", 1);
 		LS_Step("wads", 1);
 		LS_Step("textures World of Surf", 1);
-		LS_Step("textures CS:S", 1);
-		LS_Step("textures HL2", 1);
-		LS_Step("textures the map", 1);
+		LS_Step("textures World of Surf, CS:S", 1);
+		LS_Step("textures World of Surf, CS:S, HL2", 1);
+		LS_Step("textures World of Surf, CS:S, HL2, the map", 1);
 		LS_Step("models/props/de_dust/dust_crate.mdl", 1);
 		LS_Step("models/disres_models/dagger.mdl", 1);
 	}
@@ -744,10 +764,13 @@ void(vector scr) LS_Draw =
 
 	drawfill('0 0 0', scr, '0 0 0', 1, 0);
 	LS_Card();      // P1453: before the shape, which may be the card's map's model
+	t0 = gettime(1);
 	if (lw_ok)
 		LW_Draw(scr);
 	else
 		LS_DrawShape(scr);
+	if (cvar("ls_debug") >= 3)
+		LS_Perf(gettime(1) - t0);
 
 	// Text on the UI face's physical (pixels=1) bake at a baked size, on whole pixels: a size between
 	// rungs is a resample.  Physical sizes from the screen's height; 1080 p: steps and the map's name
@@ -793,7 +816,7 @@ void(vector scr) LS_Draw =
 	if (ls_cardmap != "")
 	{
 		y = y - sz_y * 0.75;
-		pic = (ls_cardpic != "") ? drawgetimagesize_async(ls_cardpic) : '0 0 0';
+		pic = (ls_cardpic != "" && checkbuiltin(drawgetimagesize_async)) ? drawgetimagesize_async(ls_cardpic) : '0 0 0';
 		if ((ls_cardpage >= 0 && ls_cardcell >= 0) || (pic_x > 0 && pic_y > 0))
 		{
 			th = floor(phys / 6.75) / sui_style_pixel_ratio_y;
