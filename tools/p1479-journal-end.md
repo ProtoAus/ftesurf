@@ -1,4 +1,4 @@
-# P1478 — complete input journals can grow for their terminal record
+# P1479 — complete input journals can grow for their terminal record
 
 ## Product outcome
 
@@ -8,8 +8,12 @@ configured byte limit to its current allocation. A complete journal at an ordina
 `truncated`. Actual body-cap truncation remains recorded. No collected fields,
 record grammar, consent, capture, ranking or enforcement policy changed.
 
-Engine base `0b223e6148922c36687e6abc5aa4b5122df7634e`; fixed source and
-`patch-1478` are `0e22be20c52cb6618a0c59a064ff4391d2958ce3`.
+Engine base `0b223e6148922c36687e6abc5aa4b5122df7634e`; final source and
+`patch-1479` are `3f45df7a5e6bc0a66aa8f09674f84afbefebb247`.
+The provisional journal commit0e22be20c/tag1478 remain immutable history.
+Another session's independent P1478 claim arrived during qualification; preserve
+that claim and renumber this one product change1479 forward-only. C/test bytes
+are identical between the provisional and final engine commits.
 The separate threaded-physics journal synchronization backlog item is NOT fixed.
 Nor does this promise terminal capacity for every configured-cap/headroom case.
 
@@ -39,8 +43,12 @@ Nor does this promise terminal capacity for every configured-cap/headroom case.
 - The shader-generated header differed only in its generator-path comment;
   that build-generated comment was preserved privately and restored to the
   inspected source. All5882 shared dependency files remained byte-identical.
-- Final client stamp: `git-8647-patch-1478-0-g0e22be20c`.
-  Client SHA256:`71cb4eccd142cfa4bca8ba0e2eda9c643385a04391378879599815d33ff77c88`.
+- Final client stamp: `git-8648-patch-1479-0-g3f45df7a5`.
+  Client SHA256:`2165ec5723189ecb2150651fe34d597bc8782f30fed90c8fb483028e5c321e35`.
+  The first incremental metadata refresh retained the old client version stamp;
+  it was not deployed. Standard `-Full` rebuilt all targets with the correct
+  final1479 stamp and the same74-warning multiset. Do not infer a current native
+  version from a linker run or a newly stamped plugin.
 
 ## Delivery state
 
