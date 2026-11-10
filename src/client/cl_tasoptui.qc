@@ -50,10 +50,10 @@ void() TASSearch_Event =
 
 string(float lead) TASSearch_LeadWord =
 {
-	if (lead < 0.15) return "straight at it";
-	if (lead < 0.4) return "fairly direct";
-	if (lead <= 0.6) return "along the face";
-	return "wide";
+	if (lead < 0.15) return "straight at the ramp";
+	if (lead < 0.4) return "fairly directly at the ramp";
+	if (lead <= 0.6) return "in along the ramp's face";
+	return "wide of the ramp, turning in late";
 };
 
 // a line at a size the current face is baked at (Font_Px), a smaller rung when it does not fit w, on whole pixels:
@@ -153,7 +153,7 @@ void(vector scr) TASSearch_Draw =
 		TASSearch_Line([at_x, y, 0], s, tsz * 0.9, SUI_THEME_DIM, w);
 	}
 	y = y + row;
-	s = sprintf("Flies %s at the ramp (lead %.2f), aiming %+g, %+g u off its point", TASSearch_LeadWord(tsp_lead), tsp_lead, tsp_aimx, tsp_aimy);
+	s = sprintf("Flies %s (lead %.2f), aiming %+g, %+g u off its point", TASSearch_LeadWord(tsp_lead), tsp_lead, tsp_aimx, tsp_aimy);
 	TASSearch_Line([at_x, y, 0], s, tsz * 0.85, SUI_THEME_MUTED, w); y = y + row * 1.15;
 	// why candidates fail: each its own share (one line can do several)
 	TASSearch_Line([at_x, y, 0], "What the lines tried ran into (one line can hit several):", tsz * 0.85, SUI_THEME_TEXT, w); y = y + row;
