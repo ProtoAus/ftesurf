@@ -404,7 +404,7 @@ void() TASOptUI_Target =
 // edited in the world, cl_jargon.qc), then surf it -- the old tube/look/tries/backs knots are one Effort choice.
 var float taso_effort = 1;      // 0 quick, 1 normal, 2 thorough
 var float autocvar_tas_jargon_wide = 0;     // P1476: flights weave wider (Lex: no flip a tick) -- needs an engine with it
-var float autocvar_tas_jargon_spots = 0;    // each board tries 5 spots on its ramp, judged on the next (`spots`)
+var float autocvar_tas_jargon_spots = 0;    // 1: each board tries 5 spots on its ramp (`spots`); 2: the best of 4 lines (`beam`, P1483)
 string() TASOptUI_Effort =
 {
 	if (taso_effort == 0) return " tries 1 rideknots low";
@@ -484,7 +484,7 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 
 	// surf it: from the course's start (one click), on from the saved run, or from here
 	sui_text(at, [tsz, tsz], sprintf("%g   Surf", st + 2), SUI_THEME_TEXT, 1, 0); at_y = at_y + tsz * 1.6;
-	go = strcat(TASOptUI_Effort(), TASJargon_Airs() ? " air" : "", autocvar_tas_jargon_wide ? " wide" : "", autocvar_tas_jargon_spots ? " spots" : "");
+	go = strcat(TASOptUI_Effort(), TASJargon_Airs() ? " air" : "", autocvar_tas_jargon_wide ? " wide" : "", (autocvar_tas_jargon_spots == 1) ? " spots" : ((autocvar_tas_jargon_spots == 2) ? " beam" : ""));
 	if (cw != "") go = strcat(go, " finish");       // a course runs to its end box
 	if (running)
 	{
@@ -527,8 +527,9 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	if (Profile_Chip("jg_w1", at + [half + 6, 0, 0], chip, "Wider (looks human)", hint, autocvar_tas_jargon_wide)) cvar_set("tas_jargon_wide", "1");
 	at_y = at_y + row + hint * 0.6;
 	sui_text(at, [hint, hint], "Where it boards each ramp", SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.5;
-	if (Profile_Chip("jg_spot0", at, chip, "The guide's spot", hint, !autocvar_tas_jargon_spots)) cvar_set("tas_jargon_spots", "0");
-	if (Profile_Chip("jg_spot1", at + [half + 6, 0, 0], chip, "Try 5 spots (slower)", hint, autocvar_tas_jargon_spots)) cvar_set("tas_jargon_spots", "1");
+	if (Profile_Chip("jg_spot0", at, chip3, "The guide's spot", hint, !autocvar_tas_jargon_spots)) cvar_set("tas_jargon_spots", "0");
+	if (Profile_Chip("jg_spot1", at + [third + 6, 0, 0], chip3, "Try 5 spots", hint, autocvar_tas_jargon_spots == 1)) cvar_set("tas_jargon_spots", "1");
+	if (Profile_Chip("jg_spot2", at + [2 * (third + 6), 0, 0], chip3, "Best of 4 lines", hint, autocvar_tas_jargon_spots == 2)) cvar_set("tas_jargon_spots", "2");
 	at_y = at_y + row + hint * 0.6;
 	sui_text(at, [hint, hint], "Camera while it thinks (it rides in first person)", SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.5;
 	if (Profile_Chip("jg_c0", at, chip, "Mine", hint, !autocvar_tas_viz_cam)) cvar_set("tas_viz_cam", "0");

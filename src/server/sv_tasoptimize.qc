@@ -56,6 +56,9 @@
 
 .float topt_on, topt_head, topt_n, topt_dir, topt_yaw0, topt_pitch0;
 .float topt_stage;              // 1 go back to the head and stage the tape, 2 the tape is running
+.float topt_endz, topt_endtrack;    // P1483: a course's end (a zone box, or -1; the track whose END boxes, or -1): a reach there
+.entity topt_cutent;            // P1483: the volume a rollout was cut at (topt_rollcut 1)
+.float topt_playk;              // P1483: `play K`: the search's K-th kept candidate played, no search (0 none, else K + 1)
 .float topt_phase;              // 1 grid, 2 golden, 3 the best, played last
 .float topt_k, topt_cand, topt_evals, topt_bestr, topt_bestv, topt_next;
 .float topt_lo, topt_hi, topt_a, topt_b, topt_fa, topt_fb, topt_which, topt_iter;
@@ -1023,7 +1026,7 @@ float(entity e, float r, float y, float f) SV_TASOptRoll =
 			if ((cvar("developer") >= 2 && (!e.topt_fast || e.topt_evals < 64)) || (cvar("developer") && !e.topt_fast && !e.topt_rshort))
 				sprint(e, PRINT_HIGH, sprintf("tas optimize: rollout meets %s %s tick %.0f of %.0f\n",
 					edict_num(fabs(a)).classname, (a < 0) ? "before" : "at", i + 1, e.topt_n));
-			e.topt_rollcut = 1;
+			e.topt_rollcut = 1; e.topt_cutent = edict_num(fabs(a));
 			return (a < 0) ? i : i + 1;
 		}
 	}
@@ -1378,15 +1381,50 @@ float(entity e, float k) SV_TASOptHopShort =
 	return ([e.topt_tgt_x, e.topt_tgt_y, 0] - [topt_out[k*13], topt_out[k*13+1], 0]) * normalize(h);
 };
 
+// P1483: a course's end -- the hull in its end box (zones are positions: no rollout sees them), or a teleport whose
+// destination is in it (surf_tensor2's stage 2 ends in one; a rollout is cut there and scored a miss: rigs t2chain5-10)
+float(entity e, vector p) SV_TASOptInEnd =
+{
+	local float z;
+	if (e.topt_endz >= 0 && e.topt_endz < zone_count) return Zone_BoxInside(e.topt_endz, p, PM_HULL_MINS, PM_HULL_MAXS);
+	if (e.topt_endtrack < 0) return FALSE;
+	for (z = 0; z < zone_count; z = z + 1)
+		if (zone_type[z] == ZONE_END)
+		if (zone_track[z] == e.topt_endtrack)
+		if (Zone_BoxInside(z, p, PM_HULL_MINS, PM_HULL_MAXS)) return TRUE;
+	return FALSE;
+};
+// 1 a teleport into the end, -1 a teleport elsewhere, 0 not a teleport that acts on this body
+float(entity e, entity t) SV_TASOptEndTele =
+{
+	local entity d;
+	local float z;
+	if (!t || (strcmp(t.classname, "trigger_teleport") && strcmp(t.classname, "trigger_momentum_teleport"))) return 0;
+	if (t.filtername != "") if (!SV_PassesFilter(t, e)) return 0;
+	d = world;
+	if (t.target != "") d = find(world, targetname, t.target);
+	if (!d) return 0;           // no destination: its touch does nothing
+	if (e.topt_endz >= 0 && e.topt_endz < zone_count) return Zone_PointInside(e.topt_endz, d.origin) ? 1 : -1;
+	if (e.topt_endtrack >= 0)
+		for (z = 0; z < zone_count; z = z + 1)
+			if (zone_type[z] == ZONE_END)
+			if (zone_track[z] == e.topt_endtrack)
+			if (Zone_PointInside(z, d.origin)) return 1;
+	return -1;
+};
+
 float(entity e, float ran) SV_TASOptTargetScore =
 {
-	local float i, d, best, bk, hit, lim, tx, dh, eg, hj;
-	best = 1000000; bk = -1; hit = FALSE; e.topt_candeg = 0; e.topt_candbr = 0;
+	local float i, d, best, bk, hit, lim, tx, dh, eg, hj, endhit;
+	best = 1000000; bk = -1; hit = FALSE; e.topt_candeg = 0; e.topt_candbr = 0; endhit = FALSE;
 	lim = (e.topt_rollcut == 1) ? ran - 1 : ran;        // the tick QC acts on is not one the prediction holds
 	tx = SV_TASOptLimit(e, lim);
 	if (tx >= 0) lim = tx;                              // a wall touched or the tube left: a cut there
 	for (i = 0; i < lim; i = i + 1)
 	{
+		if (e.topt_endz >= 0 || e.topt_endtrack >= 0)
+		if (SV_TASOptInEnd(e, [topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]]))
+			{ best = 0; bk = i; hit = TRUE; endhit = TRUE; break; }
 		d = vlen([topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]] - e.topt_tgt);
 		if (d <= e.topt_tgtr || (e.topt_tgtn_z >= 0.99 && fabs(topt_out[i*13+2] - e.topt_tgt_z) <= TOPT_HOPZ &&
 		    vlen([topt_out[i*13] - e.topt_tgt_x, topt_out[i*13+1] - e.topt_tgt_y, 0]) <= TOPT_HOPR))
@@ -1399,6 +1437,9 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		}
 		if (d < best) { best = d; bk = i; }
 	}
+	if (!hit && lim >= 1 && lim == ran - 1 && e.topt_rollcut == 1 && (e.topt_endz >= 0 || e.topt_endtrack >= 0))
+	if (SV_TASOptEndTele(e, e.topt_cutent) == 1)
+		{ best = 0; bk = lim - 1; hit = TRUE; endhit = TRUE; }     // the tick before the teleport into the end
 	hj = bk;        // a hop's jump tick, before the link moves past it
 	if (hit && e.topt_tgtn_z >= 0.99)
 	{	// a hop: the link goes on past the jump until the hull stands (farsh ducks over a platform's lip
@@ -1429,6 +1470,8 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		i = bk * 13;
 		e.topt_cande = SV_TASOptStateScore(e, [topt_out[i], topt_out[i+1], topt_out[i+2]], [topt_out[i+3], topt_out[i+4], topt_out[i+5]]);
 		d = e.topt_cande - TOPT_WALLPEN * e.topt_candw - TOPT_WALLLOSS * e.topt_candwl - TOPT_GROUNDPEN * e.topt_candg;
+		if (endhit)     // P1483: the course is over: sooner is all that counts (a tick 50, energy a hundredth)
+			return SV_TASOptBand(TOPT_REACH, 20000 - 50 * (bk + 1) + 0.01 * e.topt_cande);
 		if (!e.topt_edgeok)
 			for (eg = 1; eg <= bk; eg = eg + 1)          // its own counter: i is the reach's offset below (review)
 				if (SV_TASOptEdgeAt(eg, ran))
@@ -2026,6 +2069,73 @@ void(entity e) SV_TASOptMemKeep =
 	topt_memreach[k] = (e.topt_bestv >= TOPT_REACH); topt_meme[k] = e.topt_bestce;
 };
 
+// P1483: the search's own random numbers -- Wichmann-Hill, exact in float32 (every product under 2^24) -- seeded at
+// each search from its start state, target and `seed`, so one state searches one way: random() gave stretch 1 1130,
+// 1130 and 1092 u/s from one replayed start (rigs t2chain2-4), and a retry differs only by the seed its caller gives it
+float topt_r1, topt_r2, topt_r3;
+float(float x, float m) SV_TASOptMod = { x = x - m * floor(x / m); if (x < 0) x = x + m; if (x >= m) x = x - m; return x; };
+float() SV_TASOptRand =
+{
+	local float u;
+	topt_r1 = SV_TASOptMod(171 * topt_r1, 30269); topt_r2 = SV_TASOptMod(172 * topt_r2, 30307); topt_r3 = SV_TASOptMod(170 * topt_r3, 30323);
+	u = topt_r1 / 30269 + topt_r2 / 30307 + topt_r3 / 30323;
+	return u - floor(u);
+};
+void(entity e, float salt) SV_TASOptSeed =
+{
+	local float h;
+	h = fabs(e.origin_x * 3.1 + e.origin_y * 7.3 + e.origin_z * 11.7 + e.velocity_x * 13.1 + e.velocity_y * 17.9 + e.velocity_z * 19.3
+		+ e.topt_tgt_x * 0.7 + e.topt_tgt_y * 0.3 + salt * 101 + cvar("tas_jargon_seed") * 977);
+	h = floor(SV_TASOptMod(h, 1000000));
+	topt_r1 = 1 + SV_TASOptMod(h, 30268); topt_r2 = 1 + SV_TASOptMod(floor(h / 7) + salt, 30306); topt_r3 = 1 + SV_TASOptMod(floor(h / 13) + 2 * salt, 30322);
+};
+
+// P1483: the search's best few reaching candidates that end apart (48 u), for a caller that judges them on what comes
+// after (autosurf's beam) and `play K` to play one. Keyed by the search's start state and target.
+// P1483: a prior for the next search (its caller's: autosurf's per-map lines), copied in at its start and among its first
+// candidates (grid slot 3) when its size matches
+float topt_prior[TOPT_KMAX], topt_priorn;
+float topt_sprior[TOPT_KMAX];
+.float topt_spriorn;
+#define TOPT_ARCN 4
+float topt_arck[TOPT_ARCN * TOPT_KMAX], topt_arcv[TOPT_ARCN], topt_arce[TOPT_ARCN], topt_arco[TOPT_ARCN * 3];
+float topt_arcn, topt_arckd;
+vector topt_arcmo, topt_arcmv, topt_arctgt;
+void(entity e, float v) SV_TASOptArcKeep =
+{
+	local float k, j, near, worst, b;
+	local vector o;
+	if (e.topt_candk < 1 || e.topt_candk > e.topt_n) return;
+	b = (e.topt_candk - 1) * 13;
+	o = [topt_out[b], topt_out[b+1], topt_out[b+2]];
+	near = worst = -1;
+	for (k = 0; k < topt_arcn; k = k + 1)
+	{
+		if (vlen(o - [topt_arco[k*3], topt_arco[k*3+1], topt_arco[k*3+2]]) < 48) near = k;
+		if (worst < 0) worst = k;
+		else if (topt_arcv[k] < topt_arcv[worst]) worst = k;
+	}
+	if (near >= 0) { if (v <= topt_arcv[near]) return; k = near; }
+	else if (topt_arcn < TOPT_ARCN) { k = topt_arcn; topt_arcn = topt_arcn + 1; }
+	else { if (v <= topt_arcv[worst]) return; k = worst; }
+	for (j = 0; j < e.topt_kd; j = j + 1) topt_arck[k * TOPT_KMAX + j] = topt_kcur[j];
+	topt_arcv[k] = v; topt_arce[k] = e.topt_cande;
+	topt_arco[k*3] = o_x; topt_arco[k*3+1] = o_y; topt_arco[k*3+2] = o_z;
+};
+// the slot of the r-th best kept candidate, -1 none
+float(float r) SV_TASOptArcRank =
+{
+	local float k, j, better;
+	for (k = 0; k < topt_arcn; k = k + 1)
+	{
+		better = 0;
+		for (j = 0; j < topt_arcn; j = j + 1)
+			if (topt_arcv[j] > topt_arcv[k] || (topt_arcv[j] == topt_arcv[k] && j < k)) better = better + 1;
+		if (better == r) return k;
+	}
+	return -1;
+};
+
 void(entity e) SV_TASOptCurveNext =
 {
 	local float j, u, g, c;
@@ -2061,6 +2171,11 @@ void(entity e) SV_TASOptCurveNext =
 			for (j = 0; j < e.topt_kd; j = j + 1) topt_kcur[j] = topt_mempar[(e.topt_memhit - 1) * TOPT_KMAX + j];
 			return;
 		}
+		if (e.topt_kidx == 3 && e.topt_spriorn == e.topt_kd && e.topt_spriorn > 0)
+		{	// P1483: the best line a past run played on this stretch (sv_tasautosurf.qc SV_TASAutoPriorKeep)
+			for (j = 0; j < e.topt_kd; j = j + 1) topt_kcur[j] = topt_sprior[j];
+			return;
+		}
 		if (e.topt_kidx == 0 && e.topt_kseedn == e.topt_kn)
 		{	// a seed (a demo's own line, `tas seed`): the first sample, so the search starts no worse
 			for (j = 0; j < e.topt_kn; j = j + 1) topt_kcur[j] = topt_kseed[j];
@@ -2087,7 +2202,7 @@ void(entity e) SV_TASOptCurveNext =
 		else
 		{
 			// near-normal, unit variance, from four uniforms: log (#532) is precache_vwep_model on this server
-			u = random() + random() + random() + random();
+			u = SV_TASOptRand() + SV_TASOptRand() + SV_TASOptRand() + SV_TASOptRand();
 			g = (u - 2) * 1.7320508;
 		}
 		u = (j >= e.topt_kn) ? TOPT_AIMR : ((e.topt_mode & 64) ? (e.topt_efol ? TOPT_DQOFF : TOPT_DOFF) : TOPT_QMAX);
@@ -2160,6 +2275,7 @@ void(entity e, float v) SV_TASOptCurveResult =
 		}
 		e.topt_bok = e.topt_wok = 1;
 	}
+	if (v >= TOPT_REACH) SV_TASOptArcKeep(e, v);       // P1483
 	if (e.topt_kgen < 0)
 	{
 		if (e.topt_kidx == 0 && cvar("developer") >= 2)
@@ -2702,10 +2818,12 @@ void(entity e) SV_TASOptReset =
 void(entity e, float argc) SV_TASOptCommand =
 {
 	local float n, dir, i, mode, fk, searches, obj, fast, energy, fixp, kn, tube, hop, look, pace, emin, gens, kex, stall, low, edgeok, ride, wide, leadmin, fresh, slack;
+	local float seed, playk, endz, endtr, k;
 	local string w;
 	n = stof(argv(2));
 	dir = !strcmp(argv(3), "left") ? 1 : (!strcmp(argv(3), "right") ? -1 : 0);
 	mode = 0; fk = 0; obj = 0; fast = 0; energy = 0; fixp = 0; kn = 0; tube = 0; hop = 0; look = 0; pace = 0; emin = 0; gens = 0; kex = 0; stall = 0; low = 0; edgeok = 0; ride = 0; wide = 0; leadmin = 0; fresh = 0; slack = 0;
+	seed = -2; playk = -2; endz = -2; endtr = -2;       // -2 not given, -1 its number expected next
 	for (i = 4; i < argc; i = i + 1)
 	{
 		w = argv(i);
@@ -2729,6 +2847,14 @@ void(entity e, float argc) SV_TASOptCommand =
 		else if (w == "wide" && (mode & 128) && !wide) wide = 1;                 // P1476: wider strafe weaves in flight
 		else if (w == "fresh" && !fresh) fresh = 1;                             // no remembered line among the first candidates
 		else if (w == "slack" && !slack) slack = -1;                            // the tube's slack past a ride's exit
+		else if (w == "seed" && seed == -2) seed = -1;                          // P1483: the search's random seed (a retry's own)
+		else if (seed == -1 && argv(i - 1) == "seed" && FS_TASNumber(w) && stof(w) >= 0 && stof(w) <= 1000000 && stof(w) == floor(stof(w))) seed = stof(w);
+		else if (w == "play" && (mode & 64) && playk == -2) playk = -1;         // P1483: play the K-th kept candidate, no search
+		else if (playk == -1 && argv(i - 1) == "play" && FS_TASNumber(w) && stof(w) >= 0 && stof(w) < TOPT_ARCN && stof(w) == floor(stof(w))) playk = stof(w);
+		else if (w == "endz" && endz == -2) endz = -1;                          // P1483: a course's end box (a zone index)
+		else if (endz == -1 && argv(i - 1) == "endz" && FS_TASNumber(w) && stof(w) >= 0 && stof(w) < zone_count && stof(w) == floor(stof(w))) endz = stof(w);
+		else if (w == "endtrack" && endtr == -2) endtr = -1;                    // P1483: ...or its track's END boxes
+		else if (endtr == -1 && argv(i - 1) == "endtrack" && FS_TASNumber(w) && stof(w) >= 0 && stof(w) < ZONE_MAXTRACKS && stof(w) == floor(stof(w))) endtr = stof(w);
 		else if (slack == -1 && argv(i - 1) == "slack" && FS_TASNumber(w) && stof(w) > 0 && stof(w) <= 600) slack = stof(w);
 		else if (w == "leadmin" && (mode & 128) && !leadmin) leadmin = -1;       // P1449: the least lead (an approach along the face)
 		else if (leadmin == -1 && argv(i - 1) == "leadmin" && FS_TASNumber(w) && stof(w) > 0 && stof(w) <= 0.9) leadmin = stof(w);
@@ -2753,7 +2879,8 @@ void(entity e, float argc) SV_TASOptCommand =
 		else if ((mode & 2) && fk == 4 && argv(i - 1) == "flick" && stof(w) >= 1 && stof(w) <= 32 && stof(w) == floor(stof(w)) && w == ftos(stof(w))) fk = stof(w);
 		else { mode = -1; break; }
 	}
-	if (tube == -1 || look == -1 || pace == -1 || emin == -1 || gens == -1 || kex == -1 || stall == -1 || low == -1 || ride == -1 || leadmin == -1 || (look && !tube)) mode = -1;      // look scores route: it needs a tube
+	if (tube == -1 || look == -1 || pace == -1 || emin == -1 || gens == -1 || kex == -1 || stall == -1 || low == -1 || ride == -1 || leadmin == -1 || (look && !tube)) mode = -1;
+	if (seed == -1 || playk == -1 || endz == -1 || endtr == -1) mode = -1;      // look scores route: it needs a tube
 	if (mode > 0 && (mode & 128) && (!e.topt_tgton || kn > TOPT_KMAX - ((mode & 256) ? 3 : 2)))
 	{
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: aim steers to the tas target (set one) and takes up to %.0f knots\n", TOPT_KMAX - ((mode & 256) ? 3 : 2)));
@@ -2862,6 +2989,17 @@ void(entity e, float argc) SV_TASOptCommand =
 	}
 	e.topt_bestr2 = -1; e.topt_bests = 0.5;
 	e.topt_mo = e.origin; e.topt_mv = e.velocity; e.topt_kwiden = 0;
+	e.topt_endz = (endz >= 0) ? endz : -1; e.topt_endtrack = (endtr >= 0) ? endtr : -1;
+	SV_TASOptSeed(e, max(0, seed));
+	e.topt_playk = (playk >= 0) ? playk + 1 : 0;
+	if (!e.topt_playk) { topt_arcn = 0; topt_arcmo = e.origin; topt_arcmv = e.velocity; topt_arctgt = e.topt_tgt; topt_arckd = e.topt_kd; }
+	e.topt_spriorn = 0;
+	if (topt_priorn == e.topt_kd && topt_priorn > 0)
+	{
+		for (i = 0; i < e.topt_kd; i = i + 1) topt_sprior[i] = topt_prior[i];
+		e.topt_spriorn = e.topt_kd;
+	}
+	topt_priorn = 0;
 	if (fresh && kn && (mode & 64))
 	{	// the remembered line from here led the chain to a failure: forgotten, so a retry without a bar does not replay
 		// it (tdrift8c: ramp 1's 2719 u/s line left every ramp-2 line on a trigger 13 ticks in, and came back each try)
@@ -2902,4 +3040,14 @@ void(entity e, float argc) SV_TASOptCommand =
 			(mode & 2) ? sprintf(" flick over the last %.0f ticks, 0..%.0f deg/tick", fk, TOPT_FMAX) : ""));
 	if (obj)
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: scoring stages reached after stage %.0f, then how soon, then speed\n", e.topt_seg0 + 1));
+	if (e.topt_playk)
+	{	// P1483: only the search that kept it, from its own state (autosurf's beam rewinds to it first)
+		k = SV_TASOptArcRank(e.topt_playk - 1);
+		if (k < 0 || vlen(e.origin - topt_arcmo) > 0.5 || vlen(e.velocity - topt_arcmv) > 0.5 || vlen(e.topt_tgt - topt_arctgt) > 1 || topt_arckd != e.topt_kd)
+			{ SV_TASOptStop(e, "no such kept candidate from this state"); return; }
+		for (i = 0; i < e.topt_kd; i = i + 1) topt_kbest[i] = topt_kcur[i] = topt_arck[k * TOPT_KMAX + i];
+		e.topt_bestv = topt_arcv[k]; e.topt_bestce = topt_arce[k]; e.topt_bok = e.topt_wok = 1;
+		e.topt_kgen = 0; e.topt_phase = 3;
+		sprint(e, PRINT_HIGH, sprintf("tas optimize: playing kept candidate %.0f of %.0f (no search)\n", e.topt_playk, topt_arcn));
+	}
 };
