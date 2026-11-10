@@ -174,17 +174,20 @@ float(float evtype, float scanx, float chary, float devid) RouteEdit_InputEvent 
 };
 void(vector scr) RouteEdit_DrawHint =
 {
-	local float tsz, f0;
+	local float tsz, f0, w;
+	local vector at;
 	local string s;
 	if (!rte_on) return;
 	f0 = ui_font_cur;
 	Font_Set(ui_font_ui);
-	tsz = bound(11, scr_y / 72, 20);
+	tsz = Font_Px(bound(11, scr_y / 72, 20));      // a baked size: a scaled one draws resampled glyphs
 	s = (rte_drag >= 0) ? sprintf("Moving point %g: let go to place it", rte_drag + 1)
 		: ((rte_hover >= 0) ? sprintf("Point %g: drag with the left button, right button removes it", rte_hover + 1)
 		: "Route edit: aim at a marker (noclip to fly round); tas route edit or the tab ends it");
-	sui_roundbox([scr_x * 0.5 - tsz * 17, scr_y * 0.84 - 6, 0], [tsz * 34, tsz + 12, 0], 6, SUI_THEME_PANEL, 0.8);   // below the speed readout
-	sui_text([scr_x * 0.5 - tsz * 16.4, scr_y * 0.84, 0], [tsz, tsz], s, (rte_drag >= 0 || rte_hover >= 0) ? SUI_THEME_ACCENT : SUI_THEME_DIM, 1, 0);
+	w = stringwidth(s, TRUE, [tsz, tsz]);
+	at = [rint((scr_x - w) * 0.5), rint(scr_y * 0.84), 0];         // below the speed readout
+	sui_roundbox(at - [12, 6, 0], [w + 24, tsz + 12, 0], 6, SUI_THEME_PANEL, 0.8);
+	sui_text(at, [tsz, tsz], s, (rte_drag >= 0 || rte_hover >= 0) ? SUI_THEME_ACCENT : SUI_THEME_DIM, 1, 0);
 	Font_Set(f0);
 };
 

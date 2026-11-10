@@ -278,8 +278,10 @@ float(entity e, float p) SV_TASOptHi = { if (p == 2) return TOPT_YMAX; if (p == 
 float(entity e, float k) SV_TASOptAimFromK;
 float(entity e, float ran) SV_TASOptLimit;
 .float topt_limwhy;
-// the played miss left the demo's path before its steering began (the tick, or 0): the state it started from missed, not
-// the search -- surf_null, 10 Nov: ramp 9 boarded 280-333 u under farsh's point, every ramp-10 candidate out at tick 23
+// the played miss left the demo's path within TOPT_EARLYCUT ticks (the tick, or 0): the state it started from missed, not the
+// search -- surf_null, 10 Nov: ramp 9 boarded 280-333 u under farsh's point, every ramp-10 candidate out at tick 23, the same
+// place to 0.01 u. Not "before the aim starts": the curve knots steer from tick 0, and a cut at 248 was the search's own
+#define TOPT_EARLYCUT 40
 .float topt_earlycut;
 
 // P1097: what is scored. Speed, or with `time` segments reached, the tick the last one opened and
@@ -1077,8 +1079,7 @@ void(entity e, float r, float y, float f) SV_TASOptPredict =
 		if (e.topt_phase == 3)
 		{
 			cut = (e.topt_reachv < TOPT_WEAK) ? SV_TASOptLimit(e, (e.topt_rollcut == 1) ? ran - 1 : ran) : -1;
-			p = (e.topt_mode & 256) ? SV_TASOptAimFromK(e, topt_kbest[e.topt_kn + 2]) : 0;
-			e.topt_earlycut = (cut >= 0 && e.topt_limwhy == 1 && cut < max(40, p)) ? cut + 1 : 0;
+			e.topt_earlycut = (cut >= 0 && e.topt_limwhy == 1 && cut < TOPT_EARLYCUT) ? cut + 1 : 0;
 		}
 		if (e.topt_phase == 3 && e.topt_reachv < TOPT_WEAK && cvar("developer"))
 			SV_TASOptMissWhy(e, ran);

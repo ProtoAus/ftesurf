@@ -656,14 +656,14 @@ void(entity e) SV_TASAutoFrame =
 			return;
 		}
 		if (e.as_backs < e.as_backmax && e.as_i > 0 && e.topt_earlycut && !e.as_route && as_wk[e.as_i - 1] == 1 && as_lowx[e.as_i - 1] < 8)
-		{	// its start left farsh's path before it steered: the board before handed over the wrong place, so that board again
+		{	// it left farsh's path within 40 ticks (TOPT_EARLYCUT): the board before handed over the wrong place, so that board again
 			// nearer farsh's point and with no speed bar -- the bar made a retry board lower still (surf_null ramp 9 for 10,
 			// 280-333 u under; Lex: the top keeps the height that flight needs)
 			e.as_backs = e.as_backs + 1; e.as_i = e.as_i - 1; e.as_try = 0;
 			as_lowx[e.as_i] = as_lowx[e.as_i] ? as_lowx[e.as_i] * 2 : 2;
 			for (i = e.as_i; i < as_n; i = i + 1) as_need[i] = 0;
 			e.as_tprev = as_wp[e.as_i]; e.as_goal = as_ws[e.as_i]; e.as_stage = 3;
-			SV_TASAutoNote(e, 1, sprintf("stretch %.0f left farsh's path at tick %.0f, before it steered: backtrack %.0f to stretch %.0f, boarding nearer farsh's point (low %g)",
+			SV_TASAutoNote(e, 1, sprintf("stretch %.0f left farsh's path %.0f ticks in, from where the board before put it: backtrack %.0f to stretch %.0f, boarding nearer farsh's point (low %g)",
 				e.as_i + 2, e.topt_earlycut, e.as_backs, e.as_i + 1, 0.25 * as_lowx[e.as_i]));
 			return;
 		}

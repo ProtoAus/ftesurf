@@ -56,13 +56,15 @@ string(float lead) TASSearch_LeadWord =
 	return "wide";
 };
 
-// a line in the UI font, shrunk to fit the panel's width
+// a line at a size the current face is baked at (Font_Px), a smaller rung when it does not fit w, on whole pixels:
+// sizes scaled to fit drew every glyph resampled -- uneven spacing, doubled strokes (Lex, 10 Nov)
 void(vector pos, string s, float sz, vector col, float w) TASSearch_Line =
 {
-	local float tw;
-	tw = stringwidth(s, TRUE, [sz, sz]);
-	if (tw > w) sz = sz * w / tw;
-	sui_text(pos, [sz, sz], s, col, 1, 0);
+	local float px, want;
+	px = Font_Px(sz);
+	for (want = px - 1; want >= 6 && stringwidth(s, TRUE, [px, px]) > w; want = want - 1)
+		if (Font_Px(want) < px) px = Font_Px(want);
+	sui_text([rint(pos_x), rint(pos_y), 0], [px, px], s, col, 1, 0);
 };
 
 // a labelled bar: what share of the candidates a reason ended
@@ -85,14 +87,15 @@ void(vector scr) TASSearch_Draw =
 	if (!autocvar_tas_searchpanel || !tsp_t || time < tsp_t || time - tsp_t > 8) return;
 	f0 = ui_font_cur;
 	Font_Set(ui_font_ui);
-	tsz = bound(11, scr_y / 72, 20); row = tsz * 1.5; w = tsz * 30;
+	tsz = Font_Px(bound(11, scr_y / 72, 20)); row = rint(tsz * 1.5); w = rint(tsz * 30);
 	h = row * 15.4;
 	at = [16, floor(scr_y * 0.2), 0];
 	sui_roundbox(at - [8, 8, 0], [w + 16, h + 16, 0], 8, SUI_THEME_PANEL, 0.88);
 	y = at_y;
 	// who, and whether it is thinking
-	sui_text([at_x, y, 0], [tsz * 1.15, tsz * 1.15], "JARGON", SUI_THEME_ACCENT, 1, 0);
-	x = stringwidth("JARGON", TRUE, [tsz * 1.15, tsz * 1.15]) + tsz;
+	v = Font_Px(tsz * 1.15);
+	TASSearch_Line([at_x, y, 0], "JARGON", v, SUI_THEME_ACCENT, w);
+	x = rint(stringwidth("JARGON", TRUE, [v, v]) + tsz);
 	if (tsp_phase == 2) s = sprintf("done in %.1f s", tsp_elapsed);
 	else if (time - tsp_t > 3) s = "waiting";
 	else s = (tsp_gen < 0) ? "thinking: trying a spread of first guesses" : "thinking";
