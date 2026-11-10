@@ -2201,6 +2201,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 
 		HUD_Draw(scr);
 		MPad_Draw(scr);                 // Patch 390: after HUD_Draw's clock; both of its paths
+		TASSearch_Draw(scr);            // P1449: the search panel (cl_tasoptui.qc), live: not in the HUD cache
 		// Patch 871: hud_fps. These three only draw, so they may be drawn into a target a few
 		// hundred times a second and pasted between (cl_hudcache.qc); the key strip is layer 1.
 		HC_Frame();

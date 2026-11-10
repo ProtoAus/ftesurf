@@ -280,6 +280,7 @@ void() TASContacts_Event;
 void() TASSolve_Event;
 void() TASOptViz_Event;
 void() TASAuto_Event;         // P1449
+void() TASSearch_Event;       // P1449 search panel (cl_tasoptui.qc)
 void() TASProject_Event;
 
 void() CSQC_Parse_Event =
@@ -296,6 +297,7 @@ void() CSQC_Parse_Event =
 	if (t == TAS_EV_SOLVE) { TASSolve_Event(); return; }
 	if (t == TAS_EV_OPTVIZ) { TASOptViz_Event(); return; }
 	if (t == TAS_EV_AUTOSURF) { TASAuto_Event(); return; }   // P1449 (cl_tasoptui.qc)
+	if (t == TAS_EV_SEARCH) { TASSearch_Event(); return; }    // P1449 search panel
 	if (t == TAS_EV_PROJECT) { TASProject_Event(); return; }
 	if (t >= AR_EV_ROW && t <= AR_EV_DATA)
 	{

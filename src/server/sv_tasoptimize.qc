@@ -172,6 +172,10 @@ float topt_dlen[TOPT_HMAX];     // the demo path's length from its first row to 
 // last scored reach's offsets (along the run, up the face), topt_rbal/rbup the played one's.
 .float topt_low, topt_bal, topt_bup, topt_rbal, topt_rbup;
 .float topt_edgeok, topt_edgen;     // P1449: edge-bugged reaches allowed (`edgeok`); how many were not counted
+// P1449 search panel: when the search began, the best line's board offsets, and the reference (autosurf: the demo's
+// speed and height at the board) the panel compares the best with
+.float topt_tstart, topt_bestbal, topt_bestbup, topt_refspeed, topt_refz;
+void(entity e, float phase) SV_TASOptStatsSend;
 .float topt_candeg, topt_reacheg;   // the last scored candidate edge-bugged; the played one did
 void(entity e, float bk) SV_TASOptBoardAt =
 {
@@ -830,6 +834,13 @@ float topt_bat_map[TOPT_BATMAX];
 .float topt_ebatch;             // this search rolls generations in batches
 .float topt_batgen, topt_batcount;  // the generation held (topt_kgen + 2; 0 none) and its candidates
 .float topt_batruns, topt_batworkers;   // batches run and candidates the workers ran (the report's)
+// slices copied by index: memcpy from &ptr[i] read the wrong candidates (rig tlow2: every candidate of a search
+// scored as the demo's own line left the tube at tick 45; the same QC with one rollout at a time made the board)
+void(float *dst, float doff, float *src, float soff, float count) SV_TASOptCopy =
+{
+	local float i;
+	for (i = 0; i < count; i = i + 1) dst[doff + i] = src[soff + i];
+};
 void(entity e, float c) SV_TASOptBatchAim =
 {
 	topt_bat_par[c*5] = e.topt_tgt_x + topt_kcur[e.topt_kn]; topt_bat_par[c*5+1] = e.topt_tgt_y + topt_kcur[e.topt_kn + 1];
@@ -870,7 +881,7 @@ void(entity e) SV_TASOptBatchPrefetch =
 		for (j = 0; j < e.topt_kd; j = j + 1) topt_bat_kcur[c * TOPT_KMAX + j] = topt_kcur[j];
 		for (i = 0; i < n; i = i + 1) topt_dmap[i] = min(i, e.topt_dn - 1);
 		SV_TASOptDemoRows(e);
-		memcpy((__variant*)&topt_bat_rows[c * n * 7], (__variant*)topt_rows, (int)(n * 7 * 4));
+		SV_TASOptCopy(topt_bat_rows, c * n * 7, topt_rows, 0, n * 7);
 		SV_TASOptBatchAim(e, c);
 	}
 	e.topt_kidx = kidx0;
@@ -887,10 +898,10 @@ void(entity e) SV_TASOptBatchPrefetch =
 		if (ran < 1) continue;
 		for (j = 0; j < e.topt_kd; j = j + 1) topt_kcur[j] = topt_bat_kcur[c * TOPT_KMAX + j];
 		for (i = 0; i < n; i = i + 1) topt_dmap[i] = min(i, e.topt_dn - 1);
-		memcpy((__variant*)topt_out, (__variant*)&topt_bat_out[c * n * 13], (int)(n * 13 * 4));
+		SV_TASOptCopy(topt_out, 0, topt_bat_out, c * n * 13, n * 13);
 		if (!SV_TASOptDemoMap(e, ran)) continue;
 		SV_TASOptDemoRows(e);
-		memcpy((__variant*)&topt_bat_rows2[m * n * 7], (__variant*)topt_rows, (int)(n * 7 * 4));
+		SV_TASOptCopy(topt_bat_rows2, m * n * 7, topt_rows, 0, n * 7);
 		for (j = 0; j < 5; j = j + 1) topt_bat_par2[m*5+j] = topt_bat_par[c*5+j];
 		topt_bat_map[m] = c;
 		m = m + 1;
@@ -906,8 +917,8 @@ void(entity e) SV_TASOptBatchPrefetch =
 		for (j = 0; j < m; j = j + 1)
 		{
 			c = topt_bat_map[j];
-			memcpy((__variant*)&topt_bat_out[c * n * 13], (__variant*)&topt_bat_out2[j * n * 13], (int)(n * 13 * 4));
-			memcpy((__variant*)&topt_bat_rows[c * n * 7], (__variant*)&topt_bat_rows2[j * n * 7], (int)(n * 7 * 4));
+			SV_TASOptCopy(topt_bat_out, c * n * 13, topt_bat_out2, j * n * 13, n * 13);
+			SV_TASOptCopy(topt_bat_rows, c * n * 7, topt_bat_rows2, j * n * 7, n * 7);
 			topt_bat_par[c*5+4] = topt_bat_par2[j*5+4];
 		}
 	}
@@ -922,8 +933,8 @@ float(entity e) SV_TASOptBatchTake =
 {
 	local float c, n;
 	c = e.topt_kidx; n = e.topt_n;
-	memcpy((__variant*)topt_out, (__variant*)&topt_bat_out[c * n * 13], (int)(n * 13 * 4));
-	memcpy((__variant*)topt_rows, (__variant*)&topt_bat_rows[c * n * 7], (int)(n * 7 * 4));
+	SV_TASOptCopy(topt_out, 0, topt_bat_out, c * n * 13, n * 13);
+	SV_TASOptCopy(topt_rows, 0, topt_bat_rows, c * n * 7, n * 7);
 	return topt_bat_par[c*5+4];
 };
 
@@ -1422,6 +1433,7 @@ void(entity e, float v) SV_TASOptResult =
 	{
 		e.topt_on = 0;
 		e.topt_outcome = (e.topt_tgtuse && e.topt_reachv >= TOPT_REACH) ? 2 : 1;
+		SV_TASOptStatsSend(e, 2);
 		if (e.topt_obj)
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: best %s turn %.3f deg/tick over %.0f ticks: %s (%.0f candidates); paused at %.0f\n",
 				(e.topt_dir > 0) ? "left" : "right", e.topt_bestr, e.topt_n, SV_TASOptDesc(e, v), e.topt_evals, SV_TimerTicks(e)));
@@ -1816,6 +1828,36 @@ void(entity e) SV_TASOptCurveNext =
 };
 
 // P1449 curve: one sample scored (v: SV_TASOptRollScore's); the next generation, or the play.
+// P1449 search panel: a curve search's state, each generation and at its end (TAS_EV_SEARCH; cl_tasoptui.qc)
+void(entity e, float phase) SV_TASOptStatsSend =
+{
+	local float sp, fl, lead, from;
+	if (!e.topt_kn || !e.topt_fast) return;
+	sp = SV_TASOptEnergyShow(e, e.topt_bestce);
+	if (e.topt_refspeed > 0)        // at the demo's board height: what the progress strip shows
+		sp = sqrt(max(0, sp * sp - 2 * cvar("sv_gravity") * (e.topt_refz - e.topt_z0)));
+	fl = ((e.topt_bestv >= TOPT_REACH) ? 1 : 0) + ((e.topt_bestv >= TOPT_WEAK && e.topt_bestv < TOPT_REACH) ? 2 : 0)
+		+ (e.topt_ewall ? 4 : 0) + (e.topt_elead ? 8 : 0) + (e.topt_ebatch ? 16 : 0) + ((e.topt_mode & 64) ? 32 : 0);
+	lead = e.topt_elead ? bound(0, 0.5 + 0.5 * topt_kbest[e.topt_kleadj] / TOPT_AIMR, 0.9) : 0.5;
+	from = (e.topt_mode & 256) ? SV_TASOptAimFromK(e, topt_kbest[e.topt_kn + 2]) : 0;
+	WriteByte(MSG_MULTICAST, SVC_CGAMEPACKET); WriteByte(MSG_MULTICAST, TAS_EV_SEARCH);
+	WriteByte(MSG_MULTICAST, phase); WriteByte(MSG_MULTICAST, fl);
+	WriteShort(MSG_MULTICAST, e.topt_kgen); WriteShort(MSG_MULTICAST, min(32767, e.topt_evals));
+	WriteFloat(MSG_MULTICAST, gettime(1) - e.topt_tstart);
+	WriteShort(MSG_MULTICAST, bound(-30000, rint(sp), 30000)); WriteShort(MSG_MULTICAST, bound(0, rint(e.topt_refspeed), 30000));
+	WriteShort(MSG_MULTICAST, bound(0, rint(e.topt_bestcd), 30000));
+	WriteShort(MSG_MULTICAST, min(32767, e.topt_tubeout)); WriteShort(MSG_MULTICAST, min(32767, e.topt_wallhit));
+	WriteShort(MSG_MULTICAST, min(32767, e.topt_weakn)); WriteShort(MSG_MULTICAST, min(32767, e.topt_edgen));
+	WriteShort(MSG_MULTICAST, min(32767, e.topt_fcut));
+	WriteShort(MSG_MULTICAST, min(32767, e.topt_batruns)); WriteShort(MSG_MULTICAST, min(32767, e.topt_batworkers));
+	WriteShort(MSG_MULTICAST, (e.topt_mode & 128) ? rint(topt_kbest[e.topt_kn]) : 0);
+	WriteShort(MSG_MULTICAST, (e.topt_mode & 128) ? rint(topt_kbest[e.topt_kn + 1]) : 0);
+	WriteByte(MSG_MULTICAST, rint(lead * 100)); WriteShort(MSG_MULTICAST, from);
+	WriteShort(MSG_MULTICAST, bound(-30000, rint(e.topt_bestbal), 30000)); WriteShort(MSG_MULTICAST, bound(-30000, rint(e.topt_bestbup), 30000));
+	WriteShort(MSG_MULTICAST, e.topt_n);
+	msg_entity = e; multicast(e.origin, MULTICAST_ONE_R);
+};
+
 void(entity e, float v) SV_TASOptCurveResult =
 {
 	local float j, i, n, m, s, w, pick, bv;
@@ -1824,6 +1866,7 @@ void(entity e, float v) SV_TASOptCurveResult =
 	if (v > e.topt_bestv)
 	{
 		e.topt_bestv = v; e.topt_bestce = e.topt_cande; e.topt_bestcd = e.topt_candd;
+		e.topt_bestbal = e.topt_bal; e.topt_bestbup = e.topt_bup;
 		for (j = 0; j < e.topt_kd; j = j + 1) topt_kbest[j] = topt_kcur[j];
 		for (j = 0; j < e.topt_n; j = j + 1)
 		{
@@ -1846,6 +1889,7 @@ void(entity e, float v) SV_TASOptCurveResult =
 			topt_ksig[j] = (j >= e.topt_kn) ? 200 : ((e.topt_mode & 64) ? (e.topt_efol ? 8 : 2) : 40);
 		}
 		e.topt_kgen = 0; e.topt_kidx = 0;
+		SV_TASOptStatsSend(e, 1);
 		return;
 	}
 	topt_kval[e.topt_kidx] = v;
@@ -1891,6 +1935,7 @@ void(entity e, float v) SV_TASOptCurveResult =
 	e.topt_kgen = e.topt_kgen + 1; e.topt_kidx = 0;
 	if (e.topt_kgen == 1 || e.topt_bestv > e.topt_kprev + 0.5) { e.topt_kprev = e.topt_bestv; e.topt_kstall = 0; }
 	else e.topt_kstall = e.topt_kstall + 1;
+	SV_TASOptStatsSend(e, 1);
 	if (cvar("developer"))
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: curve generation %.0f, best %.1f, %.0f candidates, %.1f s\n", e.topt_kgen, SV_TASOptEnergyShow(e, e.topt_bestv), e.topt_evals, gettime(1)));
 	if (e.topt_kgen >= e.topt_cegen || (e.topt_kgen >= TOPT_CEMIN && e.topt_kstall >= e.topt_cestall && (!e.topt_tgtuse || e.topt_bestv >= TOPT_REACH)))
@@ -2150,6 +2195,43 @@ void(entity e, float argc) SV_TASBatchBench =
 	sprint(e, PRINT_HIGH, sprintf("%.0f values differ%s (wall ticks %.0f)\n", bad,
 		(bad > 0) ? sprintf(", first candidate %.0f at %.0f", firstk, firsti) : "", w));
 	memfree(rows0); memfree(rowsb); memfree(rows1); memfree(outb); memfree(out1); memfree(par);
+};
+
+// P1467: `cmd tas rolldump <ticks> [q]` (developer): one FOLLOW rollout (turn command q, 0 by default) from the paused
+// body, every tick's origin, velocity, ground, ducked and contact written to data/rolldump_<ticks>.txt -- two engines'
+// files diffed find where their movement parts.
+void(entity e, float argc) SV_TASRollDump =
+{
+	local float n, q, i, ran, fh, btn;
+	local float *rows;
+	local float *out;
+	n = stof(argv(2)); q = (argc >= 4) ? stof(argv(3)) : 0; btn = (argc >= 5) ? stof(argv(4)) : 0;   // buttons: 1 jump, 2 duck
+	if (!cvar("developer") || !checkbuiltin(tas_rollout) || argc < 3 || !(n >= 1 && n <= 2048 && n == floor(n)))
+	{
+		sprint(e, PRINT_HIGH, "tas rolldump <ticks 1..2048> [q] (developer 1)\n");
+		return;
+	}
+	rows = (float*)memalloc(n * 7 * 4);
+	out = (float*)memalloc(n * 13 * 4);
+	if (!rows || !out) { if (rows) memfree(rows); if (out) memfree(out); return; }
+	for (i = 0; i < n; i = i + 1)
+	{
+		rows[i*7] = 0; rows[i*7+1] = -450; rows[i*7+2] = 0; rows[i*7+3] = SV_TASPWord(e.v_angle_x);
+		rows[i*7+4] = q; rows[i*7+5] = 0; rows[i*7+6] = TOPT_EFOLLOW + TOPT_EPITCHV + btn;
+	}
+	ran = tas_rollout(e, rows, n, out);
+	fh = fopen(sprintf("rolldump_%g_%g.txt", n, btn), FILE_WRITE);
+	if (fh >= 0)
+	{
+		for (i = 0; i < max(0, ran); i = i + 1)
+		{
+			fputs(fh, sprintf("%g %.6f %.6f %.6f %.6f %.6f %.6f ", i, out[i*13], out[i*13+1], out[i*13+2], out[i*13+3], out[i*13+4], out[i*13+5]));
+			fputs(fh, sprintf("%g %g %g %.6f %.6f %.6f %g\n", out[i*13+6], out[i*13+7], out[i*13+8], out[i*13+9], out[i*13+10], out[i*13+11], out[i*13+12]));
+		}
+		fclose(fh);
+	}
+	sprint(e, PRINT_HIGH, sprintf("tas rolldump: %.0f ticks run of %.0f, written to data/rolldump_%g.txt\n", ran, n, n));
+	memfree(rows); memfree(out);
 };
 
 // P1449: tas target <x> <y> <z> [radius 8..4096, default 64] [nx ny nz] | clear | show -- a point (a face
@@ -2476,6 +2558,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_bestr2 = -1; e.topt_bests = 0.5;
 	e.topt_obj = obj; e.topt_seg0 = e.run_t_seg;
 	e.topt_fast = fast; e.topt_energy = energy; e.topt_z0 = e.origin_z; e.topt_fcut = 0;
+	e.topt_tstart = gettime(1); e.topt_bestbal = e.topt_bestbup = e.topt_refspeed = e.topt_refz = 0;
 	e.topt_tgtuse = (fast && e.topt_tgton); e.topt_reachv = -1;   // bracketed: = binds tighter than && here
 	e.topt_reachk = e.topt_reachd = e.topt_reachw = e.topt_reacheg = 0;
 	if (fast) SV_TASOptVizSend(e, 0, 0);

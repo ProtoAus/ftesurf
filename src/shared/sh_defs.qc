@@ -211,6 +211,7 @@
 #define TAS_EV_SOLVE 55      // own bounded-search progress; never input/pose authority
 #define TAS_EV_OPTVIZ 56     // P1449: tas optimize's candidate paths, drawn only (cl_tasoptviz.qc)
 #define TAS_EV_AUTOSURF 57   // P1449: tas autosurf's state for the Optimizer tab (cl_tasoptui.qc)
+#define TAS_EV_SEARCH 58     // P1449: a curve search's progress for the search panel (cl_tasoptui.qc TASSearch_Draw)
 #define TAS_CONTACT_ROWS 4
 #define TAS_CONTACT_MAX 4096
 #define TAS_PAGE_ROWS 8

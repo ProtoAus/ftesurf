@@ -423,6 +423,11 @@ void(entity e) SV_TASAutoLink =
 	argc = tokenize(cl);
 	SV_TASOptCommand(e, argc);
 	if (!e.topt_on) e.topt_outcome = -1;        // refused: a failed try
+	if (e.topt_on && !e.as_route)
+	{	// the search panel's reference: the demo's speed and height at this board (the progress strip's measure)
+		for (r = 0; r < as_nrows - 1 && as_rows[r*7] < as_wt[i] - 0.0001; r = r + 1) ;
+		e.topt_refspeed = vlen([as_rows[r*7+4], as_rows[r*7+5], as_rows[r*7+6]]); e.topt_refz = as_rows[r*7+3];
+	}
 	e.as_stage = 2;
 	if (e.as_route) SV_TASAutoNote(e, 1, sprintf("point %.0f of %.0f (%s), try %.0f", i + 1, as_n,
 		(as_wk[i] == 1) ? "ramp" : ((as_wk[i] == 2) ? "bhop" : "point"), e.as_try + 1));
