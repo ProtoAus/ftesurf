@@ -1122,7 +1122,7 @@ void(entity e, float r, float y, float f) SV_TASOptPredict =
 	{	// P1476: the played line's strafe-side flips (a flip a tick in flight is Lex's "hyper wiggle")
 		cut = 0;
 		for (i = 1; i < ran; i = i + 1)
-			if (topt_rows[i*7+4] * topt_rows[i*7-3] < 0) cut = cut + 1;
+			if (topt_rows[i*7+1] * topt_rows[i*7-6] < 0) cut = cut + 1;     // the side move: FOLLOW writes the yaw word over [4]
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: the played line flips its strafe side %.0f times in %.0f ticks%s\n", cut, ran,
 			e.topt_ewide ? " (wide)" : ""));
 	}
