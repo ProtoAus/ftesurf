@@ -2581,7 +2581,7 @@ float(string cmd) CSQC_ConsoleCommand =
 			else
 				localcmd(sprintf("p%g cmd tas seed%s\n", tsseat + 1, tsline));
 		}
-		else if (cmdargc >= 3 && cmdargc <= 16 && !strcmp(argv(1), "autosurf"))  // P1449: a path, then known words and numbers
+		else if (cmdargc >= 3 && cmdargc <= 24 && !strcmp(argv(1), "autosurf"))  // P1449: a path, then known words and numbers
 		{
 			tsline = argv(2);
 			for (tsi = 0; tsi < strlen(tsline); tsi = tsi + 1)
@@ -2595,11 +2595,11 @@ float(string cmd) CSQC_ConsoleCommand =
 			for (tsi = 3; tsi < cmdargc; tsi = tsi + 1)
 				if (argv(tsi) == "tube" || argv(tsi) == "look" || argv(tsi) == "tries" || argv(tsi) == "backs" || argv(tsi) == "nohop" || argv(tsi) == "join" || argv(tsi) == "rideknots" || argv(tsi) == "polish" || argv(tsi) == "low" || argv(tsi) == "apex" || argv(tsi) == "air" || argv(tsi) == "plan" || argv(tsi) == "wide" || argv(tsi) == "spots" || argv(tsi) == "pace" || argv(tsi) == "emin" || argv(tsi) == "start" || argv(tsi) == "zone" ||
 				    argv(tsi) == "sg" || argv(tsi) == "sy" || argv(tsi) == "sright" || argv(tsi) == "sflip" || argv(tsi) == "onjump" || argv(tsi) == "onexit" ||
-				    argv(tsi) == "finish" || FS_TASNumber(argv(tsi)))
+				    argv(tsi) == "finish" || argv(tsi) == "course" || FS_TASNumber(argv(tsi)))
 					tsline = strcat(tsline, " ", argv(tsi));
 				else tsline = " !";
 			if (strstrofs(tsline, "!") >= 0)
-				print("tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [emin F] [nohop] [join] [rideknots] [polish] [low] [apex] [air] [wide] [finish] | redo <n> | stop | status | startpause\n");
+				print("tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [emin F] [nohop] [join] [rideknots] [polish] [low] [apex] [air] [wide] [finish] [course T L] [start] | continue T L | redo <n> | stop | status | startpause\n");
 			else
 				localcmd(sprintf("p%g cmd tas autosurf%s\n", tsseat + 1, tsline));
 		}

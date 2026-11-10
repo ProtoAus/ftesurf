@@ -209,6 +209,7 @@ void() TASAuto_Event =
 	else if (taso_state == 1 && taso_i < wasi)      // a backtrack: what came after it is to be done again
 		for (k = taso_i; k < TASO_STRETCHES; k = k + 1) taso_rb[k] = taso_rf[k] = 0;
 	if (rk >= 0 && rk < TASO_STRETCHES) { taso_rb[rk] = rb; taso_rf[rk] = (rf > 0) ? rf : -1; taso_lastk = rk; }   // -1: a route point
+	if (substring(taso_note, 0, 18) == "saved for Continue") jg_kat = 0;
 	if (substring(taso_note, 0, 12) == "your route: ")
 	{	// the server's count; a taken add's note carries its point ("N points, added x y z nx ny nz"), every other
 		// note only trims (an undo, a clear) -- the markers are the server's route, typed adds included (review 6).
@@ -412,13 +413,15 @@ string() TASOptUI_Effort =
 };
 void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 {
-	local float i, half, third, running, nb, nh, na, nm;
+	local float i, half, third, running, nb, nh, na, nm, q, st;
 	local vector chip, chip3;
-	local string label, go;
+	local string label, go, cw, cn;
 	TASJargon_Guides();
+	TASJargon_Saved();
 	running = (taso_state == 1);
 	// the route fills itself in: the picked run's plan as soon as the tab is open or the pick changes (Lex, 10 Nov)
-	if (!running && jg_gn && jg_planned != jg_gp[jg_pick]) TASJargon_RequestPlan();
+	if (!running && jg_gn && (jg_planned != jg_gp[jg_pick] || jg_plannedc != jg_cpick)) TASJargon_RequestPlan();
+	cn = TASJargon_CourseLabel(jg_cpick); cw = TASJargon_CourseWords();
 	half = (width - 6) / 2; chip = [half, row, 0];
 	third = (width - 12) / 3; chip3 = [third, row, 0];
 	sui_text(at, [hint, hint], "Jargon finds a fast line through the map, ramp by ramp, guided by a run you pick.", SUI_THEME_DIM, 1, 0);
@@ -427,11 +430,25 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	else label = (taso_note != "") ? taso_note : "Pick a guide run, check its route, then surf.";
 	sui_text(at, [hint, hint], label, running ? SUI_THEME_TEXT : SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 2;
 
-	// 1: the guide run
-	sui_text(at, [tsz, tsz], "1   Guide run", SUI_THEME_TEXT, 1, 0); at_y = at_y + tsz * 1.6;
+	// P1478: the course (Lex, 11 Nov: maps, bonuses and stages with a click) -- the map's own, from its zones
+	st = 1;
+	if (jg_cn > 1)
+	{
+		sui_text(at, [tsz, tsz], "1   Course", SUI_THEME_TEXT, 1, 0); at_y = at_y + tsz * 1.6;
+		q = (width - 18) / 4;
+		for (i = 0; i < jg_cn; i = i + 1)
+			if (Profile_Chip(sprintf("jg_k%g", i), at + [(i - 4 * floor(i / 4)) * (q + 6), floor(i / 4) * (row + 3), 0], [q, row, 0],
+				TASJargon_CourseLabel(i), hint, jg_cpick == i))
+				if (!running) { jg_cpick = i; jg_gat = 0; jg_kat = 0; }
+		at_y = at_y + ceil(jg_cn / 4) * (row + 3) + hint;
+		st = 2;
+	}
+	// the guide run
+	sui_text(at, [tsz, tsz], sprintf("%g   Guide run", st), SUI_THEME_TEXT, 1, 0); at_y = at_y + tsz * 1.6;
 	if (!jg_gn)
 	{
-		sui_text(at, [hint, hint], "Turn on a run's line in the leaderboard and it shows up here.", SUI_THEME_MUTED, 1, 0);
+		sui_text(at, [hint, hint], (jg_cn > 1) ? sprintf("No run of %s here yet: turn one on in the leaderboard.", cn)
+			: "Turn on a run's line in the leaderboard and it shows up here.", SUI_THEME_MUTED, 1, 0);
 		at_y = at_y + hint * 1.9;
 	}
 	for (i = 0; i < jg_gn; i = i + 1)
@@ -448,12 +465,12 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 		if (jg_k[i] == 5) na = na + 1;
 		if (jg_mv[i]) nm = nm + 1;
 	}
-	sui_text(at, [tsz, tsz], "2   Route", SUI_THEME_TEXT, 1, 0);
-	label = (jg_n && jg_planned == jg_gp[jg_pick]) ? sprintf("%g ramps, %g bhops%s%s", nb, nh, na ? sprintf(", %g air points", na) : "",
+	sui_text(at, [tsz, tsz], sprintf("%g   Route", st + 1), SUI_THEME_TEXT, 1, 0);
+	label = (jg_n && jg_planned == jg_gp[jg_pick] && jg_plannedc == jg_cpick) ? sprintf("%g ramps, %g bhops%s%s", nb, nh, na ? sprintf(", %g air points", na) : "",
 		nm ? sprintf(", %g moved", nm) : "") : (jg_gn ? "press Show route" : "");
 	sui_text(at + [tsz * 7, tsz * 0.15, 0], [hint, hint], label, SUI_THEME_DIM, 1, 0);
 	at_y = at_y + tsz * 1.6;
-	if (Profile_Chip("jg_show", at, chip, (jg_n && jg_planned == jg_gp[jg_pick]) ? "Show route again" : "Show route", hint, FALSE))
+	if (Profile_Chip("jg_show", at, chip, (jg_n && jg_planned == jg_gp[jg_pick] && jg_plannedc == jg_cpick) ? "Show route again" : "Show route", hint, FALSE))
 		TASJargon_RequestPlan();
 	if (Profile_Chip("jg_edit", at + [half + 6, 0, 0], chip, "Edit in the world", hint, FALSE)) TASJargon_EditStart();
 	at_y = at_y + row + 3;
@@ -465,25 +482,40 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	sui_text(at, [hint, hint], "Esc brings this panel back.", SUI_THEME_MUTED, 1, 0);
 	at_y = at_y + hint * 2;
 
-	// 3: surf it
-	sui_text(at, [tsz, tsz], "3   Surf", SUI_THEME_TEXT, 1, 0); at_y = at_y + tsz * 1.6;
+	// surf it: from the course's start (one click), on from the saved run, or from here
+	sui_text(at, [tsz, tsz], sprintf("%g   Surf", st + 2), SUI_THEME_TEXT, 1, 0); at_y = at_y + tsz * 1.6;
+	go = strcat(TASOptUI_Effort(), TASJargon_Airs() ? " air" : "", autocvar_tas_jargon_wide ? " wide" : "", autocvar_tas_jargon_spots ? " spots" : "");
+	if (cw != "") go = strcat(go, " finish");       // a course runs to its end box
 	if (running)
 	{
 		if (Profile_Chip("jg_stop", at, [width, row, 0], "Stop", tsz, TRUE)) localcmd("tas autosurf stop\n");
 		at_y = at_y + row + 3;
 	}
-	else if (jg_gn)
+	else
 	{
-		go = strcat(TASOptUI_Effort(), TASJargon_Airs() ? " air" : "", autocvar_tas_jargon_wide ? " wide" : "", autocvar_tas_jargon_spots ? " spots" : "");
-		if (Profile_Chip("jg_gostart", at, chip, "Restart from the start zone", tsz, FALSE))
-			localcmd(sprintf("tas autosurf %s%s start\n", jg_gp[jg_pick], go));
-		if (Profile_Chip("jg_gohere", at + [half + 6, 0, 0], chip, "From here", tsz, FALSE))
-			localcmd(sprintf("tas autosurf %s%s\n", jg_gp[jg_pick], go));
-		at_y = at_y + row + 3;
-		sui_text(at, [hint, hint], "Restart: the start, prestrafe and jump are done for you.", SUI_THEME_MUTED, 1, 0);
-		at_y = at_y + hint * 1.4;
-		sui_text(at, [hint, hint], "Here: from where you are paused on the route.", SUI_THEME_MUTED, 1, 0);
-		at_y = at_y + hint * 1.9;
+		if (jg_gn)
+		{
+			if (Profile_Chip("jg_gostart", at, [width, row, 0], (cw != "") ? sprintf("Surf %s from its start", cn) : "Restart from the start zone", tsz, FALSE))
+				localcmd(sprintf("tas autosurf %s%s start%s\n", jg_gp[jg_pick], go, cw));
+			at_y = at_y + row + 3;
+		}
+		if (jg_knext > 0 && cw != "")
+		{	// the run saved as it went (data/tasproj/<map>/jg_<course>): replayed, then on from the stretch it had reached
+			if (Profile_Chip("jg_gocont", at, [width, row, 0], (jg_knext >= jg_kof) ? sprintf("Load the saved %s run (route done)", cn)
+				: sprintf("Continue %s from stretch %g of %g", cn, jg_knext + 1, jg_kof), tsz, FALSE))
+				localcmd(sprintf("tas autosurf continue %g %g%s\n", jg_ct[jg_cpick], jg_cl[jg_cpick], go));
+			at_y = at_y + row + 3;
+		}
+		if (jg_gn)
+		{
+			if (Profile_Chip("jg_gohere", at, chip, "From here", hint, FALSE))
+				localcmd(sprintf("tas autosurf %s%s%s\n", jg_gp[jg_pick], go, cw));
+			at_y = at_y + row + 3;
+			sui_text(at, [hint, hint], "Start: the box, prestrafe and jump are done for you; the run saves as it goes.", SUI_THEME_MUTED, 1, 0);
+			at_y = at_y + hint * 1.4;
+			sui_text(at, [hint, hint], "Continue: the saved run, then on from where it stopped. Here: from your pause.", SUI_THEME_MUTED, 1, 0);
+			at_y = at_y + hint * 1.9;
+		}
 	}
 	sui_text(at, [hint, hint], "Effort", SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.5;
 	if (Profile_Chip("jg_e0", at, chip3, "Quick", hint, taso_effort == 0)) taso_effort = 0;
