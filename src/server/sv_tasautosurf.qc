@@ -400,7 +400,7 @@ void(entity e) SV_TASAutoLink =
 	ps = strcat(ps, sprintf(" gens %.0f", min(90, 30 * (1 + e.as_try))));
 	if (e.as_rideknots && i > 0)
 	if (as_wk[i - 1] == 1 && as_wl[i - 1] > e.as_tprev)
-		ps = strcat(ps, sprintf(" kex %.0f", rint((as_wl[i - 1] - e.as_tprev) / PM_TICK) + 15));
+		ps = strcat(ps, sprintf(" kex %.0f", min(TOPT_HMAX, rint((as_wl[i - 1] - e.as_tprev) / PM_TICK) + 15)));   // past the cap: refused (review 13)
 	cl = sprintf("tas optimize %.0f left curve 12 demo aim late tube %.0f%s%s%s energy fast", h, e.as_tube, e.as_hop ? " hop" : "", ls, ps);
 	}
 	if (cvar("developer")) sprint(e, PRINT_HIGH, strcat("tas autosurf: ", cl, "\n"));

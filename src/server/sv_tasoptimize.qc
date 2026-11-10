@@ -2123,6 +2123,8 @@ void(entity e, float argc) SV_TASOptCommand =
 	// kex: only with knots enough to split and the target's row well past it (else the even spread)
 	e.topt_kex = e.topt_kend = 0;
 	if (kex > 0 && kn >= 6 && min(e.topt_tgtj, e.topt_kspan - 1) >= kex + kn) { e.topt_kex = kex; e.topt_kend = min(e.topt_tgtj, e.topt_kspan - 1); }
+	else if (kex > 0)       // said, not dropped silently (review 13)
+		sprint(e, PRINT_HIGH, sprintf("tas optimize: kex %.0f not used (it needs a tube, 6 knots or more and the target's row %.0f ticks past it): knots spread evenly\n", kex, kn));
 	if (mode & 128) i = SV_TASOptEngineAims(e);
 	if ((mode & 128) && i < 0)
 	{
