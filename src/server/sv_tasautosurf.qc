@@ -337,7 +337,10 @@ float(float j) SV_TASAutoHeadD =
 // P1483: a flight that turns 90 degrees or more gets an air point where half of its turn is done -- surf_shape bonus 1
 // turns 237 degrees in one 1.4 s flight and every line flew straight on, 1522 u past ramp 2; surf_tensor2 stage 5's
 // stretch 4 is an S (-73 then +172) whose lines fell into the fail teleport on the first swing (tools/jgturns.py).
-// Progress is signed: an S's swing the other way is not half the turn. tas_jargon_off 512: none.
+// Progress is signed: an S's swing the other way is not half the turn. tas_jargon_off 512: none. Collected here and
+// placed after the boards, hops and finish, into free slots only (tools/jgturns.py over 337 guides: 3 more would pass
+// TAS_ASMAX, and a turn point must never take a board's place).
+float as_tpj[TAS_ASMAX], as_tpn;
 void(float a, float b) SV_TASAutoTurn =
 {
 	local float j, c, tot;
@@ -353,8 +356,26 @@ void(float a, float b) SV_TASAutoTurn =
 	}
 	if (j > b) return;
 	if (as_rows[j*7] - as_rows[a*7] < 0.25 - 0.0001 || as_rows[b*7] - as_rows[j*7] < 0.25 - 0.0001) return;     // the board's own turn
-	SV_TASAutoAdd(5, j, '0 0 0');
-	as_wr[as_n - 1] = TAS_AIRR; as_wl[as_n - 1] = 0;
+	if (as_tpn < TAS_ASMAX) { as_tpj[as_tpn] = j; as_tpn = as_tpn + 1; }
+};
+void() SV_TASAutoTurnsPlace =
+{
+	local float k, j, m, i;
+	for (k = 0; k < as_tpn && as_n < TAS_ASMAX; k = k + 1)
+	{
+		j = as_tpj[k];
+		for (m = 0; m < as_n && as_wt[m] <= as_rows[j*7]; m = m + 1) ;
+		for (i = as_n; i > m; i = i - 1)
+		{
+			as_wt[i] = as_wt[i - 1]; as_wk[i] = as_wk[i - 1]; as_wr[i] = as_wr[i - 1]; as_wl[i] = as_wl[i - 1];
+			as_wo[i*3] = as_wo[i*3 - 3]; as_wo[i*3+1] = as_wo[i*3 - 2]; as_wo[i*3+2] = as_wo[i*3 - 1];
+			as_wn[i*3] = as_wn[i*3 - 3]; as_wn[i*3+1] = as_wn[i*3 - 2]; as_wn[i*3+2] = as_wn[i*3 - 1];
+		}
+		as_wt[m] = as_rows[j*7]; as_wk[m] = 5; as_wr[m] = TAS_AIRR; as_wl[m] = 0;
+		as_wo[m*3] = as_rows[j*7+1]; as_wo[m*3+1] = as_rows[j*7+2]; as_wo[m*3+2] = as_rows[j*7+3];
+		as_wn[m*3] = as_wn[m*3+1] = as_wn[m*3+2] = 0;
+		as_n = as_n + 1;
+	}
 };
 
 float(entity e, float from) SV_TASAutoPlan =
@@ -370,7 +391,7 @@ float(entity e, float from) SV_TASAutoPlan =
 			if (d < best) { best = d; s = i; }
 		}
 	if (s < 0 || best > 400) return -1;
-	as_n = 0; st = -1; lastleave = s; gdt = cvar("sv_gravity") * PM_TICK;
+	as_n = 0; st = -1; lastleave = s; gdt = cvar("sv_gravity") * PM_TICK; as_tpn = 0;
 	for (i = s + 1; i < as_nrows; i = i + 1)
 	{
 		d = fabs(as_rows[i*7+6] - as_rows[i*7-1] + gdt) > 1.5;      // vz off free fall
@@ -413,6 +434,7 @@ float(entity e, float from) SV_TASAutoPlan =
 		}
 	}
 	if (e.as_finish) SV_TASAutoAdd(3, as_nrows - 1, '0 0 0');
+	SV_TASAutoTurnsPlace();
 	if (e.as_air) SV_TASAutoAir(e, s);
 	SV_TASAutoMoved();
 	if (cvar("developer"))
