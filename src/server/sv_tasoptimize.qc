@@ -803,6 +803,7 @@ void(entity e, float ran) SV_TASOptDump =
 	fclose(fh);
 };
 
+void(entity e, float ran) SV_TASOptMissWhy;
 void(entity e, float r, float y, float f) SV_TASOptPredict =
 {
 	local float ran, i, ran2, cut, ok, p;
@@ -853,6 +854,8 @@ void(entity e, float r, float y, float f) SV_TASOptPredict =
 		e.topt_reachk = e.topt_candk; e.topt_reachd = e.topt_candd; e.topt_reache = e.topt_cande; e.topt_reachw = e.topt_candw;
 		if (e.topt_phase == 3 && e.topt_look > 0 && e.topt_kn && (e.topt_mode & 64) && e.topt_reachv >= TOPT_REACH)
 			SV_TASOptWarmKeep(e);
+		if (e.topt_phase == 3 && e.topt_reachv < TOPT_WEAK && cvar("developer"))
+			SV_TASOptMissWhy(e, ran);
 	}
 	if (ran >= 1 && cvar("developer") >= 2) SV_TASOptDump(e, ran);
 	if (ran >= 1)
@@ -863,11 +866,40 @@ void(entity e, float r, float y, float f) SV_TASOptPredict =
 	}
 };
 
+// P1449 developer: what the played miss did -- its closest tick and where and why it was cut (ramp 6 of surf_null:
+// every candidate within 150-220 u of the board point and none boarding, 10 Nov)
+.float topt_limwhy;
+float(entity e, float ran) SV_TASOptLimit;
+void(entity e, float ran) SV_TASOptMissWhy =
+{
+	local float k, c, i;
+	k = bound(0, e.topt_reachk, ran - 1) * 13;
+	sprint(e, PRINT_HIGH, strcat(sprintf("tas optimize: miss: target %v r %.0f n %v; ", e.topt_tgt, e.topt_tgtr, e.topt_tgtn),
+		sprintf("closest tick %.0f at %v vel %v contact %.0f n %v\n", e.topt_reachk, [topt_out[k], topt_out[k+1], topt_out[k+2]],
+		[topt_out[k+3], topt_out[k+4], topt_out[k+5]], topt_out[k+8], [topt_out[k+9], topt_out[k+10], topt_out[k+11]])));
+	c = SV_TASOptLimit(e, (e.topt_rollcut == 1) ? ran - 1 : ran);
+	if (c >= 0)
+	{
+		i = c * 13;
+		sprint(e, PRINT_HIGH, sprintf("tas optimize: miss: cut at tick %.0f (%s) at %v vel %v contact %.0f, %.0f u from the target\n", c,
+			(e.topt_limwhy == 1) ? "left the tube" : "limit", [topt_out[i], topt_out[i+1], topt_out[i+2]], [topt_out[i+3], topt_out[i+4], topt_out[i+5]],
+			topt_out[i+8], vlen([topt_out[i], topt_out[i+1], topt_out[i+2]] - e.topt_tgt)));
+	}
+	else sprint(e, PRINT_HIGH, sprintf("tas optimize: miss: not cut; %.0f ticks run, cut code %.0f\n", ran, e.topt_rollcut));
+	for (i = 0; i < ran; i = i + 1)
+		if (topt_out[i*13+8] == 1 && vlen([topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]] - e.topt_tgt) < 2 * e.topt_tgtr)
+		{	// the first ride near the target: the face it met against the one asked for
+			sprint(e, PRINT_HIGH, sprintf("tas optimize: miss: first ride near it at tick %.0f, %.0f u off, face %v (dot %.3f)\n", i,
+				vlen([topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]] - e.topt_tgt), [topt_out[i*13+9], topt_out[i*13+10], topt_out[i*13+11]],
+				[topt_out[i*13+9], topt_out[i*13+10], topt_out[i*13+11]] * e.topt_tgtn));
+			i = ran;
+		}
+};
+
 // P1449: the first of `ran` ticks a fast candidate may not have, or -1; why in topt_limwhy.
 // 1 (`tube R`): farther than R from the demo's path. The first tick matches the nearest of the first 64
 // rows, later ticks search forward from the last match, so a faster line may run ahead of the demo's
 // clock (rows ~27 u apart at 1800 u/s: point distance, not segment). Past the last row it is free.
-.float topt_limwhy;
 float(entity e, float ran) SV_TASOptTubeIn;
 float(entity e, float ran) SV_TASOptLimit =
 {
