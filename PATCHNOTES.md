@@ -85,7 +85,8 @@
 - Maps with lots of curved terrain build up to 5x faster in the viewer (ahop_coast 11 s to 2 s).
 
 ### P1446 Smaller stutters every 15-20 seconds, on every map
-- The game code's string cleanup used to freeze one or two frames every 15-20 seconds while it copied and freed a large block of memory. It now keeps that memory between cleanups: the slowest frame it causes went from 7.5-12 ms to 4.5-6.4 ms on surf_nuclear, and the same applies on every map.
+- The game code's string cleanup used to freeze one or two frames every 15-20 seconds while it copied and freed a large block of memory.
+- It now keeps that memory between cleanups: the slowest frame it causes went from 7.5-12 ms to 4.5-6.4 ms on surf_nuclear, and the same applies on every map.
 - `r_spikes` (see P1444) now also shows what the slow frames did in prediction and network handling, and `r_spikes 2` names the game-code functions behind a slow frame.
 
 ### P1448 Fetch: any leg, any player, from KSF and Momentum
