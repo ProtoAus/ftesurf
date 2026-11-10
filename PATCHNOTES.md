@@ -21,6 +21,9 @@
 
 ## next
 
+### P1479 Input recordings finish at buffer boundaries
+- Input recordings near a buffer-growth boundary now finish normally instead of being incorrectly marked truncated.
+
 ### P1478 Jargon: one click for the map, a bonus or a stage, and Continue
 - Jargon's panel now lists the map's courses (Main, each stage, each bonus). Pick one and it offers only runs of that course as guides, from leaderboard, KSF and Momentum replays and your own recordings.
 - "Surf <course> from its start" does the rest: the right start box, a walk to where the guide stood and its own prestrafe, every ramp, and the run into the end, then says your time. When it gets stuck it tries harder by itself before giving up.
