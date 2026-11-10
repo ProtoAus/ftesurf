@@ -2291,7 +2291,7 @@ float(float margin, vector fwd) Sprite_ConeTan =
 // seconds since this frame's first gettime(2), in 0.1 ms steps (Patch 1488); an older engine answers realtime there,
 // which is never under 0.5 s after the menu, and then nothing is capped (the ray counts still are).
 float  spr_tt0, spr_tcap;               // this frame's first gettime(2) and the cap in seconds (0: off)
-float  spr_tcapn;                       // loops the cap stopped, since load (vbsp_glare_check's census)
+float  spr_tcapg, spr_tcaps;            // glare / sky-test loops the budget stopped, since load (vbsp_sprite_debug)
 void() Sprite_TraceStart =
 {
 	spr_tt0 = gettime(2);
@@ -2580,7 +2580,7 @@ void() Sprite_Glare =
 			if (Sprite_TraceOver(1))
 			{
 				tcapped = TRUE;
-				spr_tcapn = spr_tcapn + 1;
+				spr_tcapg = spr_tcapg + 1;
 				break;
 			}
 		}
@@ -3067,7 +3067,7 @@ void(vector eye) Sprite_SkyTick =
 			spr_skynext = i;
 			if (burst)
 				spr_skyburst = min(n, spr_skyburst + rays);
-			spr_tcapn = spr_tcapn + 1;
+			spr_tcaps = spr_tcaps + 1;
 			break;
 		}
 		spr_skyat[i] = eye;
@@ -3841,7 +3841,9 @@ void() Sprite_Draw =
 		if (useglare_on && cvar("vbsp_glare_interval") > 0)
 		{
 			local string glimtxt;
-			if (spr_glimit == 1)
+			if (spr_glimit == 3)
+				glimtxt = "THE TRACE TIME BUDGET (vbsp_sprite_tracems)";
+			else if (spr_glimit == 1)
 				glimtxt = "THE RAY CEILING (interval not met)";
 			else if (spr_glimit == 2)
 				glimtxt = "the interval quota";
@@ -3852,6 +3854,9 @@ void() Sprite_Draw =
 			              cvar("vbsp_glare_interval"), spr_gquota, spr_gvisits,
 			              spr_grays, cvar("vbsp_glare_traces"), glimtxt));
 		}
+		if (spr_tcap > 0)	// P1488
+			print(sprintf("vbsp_sprite_debug: trace budget %gms a frame stopped the glare %g and the sky test %g times since load\n",
+			              spr_tcap * 1000, spr_tcapg, spr_tcaps));
 		/*
 		  BUILD 54.  The env_lightglow half on its own, because the line above
 		  mixes it with the billboards and cannot say which gate is eating them.
