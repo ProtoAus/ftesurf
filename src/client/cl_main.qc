@@ -1317,6 +1317,11 @@ void() CSQC_Input_Frame =
 		TimeScale_InputFrame();
 		return;
 	}
+	if (TASJargon_InputFrame())     // P1449: Jargon's route editor flies a camera on the movement keys (cl_jargon.qc)
+	{
+		TimeScale_InputFrame();
+		return;
+	}
 
 	SaveLoc_InputFrame();
 	WarpOp_InputFrame();            // Patch 753: a queued op rides this command
@@ -2016,7 +2021,8 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	  braces.
 	*/
 	Ghost_Frame();
-	TASOptViz_Body();               // P1449: tas_viz_cam's follow views show the body (cl_tasoptviz.qc)
+	TASOptViz_Body();               // P1449: tas_viz_cam's overview shows the body (cl_tasoptviz.qc)
+	TASJargon_FlyFrame();           // P1449: Jargon's route editor camera (cl_jargon.qc)
 
 	// Patch 457: your own trail, which nothing else draws -- lobby_av_self 0
 	// means your avatar is never networked back to you.  Straight after
@@ -2585,13 +2591,13 @@ float(string cmd) CSQC_ConsoleCommand =
 			if (strstrofs(tsline, "..") >= 0) tsline = "!";
 			tsline = strcat(" ", tsline);
 			for (tsi = 3; tsi < cmdargc; tsi = tsi + 1)
-				if (argv(tsi) == "tube" || argv(tsi) == "look" || argv(tsi) == "tries" || argv(tsi) == "backs" || argv(tsi) == "nohop" || argv(tsi) == "join" || argv(tsi) == "rideknots" || argv(tsi) == "polish" || argv(tsi) == "low" || argv(tsi) == "apex" || argv(tsi) == "air" || argv(tsi) == "plan" || argv(tsi) == "pace" || argv(tsi) == "emin" || argv(tsi) == "start" || argv(tsi) == "zone" ||
+				if (argv(tsi) == "tube" || argv(tsi) == "look" || argv(tsi) == "tries" || argv(tsi) == "backs" || argv(tsi) == "nohop" || argv(tsi) == "join" || argv(tsi) == "rideknots" || argv(tsi) == "polish" || argv(tsi) == "low" || argv(tsi) == "apex" || argv(tsi) == "air" || argv(tsi) == "plan" || argv(tsi) == "wide" || argv(tsi) == "pace" || argv(tsi) == "emin" || argv(tsi) == "start" || argv(tsi) == "zone" ||
 				    argv(tsi) == "sg" || argv(tsi) == "sy" || argv(tsi) == "sright" || argv(tsi) == "sflip" || argv(tsi) == "onjump" || argv(tsi) == "onexit" ||
 				    argv(tsi) == "finish" || FS_TASNumber(argv(tsi)))
 					tsline = strcat(tsline, " ", argv(tsi));
 				else tsline = " !";
 			if (strstrofs(tsline, "!") >= 0)
-				print("tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [emin F] [nohop] [join] [rideknots] [polish] [low] [apex] [air] [finish] | stop | status | startpause\n");
+				print("tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [emin F] [nohop] [join] [rideknots] [polish] [low] [apex] [air] [wide] [finish] | redo <n> | stop | status | startpause\n");
 			else
 				localcmd(sprintf("p%g cmd tas autosurf%s\n", tsseat + 1, tsline));
 		}
@@ -2604,7 +2610,7 @@ float(string cmd) CSQC_ConsoleCommand =
 		{	// P1449: Jargon's route (cl_jargon.qc): the picked guide run's plan, and the in-world editor
 			TASJargon_Guides();
 			if (argv(2) == "show" || !jg_n) TASJargon_RequestPlan();
-			if (argv(2) == "edit") { jg_edit = !jg_edit; print(jg_edit ? "tas jargon edit: on -- noclip round, drag a handle\n" : "tas jargon edit: done\n"); }
+			if (argv(2) == "edit") { if (jg_fly) TASJargon_EditEnd(); else TASJargon_EditStart(); }
 		}
 		else if (cmdargc >= 2 && !strcmp(argv(1), "jargon"))       // P1449: Jargon is autosurf's name in the menus
 		{

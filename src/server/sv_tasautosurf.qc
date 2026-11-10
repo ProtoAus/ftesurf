@@ -40,6 +40,7 @@
 // its route passes nearest each, the stretch to one passing within TAS_AIRR (Lex, 10 Nov: the peaks `apex` took from the
 // demo were poor -- let a human pick where the bot should be in the sky, e.g. high into the window corner after ramp 6)
 .float as_air;
+.float as_wide;                 // P1476: the searches' flights weave wider (`wide`)
 #define TAS_AIRR 200       // 120 with a 95% floor: tchain14's best passed 186 u off farsh's peak, the reaches braked to 76%
 #define TAS_AIRMIN 0.85    // ...the floor there: a hint where to fly, the board after it keeps the usual one
 .float as_backhead, as_backfail;   // the head at the last rewind request, and requests since it last moved
@@ -554,6 +555,7 @@ void(entity e) SV_TASAutoLink =
 	if (e.as_rideknots && i > 0)
 	if (as_wk[i - 1] == 1 && as_wl[i - 1] > e.as_tprev)
 		ps = strcat(ps, sprintf(" kex %.0f", min(TOPT_HMAX, rint((as_wl[i - 1] - e.as_tprev) / PM_TICK) + 15)));   // past the cap: refused (review 13)
+	if (e.as_wide) ps = strcat(ps, " wide");
 	cl = sprintf("tas optimize %.0f left curve 12 demo aim late tube %.0f%s%s%s energy fast", h, e.as_tube, e.as_hop ? " hop" : "", ls, ps);
 	}
 	if (cvar("developer")) sprint(e, PRINT_HIGH, strcat("tas autosurf: ", cl, "\n"));
@@ -578,7 +580,7 @@ void(entity e) SV_TASAutoBacks =
 {
 	local float k;
 	if (e.as_backmax < 0) e.as_backmax = max(6, 2 * as_n);
-	for (k = 0; k < TAS_ASMAX; k = k + 1) { as_rbs[k] = as_need[k] = as_lowx[k] = as_rfs[k] = 0; as_fsl[k] = -1; }
+	for (k = 0; k < TAS_ASMAX; k = k + 1) { as_rbs[k] = as_need[k] = as_lowx[k] = as_rfs[k] = as_ws[k] = 0; as_fsl[k] = -1; }
 	e.as_failmax = -1;
 };
 
@@ -742,7 +744,7 @@ void(entity e) SV_TASAutoFrame =
 			d = e.velocity * e.velocity + 2 * cvar("sv_gravity") * (e.origin_z - as_rows[i*7+3]);
 			as_rk = e.as_i; as_rb = (d < 0) ? -sqrt(-d) : sqrt(d); as_rf = vlen([as_rows[i*7+4], as_rows[i*7+5], as_rows[i*7+6]]);
 			as_rbs[e.as_i] = as_rb; as_rfs[e.as_i] = as_rf;
-			SV_TASAutoNote(e, 1, sprintf("stretch %.0f reached: %.0f u/s at farsh's board height, farsh %.0f", e.as_i + 1, as_rb, as_rf));
+			SV_TASAutoNote(e, 1, sprintf("stretch %.0f reached: %.0f u/s at the guide's board height, the guide %.0f", e.as_i + 1, as_rb, as_rf));
 			}
 			e.as_tprev = t; e.as_i = e.as_i + 1; e.as_try = 0;
 			if (e.as_i >= as_n)
@@ -797,7 +799,7 @@ void(entity e) SV_TASAutoFrame =
 			as_lowx[e.as_i] = as_lowx[e.as_i] ? as_lowx[e.as_i] * 2 : (e.as_low ? 4 : 2);
 			for (i = e.as_i; i < as_n; i = i + 1) as_need[i] = 0;
 			e.as_tprev = as_wp[e.as_i]; e.as_goal = as_ws[e.as_i]; e.as_stage = 3;
-			SV_TASAutoNote(e, 1, sprintf("stretch %.0f left farsh's path %.0f ticks in, from where the board before put it: backtrack %.0f to stretch %.0f, boarding nearer farsh's point (low %g)",
+			SV_TASAutoNote(e, 1, sprintf("stretch %.0f left the guide's path %.0f ticks in, from where the board before put it: backtrack %.0f to stretch %.0f, boarding nearer the guide's point (low %g)",
 				e.as_i + 2, e.topt_earlycut, e.as_backs, e.as_i + 1, 0.25 * as_lowx[e.as_i]));
 			return;
 		}
@@ -863,7 +865,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		SV_TASAutoNote(e, e.as_on ? 1 : 0, e.as_startpause ? "startpause on" : "startpause off");
 		return;
 	}
-	if ((argc == 7 && argv(2) == "move") || (argc == 3 && argv(2) == "reset"))
+	if ((argc == 7 && argv(2) == "move") || (argc == 3 && argv(2) == "reset") || (argc == 4 && argv(2) == "redo"))
 	if (Lobby_Active()) { sprint(e, PRINT_HIGH, "tas autosurf: a local practice tool; not on lobby servers\n"); return; }
 	if (argc == 7 && argv(2) == "move")
 	{	// a guide run's point moved in the editor: its demo time, where it is now
@@ -876,6 +878,26 @@ void(entity e, float argc) SV_TASAutoCommand =
 		return;
 	}
 	if (argc == 3 && argv(2) == "reset") { jg_ovn = 0; SV_TASAutoNote(e, 0, "route: back to the guide run's points"); return; }
+	if (argc == 4 && argv(2) == "redo")
+	{	// Lex, 10 Nov: pick a stretch under the panel's strip and run again from it -- the TAS head rewound to that
+		// stretch's start (as a backtrack is), the plan remade from the chain's own start with the moves since applied
+		n = stof(argv(3)) - 1;
+		if (e.as_on || e.topt_on || e.tdem_on) { SV_TASAutoNote(e, 0, "stop it first, then redo"); return; }
+		if (e.as_route || e.as_file == "" || n < 0 || n >= TAS_ASMAX || n != floor(n) || as_ws[n] <= 0)
+			{ SV_TASAutoNote(e, 0, sprintf("stretch %.0f was not reached in this run: surf it first", n + 1)); return; }
+		if (SV_TimerTicks(e) < as_ws[n]) { SV_TASAutoNote(e, 0, "the run is not that far any more: restart it"); return; }
+		if (!SV_TASToolGate(e, "autosurf")) { SV_TASAutoNote(e, 0, "TAS is not paused in a run here: restart from the start zone"); return; }
+		as_nrows = SV_TASAutoRead(e.as_file);
+		if (as_nrows < 2) { SV_TASAutoNote(e, 0, "the guide run's file cannot be read"); return; }
+		for (s = 0; s < as_nrows - 1 && as_rows[s*7] < as_wp[0] - 0.0001; s = s + 1) ;
+		SV_TASAutoPlan(e, s);
+		if (n >= as_n) { SV_TASAutoNote(e, 0, "the route changed: restart from the start zone"); return; }
+		for (i = n; i < as_n; i = i + 1) as_need[i] = 0;
+		e.as_on = 1; e.as_i = n; e.as_try = 0; e.as_backs = 0; e.as_failat = -1; e.as_failmax = n;
+		e.as_tprev = as_wp[n]; e.as_goal = as_ws[n]; e.as_stage = 3;
+		SV_TASAutoNote(e, 1, sprintf("redo from stretch %.0f", n + 1));
+		return;
+	}
 	if (argc == 3 && argv(2) == "status")
 	{
 		if (e.as_on) SV_TASAutoNote(e, 1, sprintf("stretch %.0f of %.0f, try %.0f, %.0f backtracks", e.as_i + 1, as_n, e.as_try + 1, e.as_backs));
@@ -888,11 +910,11 @@ void(entity e, float argc) SV_TASAutoCommand =
 		sprint(e, PRINT_HIGH, "tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [emin F] [nohop] [join] [rideknots] [polish] [low] [finish] [start [zone N] [sg N] | onjump | onexit] | stop | status | startpause\n");
 		return;
 	}
-	if (e.as_on || e.topt_on || e.tdem_on) { sprint(e, PRINT_HIGH, "tas autosurf: a search, demo or autosurf is running\n"); return; }
+	if (e.as_on || e.topt_on || e.tdem_on) { SV_TASAutoNote(e, e.as_on ? 1 : 0, "already running: stop it first"); return; }
 	if (path != "route" && !SV_TASDemoPathOK(path)) { sprint(e, PRINT_HIGH, "tas autosurf: a .rec under data/ or cfg/ksfreplays/ (or route)\n"); return; }
 	if (SV_TASOptBusy(e)) return;
 	st = 0; flip = 0; arm = 0; pl = 0; e.as_szone = 0; e.as_sg = 900; e.as_sy = 0; e.as_sside = -1;
-	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = -1; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1; e.as_emin = 0.95; e.as_join = 0; e.as_rideknots = 0; e.as_polish = 0; e.as_low = 0; e.as_apex = 0; e.as_air = 0;
+	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = -1; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1; e.as_emin = 0.95; e.as_join = 0; e.as_rideknots = 0; e.as_polish = 0; e.as_low = 0; e.as_apex = 0; e.as_air = 0; e.as_wide = 0;
 	for (i = 3; i < argc; i = i + 1)
 	{
 		w = argv(i); n = FS_TASNumber(argv(i + 1)) ? stof(argv(i + 1)) : -1;    // not a number: refused below, not 0 (review)
@@ -909,6 +931,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		else if (w == "low") e.as_low = 1;
 		else if (w == "apex") e.as_apex = 1;
 		else if (w == "air") e.as_air = 1;
+		else if (w == "wide") e.as_wide = 1;
 		else if (w == "start") st = 1;
 		else if (w == "plan") pl = 1;
 		else if (w == "zone" && n >= 0 && n < 64 && n == floor(n)) { e.as_szone = n; i = i + 1; }
@@ -921,7 +944,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 	// `start` begins in the start box, before the running attempt the tools need (it is a legal start's own path)
 	if (pl) { if (Lobby_Active()) { sprint(e, PRINT_HIGH, "tas autosurf: a local practice tool; not on lobby servers\n"); return; } }
 	else if (st || arm) { if (Lobby_Active() || !e.run_tas_rwcap) { SV_TASToolGate(e, "autosurf"); return; } }
-	else if (!SV_TASToolGate(e, "autosurf")) return;
+	else if (!pl && !SV_TASToolGate(e, "autosurf")) { SV_TASAutoNote(e, 0, "TAS is not paused in a run here: use Restart from the start zone"); return; }
 	if (path == "route")
 	{	// the clicked route: no demo, no plan to make; from here (a running attempt, paused)
 		if (st || arm) { sprint(e, PRINT_HIGH, "tas autosurf route: from a pause on the route (the start options follow a demo)\n"); return; }
@@ -1002,7 +1025,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		return;
 	}
 	s = SV_TASAutoPlan(e, -1);
-	if (s < 0) { sprint(e, PRINT_HIGH, "tas autosurf: the body is not within 400 u of the demo's route; pause on it\n"); strunzone(path); return; }
+	if (s < 0) { SV_TASAutoNote(e, 0, "you are not on the guide run's route (400 u): restart, or redo from a stretch"); strunzone(path); return; }
 	if (as_n < 1) { sprint(e, PRINT_HIGH, "tas autosurf: no ramp, hop or finish ahead on the demo from here\n"); strunzone(path); return; }
 	if (e.as_file != "") strunzone(e.as_file);
 	e.as_file = path;

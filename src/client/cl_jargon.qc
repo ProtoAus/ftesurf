@@ -24,6 +24,11 @@ string jg_gp[JG_GUIDES];        // a guide run's file
 string jg_gl[JG_GUIDES];        // ...and its label
 float jg_gn, jg_pick, jg_gat;
 string jg_planned;              // the file the shown plan is of
+// "Edit in the world" (Lex, 10 Nov: close the window, noclip round, Esc opens it again): a camera the movement keys fly,
+// client-side as the ghost's is (cl_ghost.qc Ghost_Fly) -- the body stays where it waits, its TAS state untouched (ghost
+// itself cancels TAS), so "From here" still works after the edit; the body drawn as the ghost's stand-in
+float jg_fly, jg_flyt, jg_btn;
+vector jg_camorg, jg_bodyang, jg_move;
 
 string(string p) TASJargon_Base =
 {
@@ -192,6 +197,40 @@ void() TASJargon_Frame =
 	}
 };
 
+void() TASJargon_EditStart =
+{
+	if (!jg_n) TASJargon_RequestPlan();
+	jg_edit = jg_fly = TRUE; jg_flyt = cltime;
+	jg_camorg = getproperty(VF_ORIGIN); jg_bodyang = getproperty(VF_CL_VIEWANGLES); jg_move = '0 0 0'; jg_btn = 0;
+	if (tasu_open) TASUI_Close();
+};
+void() TASJargon_EditEnd =
+{
+	jg_fly = jg_edit = FALSE; jg_drag = jg_hover = -1;
+	setproperty(VF_CL_VIEWANGLES, jg_bodyang);
+	if (!tasu_open) { tasu_tab = TAS_TAB_OPTIMIZE; TASUI_Toggle(0); }
+};
+// CSQC_Input_Frame: the movement keys fly the camera; the body gets an empty command with its aim pinned
+float() TASJargon_InputFrame =
+{
+	if (!jg_fly) return FALSE;
+	jg_move = input_movevalues; jg_btn = input_buttons;
+	input_movevalues = '0 0 0'; input_buttons = 0; input_angles = jg_bodyang;
+	return TRUE;
+};
+// the view, beside Ghost_Frame: the camera flown, the body drawn where it waits
+void() TASJargon_FlyFrame =
+{
+	local float dt;
+	if (!jg_fly) return;
+	dt = cltime - jg_flyt;
+	if (dt < 0 || dt > 0.5) dt = 0;
+	jg_flyt = cltime;
+	jg_camorg = Ghost_Fly(jg_camorg, getproperty(VF_CL_VIEWANGLES), jg_move, jg_btn, dt);
+	setproperty(VF_ORIGIN, jg_camorg);
+	Ghost_DrawBodyAt((pmove_org != '0 0 0') ? pmove_org : jg_camorg - '0 0 64', jg_bodyang_y);
+};
+
 // the route point (tas route) an air point of the plan came from: the nearest at its place
 float(vector p) TASJargon_RouteOf =
 {
@@ -206,6 +245,7 @@ float(vector p) TASJargon_RouteOf =
 float(float evtype, float scanx, float chary, float devid) TASJargon_InputEvent =
 {
 	local float r;
+	if (jg_fly && evtype == IE_KEYDOWN && scanx == K_ESCAPE) { TASJargon_EditEnd(); return TRUE; }
 	if (evtype == IE_KEYUP && scanx == K_MOUSE2 && jg_m2) { jg_m2 = FALSE; return TRUE; }
 	if (evtype == IE_KEYUP && scanx == K_MOUSE1 && jg_m1 && jg_drag < 0) { jg_m1 = FALSE; return TRUE; }
 	if (!jg_edit) return FALSE;
@@ -343,7 +383,7 @@ void(vector scr) TASJargon_DrawHint =
 	if (jg_drag >= 0) s = sprintf("Moving %s %g: let go to place it", TASJargon_Word(jg_drag), jg_drag + 1);
 	else if (jg_hover >= 0) s = sprintf("%s %g: drag with the left mouse button%s", TASJargon_Word(jg_hover), jg_hover + 1,
 		(jg_k[jg_hover] == 5) ? ", right click removes it" : "");
-	else s = "Editing the route: fly round in noclip (V), aim at a handle and drag it";
+	else s = "Editing the route: fly with your movement keys, aim at a handle and drag it -- Esc goes back to the panel";
 	w = stringwidth(s, TRUE, [tsz, tsz]);
 	at = [rint((scr_x - w) * 0.5), rint(scr_y * 0.84), 0];
 	sui_roundbox(at - [12, 6, 0], [w + 24, tsz + 12, 0], 6, SUI_THEME_PANEL, 0.8);
