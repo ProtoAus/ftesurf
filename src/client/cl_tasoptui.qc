@@ -495,8 +495,8 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	if (Profile_Chip("jg_w1", at + [half + 6, 0, 0], chip, "Wider (looks human)", hint, autocvar_tas_jargon_wide)) cvar_set("tas_jargon_wide", "1");
 	at_y = at_y + row + hint * 0.6;
 	sui_text(at, [hint, hint], "Where it boards each ramp", SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.5;
-	if (Profile_Chip("jg_s0", at, chip, "The guide's spot", hint, !autocvar_tas_jargon_spots)) cvar_set("tas_jargon_spots", "0");
-	if (Profile_Chip("jg_s1", at + [half + 6, 0, 0], chip, "Try 5 spots (slower)", hint, autocvar_tas_jargon_spots)) cvar_set("tas_jargon_spots", "1");
+	if (Profile_Chip("jg_spot0", at, chip, "The guide's spot", hint, !autocvar_tas_jargon_spots)) cvar_set("tas_jargon_spots", "0");
+	if (Profile_Chip("jg_spot1", at + [half + 6, 0, 0], chip, "Try 5 spots (slower)", hint, autocvar_tas_jargon_spots)) cvar_set("tas_jargon_spots", "1");
 	at_y = at_y + row + hint * 0.6;
 	sui_text(at, [hint, hint], "Camera while it thinks (it rides in first person)", SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.5;
 	if (Profile_Chip("jg_c0", at, chip, "Mine", hint, !autocvar_tas_viz_cam)) cvar_set("tas_viz_cam", "0");

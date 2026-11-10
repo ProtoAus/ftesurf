@@ -305,7 +305,7 @@ void(vector scr) TASUI_Draw =
 	if (seat != 0) return;
 	if (numclientseats > 1 || UI_CursorHeld() != UIC_TAS || rec_sb_open || !LT_StatsAreMine()) { TASUI_Close(); return; }
 	tasu_frames = tasu_frames+1;
-	panelrows = tasu_tab == TAS_TAB_SECTIONS ? 65 : ((tasu_tab == TAS_TAB_OPTIMIZE) ? 61 : (tasu_advanced ? 58 : 46));
+	panelrows = tasu_tab == TAS_TAB_SECTIONS ? 65 : ((tasu_tab == TAS_TAB_OPTIMIZE) ? 64 : (tasu_advanced ? 58 : 46));
 	sc = max(.5,ui_cv_scale);
 	while (sc > .5 && (Font_Px(8*sc)*48 > scr_x-12 || Font_Px(8*sc)*panelrows > scr_y-12)) sc = sc-.5;
 	oldfont = drawfont; Font_Set(ui_font_ui);
