@@ -374,7 +374,10 @@ void(entity e) SV_TASAutoLink =
 	}
 	else
 	{
-	h = min(TOPT_HMAX, max(16, rint(1.25 * (as_wt[i] - e.as_tprev) / PM_TICK) + 10 + e.as_look));
+	h = max(16, rint(1.25 * (as_wt[i] - e.as_tprev) / PM_TICK) + 10 + e.as_look);
+	if (h > TOPT_HMAX && cvar("developer"))      // the lookahead goes first, then the reach (a joined stretch is long: review 11)
+		sprint(e, PRINT_HIGH, sprintf("tas autosurf: this stretch wants %.0f ticks; searched over %.0f\n", h, TOPT_HMAX));
+	h = min(TOPT_HMAX, h);
 	argc = tokenize(sprintf("tas demorows %s %.4f", e.as_file, e.as_tprev + PM_TICK));    // a row's input produced it
 	e.topt_dn = 0;
 	SV_TASDemoRowsCommand(e, argc);
@@ -672,7 +675,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 	path = argv(2);
 	if (argc < 3 || path == "" || strstrofs(path, "..") >= 0)
 	{
-		sprint(e, PRINT_HIGH, "tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [emin F] [nohop] [finish] [start [zone N] [sg N] | onjump | onexit] | stop | status | startpause\n");
+		sprint(e, PRINT_HIGH, "tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [emin F] [nohop] [join] [rideknots] [finish] [start [zone N] [sg N] | onjump | onexit] | stop | status | startpause\n");
 		return;
 	}
 	if (e.as_on || e.topt_on || e.tdem_on) { sprint(e, PRINT_HIGH, "tas autosurf: a search, demo or autosurf is running\n"); return; }

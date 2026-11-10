@@ -1046,7 +1046,12 @@ float(entity e, float ran) SV_TASOptTargetScore =
 	if (e.topt_candw) e.topt_wallhit = e.topt_wallhit + 1;
 	e.topt_candg = 0;
 	if (e.topt_tgtn != '0 0 0' && e.topt_tgtn_z < 0.99)
-		for (i = 1; i <= bk && i < lim; i = i + 1) if (topt_out[i*13+6]) e.topt_candg = e.topt_candg + 1;
+		for (i = 1; i <= bk && i < lim; i = i + 1)
+			if (topt_out[i*13+6])
+			{	// a hop's landing on the way is no ground: the next tick leaves rising (review 11; nested: || reads both)
+				if (i + 1 >= ran) e.topt_candg = e.topt_candg + 1;
+				else if (topt_out[i*13+18] - topt_out[i*13+5] <= 200) e.topt_candg = e.topt_candg + 1;
+			}
 	if (hit)
 	{	// review: penalties rank within a band, never across it -- a reach stays above every weak reach, a weak
 		// reach above every miss (60 wall or ground ticks used to sink a reach below TOPT_REACH: autosurf then
@@ -1851,6 +1856,7 @@ void(entity e, float argc) SV_TASTargetCommand =
 		return;
 	}
 	p = [stof(argv(2)), stof(argv(3)), stof(argv(4))];
+	if (n_z < 0) n = -n;
 	e.topt_tgt = p; e.topt_tgtr = r; e.topt_tgton = 1; e.topt_tgtn = n;
 	sprint(e, PRINT_HIGH, sprintf("tas target: %s within %.0f u%s; tas optimize ... fast steers to it\n", vtos(p), r,
 		(n == '0 0 0') ? "" : ((n_z >= 0.99) ? ", a hop there" : strcat(", boarding face ", vtos(n)))));
