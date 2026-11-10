@@ -179,7 +179,7 @@ void(entity e, float bk) SV_TASOptBoardAt =
 	if (n_z < 0) n = -n;
 	r = normalize([n_y, -n_x, 0]);
 	tv = [topt_out[bk*13+3], topt_out[bk*13+4], 0];             // the body's way, without a demo
-	if (e.topt_dn >= 3)
+	if (e.topt_tube > 0 && e.topt_dn >= 3)        // tgtj is this search's only with a tube (a stale demo otherwise: review)
 	{
 		j = bound(1, e.topt_tgtj, e.topt_dn - 2);
 		tv = [topt_dpos[j*3+3] - topt_dpos[j*3-3], topt_dpos[j*3+4] - topt_dpos[j*3-2], 0];
@@ -1122,7 +1122,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		}
 		d = d - e.topt_pace * (bk + 1);
 		e.topt_bal = e.topt_bup = 0;
-		if (e.topt_tgtn_x || e.topt_tgtn_y)
+		if ((e.topt_tgtn_x || e.topt_tgtn_y) && e.topt_tgtn_z < 0.99)      // a face, not a hop's floor (as the hop tests)
 		{
 			SV_TASOptBoardAt(e, bk);
 			d = d - e.topt_low * (max(0, e.topt_bal) + max(0, e.topt_bup));
@@ -1295,7 +1295,7 @@ void(entity e, float v) SV_TASOptResult =
 		{	// P1449: the search scored the reach, the line above the end of the tape
 			if (e.topt_reachv >= TOPT_REACH)
 			{
-				if (cvar("developer") && (e.topt_tgtn_x || e.topt_tgtn_y))
+				if (cvar("developer") && (e.topt_tgtn_x || e.topt_tgtn_y) && e.topt_tgtn_z < 0.99)
 					sprint(e, PRINT_HIGH, sprintf("tas optimize: boarded %.0f u along the run and %.0f u up the face from the target point\n",
 						e.topt_rbal, e.topt_rbup));
 				sprint(e, PRINT_HIGH, sprintf("tas optimize: target reached at tick %.0f of %.0f (%.1f u from it), %s %.1f u/s there\n",
@@ -2228,7 +2228,7 @@ void(entity e, float argc) SV_TASOptCommand =
 		return;
 	}
 	e.topt_elead = e.topt_kleadj = 0;
-	if ((mode & 128) && (e.topt_tgtn_x || e.topt_tgtn_y) && e.topt_kd < TOPT_KMAX)      // a hop's floor has no lead (review)
+	if ((mode & 128) && (e.topt_tgtn_x || e.topt_tgtn_y) && e.topt_tgtn_z < 0.99 && e.topt_kd < TOPT_KMAX)      // a hop's floor has no lead (review)
 	if (SV_TASOptEngineLeads(e))
 	{
 		e.topt_elead = 1; e.topt_kleadj = e.topt_kd; e.topt_kd = e.topt_kd + 1;
