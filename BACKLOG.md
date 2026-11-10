@@ -1180,14 +1180,16 @@
 
 ## P1116 leftovers (29 Oct)
 
-- cl_threadedphysics still overlaps ordinary main-side event/frame/note journal producers
-  (in_generic.c IN_Commands/Frame/Event/Note). P1480 protects Begin/Drop; P1484 protects
-  finalization/hash and owns detached close bytes through callbacks/abort, without locking
-  over the writer. Those are NOT general append/counter/plugin thread safety. Native-plugin
-  MarkSynth can also enter on a foreign producer thread. Falsifier: barrier-schedule actual
-  main drain and admitted worker View/append, preserve complete ordered rows/accumulator
-  state, and test a foreign plugin marker separately before any broader safety claim.
-  Do not batch journal rows ahead of input callbacks or add a real wait once per event.
+- Input-journal status/counter/native-producer synchronization remains partial.
+  P1480 protects Begin/Drop, P1484 owns close/hash/callback/abort, P1485 protects ordinary
+  main Frame/Event/Note/Synth with relative batching and actual callback release. Current
+  status publication in IN_Commands still reads worker-updated journal counters before
+  callback-capable Cvar_ForceSetValue; native backend snapshots/ring and foreign plugin
+  markers are separate open producers. The five Input-table shims ARE live in the default
+  client (their unused warnings are SERVERONLY), not proof that a foreign caller ran.
+  Falsifier: actual admitted writer versus status snapshot/foreign marker, complete exact
+  values/bytes, correct final poison/digest and no unsupported main-helper call. Keep
+  callback chronology, prior false ownership and no per-event real relative-input wait.
 - Cancelling an in-flight journal upload (map load, disconnect, `rec_hid_upload 0`) waits for
   the download thread's current poll: up to 100 ms, or a whole DNS lookup.
 - Two upload follow-ups are in the private tree (checkpoints/p1116-journal-upload-followups.md).

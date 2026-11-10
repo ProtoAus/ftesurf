@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P1485 ordinary journal updates — both Windows clients10Nov21:44Z; owner check PENDING
+- If you normally use `cl_threadedphysics 1` and input recording, make one normal
+  recording with mouse movement, then stop/retry. Chat or paste should still
+  arrive once in its usual position. Report a freeze/crash, missing input or a
+  later recording disappearing. No need to change your normal settings or
+  attempt callback stress for this optional check.
+- Actual-source/OS-thread/callback/cache controls and clean native build passed;
+  installed version/hash matches. Those are NOT owner gameplay confirmation,
+  latency measurement or complete backend/foreign-plugin safety. The separate
+  genuine parked-run prerequisite below still needs its explicit Play offline.
+
 ## P1481 / P1477 / P1482 engine -- both installs 11 Nov 20:18Z (exe 7930cc92); owner check PENDING
 - Play normally for a while, including a board replay or a race against a ghost. Report any wrong, garbled or
   missing HUD text, or a crash (P1481 changed how the game frees its text memory; verified on the rig, not by you).

@@ -6991,6 +6991,25 @@ must require42checks and exact8baseline labels, and catch unnumbered warnings.
 
 ## Anti-cheat and run evidence
 
+P1485 ordinary producers (10Nov2026): a main-only activity hint is NOT buffer
+access permission. Sys_IsMainThread must qualify BEFORE reading it: the shared
+editor drain has a real conditional off-main NQ worker/CSQC/debugger route.
+Serialize Frame/Event/Note/Synth compounds, not each Raw. Relative-only CPU
+batches may keep one owned token; release only your transition BEFORE nonrelative
+callbacks. Paste flush runs initially and per event: an empty/editor return must
+not force a lock per mouse move; the shared body releases immediately before
+actual answer.give, after consuming/erasing/freeing its queue. Plain Flush remains
+unchanged. Never pre-journal later events across callback-driven Begin/Drop or
+restore a saved pre-callback permission over the callback's new ownership.
+The five plugin Input shims are LIVE/address-taken in the client; defined-unused
+warnings are from SERVERONLY. Main MarkSynth needs a separate main-only poisoned
+hint, derived under exclusion and reset by Begin/Drop, or already-poisoned plugin
+input locks per event. Foreign callers consult neither hint and remain unsafe.
+Actual original control851/754failures vs857/0 (737repeated row assertions, not
+cheat cases), cache control868/3 vs868/0; Source bodies/actual OS-thread/clipboard
+recipient hosts, not physical input/native debugger or latency proof. Journal
+status/cvar publication and backend/ring/foreign producer races remain OPEN.
+
 P1484 close ownership (10Nov2026): finalize/hash with existing worker exclusion,
 then detach the exact closed buffer and restore prior permission BEFORE file work
 or diagnostics. Resource LIFO and current digest-publication identity are distinct:
