@@ -86,8 +86,9 @@ float as_bms[TOPT_ARCN];                                // each candidate's next
 float as_bmd[TAS_ASMAX];                                // a beamed stretch's chosen candidate + 1 (0: not beamed)
 float as_bmso[TAS_ASMAX * 3];                           // ...and where it started (a backtrack that moves the start beams it again)
 float as_bmkn[TOPT_ARCN * TOPT_KMAX], as_bmv[TOPT_ARCN], as_bme[TOPT_ARCN], as_bmo[TOPT_ARCN * 3];   // the search's kept candidates
-float as_bmarcn, as_bmkd;
+float as_bmarcn, as_bmkd, as_bmnn, as_bmmode;
 vector as_bmmo, as_bmmv, as_bmtgt;
+.float as_bmtry, as_bmrb, as_bmrf;      // the try the stretch reached on (its emin), and its records (review D)
 // P1483: what past runs learned about this course with this guide -- each stretch's best played line (its knots) and the
 // share of the guide's energy it carried -- in data/jargon/<map>/<leg folder>.prior; a search starts with it among its
 // first candidates, so a course run again starts from its best so far (tas_jargon_off 256: none)
@@ -152,7 +153,7 @@ void(entity e, float state, string note) SV_TASAutoNote =
 void(entity e, string why) SV_TASAutoStop =
 {
 	if (!e.as_on) return;
-	e.as_on = 0; e.as_swph = 0; e.as_redo = 0;
+	e.as_on = 0; e.as_swph = 0; e.as_redo = 0; e.as_bmph = 0;
 	if (e.topt_on) SV_TASOptStop(e, "autosurf stopped");
 	SV_TASAutoNote(e, 3, (substring(why, 0, 5) == "stuck") ? why : strcat("stopped: ", why));   // a driver waits on stuck/stopped
 };
@@ -887,8 +888,11 @@ float(entity e) SV_TASAutoBeamStart =
 	for (h = 0; h < TOPT_ARCN; h = h + 1) { as_bmv[h] = topt_arcv[h]; as_bme[h] = topt_arce[h]; as_bms[h] = -1000000; }
 	for (h = 0; h < TOPT_ARCN * 3; h = h + 1) as_bmo[h] = topt_arco[h];
 	as_bmarcn = topt_arcn; as_bmkd = topt_arckd; as_bmmo = topt_arcmo; as_bmmv = topt_arcmv; as_bmtgt = topt_arctgt;
+	as_bmnn = topt_arcnn; as_bmmode = topt_arcmode;
+	e.as_bmtry = e.as_try;
 	e.as_bmi = i; e.as_bmk = 0; e.as_bmn = min(topt_arcn, TOPT_ARCN); e.as_bmph = 2;
 	as_bmso[i*3] = as_sso[i*6]; as_bmso[i*3+1] = as_sso[i*6+1]; as_bmso[i*3+2] = as_sso[i*6+2];
+	e.as_bmrb = -1000000; e.as_bmrf = 0;    // set by the reached branch's first record below (SV_TASAutoBeamStep)
 	SV_TASAutoNote(e, 1, sprintf("stretch %.0f: %.0f different lines reach it; each judged on the stretch after", i + 1, e.as_bmn));
 	return TRUE;
 };
@@ -909,7 +913,7 @@ void(entity e) SV_TASAutoBeamNext =
 			(as_bms[0] >= 100000) ? sprintf("%.0f", as_bms[0] - 100000) : "missed it"));
 	}
 	e.as_bmph = (k < e.as_bmn) ? 1 : 3;
-	e.as_i = i; e.as_try = 0; e.as_tprev = as_wp[i]; e.as_goal = as_ws[i]; e.as_backhead = -1; e.as_backfail = 0; e.as_stage = 3;
+	e.as_i = i; e.as_try = e.as_bmtry; e.as_tprev = as_wp[i];      // the try that kept them: polish's emin differs by try (review D) e.as_goal = as_ws[i]; e.as_backhead = -1; e.as_backfail = 0; e.as_stage = 3;
 };
 // a search ended inside a beam: TRUE when the beam took the outcome (the chain's own handling skipped)
 float(entity e) SV_TASAutoBeamStep =
@@ -923,6 +927,7 @@ float(entity e) SV_TASAutoBeamStep =
 	}
 	if (e.as_bmph == 2 && e.as_i == i + 1)
 	{
+		if (!k && e.as_bmrb <= -1000000) { e.as_bmrb = as_rbs[i]; e.as_bmrf = as_rfs[i]; }     // the search's own reach's records
 		as_bms[k] = (e.topt_outcome == 2) ? 100000 + SV_TASAutoEnergyAt(e, i + 1) : 50000 - min(49000, e.topt_reachd);
 		SV_TASAutoBeamNext(e); return TRUE;
 	}
@@ -930,8 +935,9 @@ float(entity e) SV_TASAutoBeamStep =
 	{	// the chosen line played again: the chain goes on from it
 		e.as_bmph = 0;
 		if (e.topt_outcome == 2) return FALSE;
-		SV_TASAutoNote(e, 1, sprintf("stretch %.0f: the kept line did not play back; the stretch searched again", i + 1));
-		as_bmd[i] = 0; return FALSE;
+		SV_TASAutoNote(e, 1, sprintf("stretch %.0f: the kept line did not play back; the stretch's own handling goes on", i + 1));
+		if (e.as_bmrb > -1000000) { as_rbs[i] = e.as_bmrb; as_rfs[i] = e.as_bmrf; }    // not the last candidate's (review D)
+		return FALSE;       // as_bmd[i] stays: this start never beams again, so the chain cannot cycle (review D)
 	}
 	e.as_bmph = 0;      // a backtrack or a stop left the beam: the chain goes on without it
 	return FALSE;
@@ -998,6 +1004,7 @@ void(entity e) SV_TASAutoLink =
 	local vector o, n, cr, cl_v;
 	local string ps, ls, cl;
 	i = e.as_i;
+	e.topt_reachd = 1000000;     // a search that never runs leaves no closest distance (review D)
 	if (e.as_redo == i + 1)
 	{	// the rewound state must be the one this stretch started from: a restarted run reuses the tick numbers (review)
 		e.as_redo = 0;
@@ -1084,6 +1091,7 @@ void(entity e) SV_TASAutoLink =
 		for (q = 0; q < TOPT_ARCN; q = q + 1) { topt_arcv[q] = as_bmv[q]; topt_arce[q] = as_bme[q]; }
 		for (q = 0; q < TOPT_ARCN * 3; q = q + 1) topt_arco[q] = as_bmo[q];
 		topt_arcn = as_bmarcn; topt_arckd = as_bmkd; topt_arcmo = as_bmmo; topt_arcmv = as_bmmv; topt_arctgt = as_bmtgt;
+		topt_arcnn = as_bmnn; topt_arcmode = as_bmmode;
 		ps = strcat(ps, sprintf(" play %.0f", e.as_bmk));
 	}
 	if (e.as_polish && e.as_try < e.as_tries - 1) ps = strcat(ps, " stall 20");
@@ -1895,7 +1903,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 			if (i > n) as_ws[i] = 0;
 		}
 		if (e.as_backmax < 0) e.as_backmax = max(6, 2 * as_n);
-		e.as_redo = n + 1; e.as_swph = 0; e.as_finrec = e.run_t_finrec; e.as_esc = 0;
+		e.as_redo = n + 1; e.as_swph = 0; e.as_finrec = e.run_t_finrec; e.as_esc = 0; e.as_bmph = 0;
 		e.as_on = 1; e.as_i = n; e.as_try = 0; e.as_backs = 0; e.as_failat = -1; e.as_failmax = n;
 		e.as_tprev = as_wp[n]; e.as_goal = as_ws[n]; e.as_stage = 3;
 		SV_TASAutoNote(e, 1, sprintf("redo from stretch %.0f", n + 1));

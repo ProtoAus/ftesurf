@@ -31,6 +31,7 @@ p.add_argument('--port', type=int, default=27614); p.add_argument('--runs', type
 p.add_argument('--courses', default='all'); p.add_argument('--svset', default=''); p.add_argument('--effort', default='tries 2 rideknots low')
 p.add_argument('--seed', type=int, default=1, help='tas_jargon_seed of the first run; each run adds 1')
 p.add_argument('--label', default='')
+p.add_argument('--sameseed', action='store_true', help='every run the first seed (a learning arm: runs differ by what earlier runs saved)')
 a = p.parse_args()
 assert a.out.is_absolute() and a.progs.is_absolute()
 assert any((x / 'OWNER.md').is_file() for x in a.out.parents)
@@ -152,7 +153,8 @@ for mapname, cs in bymap.items():
         for c in cs:
             _, guide, tr, leg = COURSES[c]
             for k in range(a.runs):
-                sv.send(f'set tas_jargon_seed {a.seed + k}'); time.sleep(.3)
+                sd = a.seed if a.sameseed else a.seed + k
+                sv.send(f'set tas_jargon_seed {sd}'); time.sleep(.3)
                 t0 = time.monotonic(); off = len(cl.text())
                 cl.send(f'tas autosurf {guide} {a.effort} finish start course {tr} {leg}')
                 while time.monotonic() - t0 < a.budget:
@@ -161,7 +163,7 @@ for mapname, cs in bymap.items():
                 else:
                     cl.send('tas autosurf stop'); time.sleep(3)
                 text = cl.text()[off:]
-                g = grade(text, time.monotonic() - t0); g.update({'course': c, 'run': k, 'seed': a.seed + k})
+                g = grade(text, time.monotonic() - t0); g.update({'course': c, 'run': k, 'seed': sd})
                 res['runs'].append(g)
                 (a.out / 'runs.json').write_text(json.dumps(res, indent=1))
                 print(f"{c} run {k}: {'FIN ' + g['time'] if g['finished'] else 'stretch %d/%d' % (g['stretch'], g['of'])} "

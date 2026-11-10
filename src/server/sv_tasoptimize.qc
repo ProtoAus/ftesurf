@@ -2084,8 +2084,11 @@ float() SV_TASOptRand =
 void(entity e, float salt) SV_TASOptSeed =
 {
 	local float h;
+	local float cs;
+	cs = cvar("tas_jargon_seed");
+	if (cs != cs || fabs(cs) > 1000000) cs = 0;        // NaN or huge: every draw NaN after it (review D)
 	h = fabs(e.origin_x * 3.1 + e.origin_y * 7.3 + e.origin_z * 11.7 + e.velocity_x * 13.1 + e.velocity_y * 17.9 + e.velocity_z * 19.3
-		+ e.topt_tgt_x * 0.7 + e.topt_tgt_y * 0.3 + salt * 101 + cvar("tas_jargon_seed") * 977);
+		+ e.topt_tgt_x * 0.7 + e.topt_tgt_y * 0.3 + salt * 101 + floor(cs) * 977);
 	h = floor(SV_TASOptMod(h, 1000000));
 	topt_r1 = 1 + SV_TASOptMod(h, 30268); topt_r2 = 1 + SV_TASOptMod(floor(h / 7) + salt, 30306); topt_r3 = 1 + SV_TASOptMod(floor(h / 13) + 2 * salt, 30322);
 };
@@ -2099,7 +2102,7 @@ float topt_sprior[TOPT_KMAX];
 .float topt_spriorn;
 #define TOPT_ARCN 4
 float topt_arck[TOPT_ARCN * TOPT_KMAX], topt_arcv[TOPT_ARCN], topt_arce[TOPT_ARCN], topt_arco[TOPT_ARCN * 3];
-float topt_arcn, topt_arckd;
+float topt_arcn, topt_arckd, topt_arcnn, topt_arcmode;
 vector topt_arcmo, topt_arcmv, topt_arctgt;
 void(entity e, float v) SV_TASOptArcKeep =
 {
@@ -2908,7 +2911,7 @@ void(entity e, float argc) SV_TASOptCommand =
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: the flick (%.0f ticks) must be shorter than the run (%.0f ticks)\n", fk, n));
 		return;
 	}
-	if (argc < 4 || argc > 40 || !(n >= 4 && n <= (fast ? TOPT_HMAX : TAS_TAPE_MAX) && n == floor(n)) || !dir || mode < 0)
+	if (argc < 4 || argc > 48 || !(n >= 4 && n <= (fast ? TOPT_HMAX : TAS_TAPE_MAX) && n == floor(n)) || !dir || mode < 0)
 	{
 		sprint(e, PRINT_HIGH, "tas optimize <ticks 4..128, fast 4..768> <left|right> [board | follow | curve [knots 3..16]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [aim] [hop] [gens N] [demo [late (after aim)] [tube R [look N]] [pace X] [emin E] [kex T] [ride T]] [stall N] [low W] [edgeok] [wide, leadmin L (with aim)] (with curve): best turn for exit speed (energy: speed + height), or with time the next segment soonest; fast searches by rollout and plays only the best\n");
 		return;
@@ -2992,7 +2995,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_endz = (endz >= 0) ? endz : -1; e.topt_endtrack = (endtr >= 0) ? endtr : -1;
 	SV_TASOptSeed(e, max(0, seed));
 	e.topt_playk = (playk >= 0) ? playk + 1 : 0;
-	if (!e.topt_playk) { topt_arcn = 0; topt_arcmo = e.origin; topt_arcmv = e.velocity; topt_arctgt = e.topt_tgt; topt_arckd = e.topt_kd; }
+	if (!e.topt_playk) { topt_arcn = 0; topt_arcmo = e.origin; topt_arcmv = e.velocity; topt_arctgt = e.topt_tgt; topt_arckd = e.topt_kd; topt_arcnn = n; topt_arcmode = mode; }
 	e.topt_spriorn = 0;
 	if (topt_priorn == e.topt_kd && topt_priorn > 0)
 	{
@@ -3043,7 +3046,8 @@ void(entity e, float argc) SV_TASOptCommand =
 	if (e.topt_playk)
 	{	// P1483: only the search that kept it, from its own state (autosurf's beam rewinds to it first)
 		k = SV_TASOptArcRank(e.topt_playk - 1);
-		if (k < 0 || vlen(e.origin - topt_arcmo) > 0.5 || vlen(e.velocity - topt_arcmv) > 0.5 || vlen(e.topt_tgt - topt_arctgt) > 1 || topt_arckd != e.topt_kd)
+		if (k < 0 || vlen(e.origin - topt_arcmo) > 0.5 || vlen(e.velocity - topt_arcmv) > 0.5 || vlen(e.topt_tgt - topt_arctgt) > 1 || topt_arckd != e.topt_kd
+		    || topt_arcnn != n || topt_arcmode != mode)
 			{ SV_TASOptStop(e, "no such kept candidate from this state"); return; }
 		for (i = 0; i < e.topt_kd; i = i + 1) topt_kbest[i] = topt_kcur[i] = topt_arck[k * TOPT_KMAX + i];
 		e.topt_bestv = topt_arcv[k]; e.topt_bestce = topt_arce[k]; e.topt_bok = e.topt_wok = 1;
