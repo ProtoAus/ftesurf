@@ -1055,8 +1055,10 @@ float(entity e, float ran) SV_TASOptTubeIn =
 			if (d2 > d) break;
 			d = d2; j = j + 1;
 		}
-		// the approach (within twice the tube of the target) is the target's to judge: a faster line than the
-		// demo's comes in wide of it (surf_null board 6: all 639 candidates cut 76-290 u short, 10 Nov)
+		// the approach (within the target's radius and a tube of it, at least twice the tube) is the target's to
+		// judge: a faster line than the demo's comes in wide of it (surf_null board 6: all 639 candidates cut 76-290 u
+		// short, 10 Nov); within twice the tube only, a ride on ramp 10's own face 763 u from the board point (inside
+		// its 800) was cut on the way in, and the best played to its closest tick (Lex saw it make the ramp: tcomb1)
 		// nor a ramp ride, which the ramp steers (a board 346 u off the demo's left the next stretch cut 31 ticks in);
 		// and a flight from a ride starts as wide as the ride left it, narrowing to the tube by the target's row (a
 		// ramp-1 board at farsh's speed but elsewhere left every ramp-2 candidate cut at the ride's end, tstart11)
@@ -1064,7 +1066,7 @@ float(entity e, float ran) SV_TASOptTubeIn =
 		else if (onr) { onr = 0; iex = i; dex = d; }
 		allow = e.topt_tube;
 		if (iex >= 0 && dex > allow) allow = allow + (dex - allow) * max(0, 1 - (i - iex) / max(1, e.topt_tgtj - iex));
-		if (d > allow && !(e.topt_tgtuse && vlen(p - e.topt_tgt) < 2 * e.topt_tube) && topt_out[i*13+8] != 1) return i;
+		if (d > allow && !(e.topt_tgtuse && vlen(p - e.topt_tgt) < max(2 * e.topt_tube, e.topt_tgtr + e.topt_tube)) && topt_out[i*13+8] != 1) return i;
 		e.topt_tubejend = j;
 		d2 = max(0, topt_dlen[e.topt_tgtj] - topt_dlen[j]) + d;
 		if (d2 < e.topt_tubebest) { e.topt_tubebest = d2; e.topt_tubebk = i; }
@@ -2268,7 +2270,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_obj = obj; e.topt_seg0 = e.run_t_seg;
 	e.topt_fast = fast; e.topt_energy = energy; e.topt_z0 = e.origin_z; e.topt_fcut = 0;
 	e.topt_tgtuse = (fast && e.topt_tgton); e.topt_reachv = -1;   // bracketed: = binds tighter than && here
-	e.topt_reachk = e.topt_reachd = e.topt_reachw = 0;
+	e.topt_reachk = e.topt_reachd = e.topt_reachw = e.topt_reacheg = 0;
 	if (fast) SV_TASOptVizSend(e, 0, 0);
 	if (e.topt_tgtuse)
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: steering to the target %s (within %.0f u), then %s there\n",
