@@ -54,12 +54,23 @@ string(float lead) TASSearch_LeadWord =
 	return "wide";
 };
 
+// a line in the UI font, shrunk to fit the panel's width
+void(vector pos, string s, float sz, vector col, float w) TASSearch_Line =
+{
+	local float tw;
+	tw = stringwidth(s, TRUE, [sz, sz]);
+	if (tw > w) sz = sz * w / tw;
+	sui_text(pos, [sz, sz], s, col, 1, 0);
+};
+
 void(vector scr) TASSearch_Draw =
 {
-	local float tsz, w, row, h, x, y, i, n, lo, hi, v, k;
+	local float tsz, w, row, h, x, y, i, n, lo, hi, v, k, f0;
 	local vector at, col;
 	local string s;
 	if (!autocvar_tas_searchpanel || !tsp_t || time < tsp_t || time - tsp_t > 8) return;
+	f0 = ui_font_cur;
+	Font_Set(ui_font_ui);
 	tsz = bound(11, scr_y / 72, 20); row = tsz * 1.55; w = tsz * 33;
 	h = row * 9.6;
 	at = [16, floor(scr_y * 0.24), 0];
@@ -67,9 +78,10 @@ void(vector scr) TASSearch_Draw =
 	y = at_y;
 	// the title, and a scanning dot while it searches
 	sui_text([at_x, y, 0], [tsz * 1.1, tsz * 1.1], "SEARCH", SUI_THEME_ACCENT, 1, 0);
+	x = stringwidth("SEARCH", TRUE, [tsz * 1.1, tsz * 1.1]) + tsz;
 	s = (tsp_phase == 2) ? sprintf("done: %g generations, %.1f s", max(0, tsp_gen), tsp_elapsed)
 		: ((tsp_gen < 0) ? sprintf("seeding grid, %.1f s", tsp_elapsed) : sprintf("generation %g, %.1f s", tsp_gen, tsp_elapsed));
-	sui_text([at_x + tsz * 6.5, y + tsz * 0.1, 0], [tsz, tsz], s, SUI_THEME_DIM, 1, 0);
+	TASSearch_Line([at_x + x, y + tsz * 0.1, 0], s, tsz, SUI_THEME_DIM, w - x - tsz * 4.5);
 	if (tsp_phase != 2 && time - tsp_t < 3)
 	{
 		x = at_x + w - tsz * 4 + (tsz * 3.6) * (0.5 + 0.5 * sin(time * 4));
@@ -80,11 +92,11 @@ void(vector scr) TASSearch_Draw =
 	if (taso_state == 1)
 		s = sprintf("Stretch %g of %g, try %g, %g backtracks so far", taso_i + 1, taso_n, taso_try + 1, taso_backs);
 	else s = "One stretch";
-	sui_text([at_x, y, 0], [tsz, tsz], s, SUI_THEME_TEXT, 1, 0); y = y + row;
-	// how much
+	TASSearch_Line([at_x, y, 0], s, tsz, SUI_THEME_TEXT, w); y = y + row;
+	// how much (a candidate is one or two rollouts: the demo's keys mapped again by where it went)
 	s = sprintf("%g candidates, %g a second", tsp_evals, rint(tsp_evals / max(0.1, tsp_elapsed)));
-	s = strcat(s, (tsp_flags & 16) ? sprintf(", %g of them on worker threads", tsp_bwork) : ", one thread");
-	sui_text([at_x, y, 0], [tsz, tsz], s, SUI_THEME_DIM, 1, 0); y = y + row;
+	s = strcat(s, (tsp_flags & 16) ? sprintf(", %g rollouts on worker threads", tsp_bwork) : ", one thread");
+	TASSearch_Line([at_x, y, 0], s, tsz, SUI_THEME_DIM, w); y = y + row;
 	// the best so far
 	if (tsp_flags & 1)
 	{
@@ -94,19 +106,19 @@ void(vector scr) TASSearch_Draw =
 	}
 	else if (tsp_flags & 2) { s = sprintf("Best line makes it, but too slowly: %g u/s", tsp_speed); col = SUI_THEME_WARN; }
 	else { s = sprintf("Nothing makes it yet: the best try misses by %g u", tsp_closest); col = SUI_THEME_BAD; }
-	sui_text([at_x, y, 0], [tsz, tsz], s, col, 1, 0); y = y + row;
+	TASSearch_Line([at_x, y, 0], s, tsz, col, w); y = y + row;
 	// what it tunes on that line
 	if (tsp_flags & 1)
 	{
 		if (tsp_bal || tsp_bup)
 			s = sprintf("Boards %g u %s and %g u %s farsh's point", fabs(tsp_bal), (tsp_bal >= 0) ? "past" : "before", fabs(tsp_bup), (tsp_bup >= 0) ? "above" : "below");
 		else s = "Boards at farsh's point";
-		sui_text([at_x, y, 0], [tsz, tsz], s, SUI_THEME_DIM, 1, 0);
+		TASSearch_Line([at_x, y, 0], s, tsz, SUI_THEME_DIM, w);
 	}
 	y = y + row;
 	s = sprintf("Aims %+g, %+g u off the board, %s (lead %.2f)", tsp_aimx, tsp_aimy, TASSearch_LeadWord(tsp_lead), tsp_lead);
 	if (tsp_from) s = strcat(s, sprintf(", steering from tick %g of %g", tsp_from, tsp_n));
-	sui_text([at_x, y, 0], [tsz * 0.9, tsz * 0.9], s, SUI_THEME_MUTED, 1, 0); y = y + row;
+	TASSearch_Line([at_x, y, 0], s, tsz * 0.9, SUI_THEME_MUTED, w); y = y + row;
 	// why candidates fail
 	n = max(1, tsp_evals);
 	x = at_x;
@@ -122,7 +134,7 @@ void(vector scr) TASSearch_Draw =
 	y = y + tsz * 0.8;
 	s = sprintf("left corridor %g%%, walls %g%%, too slow %g%%", rint(100 * tsp_tube / n), rint(100 * tsp_wall / n), rint(100 * tsp_weak / n));
 	s = strcat(s, sprintf(", edge bug %g%%, trigger %g%%", rint(100 * tsp_edge / n), rint(100 * tsp_cut / n)));
-	sui_text([at_x, y, 0], [tsz * 0.85, tsz * 0.85], s, SUI_THEME_MUTED, 1, 0); y = y + row;
+	TASSearch_Line([at_x, y, 0], s, tsz * 0.85, SUI_THEME_MUTED, w); y = y + row;
 	// the best line's speed, generation by generation
 	if (tsp_histn >= 2)
 	{
@@ -138,6 +150,7 @@ void(vector scr) TASSearch_Draw =
 		if (tsp_ref > 0)
 			drawfill([at_x, y + tsz * 1.7 - ((tsp_ref - lo) / (hi - lo) * tsz * 1.6 + 1), 0], [w, 1, 0], SUI_THEME_WARN, 0.9, 0);
 	}
+	Font_Set(f0);
 };
 
 void() TASAuto_Event =
