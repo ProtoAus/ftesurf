@@ -619,6 +619,8 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	  Not done here: this is a regression repair, and that is a redesign.
 	*/
 	registercvar("vbsp_glare_traces", "40");
+	// P1488: ms a frame the sky test (at most half) and the glare may spend tracing; 0 off. Sprite_TraceOver.
+	registercvar("vbsp_sprite_tracems", "1.5");
 	registercvar("vbsp_glare_decay", "0.05");
 	/*
 	  BUILD 59 -- THE VIEW CULL, and it is a MARGIN rather than a boolean.

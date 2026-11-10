@@ -480,7 +480,7 @@ float  spr_gsweep_f;                    // frames since the cursor last wrapped
 */
 float  spr_gvacc;                       // fractional visit quota carried between frames
 float  spr_gquota;                      // this frame's visit quota; 0 = uncapped
-float  spr_glimit;                      // what stopped the loop: 1 rays, 2 visits, 0 neither
+float  spr_glimit;                      // what stopped the loop: 1 rays, 2 visits, 3 the time budget (P1488), 0 neither
 /*
   BUILD 60: the adaptive-ray split, and it needs THREE numbers, not one.
 
@@ -2286,6 +2286,26 @@ float(float margin, vector fwd) Sprite_ConeTan =
 	return best * margin;
 };
 
+// P1488: one trace time budget a frame for the sky test and the glare. surf_fairy's slowest frames were 66-98 rays at
+// ~100 us (traceline 5-9.5 ms); a fixed ray count cannot know a map's ray cost, a clock can. gettime(2) is the engine's
+// seconds since this frame's first gettime(2), in 0.1 ms steps (Patch 1488); an older engine answers realtime there,
+// which is never under 0.5 s after the menu, and then nothing is capped (the ray counts still are).
+float  spr_tt0, spr_tcap;               // this frame's first gettime(2) and the cap in seconds (0: off)
+float  spr_tcapn;                       // loops the cap stopped, since load (vbsp_glare_check's census)
+void() Sprite_TraceStart =
+{
+	spr_tt0 = gettime(2);
+	spr_tcap = cvar("vbsp_sprite_tracems") / 1000;
+	if (spr_tt0 > 0.5 || spr_tcap < 0)
+		spr_tcap = 0;
+};
+float(float share) Sprite_TraceOver =
+{
+	if (spr_tcap <= 0)
+		return FALSE;
+	return gettime(2) - spr_tt0 >= spr_tcap * share;
+};
+
 void() Sprite_Glare =
 {
 	local float  i, n, budget, decay, target, step, back, jmp, spd;
@@ -2295,6 +2315,7 @@ void() Sprite_Glare =
 	local vector pr, pu, aim;
 	// BUILD 59: the view cull.
 	local float  visits, docull, tanx, maxdist, slope, glowcos, zc;
+	local float  tn, tcapped;               // P1488: rays at the last clock check; the time budget stopped the loop
 	local vector fwd;
 	// BUILD 60: the adaptive rays, and the measured sweep.
 	local float  adapt, docorners, had, m, wrapped;
@@ -2549,8 +2570,20 @@ void() Sprite_Glare =
 	spr_gcheap = 0;
 	spr_gforce = 0;
 	spr_grays = 0;
+	tn = 0;
+	tcapped = FALSE;
 	while (n < budget && visits < vmax && spr_n > 0)
 	{
+		if (n > tn)
+		{	// P1488: asked once per traced glow, before the cursor moves, so the next glow is first next frame
+			tn = n;
+			if (Sprite_TraceOver(1))
+			{
+				tcapped = TRUE;
+				spr_tcapn = spr_tcapn + 1;
+				break;
+			}
+		}
 		i = spr_gnext;
 		spr_gnext = spr_gnext + 1;
 		if (spr_gnext >= spr_n)
@@ -2809,7 +2842,9 @@ void() Sprite_Glare =
 	  cvar that would fix it.
 	*/
 	spr_glimit = 0;
-	if (n >= budget)
+	if (tcapped)
+		spr_glimit = 3;
+	else if (n >= budget)
 		spr_glimit = 1;
 	else if (visits >= vmax)
 		spr_glimit = 2;
@@ -2952,10 +2987,11 @@ float(vector eye, vector p, float st) Sprite_SkyTest =
 // call per visit cost ~4% on surf_fairy.
 void(vector eye) Sprite_SkyTick =
 {
-	local float i, k, n, rays, look, st, tanx, maxdist, slope, glowcos, zc;
+	local float i, k, n, rays, look, st, tanx, maxdist, slope, glowcos, zc, burst;
 	local vector d, fwd;
 
 	n = spr_n + beam_n;
+	burst = FALSE;
 	if (vlen(eye - spr_skyeye) > 256)
 		spr_skyburst = n;
 	spr_skyeye = eye;
@@ -2971,6 +3007,7 @@ void(vector eye) Sprite_SkyTick =
 	{
 		rays = rays * 4;
 		spr_skyburst = spr_skyburst - rays;
+		burst = TRUE;
 	}
 	if (!spr_skyat)
 		spr_skyat = memalloc(sizeof(vector) * (SPR_MAX + BEAM_MAX));
@@ -3024,6 +3061,14 @@ void(vector eye) Sprite_SkyTick =
 				if (vlen(d - fwd * zc) - zc * tanx > spr_rad[i] * slope)
 					continue;
 			}
+		}
+		if (Sprite_TraceOver(0.5))
+		{	// P1488: this sprite is still due, first next frame; a burst keeps the credit it did not spend
+			spr_skynext = i;
+			if (burst)
+				spr_skyburst = min(n, spr_skyburst + rays);
+			spr_tcapn = spr_tcapn + 1;
+			break;
 		}
 		spr_skyat[i] = eye;
 		rays = rays - 1;
@@ -3134,6 +3179,7 @@ void() Sprite_Draw =
 	eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
 	fwd = v_forward;
+	Sprite_TraceStart();	// P1488
 	if (cvar("vbsp_sprite_skyrays") > 0)
 		Sprite_SkyTick(eye);
 	skyon = cvar("vbsp_sprite_skyrays") > 0;
