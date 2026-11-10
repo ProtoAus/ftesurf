@@ -2570,13 +2570,13 @@ float(string cmd) CSQC_ConsoleCommand =
 			if (strstrofs(tsline, "..") >= 0) tsline = "!";
 			tsline = strcat(" ", tsline);
 			for (tsi = 3; tsi < cmdargc; tsi = tsi + 1)
-				if (argv(tsi) == "tube" || argv(tsi) == "look" || argv(tsi) == "tries" || argv(tsi) == "backs" || argv(tsi) == "nohop" || argv(tsi) == "join" || argv(tsi) == "rideknots" || argv(tsi) == "polish" || argv(tsi) == "pace" || argv(tsi) == "emin" || argv(tsi) == "start" || argv(tsi) == "zone" ||
+				if (argv(tsi) == "tube" || argv(tsi) == "look" || argv(tsi) == "tries" || argv(tsi) == "backs" || argv(tsi) == "nohop" || argv(tsi) == "join" || argv(tsi) == "rideknots" || argv(tsi) == "polish" || argv(tsi) == "low" || argv(tsi) == "pace" || argv(tsi) == "emin" || argv(tsi) == "start" || argv(tsi) == "zone" ||
 				    argv(tsi) == "sg" || argv(tsi) == "sy" || argv(tsi) == "sright" || argv(tsi) == "sflip" || argv(tsi) == "onjump" || argv(tsi) == "onexit" ||
 				    argv(tsi) == "finish" || FS_TASNumber(argv(tsi)))
 					tsline = strcat(tsline, " ", argv(tsi));
 				else tsline = " !";
 			if (strstrofs(tsline, "!") >= 0)
-				print("tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [emin F] [nohop] [join] [rideknots] [polish] [finish] | stop | status | startpause\n");
+				print("tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [emin F] [nohop] [join] [rideknots] [polish] [low] [finish] | stop | status | startpause\n");
 			else
 				localcmd(sprintf("p%g cmd tas autosurf%s\n", tsseat + 1, tsline));
 		}
@@ -2610,15 +2610,15 @@ float(string cmd) CSQC_ConsoleCommand =
 			tsline = "";
 			for (tsi = 4; tsi < cmdargc; tsi = tsi + 1)    // the server checks their order; only known words pass
 				if (argv(tsi) == "board" || argv(tsi) == "flick" || argv(tsi) == "time" || argv(tsi) == "energy" ||
-				    argv(tsi) == "fast" || argv(tsi) == "zigzag" || argv(tsi) == "split" || argv(tsi) == "fixedpitch" || argv(tsi) == "follow" || argv(tsi) == "curve" || argv(tsi) == "demo" || argv(tsi) == "aim" || argv(tsi) == "late" || argv(tsi) == "tube" || argv(tsi) == "hop" || argv(tsi) == "look" || argv(tsi) == "pace" || argv(tsi) == "emin" || argv(tsi) == "gens" || argv(tsi) == "kex" || argv(tsi) == "stall" ||
-				    ((argv(tsi - 1) == "pace" || argv(tsi - 1) == "emin") && FS_TASNumber(argv(tsi))) ||    // decimals (review)
+				    argv(tsi) == "fast" || argv(tsi) == "zigzag" || argv(tsi) == "split" || argv(tsi) == "fixedpitch" || argv(tsi) == "follow" || argv(tsi) == "curve" || argv(tsi) == "demo" || argv(tsi) == "aim" || argv(tsi) == "late" || argv(tsi) == "tube" || argv(tsi) == "hop" || argv(tsi) == "look" || argv(tsi) == "pace" || argv(tsi) == "emin" || argv(tsi) == "gens" || argv(tsi) == "kex" || argv(tsi) == "stall" || argv(tsi) == "low" ||
+				    ((argv(tsi - 1) == "pace" || argv(tsi - 1) == "emin" || argv(tsi - 1) == "low") && FS_TASNumber(argv(tsi))) ||    // decimals (review)
 				    ((argv(tsi - 1) == "gens" || argv(tsi - 1) == "kex" || argv(tsi - 1) == "stall") && FS_TASNumber(argv(tsi))) ||
 				    (stof(argv(tsi)) >= 1 && stof(argv(tsi)) <= ((argv(tsi - 1) == "tube") ? 4096 : ((argv(tsi - 1) == "look") ? 400 : 32)) && argv(tsi) == ftos(stof(argv(tsi)))))
 					tsline = strcat(tsline, " ", argv(tsi));
 				else tsline = "!";
 			if (!(tsvalue >= 4 && tsvalue <= 768 && tsvalue == floor(tsvalue)) ||       // P1449: the server holds played searches to 128
 			    (strcmp(argv(3), "left") && strcmp(argv(3), "right")) || substring(tsline, 0, 1) == "!")
-				print("tas optimize <ticks 4..128, fast 4..768> <left|right> [board | follow | curve [knots 3..16]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [aim] [hop] [gens N] [demo [late (after aim)] [tube R [look N]] [pace X] [emin E] [kex T]] [stall N] (with curve)\n");
+				print("tas optimize <ticks 4..128, fast 4..768> <left|right> [board | follow | curve [knots 3..16]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [aim] [hop] [gens N] [demo [late (after aim)] [tube R [look N]] [pace X] [emin E] [kex T]] [stall N] [low W] (with curve)\n");
 			else
 				localcmd(sprintf("p%g cmd tas optimize %g %s%s\n", tsseat + 1, tsvalue, argv(3), tsline));
 		}
