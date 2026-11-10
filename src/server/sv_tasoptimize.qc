@@ -171,6 +171,8 @@ float(entity e, float i) SV_TASOptFaceDot =
 .float topt_dn;
 float topt_dpos[TOPT_HMAX * 3]; // the rows' origins (each after its tick), for `tube`
 .float topt_tube, topt_tubeout; // P1449 `tube R`: candidates stay within R of that path; how many left it
+.float topt_tubeex;             // `slack S`: past a ride's exit (or an airborne start) the tube allows S more, narrowing
+.float topt_trigcut;            // the played miss ended on a trigger within TOPT_EARLYCUT ticks (the tick, or 0)
 .float topt_wallhit;            // P1449: fast candidates cut at a wall touched in flight (SV_TASOptLimit)
 float topt_dlen[TOPT_HMAX];     // the demo path's length from its first row to each row
 .float topt_tgtj;               // the row nearest the target (tube searches)
@@ -1142,6 +1144,9 @@ void(entity e, float r, float y, float f) SV_TASOptPredict =
 		{
 			cut = (e.topt_reachv < TOPT_WEAK) ? SV_TASOptLimit(e, (e.topt_rollcut == 1) ? ran - 1 : ran) : -1;
 			e.topt_earlycut = (cut >= 0 && e.topt_limwhy == 1 && cut < TOPT_EARLYCUT) ? cut + 1 : 0;
+			// a miss ended on a trigger (a fail teleport) as early: the state it started from was already falling off
+			// (tfull4b: ramp 9 boarded 371 u down its face, every ramp-10 line on a trigger 7-21 ticks on)
+			e.topt_trigcut = (e.topt_reachv < TOPT_WEAK && e.topt_rollcut == 1 && ran <= TOPT_EARLYCUT && cut < 0) ? ran : 0;
 			e.topt_lowneed = (e.topt_reachv < TOPT_WEAK && e.topt_tgtn_z >= 0.99) ? SV_TASOptLowNeed(e, ran) : 0;
 			e.topt_over = 0;
 			if (e.topt_reachv < TOPT_REACH && e.topt_reachk >= 1 && e.topt_reachk <= ran)
@@ -1248,7 +1253,6 @@ float(float n) SV_TASOptWallTicks =
 // target's row plus the distance off the path -- progress a miss scores by, where the straight
 // distance to a far target says nothing (a ride heading away from the next board, every candidate
 // cut on it the same distance short: board 4, 9 Nov).
-#define TOPT_TUBEEX 200
 float(entity e, float ran) SV_TASOptTubeIn =
 {
 	local float i, j, d, d2, onr, iex, dex, allow;
@@ -1282,11 +1286,12 @@ float(entity e, float ran) SV_TASOptTubeIn =
 		// ramp-1 board at farsh's speed but elsewhere left every ramp-2 candidate cut at the ride's end, tstart11)
 		if (topt_out[i*13+8] == 1) onr = 1;
 		else if (onr) { onr = 0; iex = i; dex = d; }
-		else if (i == 0) { iex = 0; dex = d; }      // a start in the air off the path, as a ride's exit
+		else if (i == 0 && e.topt_tubeex > 0) { iex = 0; dex = d; }      // a start in the air off the path, as an exit
 		allow = e.topt_tube;
-		// TOPT_TUBEEX of slack past the exit's offset: narrowing from the offset itself cut a flight that drifted a
-		// tick past it -- a better ramp-1 board (2720 u/s, the guide 2719) left all 638 ramp-2 lines cut 20 ticks on
-		if (iex >= 0 && dex + TOPT_TUBEEX > allow) allow = allow + (dex + TOPT_TUBEEX - allow) * max(0, 1 - (i - iex) / max(1, e.topt_tgtj - iex));
+		// `slack`: more than the exit's own offset -- narrowing from the offset cut a flight that drifted a tick past it
+		// (a better ramp-1 board left all 638 ramp-2 lines cut 20 ticks on). Not by default: past ramp 6 the lines it
+		// kept drifted into the window's walls, and a line stopped on the ramp outscored them all (tfull4)
+		if (iex >= 0 && dex + e.topt_tubeex > allow) allow = allow + (dex + e.topt_tubeex - allow) * max(0, 1 - (i - iex) / max(1, e.topt_tgtj - iex));
 		if (d > allow && !(e.topt_tgtuse && vlen(p - e.topt_tgt) < max(2 * e.topt_tube, e.topt_tgtr + e.topt_tube)) && topt_out[i*13+8] != 1) return i;
 		e.topt_tubejend = j;
 		d2 = max(0, topt_dlen[e.topt_tgtj] - topt_dlen[j]) + d;
@@ -2657,11 +2662,11 @@ void(entity e) SV_TASOptReset =
 // tas optimize <ticks> <left|right> [board] [flick [k]] [time] [energy] [fast]
 void(entity e, float argc) SV_TASOptCommand =
 {
-	local float n, dir, i, mode, fk, searches, obj, fast, energy, fixp, kn, tube, hop, look, pace, emin, gens, kex, stall, low, edgeok, ride, wide, leadmin, fresh;
+	local float n, dir, i, mode, fk, searches, obj, fast, energy, fixp, kn, tube, hop, look, pace, emin, gens, kex, stall, low, edgeok, ride, wide, leadmin, fresh, slack;
 	local string w;
 	n = stof(argv(2));
 	dir = !strcmp(argv(3), "left") ? 1 : (!strcmp(argv(3), "right") ? -1 : 0);
-	mode = 0; fk = 0; obj = 0; fast = 0; energy = 0; fixp = 0; kn = 0; tube = 0; hop = 0; look = 0; pace = 0; emin = 0; gens = 0; kex = 0; stall = 0; low = 0; edgeok = 0; ride = 0; wide = 0; leadmin = 0; fresh = 0;
+	mode = 0; fk = 0; obj = 0; fast = 0; energy = 0; fixp = 0; kn = 0; tube = 0; hop = 0; look = 0; pace = 0; emin = 0; gens = 0; kex = 0; stall = 0; low = 0; edgeok = 0; ride = 0; wide = 0; leadmin = 0; fresh = 0; slack = 0;
 	for (i = 4; i < argc; i = i + 1)
 	{
 		w = argv(i);
@@ -2684,6 +2689,8 @@ void(entity e, float argc) SV_TASOptCommand =
 		else if (w == "edgeok" && !edgeok) edgeok = 1;                           // P1449: an edge-bugged reach counts
 		else if (w == "wide" && (mode & 128) && !wide) wide = 1;                 // P1476: wider strafe weaves in flight
 		else if (w == "fresh" && !fresh) fresh = 1;                             // no remembered line among the first candidates
+		else if (w == "slack" && !slack) slack = -1;                            // the tube's slack past a ride's exit
+		else if (slack == -1 && argv(i - 1) == "slack" && FS_TASNumber(w) && stof(w) > 0 && stof(w) <= 600) slack = stof(w);
 		else if (w == "leadmin" && (mode & 128) && !leadmin) leadmin = -1;       // P1449: the least lead (an approach along the face)
 		else if (leadmin == -1 && argv(i - 1) == "leadmin" && FS_TASNumber(w) && stof(w) > 0 && stof(w) <= 0.9) leadmin = stof(w);
 		else if (low == -1 && argv(i - 1) == "low" && FS_TASNumber(w) && stof(w) > 0 && stof(w) <= 10) low = stof(w);
@@ -2767,7 +2774,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_mode = mode; e.topt_fk = fk; e.topt_srch = 0; e.topt_besty = 0; e.topt_bestf = 0; e.topt_bestp = 12;
 	e.topt_pfoff = fixp; e.topt_pfon = 0;
 	e.topt_kn = kn; e.topt_kgen = -1; e.topt_kidx = 0; e.topt_wok = e.topt_bok = 0; e.topt_vizt = 0;   // vizt before the clear below
-	e.topt_efol = 0; e.topt_tube = tube; e.topt_tubeout = e.topt_wallhit = 0; e.topt_hop = hop; e.topt_look = look; e.topt_pace = pace; e.topt_emin = emin; e.topt_weakn = 0; e.topt_cegen = gens ? gens : TOPT_CEGEN; e.topt_cestall = stall ? stall : TOPT_CESTALL; e.topt_low = low; e.topt_edgeok = edgeok; e.topt_edgen = 0; e.topt_earlycut = 0; e.topt_lowneed = 0;
+	e.topt_efol = 0; e.topt_tube = tube; e.topt_tubeex = (slack > 0) ? slack : 0; e.topt_tubeout = e.topt_wallhit = 0; e.topt_hop = hop; e.topt_look = look; e.topt_pace = pace; e.topt_emin = emin; e.topt_weakn = 0; e.topt_cegen = gens ? gens : TOPT_CEGEN; e.topt_cestall = stall ? stall : TOPT_CESTALL; e.topt_low = low; e.topt_edgeok = edgeok; e.topt_edgen = 0; e.topt_earlycut = 0; e.topt_lowneed = 0;
 	e.topt_rideT = ride; e.topt_briefn = 0; e.topt_leadmin = leadmin; e.topt_over = 0;
 	e.topt_tgtj = 0;
 	if (tube)
