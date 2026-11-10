@@ -172,6 +172,7 @@ float topt_dlen[TOPT_HMAX];     // the demo path's length from its first row to 
 // last scored reach's offsets (along the run, up the face), topt_rbal/rbup the played one's.
 .float topt_low, topt_bal, topt_bup, topt_rbal, topt_rbup;
 .float topt_edgeok, topt_edgen;     // P1449: edge-bugged reaches allowed (`edgeok`); how many were not counted
+.float topt_candeg, topt_reacheg;   // the last scored candidate edge-bugged; the played one did
 void(entity e, float bk) SV_TASOptBoardAt =
 {
 	local vector n, r, s, b, tv;
@@ -931,7 +932,7 @@ void(entity e, float r, float y, float f) SV_TASOptPredict =
 	{
 		e.topt_reachv = SV_TASOptTargetScore(e, ran);
 		e.topt_reachk = e.topt_candk; e.topt_reachd = e.topt_candd; e.topt_reache = e.topt_cande; e.topt_reachw = e.topt_candw;
-		e.topt_rbal = e.topt_bal; e.topt_rbup = e.topt_bup;
+		e.topt_rbal = e.topt_bal; e.topt_rbup = e.topt_bup; e.topt_reacheg = e.topt_candeg;
 		if (e.topt_phase == 3 && e.topt_look > 0 && e.topt_kn && (e.topt_mode & 64) && e.topt_reachv >= TOPT_REACH)
 			SV_TASOptWarmKeep(e);
 		if (e.topt_phase == 3 && e.topt_reachv < TOPT_WEAK && cvar("developer"))
@@ -1011,9 +1012,11 @@ float(float i, float ran) SV_TASOptEdgeAt =
 	if (i < 1 || i + 2 >= ran) return FALSE;
 	vz0 = topt_out[i*13-8]; vz1 = topt_out[i*13+5];
 	if (vz0 >= -250 || vz1 < vz0 + 200 || vz1 >= 100) return FALSE;
-	if (topt_out[i*13+8] == 1) return FALSE;            // a ramp's clip takes the fall into it: boarding, not an edge
+	// a ramp's clip takes the fall into it: boarding, not an edge -- a curved or seamed ramp's two planes (3) or a
+	// brush entity's (2) too (review)
+	if (topt_out[i*13+8] >= 1 && topt_out[i*13+8] <= 3) return FALSE;
 	if (topt_out[i*13+32]) return FALSE;                // still on the ground two ticks on: a landing
-	return topt_out[i*13+31] < vz1;
+	return topt_out[i*13+31] <= vz1;                    // an edge clipped again two ticks on leaves the same vz
 };
 float(float n) SV_TASOptWallTicks =
 {
@@ -1086,8 +1089,8 @@ float(float base, float x) SV_TASOptBand = { return base + ((x >= TOPT_BANDK) ? 
 // prediction could not follow to the end (cut) -1.
 float(entity e, float ran) SV_TASOptTargetScore =
 {
-	local float i, d, best, bk, hit, lim, tx, dh;
-	best = 1000000; bk = -1; hit = FALSE;
+	local float i, d, best, bk, hit, lim, tx, dh, eg;
+	best = 1000000; bk = -1; hit = FALSE; e.topt_candeg = 0;
 	lim = (e.topt_rollcut == 1) ? ran - 1 : ran;        // the tick QC acts on is not one the prediction holds
 	tx = SV_TASOptLimit(e, lim);
 	if (tx >= 0) lim = tx;                              // a wall touched or the tube left: a cut there
@@ -1130,10 +1133,10 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		e.topt_cande = SV_TASOptStateScore(e, [topt_out[i], topt_out[i+1], topt_out[i+2]], [topt_out[i+3], topt_out[i+4], topt_out[i+5]]);
 		d = e.topt_cande - TOPT_WALLPEN * e.topt_candw - TOPT_GROUNDPEN * e.topt_candg;
 		if (!e.topt_edgeok)
-			for (i = 1; i <= bk; i = i + 1)
-				if (SV_TASOptEdgeAt(i, ran))
+			for (eg = 1; eg <= bk; eg = eg + 1)          // its own counter: i is the reach's offset below (review)
+				if (SV_TASOptEdgeAt(eg, ran))
 				{
-					e.topt_edgen = e.topt_edgen + 1;
+					e.topt_edgen = e.topt_edgen + 1; e.topt_candeg = 1;
 					return SV_TASOptBand(TOPT_WEAK, d - 3000);
 				}
 		if (e.topt_emin > 0 && e.topt_cande < e.topt_emin)
@@ -1324,7 +1327,7 @@ void(entity e, float v) SV_TASOptResult =
 				sprint(e, PRINT_HIGH, sprintf("tas optimize: target reached at tick %.0f of %.0f (%.1f u from it), %s %.1f u/s there\n",
 					e.topt_reachk, e.topt_n, e.topt_reachd, e.topt_energy ? "energy" : "speed", SV_TASOptEnergyShow(e, e.topt_reache)));
 			}
-			else if (e.topt_reachv >= TOPT_WEAK && e.topt_edgen && (e.topt_emin <= 0 || e.topt_reache >= e.topt_emin))
+			else if (e.topt_reachv >= TOPT_WEAK && e.topt_reacheg)      // the played line's own (review)
 				sprint(e, PRINT_HIGH, sprintf("tas optimize: target reached only through an edge bug (a fall stopped on an edge, not a ramp): not counted (%.0f such reaches)\n",
 					e.topt_edgen));
 			else if (e.topt_reachv >= TOPT_WEAK)
