@@ -94,7 +94,7 @@ void(vector scr) TASSearch_Draw =
 	f0 = ui_font_cur;
 	Font_Set(ui_font_ui);
 	tsz = Font_Px(bound(11, scr_y / 72, 20)); row = rint(tsz * 1.5); w = rint(tsz * 30);
-	h = row * 17.2;
+	h = row * 18.6;
 	at = [16, floor(scr_y * 0.2), 0];
 	sui_roundbox(at - [8, 8, 0], [w + 16, h + 16, 0], 8, SUI_THEME_PANEL, 0.88);
 	y = at_y;
@@ -114,22 +114,23 @@ void(vector scr) TASSearch_Draw =
 	drawfill([at_x, y, 0], [w, tsz * 0.5, 0], SUI_THEME_WELL, 0.9, 0);
 	drawfill([at_x, y, 0], [w * bound(0, max(0, tsp_gen) / cap, 1), tsz * 0.5, 0], SUI_THEME_ACCENT, 0.95, 0);
 	y = y + tsz * 0.8;
-	if (tsp_gen < 0) s = sprintf("first guesses: %g tried", tsp_evals);
-	else s = sprintf("generation %g of %g at most", tsp_gen, cap);
-	if (tsp_gen >= 0 && (tsp_flags & 1) && tsp_gen < tsp_cemin)
-		s = strcat(s, sprintf("; may end early from generation %g", tsp_cemin));
-	else if (tsp_gen >= 0 && (tsp_flags & 1))
-		s = strcat(s, sprintf("; ends after %g without a gain (%g so far)", tsp_cestall, tsp_kstall));
-	else if (tsp_gen >= 0)
-		s = strcat(s, "; ends early only once a line makes it");
+	if (tsp_gen < 0) s = sprintf("First guesses: %g tried", tsp_evals);
+	else s = sprintf("Generation %g of %g at most", tsp_gen, cap);
 	if (tsp_phase == 2)
-		s = (tsp_gen >= cap) ? sprintf("stopped: used all %g generations", cap)
-			: sprintf("stopped: %g generations without a gain after %g", tsp_cestall, tsp_gen);
-	TASSearch_Line([at_x, y, 0], s, tsz * 0.85, SUI_THEME_MUTED, w); y = y + row * 0.9;
+		s = (tsp_gen >= cap) ? sprintf("Stopped: used all %g generations", cap)
+			: sprintf("Stopped: %g generations without a gain", tsp_cestall);
+	TASSearch_Line([at_x, y, 0], s, tsz * 0.85, SUI_THEME_MUTED, w); y = y + row * 0.8;
+	s = "";
+	if (tsp_phase != 2 && tsp_gen >= 0 && (tsp_flags & 1) && tsp_gen < tsp_cemin) s = sprintf("May end early from generation %g", tsp_cemin);
+	else if (tsp_phase != 2 && tsp_gen >= 0 && (tsp_flags & 1)) s = sprintf("Ends after %g without a gain (%g so far)", tsp_cestall, tsp_kstall);
+	else if (tsp_phase != 2 && tsp_gen >= 0) s = "Ends early only once a line makes it";
+	TASSearch_Line([at_x, y, 0], s, tsz * 0.85, SUI_THEME_MUTED, w); y = y + row * 0.8;
 	// how wide it still looks: it narrows on the best lines, 4 of 20 stay wide, and it re-widens when stuck
-	s = sprintf("Searching %g%% as wide as it started; 4 of 20 lines a generation stay wide", tsp_width);
-	if (tsp_widen) s = strcat(s, sprintf("; re-widened %g time%s when stuck", tsp_widen, (tsp_widen == 1) ? "" : "s"));
-	if (tsp_mem) s = strcat(s, "; began from its best line here last time");
+	s = sprintf("Searching %g%% as wide as it started", tsp_width);
+	if (tsp_mem) s = strcat(s, ", from its best line here");
+	TASSearch_Line([at_x, y, 0], s, tsz * 0.85, SUI_THEME_MUTED, w); y = y + row * 0.8;
+	s = "4 of 20 lines a generation stay wide";
+	if (tsp_widen) s = strcat(s, sprintf("; re-widened %g time%s", tsp_widen, (tsp_widen == 1) ? "" : "s"));
 	TASSearch_Line([at_x, y, 0], s, tsz * 0.85, SUI_THEME_MUTED, w); y = y + row;
 	// where in the chain
 	if (taso_state == 1 && taso_n > 0)
@@ -458,9 +459,10 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	if (Profile_Chip("jg_air", at, chip, "Add air point here", hint, FALSE)) { localcmd("tas route here\n"); jg_replan = cltime + 0.4; }
 	if (Profile_Chip("jg_reset", at + [half + 6, 0, 0], chip, "Undo my moves", hint, FALSE)) { localcmd("tas autosurf reset\n"); jg_replan = cltime + 0.3; }
 	at_y = at_y + row + 3;
-	sui_text(at, [hint * 0.92, hint * 0.92], "Edit closes this panel: fly with your movement keys, drag handles, Esc comes back here.",
-		SUI_THEME_MUTED, 1, 0);
-	at_y = at_y + hint * 2.2;
+	sui_text(at, [hint, hint], "Edit closes this panel: fly with your movement keys and drag the handles.", SUI_THEME_MUTED, 1, 0);
+	at_y = at_y + hint * 1.4;
+	sui_text(at, [hint, hint], "Esc brings this panel back.", SUI_THEME_MUTED, 1, 0);
+	at_y = at_y + hint * 2;
 
 	// 3: surf it
 	sui_text(at, [tsz, tsz], "3   Surf", SUI_THEME_TEXT, 1, 0); at_y = at_y + tsz * 1.6;
@@ -477,8 +479,9 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 		if (Profile_Chip("jg_gohere", at + [half + 6, 0, 0], chip, "From here", tsz, FALSE))
 			localcmd(sprintf("tas autosurf %s%s\n", jg_gp[jg_pick], go));
 		at_y = at_y + row + 3;
-		sui_text(at, [hint * 0.92, hint * 0.92], "Restart: the start, prestrafe and jump done for you. Here: from where you are paused on the route.",
-			SUI_THEME_MUTED, 1, 0);
+		sui_text(at, [hint, hint], "Restart: the start, prestrafe and jump are done for you.", SUI_THEME_MUTED, 1, 0);
+		at_y = at_y + hint * 1.4;
+		sui_text(at, [hint, hint], "Here: from where you are paused on the route.", SUI_THEME_MUTED, 1, 0);
 		at_y = at_y + hint * 1.9;
 	}
 	sui_text(at, [hint, hint], "Effort", SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.5;
