@@ -153,12 +153,12 @@ void(vector scr) TASSearch_Draw =
 	s = sprintf("Flies %s at the ramp (lead %.2f), aiming %+g, %+g u off its point", TASSearch_LeadWord(tsp_lead), tsp_lead, tsp_aimx, tsp_aimy);
 	TASSearch_Line([at_x, y, 0], s, tsz * 0.85, SUI_THEME_MUTED, w); y = y + row * 1.15;
 	// why candidates fail: each its own share (one line can do several)
-	TASSearch_Line([at_x, y, 0], "Why lines fail (one can fail several ways):", tsz * 0.85, SUI_THEME_TEXT, w); y = y + row;
-	TASSearch_Reason([at_x, y, 0], w, tsz, "Strayed 300 u off farsh's path", tsp_tube, tsp_evals, SUI_THEME_INFO); y = y + row * 0.85;
-	TASSearch_Reason([at_x, y, 0], w, tsz, "Touched a wall or ceiling", tsp_wall, tsp_evals, SUI_THEME_BAD); y = y + row * 0.85;
-	TASSearch_Reason([at_x, y, 0], w, tsz, "Made it, but too slowly", tsp_weak, tsp_evals, SUI_THEME_WARN); y = y + row * 0.85;
-	TASSearch_Reason([at_x, y, 0], w, tsz, "Only made it by an edge bug", tsp_edge, tsp_evals, SUI_THEME_ACCENT); y = y + row * 0.85;
-	TASSearch_Reason([at_x, y, 0], w, tsz, "Fell into a trigger", tsp_cut, tsp_evals, SUI_THEME_MUTED); y = y + row * 1.05;
+	TASSearch_Line([at_x, y, 0], "What the lines tried ran into (one line can hit several):", tsz * 0.85, SUI_THEME_TEXT, w); y = y + row;
+	TASSearch_Reason([at_x, y, 0], w, tsz, "Strayed off farsh's path (cut there)", tsp_tube, tsp_evals, SUI_THEME_INFO); y = y + row * 0.85;
+	TASSearch_Reason([at_x, y, 0], w, tsz, "Brushed a wall (costs it speed)", tsp_wall, tsp_evals, SUI_THEME_BAD); y = y + row * 0.85;
+	TASSearch_Reason([at_x, y, 0], w, tsz, "Made it, too slowly to count", tsp_weak, tsp_evals, SUI_THEME_WARN); y = y + row * 0.85;
+	TASSearch_Reason([at_x, y, 0], w, tsz, "Made it only by an edge bug", tsp_edge, tsp_evals, SUI_THEME_ACCENT); y = y + row * 0.85;
+	TASSearch_Reason([at_x, y, 0], w, tsz, "Hit a trigger (cut there)", tsp_cut, tsp_evals, SUI_THEME_MUTED); y = y + row * 1.05;
 	// the best line's speed, generation by generation
 	TASSearch_Line([at_x, y, 0], (tsp_ref > 0) ? "Best speed by generation (line: farsh)" : "Best speed by generation", tsz * 0.8, SUI_THEME_MUTED, w);
 	y = y + tsz * 1.1;
