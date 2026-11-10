@@ -72,6 +72,7 @@ float as_n;                     // waypoints
 // full run re-took ramp 5 at 2810-2838 eleven times and failed ramp 6 from each (rigs/tnullfull4, 10 Nov)
 float as_rbs[TAS_ASMAX], as_need[TAS_ASMAX];
 float as_lowx[TAS_ASMAX];       // a board stretch's `low` weight in 0.25s, doubled by each backtrack its handover caused (0: as_low)
+float as_leadmin[TAS_ASMAX];    // a board stretch's least lead, raised by each try that overshot its point (Lex: ramp 9 to 10)
 float as_rfs[TAS_ASMAX];        // farsh's energy at each stretch's board (as_rf when it was reached)
 float as_wt[TAS_ASMAX];         // the demo's time there
 float as_wo[TAS_ASMAX * 3];     // its origin
@@ -556,6 +557,7 @@ void(entity e) SV_TASAutoLink =
 	if (as_wk[i - 1] == 1 && as_wl[i - 1] > e.as_tprev)
 		ps = strcat(ps, sprintf(" kex %.0f", min(TOPT_HMAX, rint((as_wl[i - 1] - e.as_tprev) / PM_TICK) + 15)));   // past the cap: refused (review 13)
 	if (e.as_wide) ps = strcat(ps, " wide");
+	if (as_leadmin[i] > 0 && as_wk[i] == 1) ps = strcat(ps, sprintf(" leadmin %g", as_leadmin[i]));
 	cl = sprintf("tas optimize %.0f left curve 12 demo aim late tube %.0f%s%s%s energy fast", h, e.as_tube, e.as_hop ? " hop" : "", ls, ps);
 	}
 	if (cvar("developer")) sprint(e, PRINT_HIGH, strcat("tas autosurf: ", cl, "\n"));
@@ -580,7 +582,7 @@ void(entity e) SV_TASAutoBacks =
 {
 	local float k;
 	if (e.as_backmax < 0) e.as_backmax = max(6, 2 * as_n);
-	for (k = 0; k < TAS_ASMAX; k = k + 1) { as_rbs[k] = as_need[k] = as_lowx[k] = as_rfs[k] = as_ws[k] = 0; as_fsl[k] = -1; }
+	for (k = 0; k < TAS_ASMAX; k = k + 1) { as_rbs[k] = as_need[k] = as_lowx[k] = as_rfs[k] = as_ws[k] = as_leadmin[k] = 0; as_fsl[k] = -1; }
 	e.as_failmax = -1;
 };
 
@@ -755,6 +757,12 @@ void(entity e) SV_TASAutoFrame =
 			}
 			e.as_stage = 1;
 			return;
+		}
+		if (as_wk[e.as_i] == 1 && e.topt_over > 100 && as_leadmin[e.as_i] < 0.8)
+		{	// it flew past the ramp's point: the next try comes in wider, along the face (a lead of at least 0.5, 0.7, 0.8)
+			as_leadmin[e.as_i] = min(0.8, max(0.5, as_leadmin[e.as_i] + 0.2));
+			SV_TASAutoNote(e, 1, sprintf("stretch %.0f overshot its ramp by %.0f u: the next try comes in wider (lead %g or more)",
+				e.as_i + 1, e.topt_over, as_leadmin[e.as_i]));
 		}
 		e.as_try = e.as_try + 1;
 		e.as_backhead = -1; e.as_backfail = 0;
