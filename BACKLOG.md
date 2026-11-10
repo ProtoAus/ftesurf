@@ -265,6 +265,11 @@
   face order identical in 6 traced views, transparent ~0.1-0.2 ms less at fairy t=7.6 (worst view now 1.63 ms, was
   2.31 before P1457). What is left in a failing sort: plane-side tests (~20k units), pass-0 verdicts, projection.
   Bigger fairy lever now: csqc 2.4-4.3 ms on paused views (glare rays, Lex's budget call).
+  P1474 + P1475 INSTALLED 10 Nov (both installs exe 50db36e1 + hl2 plugin 8204a248, patch-1475): captures
+  staggered (r_capturestagger) and moved with the eye (r_captureparallax). At the 300 cap no lows change on
+  nuclear (capture frames fit); uncapped stagger 1% 160 -> 217. r_capturerate 30 vs 60 at the cap: 60 kept.
+  Open: one parallax step leaves a third of the error on 64-unit slides; vmt/lmreflect glass is turned only;
+  moving the capture's CPU prep to a worker (Lex asked) needs a thread-safe world walk -- not now.
   P1470 + P1472 INSTALLED 10 Nov (both installs exe 87c31448, patch-1472): r_projection 1-6 draw under MSAA and
   render scale; cl_maxfps floors at 1/pm_ticrate while playing (Lex: nobody plays below 66 fps). Smoke on pantheon:
   30 -> 15.28 ms, 100 -> 10.01 ms, uncapped 298 fps; six projections + renderscale 2 drawn, 0 GL error lines.
