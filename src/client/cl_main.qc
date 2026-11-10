@@ -2162,6 +2162,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		Inv_GlowPre();              // P1230: keeps this view's depth for the aura's pass
 	}
 	renderscene();
+	TASOptViz_AfterScene();         // P1449: tas_viz_cam's near plane back
 	if (!worldonly)
 	{
 		Inv_GlowPass(TRUE);
