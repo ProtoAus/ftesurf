@@ -465,6 +465,7 @@ void(entity e) SV_TASAutoLink =
 	ps = strcat(ps, sprintf(" gens %.0f", e.as_polish ? 90 : min(90, 30 * (1 + e.as_try))));
 	if (e.as_polish && e.as_try < e.as_tries - 1) ps = strcat(ps, " stall 20");
 	if ((e.as_low || as_lowx[i]) && as_wk[i] == 1) ps = strcat(ps, sprintf(" low %g", 0.25 * max(e.as_low ? 1 : 0, as_lowx[i])));
+	if (as_wk[i] == 1 && as_wl[i] > as_wt[i]) ps = strcat(ps, sprintf(" ride %.0f", rint((as_wl[i] - as_wt[i]) / PM_TICK)));
 	if (e.as_rideknots && i > 0)
 	if (as_wk[i - 1] == 1 && as_wl[i - 1] > e.as_tprev)
 		ps = strcat(ps, sprintf(" kex %.0f", min(TOPT_HMAX, rint((as_wl[i - 1] - e.as_tprev) / PM_TICK) + 15)));   // past the cap: refused (review 13)

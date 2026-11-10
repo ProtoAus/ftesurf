@@ -22,8 +22,9 @@ var float taso_lastk = -1;          // the stretch last reached (the line under 
 var float autocvar_tas_searchpanel = 1;
 float tsp_t, tsp_phase, tsp_flags, tsp_gen, tsp_evals, tsp_elapsed, tsp_speed, tsp_ref, tsp_closest;
 float tsp_tube, tsp_wall, tsp_weak, tsp_edge, tsp_cut, tsp_batches, tsp_bwork, tsp_aimx, tsp_aimy, tsp_lead, tsp_from, tsp_bal, tsp_bup, tsp_n;
-float tsp_cegen, tsp_kstall, tsp_cestall, tsp_cemin;
-float tsp_width, tsp_widen, tsp_mem;    // the spread against its start (%), re-widenings, an earlier search's line among the first   // the generation cap, generations without a gain, the stall that ends it, the floor
+float tsp_cegen, tsp_kstall, tsp_cestall, tsp_cemin;   // the generation cap, generations without a gain, the stall that ends it, the floor
+float tsp_width, tsp_widen, tsp_mem;    // the spread against its start (%), re-widenings, an earlier search's line among the first
+float tsp_brief;                        // boards that left the ramp at once
 #define TSP_HIST 48
 float tsp_hist[TSP_HIST];   // the best line's speed after each generation, this search
 float tsp_histn;
@@ -40,6 +41,7 @@ void() TASSearch_Event =
 	tsp_bal = readshort(); tsp_bup = readshort(); tsp_n = readshort();
 	tsp_cegen = readbyte(); tsp_kstall = readbyte(); tsp_cestall = readbyte(); tsp_cemin = readbyte();
 	tsp_width = readbyte(); tsp_widen = readbyte(); tsp_mem = readbyte();
+	tsp_brief = readshort();
 	if (tsp_evals < evals0 || !tsp_t) tsp_histn = 0;      // a new search
 	if (tsp_histn == TSP_HIST)
 	{
@@ -90,7 +92,7 @@ void(vector scr) TASSearch_Draw =
 	f0 = ui_font_cur;
 	Font_Set(ui_font_ui);
 	tsz = Font_Px(bound(11, scr_y / 72, 20)); row = rint(tsz * 1.5); w = rint(tsz * 30);
-	h = row * 16.3;
+	h = row * 17.2;
 	at = [16, floor(scr_y * 0.2), 0];
 	sui_roundbox(at - [8, 8, 0], [w + 16, h + 16, 0], 8, SUI_THEME_PANEL, 0.88);
 	y = at_y;
@@ -149,6 +151,7 @@ void(vector scr) TASSearch_Draw =
 		if (tsp_ref > 0) s = strcat(s, sprintf(" (farsh %g, %s%g)", tsp_ref, (tsp_speed >= tsp_ref) ? "+" : "", tsp_speed - tsp_ref));
 		col = (tsp_ref > 0 && tsp_speed < tsp_ref * 0.98) ? SUI_THEME_WARN : SUI_THEME_GOOD;
 	}
+	else if (tsp_flags & 64) { s = "Best line boards, then falls off the ramp"; col = SUI_THEME_WARN; }
 	else if (tsp_flags & 2) { s = sprintf("Best line makes it, but too slowly: %g u/s", tsp_speed); col = SUI_THEME_WARN; }
 	else { s = sprintf("Nothing makes it yet: the closest misses by %g u", tsp_closest); col = SUI_THEME_BAD; }
 	TASSearch_Line([at_x, y, 0], s, tsz, col, w); y = y + row;
@@ -168,6 +171,7 @@ void(vector scr) TASSearch_Draw =
 	TASSearch_Reason([at_x, y, 0], w, tsz, "Brushed a wall (costs it speed)", tsp_wall, tsp_evals, SUI_THEME_BAD); y = y + row * 0.85;
 	TASSearch_Reason([at_x, y, 0], w, tsz, "Made it, too slowly to count", tsp_weak, tsp_evals, SUI_THEME_WARN); y = y + row * 0.85;
 	TASSearch_Reason([at_x, y, 0], w, tsz, "Made it only by an edge bug", tsp_edge, tsp_evals, SUI_THEME_ACCENT); y = y + row * 0.85;
+	TASSearch_Reason([at_x, y, 0], w, tsz, "Boarded, then fell off the ramp", tsp_brief, tsp_evals, SUI_THEME_WARN); y = y + row * 0.85;
 	TASSearch_Reason([at_x, y, 0], w, tsz, "Hit a trigger (cut there)", tsp_cut, tsp_evals, SUI_THEME_MUTED); y = y + row * 1.05;
 	// the best line's speed, generation by generation
 	TASSearch_Line([at_x, y, 0], (tsp_ref > 0) ? "Best speed by generation (line: farsh)" : "Best speed by generation", tsz * 0.8, SUI_THEME_MUTED, w);
