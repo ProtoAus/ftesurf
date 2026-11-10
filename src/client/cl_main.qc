@@ -2148,6 +2148,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// Scores_LinesPin returns early when the board lines are off.
 	Trail_Pin();
 	RG_Pin();                       // Patch 746: the ghosts' highlights, the same 2D pass
+	TASOptViz_Pin();                // P1449: Jargon's lines in that pass too (tas_viz_style 1)
 
 	// Patch 467.  The sky's camera and user data (its passes ran before clearscene, P1235).
 	if (!worldonly) MilkSky_Frame();
@@ -2281,6 +2282,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 			Scores_LinesDraw(); // P433: deferred world lines, before their labels.
 			Trail_Draw();
 			RG_DrawLines();
+			TASOptViz_Draw2D();
 			LineGraph_WorldLabels();
 		}
 		Line_FrameEnd();
@@ -2574,13 +2576,13 @@ float(string cmd) CSQC_ConsoleCommand =
 			if (strstrofs(tsline, "..") >= 0) tsline = "!";
 			tsline = strcat(" ", tsline);
 			for (tsi = 3; tsi < cmdargc; tsi = tsi + 1)
-				if (argv(tsi) == "tube" || argv(tsi) == "look" || argv(tsi) == "tries" || argv(tsi) == "backs" || argv(tsi) == "nohop" || argv(tsi) == "join" || argv(tsi) == "rideknots" || argv(tsi) == "polish" || argv(tsi) == "low" || argv(tsi) == "apex" || argv(tsi) == "pace" || argv(tsi) == "emin" || argv(tsi) == "start" || argv(tsi) == "zone" ||
+				if (argv(tsi) == "tube" || argv(tsi) == "look" || argv(tsi) == "tries" || argv(tsi) == "backs" || argv(tsi) == "nohop" || argv(tsi) == "join" || argv(tsi) == "rideknots" || argv(tsi) == "polish" || argv(tsi) == "low" || argv(tsi) == "apex" || argv(tsi) == "air" || argv(tsi) == "pace" || argv(tsi) == "emin" || argv(tsi) == "start" || argv(tsi) == "zone" ||
 				    argv(tsi) == "sg" || argv(tsi) == "sy" || argv(tsi) == "sright" || argv(tsi) == "sflip" || argv(tsi) == "onjump" || argv(tsi) == "onexit" ||
 				    argv(tsi) == "finish" || FS_TASNumber(argv(tsi)))
 					tsline = strcat(tsline, " ", argv(tsi));
 				else tsline = " !";
 			if (strstrofs(tsline, "!") >= 0)
-				print("tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [emin F] [nohop] [join] [rideknots] [polish] [low] [apex] [finish] | stop | status | startpause\n");
+				print("tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [emin F] [nohop] [join] [rideknots] [polish] [low] [apex] [air] [finish] | stop | status | startpause\n");
 			else
 				localcmd(sprintf("p%g cmd tas autosurf%s\n", tsseat + 1, tsline));
 		}
@@ -2599,11 +2601,11 @@ float(string cmd) CSQC_ConsoleCommand =
 		{
 			tsline = "";
 			for (tsi = 2; tsi < cmdargc; tsi = tsi + 1)
-				if ((tsi == 2 && (argv(2) == "add" || argv(2) == "set" || argv(2) == "del" || argv(2) == "undo" || argv(2) == "clear" || argv(2) == "show")) || (tsi > 2 && FS_TASNumber(argv(tsi))))
+				if ((tsi == 2 && (argv(2) == "add" || argv(2) == "here" || argv(2) == "set" || argv(2) == "del" || argv(2) == "undo" || argv(2) == "clear" || argv(2) == "show")) || (tsi > 2 && FS_TASNumber(argv(tsi))))
 					tsline = strcat(tsline, " ", argv(tsi));
 				else tsline = "!";
 			if (substring(tsline, 0, 1) == "!")
-				print("tas route add <x y z> <nx ny nz> | set <k> <x y z> <nx ny nz> | del <k> | undo | clear | show | edit\n");
+				print("tas route add <x y z> <nx ny nz> | here | set <k> <x y z> <nx ny nz> | del <k> | undo | clear | show | edit\n");
 			else
 				localcmd(sprintf("p%g cmd tas route%s\n", tsseat + 1, tsline));
 		}

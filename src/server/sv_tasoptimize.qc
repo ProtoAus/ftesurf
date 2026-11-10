@@ -43,9 +43,9 @@
 #define TOPT_EFOLLOW 256        // P1449: tas_rollout row bits (sv_tas_rollout.inc): the engine sets the yaw and
 #define TOPT_EPITCHV 512        // side from the velocity each tick (yaw slot = turn command), the pitch too
 #define TOPT_DOFF  6            // P1449 curve demo: the yaw correction's range, degrees either way
-#define TOPT_DQOFF 30           // ...with the engine following: the command correction's range (the first grid)
-#define TOPT_DQMAX 60           // ...and the search's: past +30 a command over 60 brakes as it turns (Lex: at this speed take the
-                                // turns wider or strafe harder; chains pinned 6-29% of searches at +-30, farsh's state none)
+#define TOPT_DQOFF 30           // ...with the engine following: the command correction's range. +-60 (braking turns) was tried:
+                                // on ramp 5 to 6 1805-1823 of 1839 candidates then brushed the wall (654 at +-30) and the
+                                // best was too slow (tchain12, 10 Nov; Lex saw it hug that wall)
 #define TOPT_EAIM  1024         // P1449: tas_rollout AIM rows -- a flight steers to the aim point (sv_tas_rollout.inc)
 #define TOPT_EWALL 2048         // P1466: tas_rollout reports a wall or ceiling clipped on any tick (out[7] bit 2), rides too
 #define TOPT_AIMR  500          // P1449 curve aim: the aim point's offset from the target, units either way (x, y)
@@ -1649,15 +1649,18 @@ void(entity e, float v) SV_TASOptResult =
 // overflowed the client's reliable backbuffers early in a search and the server dropped it
 // (MAX_BACK_BUFFERS, 9 Nov). Points after the first go as shorts: 4-unit steps from it.
 .float topt_vizt, topt_vbn, topt_vcn, topt_vckind;
-float topt_vp[576];             // three paths of 64 points (x y z): 0 the best waiting, 1 a candidate, 2 scratch
+// three paths of TOPT_VIZN points (x y z): 0 the best waiting, 1 a candidate, 2 scratch. 64 a path drew a 526-tick stretch
+// as ~400 u chords (Lex: the lines were vague); sends are one a 0.25 s, so 128 costs ~0.8 KB of that
+#define TOPT_VIZN 128
+float topt_vp[TOPT_VIZN * 9];
                                 // (32 left 600 u chords on a lookahead link: the line cut inside its curves)
 float(entity e, float ran, float w) SV_TASOptVizSample =
 {
 	local float st, k, n, t, b;
 	if (ran < 1) return 0;
-	st = max(1, ceil(ran / 63));
+	st = max(1, ceil(ran / (TOPT_VIZN - 1)));
 	n = 1 + ceil(ran / st);
-	b = w * 192;
+	b = w * TOPT_VIZN * 3;
 	topt_vp[b] = e.origin_x; topt_vp[b+1] = e.origin_y; topt_vp[b+2] = e.origin_z;
 	for (k = 1; k < n; k = k + 1)
 	{
@@ -1670,7 +1673,7 @@ float(entity e, float ran, float w) SV_TASOptVizSample =
 void(entity e, float kind, float n, float w) SV_TASOptVizWrite =
 {
 	local float k, b;
-	b = w * 192;
+	b = w * TOPT_VIZN * 3;
 	WriteByte(MSG_MULTICAST, SVC_CGAMEPACKET); WriteByte(MSG_MULTICAST, TAS_EV_OPTVIZ);
 	WriteByte(MSG_MULTICAST, kind); WriteByte(MSG_MULTICAST, n);
 	if (n >= 1) { WriteFloat(MSG_MULTICAST, topt_vp[b]); WriteFloat(MSG_MULTICAST, topt_vp[b+1]); WriteFloat(MSG_MULTICAST, topt_vp[b+2]); }
@@ -1687,11 +1690,12 @@ void(entity e, float kind, float n, float w) SV_TASOptVizWrite =
 // kind 0 (start) and 4 (played) go now; 5 and 1-3 are kept for the flush
 void(entity e, float kind, float ran) SV_TASOptVizSend =
 {
-	local float n;
+	local float n, k;
 	if (kind == 0)
 	{
-		topt_vp[384] = e.origin_x; topt_vp[385] = e.origin_y; topt_vp[386] = e.origin_z;
-		topt_vp[387] = e.topt_tgt_x; topt_vp[388] = e.topt_tgt_y; topt_vp[389] = e.topt_tgt_z;
+		k = 2 * TOPT_VIZN * 3;
+		topt_vp[k] = e.origin_x; topt_vp[k+1] = e.origin_y; topt_vp[k+2] = e.origin_z;
+		topt_vp[k+3] = e.topt_tgt_x; topt_vp[k+4] = e.topt_tgt_y; topt_vp[k+5] = e.topt_tgt_z;
 		SV_TASOptVizWrite(e, 0, e.topt_tgtuse ? 2 : 1, 2);
 		e.topt_vbn = e.topt_vcn = 0;
 		return;
@@ -1979,7 +1983,7 @@ void(entity e) SV_TASOptCurveNext =
 			u = random() + random() + random() + random();
 			g = (u - 2) * 1.7320508;
 		}
-		u = (j >= e.topt_kn) ? TOPT_AIMR : ((e.topt_mode & 64) ? (e.topt_efol ? TOPT_DQMAX : TOPT_DOFF) : TOPT_QMAX);
+		u = (j >= e.topt_kn) ? TOPT_AIMR : ((e.topt_mode & 64) ? (e.topt_efol ? TOPT_DQOFF : TOPT_DOFF) : TOPT_QMAX);
 		c = (e.topt_kidx >= TOPT_CEPOP - TOPT_CEWIDE) ? max(topt_ksig[j], SV_TASOptSig0(e, j)) : topt_ksig[j];   // the wide few
 		topt_kcur[j] = bound(-u, topt_kmean[j] + c * g, u);
 		topt_kpop[e.topt_kidx * TOPT_KMAX + j] = topt_kcur[j];

@@ -36,6 +36,11 @@
 // its energy there, then the flight alone with every knot in the air; a bad board retries from the peak (Lex, 10 Nov:
 // a perfectly fine launch, then a bad airtime to the board)
 .float as_apex;
+// `air`: the route's points ('0 0 0' faces -- `tas route here`, a player's) as aim points in the demo's plan, at the time
+// its route passes nearest each, the stretch to one passing within TAS_AIRR (Lex, 10 Nov: the peaks `apex` took from the
+// demo were poor -- let a human pick where the bot should be in the sky, e.g. high into the window corner after ramp 6)
+.float as_air;
+#define TAS_AIRR 120
 .float as_backhead, as_backfail;   // the head at the last rewind request, and requests since it last moved
 .float as_failat, as_failn;            // the stretch that last failed its tries, and how many times in a row
 .float as_failmax;              // the furthest stretch that failed its tries this chain (the stop names it: review 9)
@@ -179,7 +184,39 @@ string(float k) SV_TASAutoKind =
 	if (k == 1) return "board";
 	if (k == 2) return "hop";
 	if (k == 4) return "peak";
+	if (k == 5) return "air point";
 	return "finish";
+};
+
+void(entity e, float s) SV_TASAutoAir =
+{
+	local float k, j, jb, d, best, m, i;
+	local vector p;
+	for (k = 0; k < rt_n && as_n < TAS_ASMAX; k = k + 1)
+	{
+		if (rt_nn[k*3] || rt_nn[k*3+1] || rt_nn[k*3+2]) continue;
+		p = [rt_o[k*3], rt_o[k*3+1], rt_o[k*3+2]];
+		best = 1000000; jb = -1;
+		for (j = s + 1; j < as_nrows; j = j + 1)
+		{
+			d = vlen(SV_TASAutoRowO(j) - p);
+			if (d < best) { best = d; jb = j; }
+		}
+		if (jb < 0 || best > 1500)
+		{
+			sprint(e, PRINT_HIGH, sprintf("tas autosurf: air point %.0f is %.0f u from the demo's route ahead: not used\n", k + 1, best));
+			continue;
+		}
+		for (m = 0; m < as_n && as_wt[m] <= as_rows[jb*7]; m = m + 1) ;
+		for (i = as_n; i > m; i = i - 1)
+		{
+			as_wt[i] = as_wt[i - 1]; as_wk[i] = as_wk[i - 1]; as_wr[i] = as_wr[i - 1]; as_wl[i] = as_wl[i - 1];
+			for (j = 0; j < 3; j = j + 1) { as_wo[i*3 + j] = as_wo[i*3 - 3 + j]; as_wn[i*3 + j] = as_wn[i*3 - 3 + j]; }
+		}
+		as_wt[m] = as_rows[jb*7]; as_wk[m] = 5; as_wr[m] = TAS_AIRR; as_wl[m] = 0;
+		as_wo[m*3] = p_x; as_wo[m*3+1] = p_y; as_wo[m*3+2] = p_z; as_wn[m*3] = as_wn[m*3+1] = as_wn[m*3+2] = 0;
+		as_n = as_n + 1;
+	}
 };
 
 float(entity e) SV_TASAutoPlan =
@@ -235,6 +272,7 @@ float(entity e) SV_TASAutoPlan =
 		}
 	}
 	if (e.as_finish) SV_TASAutoAdd(3, as_nrows - 1, '0 0 0');
+	if (e.as_air) SV_TASAutoAir(e, s);
 	if (cvar("developer"))
 		for (i = 0; i < as_n; i = i + 1)
 			sprint(e, PRINT_HIGH, sprintf("tas autosurf: stretch %.0f: %s at demo t=%.3f %v, face %v\n", i + 1,
@@ -414,12 +452,22 @@ void(entity e, float argc) SV_TASRouteCommand =
 		SV_TASAutoNote(e, e.as_on ? 1 : 0, sprintf("your route: %.0f points, removed %.0f", rt_n, ad));
 		return;
 	}
+	else if (argc == 3 && argv(2) == "here")
+	{	// an air point where the body is (noclip there): autosurf's `air` aims a demo's stretch through it
+		if (rt_n >= TAS_ASMAX) sprint(e, PRINT_HIGH, sprintf("tas route: %.0f points at most\n", TAS_ASMAX));
+		else
+		{
+			rt_o[rt_n*3] = e.origin_x; rt_o[rt_n*3+1] = e.origin_y; rt_o[rt_n*3+2] = e.origin_z;
+			rt_nn[rt_n*3] = rt_nn[rt_n*3+1] = rt_nn[rt_n*3+2] = 0;
+			rt_n = rt_n + 1; ad = 1;
+		}
+	}
 	else if (argc == 3 && argv(2) == "undo") { if (rt_n > 0) rt_n = rt_n - 1; }
 	else if (argc == 3 && argv(2) == "clear") rt_n = 0;
 	else if (argc == 3 && argv(2) == "show")
 		for (i = 0; i < rt_n; i = i + 1)
 			sprint(e, PRINT_HIGH, sprintf("tas route %.0f: %v, %v\n", i + 1, [rt_o[i*3], rt_o[i*3+1], rt_o[i*3+2]], [rt_nn[i*3], rt_nn[i*3+1], rt_nn[i*3+2]]));
-	else { sprint(e, PRINT_HIGH, "tas route add <x y z> <nx ny nz> | set <k> <x y z> <nx ny nz> | del <k> | undo | clear | show\n"); return; }
+	else { sprint(e, PRINT_HIGH, "tas route add <x y z> <nx ny nz> | here | set <k> <x y z> <nx ny nz> | del <k> | undo | clear | show\n"); return; }
 	if (ad)
 		SV_TASAutoNote(e, e.as_on ? 1 : 0, strcat(sprintf("your route: %.0f points, added ", rt_n),
 			sprintf("%.1f %.1f %.1f %.4f %.4f %.4f", rt_o[rt_n*3-3], rt_o[rt_n*3-2], rt_o[rt_n*3-1], rt_nn[rt_n*3-3], rt_nn[rt_n*3-2], rt_nn[rt_n*3-1])));
@@ -460,7 +508,7 @@ void(entity e) SV_TASAutoLink =
 	SV_TASDemoRowsCommand(e, argc);
 	if (e.topt_dn < 16) { SV_TASAutoStop(e, "the demo's rows for this stretch did not load"); return; }   // not the last stretch's (review)
 	h = min(h, e.topt_dn);
-	r = (as_wk[i] == 2) ? 50 : ((as_wk[i] == 3) ? 400 : ((as_wk[i] == 4) ? as_wr[i] : 800));
+	r = (as_wk[i] == 2) ? 50 : ((as_wk[i] == 3) ? 400 : ((as_wk[i] == 4 || as_wk[i] == 5) ? as_wr[i] : 800));
 	}
 	if (n == '0 0 0') argc = tokenize(sprintf("tas target %.1f %.1f %.1f %.0f", o_x, o_y, o_z, r));
 	else argc = tokenize(sprintf("tas target %.1f %.1f %.1f %.0f %.4f %.4f %.4f", o_x, o_y, o_z, r, n_x, n_y, n_z));
@@ -807,7 +855,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 	if (path != "route" && !SV_TASDemoPathOK(path)) { sprint(e, PRINT_HIGH, "tas autosurf: a .rec under data/ or cfg/ksfreplays/ (or route)\n"); return; }
 	if (SV_TASOptBusy(e)) return;
 	st = 0; flip = 0; arm = 0; e.as_szone = 0; e.as_sg = 900; e.as_sy = 0; e.as_sside = -1;
-	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = -1; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1; e.as_emin = 0.95; e.as_join = 0; e.as_rideknots = 0; e.as_polish = 0; e.as_low = 0; e.as_apex = 0;
+	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = -1; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1; e.as_emin = 0.95; e.as_join = 0; e.as_rideknots = 0; e.as_polish = 0; e.as_low = 0; e.as_apex = 0; e.as_air = 0;
 	for (i = 3; i < argc; i = i + 1)
 	{
 		w = argv(i); n = FS_TASNumber(argv(i + 1)) ? stof(argv(i + 1)) : -1;    // not a number: refused below, not 0 (review)
@@ -823,6 +871,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		else if (w == "polish") e.as_polish = 1;
 		else if (w == "low") e.as_low = 1;
 		else if (w == "apex") e.as_apex = 1;
+		else if (w == "air") e.as_air = 1;
 		else if (w == "start") st = 1;
 		else if (w == "zone" && n >= 0 && n < 64 && n == floor(n)) { e.as_szone = n; i = i + 1; }
 		else if (w == "sg" && n >= 6 && n <= 2000 && n == floor(n)) { e.as_sg = n; i = i + 1; }   // the most ground ticks before the jump

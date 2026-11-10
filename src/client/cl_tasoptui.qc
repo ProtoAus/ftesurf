@@ -387,11 +387,14 @@ void() TASOptUI_Target =
 
 void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 {
-	local float i, half, running;
+	local float i, half, running, airs;
 	local vector chip;
 	local string label, bs;
 	TASOptUI_List();
 	bs = taso_backmax ? sprintf(" backs %g", taso_backmax) : "";      // 0: autosurf's own (twice the stretches)
+	airs = 0;
+	for (i = 0; i < tov_rn; i = i + 1) if (tov_rk[i] == 3) airs = airs + 1;
+	if (airs) bs = strcat(bs, " air");          // air points steer the replay's plan (sv_tasautosurf.qc SV_TASAutoAir)
 	running = (taso_state == 1);
 	half = (width - 6) / 2; chip = [half, row, 0];
 	sui_text(at, [tsz, tsz], "Jargon, the line finder", SUI_THEME_TEXT, 1, 0); at_y = at_y + tsz * 1.6;
@@ -442,6 +445,8 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 		if (Profile_Chip("taso_rundo", at + [half + 6, 0, 0], chip, "Undo", hint, FALSE)) localcmd("tas route undo\n");
 		at_y = at_y + row + 3;
 		if (Profile_Chip("taso_rclear", at, chip, "Clear", hint, FALSE)) localcmd("tas route clear\n");
+		if (Profile_Chip("taso_rhere", at + [half + 6, 0, 0], chip, "Add air point here", hint, FALSE)) localcmd("tas route here\n");
+		at_y = at_y + row + 3;
 		if (tov_rn > 0)
 			if (Profile_Chip("taso_rgo", at + [half + 6, 0, 0], chip, "Surf my route", tsz, FALSE))
 				localcmd(sprintf("tas autosurf route tries %g%s%s\n", taso_tries, bs, taso_hop ? "" : " nohop"));
