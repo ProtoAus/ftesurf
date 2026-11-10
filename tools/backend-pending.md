@@ -5,8 +5,10 @@ backend, with the corresponding QC on all12 NanoPi lobbies. Public frontend asse
 and a real single-leg Fetch were verified. See the
 [dated delivery and rollback provenance](p1447-p1448-delivery.md).
 
-The two local Windows DAT/LNO copies still await a peer's shared fixture gate;
-in-game download/rendering and human acceptance are pending. The activated
+Both local Windows DAT/LNO copies were promoted and hash-verified03:20:55 UTC
+10Nov after the peer fixture window opened. In-game download/rendering and human
+acceptance remain pending; native smoke was not launched through low-memory or
+renewed-fixture admission blockers. The activated
 backend entries have been removed from this queue, not relabelled as pending.
 Do not redeploy a healthy backend merely to refresh this handoff.
 

@@ -51,4 +51,5 @@ backend/lobbies must not be replayed or restarted merely to refresh this record.
 
 This patch is independent of the paused broader native/compiler audit and of
 local GUI fixture ownership; neither restriction was worked around. The prior
-P1447/P1448 local Windows copy and actual in-game checks remain separate work.
+P1447/P1448 Windows copies are now hash-verified in both installs; actual client
+and human checks remain separately pending, not inferred from these unit tests.

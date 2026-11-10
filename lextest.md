@@ -59,10 +59,11 @@
 - Map changes, quitting and disconnecting should behave as before (the change touches what happens when a map's
   game code unloads).
 
-## P1448 Fetch: any leg, any player, from KSF and Momentum -- LIVE website +12 lobbies 10 Nov; local Windows copies pending
+## P1448 Fetch: any leg, any player, from KSF and Momentum -- LIVE website +12 lobbies +both Windows 10 Nov; human check pending
 - Public HTTPS single-leg press00:53 UTC returned202/Momentum queued; unhosted control404. All12 lobbies
-  advertise f87e7c2a/5223474. The local DAT/LNO copies await the shared fixture gate; no in-game or human
-  acceptance is inferred. See tools/p1447-p1448-delivery.md.
+  advertise f87e7c2a/5223474. Both local Windows DAT/LNO sets were hash-verified03:20:55 UTC10Nov.
+  Actual client download/render/Fetch and human acceptance are not inferred; smoke preflight was gated
+  by low memory and a peer fixture, not launched. See tools/p1447-p1448-delivery.md.
 - TAB board (KSF, Momentum or All filter), the menu's leaderboard and the website's map page: press Fetch on a leg
   with no times here yet; the footer says what KSF and Momentum answered. Refresh after a few minutes: times, and
   KSF replays for that leg, arrive in the background. Say if a leg you know exists says "not listed".

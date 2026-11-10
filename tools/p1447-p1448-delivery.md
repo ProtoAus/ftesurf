@@ -61,12 +61,16 @@ Build-number promotion was part of this deployment.
   **00:48:05 UTC** advertised client checksum **`f87e7c2a`**, size **5,223,474**.
   Its SHA256 was appended once to the released-code allowlist, preserving all
   original entries and the inode (114 ->115 lines).
-- **Pending:** the two local Windows DAT/LNO promotions are blocked by another
-  session's shared fixture gate. No installed files or owner processes were
-  changed to bypass that gate. Lobbies are configured to serve the new CSQC;
-  the local menu copies must still be promoted and hash-verified.
-  Actual client download/render/Fetch and human acceptance remain pending, not inferred
-  from server advertisement or the website's successful request.
+- **03:20:55 UTC:** BOTH local Windows installs received all six frozen DAT/LNO
+  payloads. The fixture owner released its gate; this operation acquired its own
+  short copy gate, compared every old payload with the captured baseline, retained
+  backups, atomically promoted changed files, verified all six final hashes per
+  install and released only its own gate. Current native/plugin/config bytes and
+  absent-config state were unchanged. No owner or peer process was restarted/killed.
+- **Still pending:** actual client download/render/Fetch and human acceptance.
+  The subsequent native-smoke preflight found only1.71GiB free physical memory
+  and a newly active peer fixture gate, so no GUI test was launched. These checks
+  are not inferred from installed/advertised hashes or the website's request.
 
 ## Runtime retention and rollback
 

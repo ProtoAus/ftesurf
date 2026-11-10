@@ -7,8 +7,10 @@
 > Same CURRENT inode/schema26/original44 DATA policy/eight identities preserved;
 > only the two declared optional queues allowed, existing queue DATA retained.
 > No old DB restore or original grant reset. All12 lobby QC updated and all198
-> recorder/resume prefixes unchanged; both local Windows progs copies still
-> await the shared fixture gate. Website asset hashes and one real public Fetch
+> recorder/resume prefixes unchanged; both local Windows DAT/LNO copies promoted
+> and hash-verified03:20:55 UTC10Nov in an owned brief fixture window, with native/
+> plugins/configs unchanged. Actual client smoke remains memory/fixture gated.
+> Website asset hashes and one real public Fetch
 > accepted; human Strata/Fetch/download checks are not inferred.
 > **Retain BOTH** `/srv/nvme/agent-work/ac-resume-20261109T0300Z-c2aa/http-admission/`
 > `fenced-primary-seven/` and `fenced-fallback-seven/` including runtime/control/
