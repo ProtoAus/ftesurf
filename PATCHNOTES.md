@@ -21,6 +21,21 @@
 
 ## next
 
+### P1475 Water reflections stay put while you move
+- Between redraws, a water reflection or refraction is now shifted by how far you have moved, using each pixel's own depth, so it no longer slides off the water's edges at lower capture rates. r_captureparallax 0 turns it off.
+
+### P1474 Smoother frames over water: captures take turns
+- Water's reflection and refraction are now redrawn on different frames instead of the same one, so a frame that redraws water carries one extra scene instead of two. r_capturestagger 0 brings back the old behaviour.
+
+### P1472 No frame cap below the server's tick rate
+- While playing, a cl_maxfps under the server's tick rate (66.67 on surf, 100 on bhop) is raised to it, so every physics tick gets its own input. Uncapped (0), menus and demos are unchanged.
+
+### P1470 r_projection works again
+- r_projection 1-6 (fisheye, panini, panoramic, equirectangular and the rest) draw again with anti-aliasing and render scale on, instead of filling the console with errors at a few frames a second.
+
+### P1465 / P1463 / P1457 See-through surfaces sorted faster
+- Maps with many overlapping see-through surfaces (surf_fairy) spend much less time ordering them each frame: sorts that cannot succeed are skipped and off-screen faces are left out. The picture is the same.
+
 ### P1464 Join message names the map
 - When someone joins a lobby, the others now see "<name> joined <map>" instead of "server: <name> joined".
 
