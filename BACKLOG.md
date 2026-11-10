@@ -265,6 +265,9 @@
   face order identical in 6 traced views, transparent ~0.1-0.2 ms less at fairy t=7.6 (worst view now 1.63 ms, was
   2.31 before P1457). What is left in a failing sort: plane-side tests (~20k units), pass-0 verdicts, projection.
   Bigger fairy lever now: csqc 2.4-4.3 ms on paused views (glare rays, Lex's budget call).
+  P1468 PARKED (measured): compact arrays for the hl2 world walk's marks changed nothing on pantheon's PrepareFrame
+  (0.39/0.41/0.39, 0.25/0.22/0.22 ms, cvar A/B/A); branch p1468-walkarrays. Next CPU lead from the profiles: screen
+  copies (MSAA resolve + CopyTexSubImage under T_Gen_CurrentRender/ScreenWater) ~6% of pantheon's frame in the driver.
   P1465 INSTALLED 10 Nov (both installs exe 95429e85, patch-1465): failure certificates (a failed sort's pass-1
   and pass-2 cycle or barrier crossing, re-proved each view; ~19 of 20 fairy failures are pass 1 crossing a barrier,
   not a cycle) and the clip-volume cull. Paused t=7.6 transparent 1.38 -> 0.56 ms; verify 0 wrong, a mutant 1223.
