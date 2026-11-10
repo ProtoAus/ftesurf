@@ -21,6 +21,8 @@
 
 ## next
 
+## 0.1.44 2026-11-10
+
 ### P1475 Water reflections stay put while you move
 - Between redraws, a water reflection or refraction is now shifted by how far you have moved, using each pixel's own depth, so it no longer slides off the water's edges at lower capture rates. r_captureparallax 0 turns it off.
 
