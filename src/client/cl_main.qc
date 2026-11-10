@@ -165,6 +165,7 @@ void() CL_RenderMapFrame =
 void() CSQC_WorldLoaded =
 {
 	cl_scene_worldonly = FALSE;
+	TASJargon_FlyCancel(FALSE);     // P1449: Jargon's editor camera does not outlive the map (review)
 	TASUI_Close();
 	TASShare_Reset();
 
@@ -957,6 +958,7 @@ void() CSQC_Shutdown = { Weather_Free(); TASUI_Close(); TASShare_Reset(); TimeSc
 float(vector newang, float isdelta) CSQC_Parse_SetAngles =
 {
 	Timer_ResumeSetAngles(newang, isdelta);     // P1004: the restore's angle is the lock's
+	if (TASJargon_SetAngles(newang, isdelta)) return TRUE;     // P1449: the editor camera's body (cl_jargon.qc)
 	return Ghost_SetAngles(newang, isdelta);
 };
 

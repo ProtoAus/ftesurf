@@ -204,6 +204,20 @@ void() TASJargon_EditStart =
 	jg_camorg = getproperty(VF_ORIGIN); jg_bodyang = getproperty(VF_CL_VIEWANGLES); jg_move = '0 0 0'; jg_btn = 0;
 	if (tasu_open) TASUI_Close();
 };
+// ended without reopening the panel: a map load, or a replay, rewind, ghost or spectate view taking the camera (review)
+void(float restore) TASJargon_FlyCancel =
+{
+	if (!jg_fly && !jg_edit) return;
+	jg_fly = jg_edit = FALSE; jg_drag = jg_hover = -1;
+	if (restore) setproperty(VF_CL_VIEWANGLES, jg_bodyang);
+};
+// a forced view angle while flying is the body's (as Ghost_SetAngles takes it): the camera keeps the mouse's
+float(vector newang, float isdelta) TASJargon_SetAngles =
+{
+	if (!jg_fly) return FALSE;
+	jg_bodyang = isdelta ? jg_bodyang + newang - getproperty(VF_CL_VIEWANGLES) : newang;
+	return TRUE;
+};
 void() TASJargon_EditEnd =
 {
 	jg_fly = jg_edit = FALSE; jg_drag = jg_hover = -1;
@@ -223,6 +237,7 @@ void() TASJargon_FlyFrame =
 {
 	local float dt;
 	if (!jg_fly) return;
+	if (rec_gh_on || rec_wt_on || rw_on || Spec_Active() || !LT_StatsAreMine()) { TASJargon_FlyCancel(TRUE); return; }
 	dt = cltime - jg_flyt;
 	if (dt < 0 || dt > 0.5) dt = 0;
 	jg_flyt = cltime;
