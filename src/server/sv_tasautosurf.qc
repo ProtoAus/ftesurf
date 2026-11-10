@@ -40,7 +40,8 @@
 // its route passes nearest each, the stretch to one passing within TAS_AIRR (Lex, 10 Nov: the peaks `apex` took from the
 // demo were poor -- let a human pick where the bot should be in the sky, e.g. high into the window corner after ramp 6)
 .float as_air;
-#define TAS_AIRR 120
+#define TAS_AIRR 200       // 120 with a 95% floor: tchain14's best passed 186 u off farsh's peak, the reaches braked to 76%
+#define TAS_AIRMIN 0.85    // ...the floor there: a hint where to fly, the board after it keeps the usual one
 .float as_backhead, as_backfail;   // the head at the last rewind request, and requests since it last moved
 .float as_failat, as_failn;            // the stretch that last failed its tries, and how many times in a row
 .float as_failmax;              // the furthest stretch that failed its tries this chain (the stop names it: review 9)
@@ -393,6 +394,7 @@ string(entity e, float i) SV_TASAutoEmin =
 	local float k, v2, x, f;
 	f = e.as_emin;
 	if (e.as_polish && e.as_try < e.as_tries - 1) f = max(f, 0.99);      // polish: the last try takes the usual minimum
+	if (as_wk[i] == 5) f = min(f, TAS_AIRMIN);
 	if (f <= 0 && as_need[i] <= 0) return "";
 	for (k = 0; k < as_nrows - 1 && as_rows[k*7] < as_wt[i] - 0.0001; k = k + 1) ;
 	v2 = as_rows[k*7+4] * as_rows[k*7+4] + as_rows[k*7+5] * as_rows[k*7+5] + as_rows[k*7+6] * as_rows[k*7+6];

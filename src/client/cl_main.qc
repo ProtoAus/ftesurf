@@ -2141,6 +2141,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// was not readable when WorldLoaded ran (Patch 207's ordering wart).
 	Trig_Frame();
 
+	TASOptViz_Cam();                // P1449: tas_viz_cam -- before anything reads the view
 	Spec_Trace();                   // Patch 385: what is actually drawn
 	Scores_LinesFrame();            // Patch 433: the board lines' downloads and builds
 	Scores_LinesPin();              // ...and their projection (Watch_Path pins only in mode 2)

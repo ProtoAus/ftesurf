@@ -1653,12 +1653,20 @@ void(entity e, float v) SV_TASOptResult =
 // as ~400 u chords (Lex: the lines were vague); sends are one a 0.25 s, so 128 costs ~0.8 KB of that
 #define TOPT_VIZN 128
 float topt_vp[TOPT_VIZN * 9];
+// tas_viz_rate N (lines a second; up to 4: the one-a-0.25-s flush): candidates as they are scored, 24 points, within
+// TOPT_VIZBPS bytes a real second (a loopback client: TOPT_VIZLOOP) and TOPT_VIZBURST at once. 8 lines a server frame,
+// then 12 KB/s, then a quarter of `rate` overflowed a rig client's reliable stream and dropped it (tvizcam2, tvizA,
+// tvizD: 10 Nov); the 4-a-second flush (~3 KB/s) never did. Lex asked for thousands a second; the stream carries tens.
+#define TOPT_VIZBPS 3000
+#define TOPT_VIZLOOP 12000
+#define TOPT_VIZBURST 600
+.float topt_vizft, topt_vizbud, topt_vizn;
                                 // (32 left 600 u chords on a lookahead link: the line cut inside its curves)
-float(entity e, float ran, float w) SV_TASOptVizSample =
+float(entity e, float ran, float w, float cap) SV_TASOptVizSample =
 {
 	local float st, k, n, t, b;
 	if (ran < 1) return 0;
-	st = max(1, ceil(ran / (TOPT_VIZN - 1)));
+	st = max(1, ceil(ran / (cap - 1)));
 	n = 1 + ceil(ran / st);
 	b = w * TOPT_VIZN * 3;
 	topt_vp[b] = e.origin_x; topt_vp[b+1] = e.origin_y; topt_vp[b+2] = e.origin_z;
@@ -1700,9 +1708,24 @@ void(entity e, float kind, float ran) SV_TASOptVizSend =
 		e.topt_vbn = e.topt_vcn = 0;
 		return;
 	}
-	if (kind == 4) { n = SV_TASOptVizSample(e, ran, 2); if (n) SV_TASOptVizWrite(e, 4, n, 2); return; }
-	if (kind == 5) { e.topt_vbn = SV_TASOptVizSample(e, ran, 0); return; }
-	if (!e.topt_vcn) { e.topt_vcn = SV_TASOptVizSample(e, ran, 1); e.topt_vckind = kind; }
+	if (kind == 4) { n = SV_TASOptVizSample(e, ran, 2, TOPT_VIZN); if (n) SV_TASOptVizWrite(e, 4, n, 2); return; }
+	if (kind == 5) { e.topt_vbn = SV_TASOptVizSample(e, ran, 0, TOPT_VIZN); return; }
+	k = cvar("tas_viz_rate");
+	if (k > 4)
+	{	// bytes and lines refill by the real clock (a TAS pause holds `time`)
+		n = gettime(1);
+		k = (infokey(e, "ip") == "loopback") ? TOPT_VIZLOOP : TOPT_VIZBPS;
+		e.topt_vizbud = min(TOPT_VIZBURST, e.topt_vizbud + k * max(0, n - e.topt_vizft));
+		k = cvar("tas_viz_rate");
+		e.topt_vizn = min(max(1, k * 0.1), e.topt_vizn + k * max(0, n - e.topt_vizft));
+		e.topt_vizft = n;
+		if (e.topt_vizbud < 160 || e.topt_vizn < 1) return;
+		n = SV_TASOptVizSample(e, ran, 1, 24);
+		if (n) SV_TASOptVizWrite(e, kind, n, 1);
+		e.topt_vizbud = e.topt_vizbud - (14 + 6 * n); e.topt_vizn = e.topt_vizn - 1;
+		return;
+	}
+	if (!e.topt_vcn) { e.topt_vcn = SV_TASOptVizSample(e, ran, 1, TOPT_VIZN); e.topt_vckind = kind; }
 };
 
 void(entity e) SV_TASOptVizFlush =

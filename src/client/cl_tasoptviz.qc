@@ -4,14 +4,22 @@
   blue missed -- the best so far bright yellow, the target a cross. `tas_viz 0` hides them.
   `tas_viz_style 1` (default) draws them as the demo line does (cl_lines.qc's anti-aliased strip, a constant pixel
   width, over the world); 0 the depth-tested world ribbons, whose width is in units (Lex: low quality, odd widths).
+  tas_viz_lines (shown at once, 16..2048), tas_viz_fade (seconds), the server's tas_viz_rate (sent a second), widths from
+  gl_2dline_width, tas_viz_cam 1 an overhead camera on the stretch being searched (Lex, 10 Nov: for a video).
 */
-#define TOV_LINES 64
+#define TOV_LINES 2048     // the most tas_viz_lines keeps
 #define TOV_PTS   128      // sv_tasoptimize.qc samples up to TOPT_VIZN (128) a path
-vector tov_pt[TOV_LINES * TOV_PTS];
+vector *tov_pt;            // TOV_LINES x TOV_PTS, allocated on the first line
 float tov_n[TOV_LINES];
 float tov_t[TOV_LINES];
 float tov_kind[TOV_LINES];
 float tov_head;
+var float autocvar_tas_viz_lines = 64;
+var float autocvar_tas_viz_fade = 3;
+var float autocvar_tas_viz_cam = 0;
+vector tov_start;
+vector tov_camo, tov_cama;  // tas_viz_cam's view this frame
+float tov_camf;             // ...the frame it was set (cltime)
 vector tov_best[TOV_PTS];
 float tov_bestn, tov_bestt, tov_final;
 vector tov_tgt;
@@ -42,6 +50,7 @@ void() TASOptViz_Event =
 		{
 			p = TASOptViz_Point(i, p0);
 			if (i == 0) p0 = p;
+			if (i == 0) tov_start = p;
 			if (i == 1) { tov_tgt = p; tov_tgton = 1; }
 		}
 		return;
@@ -57,12 +66,14 @@ void() TASOptViz_Event =
 		tov_bestn = min(n, TOV_PTS); tov_bestt = cltime; tov_final = (kind == 4);
 		return;
 	}
-	slot = tov_head; tov_head = (tov_head + 1) % TOV_LINES;
+	if (!tov_pt) tov_pt = (vector*)memalloc(TOV_LINES * TOV_PTS * 12);
+	slot = tov_head % bound(16, autocvar_tas_viz_lines, TOV_LINES);
+	tov_head = (slot + 1) % bound(16, autocvar_tas_viz_lines, TOV_LINES);
 	for (i = 0; i < n; i = i + 1)
 	{
 		p = TASOptViz_Point(i, p0);
 		if (i == 0) p0 = p;
-		if (i < TOV_PTS) tov_pt[slot * TOV_PTS + i] = p;
+		if (i < TOV_PTS && tov_pt) tov_pt[slot * TOV_PTS + i] = p;
 	}
 	tov_n[slot] = min(n, TOV_PTS); tov_t[slot] = cltime; tov_kind[slot] = kind;
 };
@@ -225,13 +236,13 @@ void() TASOptViz_Draw =
 		}
 	}
 	if (!autocvar_tas_viz) return;
-	for (i = 0; i < TOV_LINES && autocvar_tas_viz_style != 1; i = i + 1)
+	for (i = 0; i < bound(16, autocvar_tas_viz_lines, TOV_LINES) && autocvar_tas_viz_style != 1 && tov_pt; i = i + 1)
 	{
 		n = tov_n[i];
 		if (n < 2) continue;
 		age = cltime - tov_t[i];
-		if (age > 3) { tov_n[i] = 0; continue; }
-		a = 0.6 * (1 - age / 3);
+		if (age > max(0.1, autocvar_tas_viz_fade)) { tov_n[i] = 0; continue; }
+		a = 0.6 * (1 - age / max(0.1, autocvar_tas_viz_fade));
 		col = (tov_kind[i] == 2) ? '0.3 1 0.4' : ((tov_kind[i] == 3) ? '1 0.3 0.3' : '0.5 0.7 1');
 		TASOptViz_Line(i * TOV_PTS, n, col, a, 3);
 	}
@@ -284,22 +295,66 @@ void(float best, float base, float n, vector col, float al) TASOptViz_Strip =
 
 void() TASOptViz_Draw2D =
 {
-	local float i, n, age;
+	local float i, n, age, w, fade;
 	if (!autocvar_tas_viz || autocvar_tas_viz_style != 1) return;
 	Line_ViewFrame();
-	Line_Width(1.5);
-	for (i = 0; i < TOV_LINES; i = i + 1)
+	if (cvar("developer") && floor(cltime) != floor(cltime - frametime))
+		print(sprintf("tas_viz 2d: eye %v fwd %v cam %g; start %v -> %v; target -> %v; best %g\n", ln_eye, ln_fwd, tov_camf == cltime,
+			tov_start, project(tov_start + TOV_LIFT), project(tov_tgt), tov_bestn));
+	w = max(1, cvar("gl_2dline_width"));        // Lex: the engine's 2D line width
+	fade = max(0.1, autocvar_tas_viz_fade);
+	Line_Width(w);
+	for (i = 0; i < bound(16, autocvar_tas_viz_lines, TOV_LINES) && tov_pt; i = i + 1)
 	{
 		n = tov_n[i];
 		if (n < 2) continue;
 		age = cltime - tov_t[i];
-		if (age > 3) { tov_n[i] = 0; continue; }
+		if (age > fade) { tov_n[i] = 0; continue; }
 		TASOptViz_Strip(FALSE, i * TOV_PTS, n, (tov_kind[i] == 2) ? '0.3 1 0.4' : ((tov_kind[i] == 3) ? '1 0.3 0.3' : '0.5 0.7 1'),
-			0.6 * (1 - age / 3));
+			0.6 * (1 - age / fade));
 	}
 	if (tov_bestn >= 2 && (tov_final ? cltime - tov_bestt < 20 : cltime - tov_bestt < 60))
 	{
-		Line_Width(3);
+		Line_Width(2 * w);
 		TASOptViz_Strip(TRUE, 0, tov_bestn, tov_final ? '1 1 1' : '1 0.9 0.2', 0.95);
 	}
+};
+
+// tas_viz_cam 1 (Lex, 10 Nov): while a stretch is searched, the view 45 degrees up behind its start looking along it toward
+// the target, swaying slowly; once its line plays, a chase view behind and above the body riding it. Kept under the
+// ceiling by a trace; walls between it and the line still hide the world (the lines draw over them).
+void() TASOptViz_Cam =
+{
+	local vector f, h, cam, me, o;
+	local float d, r, y;
+	if (!autocvar_tas_viz_cam || !tov_tgton || cltime - tov_tgtt > 120) return;
+	me = getproperty(VF_ORIGIN);
+	if (tov_final && cltime - tov_bestt < 20)
+	{	// riding the played line: behind the velocity, a little above
+		h = normalize([pmove_vel_x, pmove_vel_y, 0]);
+		if (vlen(h) < 0.5) h = normalize([tov_tgt_x - me_x, tov_tgt_y - me_y, 0]);
+		f = me; o = me;
+		cam = me - h * 320 + '0 0 140';
+	}
+	else
+	{	// looking at the best line's middle (open air; the straight start-target midpoint can sit in a wall)
+		d = vlen(tov_tgt - tov_start);
+		y = vectoyaw(tov_tgt - tov_start) + 12 * sin(cltime * 0.35);          // the slow sway
+		makevectors([0, y, 0]);
+		h = v_forward;
+		f = (tov_bestn >= 2) ? tov_best[floor(tov_bestn * 0.5)] + TOV_LIFT : tov_start + TOV_LIFT;
+		r = bound(500, 0.45 * d, 3000);
+		o = tov_start + TOV_LIFT;
+		cam = o - h * r * 0.7071 + '0 0 1' * r * 0.7071;
+	}
+	// clipped from the body's own place (open space): from a point in a wall the camera went out into the void (rig tvizE)
+	traceline(o, cam, MOVE_NOMONSTERS, world);
+	if (trace_fraction < 1) cam = o + (trace_endpos - o) * max(0, 1 - 32 / max(32, vlen(trace_endpos - o)));
+	h = vectoangles(f - cam);
+	h_x = 0 - h_x;                                          // vectoangles' pitch is up-positive, a view's down-positive
+	setproperty(VF_ORIGIN, cam);
+	setproperty(VF_ANGLES, h);
+	tov_camo = cam; tov_cama = h; tov_camf = cltime;
+	if (cvar("developer") && floor(cltime) != floor(cltime - frametime))
+		print(sprintf("tas_viz cam: at %v angles %v looking at %v (final %g)\n", cam, h, f, tov_final));
 };
