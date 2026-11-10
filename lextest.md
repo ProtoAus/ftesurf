@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P1480 input-journal lifecycle — both Windows clients10Nov18:17Z; owner check PENDING
+- If you normally use `cl_threadedphysics 1`, try one normal start, retry/start,
+  then disconnect or change map. Report a freeze/crash at those transitions.
+  No need to change your usual setting just for this optional check.
+- Automated actual-code/real-mutex tests and installed `--version` passed;
+  those are NOT owner-observed gameplay or complete append/close thread safety.
+
+## Anti-cheat continuation — genuine parked-run capture PENDING
+- For the next short coordinated test window, click **Play offline** yourself in
+  the fresh test client, then allow the ordinary Multi-Session park/resume capture.
+  A real recorder-produced run is still needed; no Terms/consent click is automated
+  or inferred from this request. No owner confirmation or genuine-file pass yet.
+
 ## P1449 Jargon round 3 -- both installs + lobbies 10 Nov ~22:20 local (cs 01d9d44e / qw 91ef42d5, exe b0349be2)
 - Jargon tab: "Where it boards each ramp" -- Try 5 spots (slower): the panel lists each spot's next-ramp speed and the
   one it keeps.
