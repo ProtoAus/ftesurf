@@ -223,6 +223,7 @@ float topt_kseed[TOPT_KMAX];
 #define TOPT_CEREWIDE 6
 #define TOPT_MEMN 24
 float topt_memkey[TOPT_MEMN * 9], topt_memdim[TOPT_MEMN * 3], topt_mempar[TOPT_MEMN * TOPT_KMAX];
+float topt_memreach[TOPT_MEMN], topt_meme[TOPT_MEMN];  // its line reached, and its energy there
 float topt_memnext, topt_memused;
 .float topt_kwiden, topt_memhit;
 .vector topt_mo, topt_mv;       // the search's start state: its memory key
@@ -1856,12 +1857,17 @@ void(entity e) SV_TASOptMemKeep =
 	local float k, j;
 	if (!e.topt_kn || e.topt_bestv < 0) return;
 	k = SV_TASOptMemFind(e, e.topt_mo, e.topt_mv);
+	// the best line from this state, not the latest: a search under a bar it could not meet kept a worse line, and the
+	// retry without the bar began from it (surf_null stretch 8: 2696 u/s, then 2665 three times, 10 Nov)
+	if (k >= 0)
+	if (topt_memreach[k] && (e.topt_bestv < TOPT_REACH || e.topt_bestce <= topt_meme[k])) return;
 	if (k < 0) { k = topt_memnext; topt_memnext = (topt_memnext + 1) - TOPT_MEMN * floor((topt_memnext + 1) / TOPT_MEMN); topt_memused = min(TOPT_MEMN, topt_memused + 1); }
 	topt_memkey[k*9] = e.topt_mo_x; topt_memkey[k*9+1] = e.topt_mo_y; topt_memkey[k*9+2] = e.topt_mo_z;
 	topt_memkey[k*9+3] = e.topt_mv_x; topt_memkey[k*9+4] = e.topt_mv_y; topt_memkey[k*9+5] = e.topt_mv_z;
 	topt_memkey[k*9+6] = e.topt_tgt_x; topt_memkey[k*9+7] = e.topt_tgt_y; topt_memkey[k*9+8] = e.topt_tgt_z;
 	topt_memdim[k*3] = e.topt_kd; topt_memdim[k*3+1] = e.topt_kn; topt_memdim[k*3+2] = e.topt_mode;
 	for (j = 0; j < e.topt_kd; j = j + 1) topt_mempar[k * TOPT_KMAX + j] = topt_kbest[j];
+	topt_memreach[k] = (e.topt_bestv >= TOPT_REACH); topt_meme[k] = e.topt_bestce;
 };
 
 void(entity e) SV_TASOptCurveNext =
