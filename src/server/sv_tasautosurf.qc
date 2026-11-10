@@ -6,7 +6,7 @@
   it through). One autosurf a server: its arrays are global, and it holds the optimizer's busy guard
   through its searches (SV_TASOptBusy).
 
-    tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [nohop] [join] [rideknots] [finish]
+    tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [nohop] [join] [rideknots] [polish] [finish]
     tas autosurf stop | status
 */
 #define TAS_ASMAX   64          // waypoints at most
@@ -21,6 +21,10 @@
 // `rideknots`: a stretch that starts on a ride passes its search `kex`, the demo's leaving that ride + 15 ticks: most
 // of the curve's knots go to the dip and the launch (Lex, 10 Nov: how low to dip, a flick at a ride's end)
 .float as_rideknots;
+// `polish`: min-max each stretch before going on (Lex, 10 Nov: a human redoes a ramp until the energy is there) --
+// every try but the last needs 99% of the demo's speed at the board and searches its longest with no early end
+// (stall 20); the last takes the usual minimum, so a stretch that can't be polished is still made.
+.float as_polish;
 .float as_backhead, as_backfail;   // the head at the last rewind request, and requests since it last moved
 .float as_failat, as_failn;            // the stretch that last failed its tries, and how many times in a row
 .float as_failmax;              // the furthest stretch that failed its tries this chain (the stop names it: review 9)
@@ -310,11 +314,13 @@ float(vector v, float z) SV_TASAutoVE =
 // it left the next stretches tried without the speed to make them (Lex, 10 Nov).
 string(entity e, float i) SV_TASAutoEmin =
 {
-	local float k, v2, x;
-	if (e.as_emin <= 0 && as_need[i] <= 0) return "";
+	local float k, v2, x, f;
+	f = e.as_emin;
+	if (e.as_polish && e.as_try < e.as_tries - 1) f = max(f, 0.99);      // polish: the last try takes the usual minimum
+	if (f <= 0 && as_need[i] <= 0) return "";
 	for (k = 0; k < as_nrows - 1 && as_rows[k*7] < as_wt[i] - 0.0001; k = k + 1) ;
 	v2 = as_rows[k*7+4] * as_rows[k*7+4] + as_rows[k*7+5] * as_rows[k*7+5] + as_rows[k*7+6] * as_rows[k*7+6];
-	x = 2 * cvar("sv_gravity") * (as_rows[k*7+3] - e.origin_z) + max(max(0, e.as_emin) * max(0, e.as_emin) * v2, as_need[i] * as_need[i]);
+	x = 2 * cvar("sv_gravity") * (as_rows[k*7+3] - e.origin_z) + max(max(0, f) * max(0, f) * v2, as_need[i] * as_need[i]);
 	x = (x < 0) ? -sqrt(-x) : sqrt(x);
 	return sprintf(" emin %.1f", x);
 };
@@ -397,7 +403,8 @@ void(entity e) SV_TASAutoLink =
 	ps = strcat(SV_TASAutoPace(e, i), SV_TASAutoEmin(e, i));
 	ls = (e.as_look > 0) ? sprintf(" look %.0f", e.as_look) : "";
 	// a retry searches longer: 30 generations more a try (the pillar stretch's narrow line came in some searches only)
-	ps = strcat(ps, sprintf(" gens %.0f", min(90, 30 * (1 + e.as_try))));
+	ps = strcat(ps, sprintf(" gens %.0f", e.as_polish ? 90 : min(90, 30 * (1 + e.as_try))));
+	if (e.as_polish && e.as_try < e.as_tries - 1) ps = strcat(ps, " stall 20");
 	if (e.as_rideknots && i > 0)
 	if (as_wk[i - 1] == 1 && as_wl[i - 1] > e.as_tprev)
 		ps = strcat(ps, sprintf(" kex %.0f", min(TOPT_HMAX, rint((as_wl[i - 1] - e.as_tprev) / PM_TICK) + 15)));   // past the cap: refused (review 13)
@@ -675,14 +682,14 @@ void(entity e, float argc) SV_TASAutoCommand =
 	path = argv(2);
 	if (argc < 3 || path == "" || strstrofs(path, "..") >= 0)
 	{
-		sprint(e, PRINT_HIGH, "tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [emin F] [nohop] [join] [rideknots] [finish] [start [zone N] [sg N] | onjump | onexit] | stop | status | startpause\n");
+		sprint(e, PRINT_HIGH, "tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [emin F] [nohop] [join] [rideknots] [polish] [finish] [start [zone N] [sg N] | onjump | onexit] | stop | status | startpause\n");
 		return;
 	}
 	if (e.as_on || e.topt_on || e.tdem_on) { sprint(e, PRINT_HIGH, "tas autosurf: a search, demo or autosurf is running\n"); return; }
 	if (path != "route" && !SV_TASDemoPathOK(path)) { sprint(e, PRINT_HIGH, "tas autosurf: a .rec under data/ or cfg/ksfreplays/ (or route)\n"); return; }
 	if (SV_TASOptBusy(e)) return;
 	st = 0; flip = 0; arm = 0; e.as_szone = 0; e.as_sg = 900; e.as_sy = 0; e.as_sside = -1;
-	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = -1; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1; e.as_emin = 0.95; e.as_join = 0; e.as_rideknots = 0;
+	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = -1; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1; e.as_emin = 0.95; e.as_join = 0; e.as_rideknots = 0; e.as_polish = 0;
 	for (i = 3; i < argc; i = i + 1)
 	{
 		w = argv(i); n = FS_TASNumber(argv(i + 1)) ? stof(argv(i + 1)) : -1;    // not a number: refused below, not 0 (review)
@@ -695,6 +702,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		else if (w == "nohop") e.as_hop = 0;
 		else if (w == "join") e.as_join = 1;
 		else if (w == "rideknots") e.as_rideknots = 1;
+		else if (w == "polish") e.as_polish = 1;
 		else if (w == "start") st = 1;
 		else if (w == "zone" && n >= 0 && n < 64 && n == floor(n)) { e.as_szone = n; i = i + 1; }
 		else if (w == "sg" && n >= 6 && n <= 2000 && n == floor(n)) { e.as_sg = n; i = i + 1; }   // the most ground ticks before the jump

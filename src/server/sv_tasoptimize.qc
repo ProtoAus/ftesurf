@@ -45,6 +45,7 @@
 #define TOPT_DOFF  6            // P1449 curve demo: the yaw correction's range, degrees either way
 #define TOPT_DQOFF 30           // ...with the engine following: the command correction's range
 #define TOPT_EAIM  1024         // P1449: tas_rollout AIM rows -- a flight steers to the aim point (sv_tas_rollout.inc)
+#define TOPT_EWALL 2048         // P1466: tas_rollout reports a wall or ceiling clipped on any tick (out[7] bit 2), rides too
 #define TOPT_AIMR  500          // P1449 curve aim: the aim point's offset from the target, units either way (x, y)
 #define TOPT_AIMGAIN 10         // ...degrees off the bearing for the hardest speed-keeping turn
 #define TOPT_HMAX  768          // P1449: a fast search's horizon (a ramp ride or a flight is ~150 ticks; a link and its lookahead ~600); played
@@ -181,6 +182,13 @@ float topt_kseed[TOPT_KMAX];
 .float topt_kprev, topt_kstall;  // the best when it last gained, and generations since
 .float topt_kd;                 // P1449: the searched vector: the knots, then (aim) the aim offset x, y
 .float topt_efol;               // P1449: this server's tas_rollout takes FOLLOW rows (exact, one rollout)
+.float topt_ewall;              // P1466: and reports walls clipped on rides (TOPT_EWALL rows)
+// P1466: and takes aimlead -- a searched value after the aim's (index topt_kleadj): how far back along the face the
+// flight's lead point sits, 0 straight at the aim (board with a snap) to 1, P1449's 0.5 at the middle (Lex, 10 Nov:
+// a long launch past geometry goes straight for the ramp's nearest part once clear; taken wide it was lost)
+.float topt_elead, topt_kleadj;
+float(entity e) SV_TASOptLead = { return bound(0, 0.5 + 0.5 * topt_kcur[e.topt_kleadj] / TOPT_AIMR, 1); };
+.float topt_cestall;            // P1449 `stall N`: generations without a gain that end a search once it reaches
 .float topt_kspan;              // P1449: the ticks the knots spread over (aim: the ride, ~0.45 of the horizon)
 // The follow, curve and demo buffers live across frames: one search or demo at a time on a server.
 .float tdem_on;                 // P1449: a tas demo is playing (below)
@@ -294,6 +302,7 @@ string(entity e) SV_TASOptExtra =
 		for (i = 0; i < e.topt_kn; i = i + 1) s = strcat(s, sprintf(" %.2f", topt_kbest[i]));
 		if (e.topt_mode & 128) s = strcat(s, sprintf(", aimed %.0f %.0f u off the target in flight", topt_kbest[e.topt_kn], topt_kbest[e.topt_kn + 1]));
 		if (e.topt_mode & 256) s = strcat(s, sprintf(" from tick %.0f", SV_TASOptAimFromK(e, topt_kbest[e.topt_kn + 2])));
+		if (e.topt_elead) s = strcat(s, sprintf(", lead %.2f", bound(0, 0.5 + 0.5 * topt_kbest[e.topt_kleadj] / TOPT_AIMR, 1)));
 		s = strcat(s, (e.topt_mode & 64) ? (e.topt_efol ? " (added to the demo's own turn command each tick, from this run's velocity)"
 			: " (degrees added to the demo's yaw, + left; knots over the ticks)")
 			: " (turn command: + left, 30 most speed, 60 hardest speed-keeping turn; knots over the ticks)");
@@ -460,10 +469,13 @@ float(entity e, float r, float f) SV_TASOptFollow =
 			if (topt_ride[i]) q = 30 * topt_ride[i];
 			topt_rows[i*7] = 0; topt_rows[i*7+1] = -450 * e.topt_dir; topt_rows[i*7+2] = 0;
 			topt_rows[i*7+3] = SV_TASPWord(e.topt_pitch0); topt_rows[i*7+4] = bound(-TOPT_QMAX, q, TOPT_QMAX);
-			topt_rows[i*7+5] = 0; topt_rows[i*7+6] = TOPT_EFOLLOW + (e.topt_pfoff ? 0 : TOPT_EPITCHV) + ((e.topt_mode & 128) ? TOPT_EAIM : 0) + (e.topt_hop ? 1 : 0);
+			topt_rows[i*7+5] = 0; topt_rows[i*7+6] = TOPT_EFOLLOW + (e.topt_pfoff ? 0 : TOPT_EPITCHV) + ((e.topt_mode & 128) ? TOPT_EAIM : 0) + (e.topt_hop ? 1 : 0)
+				+ (e.topt_ewall ? TOPT_EWALL : 0);
 		}
 		SV_NoColPre(e);
-		if ((e.topt_mode & 128) && e.topt_tgtn != '0 0 0')   // aim at a face: arrive along it (sv_tas_rollout.inc)
+		if ((e.topt_mode & 128) && e.topt_tgtn != '0 0 0' && e.topt_elead)
+			ran = tas_rollout(e, topt_rows, e.topt_n, topt_out, e.topt_tgt + [topt_kcur[e.topt_kn], topt_kcur[e.topt_kn + 1], 0], TOPT_AIMGAIN, e.topt_tgtn, SV_TASOptLead(e));
+		else if ((e.topt_mode & 128) && e.topt_tgtn != '0 0 0')   // aim at a face: arrive along it (sv_tas_rollout.inc)
 			ran = tas_rollout(e, topt_rows, e.topt_n, topt_out, e.topt_tgt + [topt_kcur[e.topt_kn], topt_kcur[e.topt_kn + 1], 0], TOPT_AIMGAIN, e.topt_tgtn);
 		else if (e.topt_mode & 128)  // aim: the flight steers to the target moved by the last two searched values
 			ran = tas_rollout(e, topt_rows, e.topt_n, topt_out, e.topt_tgt + [topt_kcur[e.topt_kn], topt_kcur[e.topt_kn + 1], 0], TOPT_AIMGAIN);
@@ -655,7 +667,7 @@ float(entity e) SV_TASOptDemoRoll =
 			// FOLLOW strafes a 0 command at side 0 as 450 left -- review)
 			a = ((e.topt_mode & 128) && (!(e.topt_mode & 256) || i >= SV_TASOptAimFrom(e)) && topt_dq[j]);
 			topt_rows[i*7+6] = (e.topt_hop ? (topt_drow[j*5+4] | 1) : topt_drow[j*5+4]) + (e.topt_pfoff ? 0 : TOPT_EPITCHV)
-				+ ((topt_dq[j] || a) ? TOPT_EFOLLOW : 0) + (a ? TOPT_EAIM : 0);
+				+ ((topt_dq[j] || a) ? TOPT_EFOLLOW : 0) + (a ? TOPT_EAIM : 0) + (e.topt_ewall ? TOPT_EWALL : 0);
 			if (!topt_dq[j] && !a)
 			{	// no side key held: FOLLOW would strafe (the engine reads side 0 as 450 left) -- the demo's own view (review)
 				topt_rows[i*7+1] = 0;
@@ -663,7 +675,9 @@ float(entity e) SV_TASOptDemoRoll =
 			}
 		}
 		SV_NoColPre(e);
-		if ((e.topt_mode & 128) && e.topt_tgtn != '0 0 0')   // demo aim at a face: arrive along it
+		if ((e.topt_mode & 128) && e.topt_tgtn != '0 0 0' && e.topt_elead)
+			ran = tas_rollout(e, topt_rows, e.topt_n, topt_out, e.topt_tgt + [topt_kcur[e.topt_kn], topt_kcur[e.topt_kn + 1], 0], TOPT_AIMGAIN, e.topt_tgtn, SV_TASOptLead(e));
+		else if ((e.topt_mode & 128) && e.topt_tgtn != '0 0 0')   // demo aim at a face: arrive along it
 			ran = tas_rollout(e, topt_rows, e.topt_n, topt_out, e.topt_tgt + [topt_kcur[e.topt_kn], topt_kcur[e.topt_kn + 1], 0], TOPT_AIMGAIN, e.topt_tgtn);
 		else if (e.topt_mode & 128)  // demo aim: its ride, then the flight steers to the moved target
 			ran = tas_rollout(e, topt_rows, e.topt_n, topt_out, e.topt_tgt + [topt_kcur[e.topt_kn], topt_kcur[e.topt_kn + 1], 0], TOPT_AIMGAIN);
@@ -954,12 +968,21 @@ float(entity e, float ran) SV_TASOptLimit =
 // P1449: ticks of the first n a wall or ceiling is touched in flight (tas_rollout's contact kind 4; an
 // engine without it never says so): TOPT_WALLPEN each. A brush 20 u from farsh's line took 10 u/s off
 // a flight that scored nothing for it (9 Nov); cutting there instead left board 2 unreachable (10 Nov).
+// A wall or ceiling clipped on tick i: in flight (kind 4), or anywhere when the engine reports it (P1466: a ride
+// rubbing a side wall said nothing before, and Lex saw the bot rub walls and lose speed, 10 Nov).
+float(float i) SV_TASOptWallAt =
+{
+	if (topt_out[i*13+8] == 4)
+	if (!topt_out[i*13+6])
+		return TRUE;
+	return (topt_out[i*13+7] & 2) ? TRUE : FALSE;
+};
 float(float n) SV_TASOptWallTicks =
 {
 	local float i, w;
 	w = 0;
 	for (i = 0; i < n; i = i + 1)
-		if (topt_out[i*13+8] == 4 && !topt_out[i*13+6]) w = w + 1;
+		if (SV_TASOptWallAt(i)) w = w + 1;
 	return w;
 };
 
@@ -1046,7 +1069,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 	if (hit && e.topt_tgtn_z >= 0.99)
 	{	// a hop: the link goes on past the jump until the hull stands (farsh ducks over a platform's lip
 		// and the next search could not start inside the duck transition: rollouts refuse it, -6)
-		for (bk = bk + 2; bk < lim - 1 && topt_out[bk*13+7]; bk = bk + 1) ;
+		for (bk = bk + 2; bk < lim - 1 && (topt_out[bk*13+7] & 1); bk = bk + 1) ;     // bit 1 ducked (bit 2: P1466's wall)
 		bk = min(bk, lim - 1);
 	}
 	if (!hit && e.topt_tube > 0 && e.topt_tubebk >= 0) { best = e.topt_tubebest; bk = e.topt_tubebk; }   // a miss: route progress
@@ -1091,7 +1114,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 			// and its walls: once a wall stopped cutting, a launch whose next 1.4 s ended against the side of the
 			// next bhop platform still "survived" the route (surf_null's second platform pair, 10 Nov)
 			for (i = bk + 1; i < lim && i <= bk + e.topt_look; i = i + 1)
-				if (topt_out[i*13+8] == 4 && !topt_out[i*13+6]) d = d - TOPT_WALLPEN;
+				if (SV_TASOptWallAt(i)) d = d - TOPT_WALLPEN;
 		}
 		return SV_TASOptBand(TOPT_REACH, d);
 	}
@@ -1492,6 +1515,31 @@ float(entity e) SV_TASOptEngineFollows =
 	return r >= 1 && topt_rows[6] == 0;         // ran it, and wrote the row back
 };
 
+// P1466: does this server's tas_rollout report walls on any tick? (An older one refuses the row bit: -10.)
+float(entity e) SV_TASOptEngineWalls =
+{
+	local float r;
+	if (SV_TASOptEngineFollows(e) != 1) return FALSE;
+	topt_rows[0] = 0; topt_rows[1] = -450; topt_rows[2] = 0; topt_rows[3] = 0; topt_rows[4] = 30; topt_rows[5] = 0;
+	topt_rows[6] = TOPT_EFOLLOW + TOPT_EWALL;
+	SV_NoColPre(e);
+	r = tas_rollout(e, topt_rows, 1, topt_out);
+	SV_NoColPost(e);
+	return r >= 1 && topt_rows[6] == 0;
+};
+
+// P1466: does it take aimlead? (An older one refuses eight arguments: -1.)
+float(entity e) SV_TASOptEngineLeads =
+{
+	local float r;
+	topt_rows[0] = 0; topt_rows[1] = -450; topt_rows[2] = 0; topt_rows[3] = 0; topt_rows[4] = 30; topt_rows[5] = 0;
+	topt_rows[6] = TOPT_EFOLLOW + TOPT_EAIM;
+	SV_NoColPre(e);
+	r = tas_rollout(e, topt_rows, 1, topt_out, e.origin + '1000 0 0', TOPT_AIMGAIN, '0 0.766 0.643', 0.25);
+	SV_NoColPost(e);
+	return r >= 1 && topt_rows[6] == 0;
+};
+
 // P1449: does this server's tas_rollout take an aim point and AIM rows? (An older one refuses six arguments.)
 float(entity e) SV_TASOptEngineAims =
 {
@@ -1519,6 +1567,7 @@ void(entity e) SV_TASOptCurveNext =
 		// begin a max-rate air turn earlier, and spread 200 round 0.7 almost never sampled 0.4 (surf_null ramp 6 -> 7:
 		// farsh turns 94 deg at 43 deg/s, the air cap's rate; at 2800 u/s that arc is ~490 u wider)
 		if ((e.topt_mode & 256) && e.topt_kidx > 1) topt_kcur[e.topt_kn + 2] = (e.topt_kidx & 2) ? ((e.topt_kidx & 1) ? 250 : -250) : ((e.topt_kidx & 1) ? -500 : 0);
+		if (e.topt_elead && e.topt_kidx > 1 && (e.topt_kidx & 4)) topt_kcur[e.topt_kleadj] = -TOPT_AIMR;    // straight at it (lead 0)
 		if (e.topt_kidx == 0 && (e.topt_mode & 64))
 		{	// the demo itself
 			for (j = 0; j < e.topt_kn; j = j + 1) topt_kcur[j] = 0;
@@ -1646,7 +1695,7 @@ void(entity e, float v) SV_TASOptCurveResult =
 	else e.topt_kstall = e.topt_kstall + 1;
 	if (cvar("developer"))
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: curve generation %.0f, best %.1f, %.0f candidates, %.1f s\n", e.topt_kgen, SV_TASOptEnergyShow(e, e.topt_bestv), e.topt_evals, gettime(1)));
-	if (e.topt_kgen >= e.topt_cegen || (e.topt_kgen >= TOPT_CEMIN && e.topt_kstall >= TOPT_CESTALL && (!e.topt_tgtuse || e.topt_bestv >= TOPT_REACH)))
+	if (e.topt_kgen >= e.topt_cegen || (e.topt_kgen >= TOPT_CEMIN && e.topt_kstall >= e.topt_cestall && (!e.topt_tgtuse || e.topt_bestv >= TOPT_REACH)))
 	{
 		for (j = 0; j < e.topt_kd; j = j + 1) topt_kcur[j] = topt_kbest[j];
 		e.topt_phase = 3;
@@ -2007,11 +2056,11 @@ void(entity e) SV_TASOptReset =
 // tas optimize <ticks> <left|right> [board] [flick [k]] [time] [energy] [fast]
 void(entity e, float argc) SV_TASOptCommand =
 {
-	local float n, dir, i, mode, fk, searches, obj, fast, energy, fixp, kn, tube, hop, look, pace, emin, gens, kex;
+	local float n, dir, i, mode, fk, searches, obj, fast, energy, fixp, kn, tube, hop, look, pace, emin, gens, kex, stall;
 	local string w;
 	n = stof(argv(2));
 	dir = !strcmp(argv(3), "left") ? 1 : (!strcmp(argv(3), "right") ? -1 : 0);
-	mode = 0; fk = 0; obj = 0; fast = 0; energy = 0; fixp = 0; kn = 0; tube = 0; hop = 0; look = 0; pace = 0; emin = 0; gens = 0; kex = 0;
+	mode = 0; fk = 0; obj = 0; fast = 0; energy = 0; fixp = 0; kn = 0; tube = 0; hop = 0; look = 0; pace = 0; emin = 0; gens = 0; kex = 0; stall = 0;
 	for (i = 4; i < argc; i = i + 1)
 	{
 		w = argv(i);
@@ -2033,6 +2082,8 @@ void(entity e, float argc) SV_TASOptCommand =
 		else if (pace == -1 && argv(i - 1) == "pace" && FS_TASNumber(w) && stof(w) > 0 && stof(w) <= 20) pace = stof(w);
 		else if (w == "gens" && (mode & 32) && !gens) gens = -1;                 // P1449: a curve search's generations
 		else if (gens == -1 && argv(i - 1) == "gens" && stof(w) >= 4 && stof(w) <= 200 && w == ftos(stof(w))) gens = stof(w);
+		else if (w == "stall" && (mode & 32) && !stall) stall = -1;              // P1449: generations without a gain that end it
+		else if (stall == -1 && argv(i - 1) == "stall" && stof(w) >= 2 && stof(w) <= 200 && w == ftos(stof(w))) stall = stof(w);
 		else if (w == "kex" && (mode & 64) && !kex) kex = -1;                   // P1449: the knots' launch split (SV_TASOptKnotD)
 		else if (kex == -1 && argv(i - 1) == "kex" && stof(w) >= 8 && stof(w) <= TOPT_HMAX && w == ftos(stof(w))) kex = stof(w);
 		else if (w == "emin" && (mode & 64) && !emin) emin = -1;                 // P1449: the least energy a reach counts at
@@ -2046,7 +2097,7 @@ void(entity e, float argc) SV_TASOptCommand =
 		else if ((mode & 2) && fk == 4 && argv(i - 1) == "flick" && stof(w) >= 1 && stof(w) <= 32 && stof(w) == floor(stof(w)) && w == ftos(stof(w))) fk = stof(w);
 		else { mode = -1; break; }
 	}
-	if (tube == -1 || look == -1 || pace == -1 || emin == -1 || gens == -1 || kex == -1 || (look && !tube)) mode = -1;      // look scores route: it needs a tube
+	if (tube == -1 || look == -1 || pace == -1 || emin == -1 || gens == -1 || kex == -1 || stall == -1 || (look && !tube)) mode = -1;      // look scores route: it needs a tube
 	if (mode > 0 && (mode & 128) && (!e.topt_tgton || kn > TOPT_KMAX - ((mode & 256) ? 3 : 2)))
 	{
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: aim steers to the tas target (set one) and takes up to %.0f knots\n", TOPT_KMAX - ((mode & 256) ? 3 : 2)));
@@ -2076,7 +2127,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	}
 	if (argc < 4 || argc > 30 || !(n >= 4 && n <= (fast ? TOPT_HMAX : TAS_TAPE_MAX) && n == floor(n)) || !dir || mode < 0)
 	{
-		sprint(e, PRINT_HIGH, "tas optimize <ticks 4..128, fast 4..768> <left|right> [board | follow | curve [knots 3..16]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [aim] [hop] [gens N] [demo [late (after aim)] [tube R [look N]] [pace X] [emin E] [kex T]] (with curve): best turn for exit speed (energy: speed + height), or with time the next segment soonest; fast searches by rollout and plays only the best\n");
+		sprint(e, PRINT_HIGH, "tas optimize <ticks 4..128, fast 4..768> <left|right> [board | follow | curve [knots 3..16]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [aim] [hop] [gens N] [demo [late (after aim)] [tube R [look N]] [pace X] [emin E] [kex T]] [stall N] (with curve): best turn for exit speed (energy: speed + height), or with time the next segment soonest; fast searches by rollout and plays only the best\n");
 		return;
 	}
 	if (!e.run_tas_rwcap || !SV_TASInputReady(e) || !SV_TASCanPause(e)) return;
@@ -2106,13 +2157,15 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_mode = mode; e.topt_fk = fk; e.topt_srch = 0; e.topt_besty = 0; e.topt_bestf = 0; e.topt_bestp = 12;
 	e.topt_pfoff = fixp; e.topt_pfon = 0;
 	e.topt_kn = kn; e.topt_kgen = -1; e.topt_kidx = 0; e.topt_wok = e.topt_bok = 0; e.topt_vizt = 0;   // vizt before the clear below
-	e.topt_efol = 0; e.topt_tube = tube; e.topt_tubeout = e.topt_wallhit = 0; e.topt_hop = hop; e.topt_look = look; e.topt_pace = pace; e.topt_emin = emin; e.topt_weakn = 0; e.topt_cegen = gens ? gens : TOPT_CEGEN;
+	e.topt_efol = 0; e.topt_tube = tube; e.topt_tubeout = e.topt_wallhit = 0; e.topt_hop = hop; e.topt_look = look; e.topt_pace = pace; e.topt_emin = emin; e.topt_weakn = 0; e.topt_cegen = gens ? gens : TOPT_CEGEN; e.topt_cestall = stall ? stall : TOPT_CESTALL;
 	e.topt_tgtj = 0;
 	if (tube)
 		for (i = 1; i < e.topt_dn; i = i + 1)
 			if (vlen([topt_dpos[i*3], topt_dpos[i*3+1], topt_dpos[i*3+2]] - e.topt_tgt) <
 			    vlen([topt_dpos[e.topt_tgtj*3], topt_dpos[e.topt_tgtj*3+1], topt_dpos[e.topt_tgtj*3+2]] - e.topt_tgt)) e.topt_tgtj = i;
+	e.topt_ewall = 0;
 	if (kn) { i = SV_TASOptEngineFollows(e); if (i == 1) e.topt_efol = 1; }    // demo too: its command in the engine
+	if (e.topt_efol) e.topt_ewall = SV_TASOptEngineWalls(e);
 	if (kn && i < 0)
 	{
 		SV_TASOptStop(e, SV_TASRollWhy(i));
@@ -2135,6 +2188,12 @@ void(entity e, float argc) SV_TASOptCommand =
 	{
 		SV_TASOptStop(e, "aim needs a server engine whose tas_rollout steers AIM rows (P1449)");
 		return;
+	}
+	e.topt_elead = e.topt_kleadj = 0;
+	if ((mode & 128) && e.topt_tgtn != '0 0 0' && e.topt_kd < TOPT_KMAX)
+	if (SV_TASOptEngineLeads(e))
+	{
+		e.topt_elead = 1; e.topt_kleadj = e.topt_kd; e.topt_kd = e.topt_kd + 1;
 	}
 	e.topt_bestr2 = -1; e.topt_bests = 0.5;
 	e.topt_obj = obj; e.topt_seg0 = e.run_t_seg;
