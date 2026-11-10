@@ -606,6 +606,20 @@ float(entity e, float ran) SV_TASOptDemoMap =
 	return ch;
 };
 
+// P1449 `kex T`: a demo curve's knots spent where the launch is made -- 60% of them from the stretch's start to tick T
+// (the demo's leaving its ramp and a little after: autosurf's `rideknots`), the rest to the target's row, past it
+// the last holds. Spread evenly over the horizon (lookahead included) a ride had 3-4 knots of 12, ~50 ticks apart:
+// too coarse for a deeper dip or a flick in a ride's last ticks (Lex, 10 Nov).
+.float topt_kex, topt_kend;
+float(entity e, float i) SV_TASOptKnotD =
+{
+	local float ka;
+	if (e.topt_kex <= 0) return min(i, e.topt_kspan - 1) * (e.topt_kn - 1) / max(1, e.topt_kspan - 1);
+	ka = rint(0.6 * (e.topt_kn - 1));
+	if (i <= e.topt_kex) return i * ka / e.topt_kex;
+	return ka + (min(i, e.topt_kend) - e.topt_kex) * (e.topt_kn - 1 - ka) / max(1, e.topt_kend - e.topt_kex);
+};
+
 float(entity e) SV_TASOptDemoRoll =
 {
 	local float i, d, k, off, j, ran, a, pass;
@@ -619,7 +633,7 @@ float(entity e) SV_TASOptDemoRoll =
 		{
 		for (i = 0; i < e.topt_n; i = i + 1)
 		{
-			d = min(i, e.topt_kspan - 1) * (e.topt_kn - 1) / max(1, e.topt_kspan - 1); k = floor(d);
+			d = SV_TASOptKnotD(e, i); k = floor(d);
 			off = (k >= e.topt_kn - 1) ? topt_kcur[e.topt_kn - 1] : topt_kcur[k] + (d - k) * (topt_kcur[k + 1] - topt_kcur[k]);
 			j = topt_dmap[i];
 			topt_rows[i*7] = topt_drow[j*5]; topt_rows[i*7+1] = topt_drow[j*5+1]; topt_rows[i*7+2] = 0;
@@ -1978,11 +1992,11 @@ void(entity e) SV_TASOptReset =
 // tas optimize <ticks> <left|right> [board] [flick [k]] [time] [energy] [fast]
 void(entity e, float argc) SV_TASOptCommand =
 {
-	local float n, dir, i, mode, fk, searches, obj, fast, energy, fixp, kn, tube, hop, look, pace, emin, gens;
+	local float n, dir, i, mode, fk, searches, obj, fast, energy, fixp, kn, tube, hop, look, pace, emin, gens, kex;
 	local string w;
 	n = stof(argv(2));
 	dir = !strcmp(argv(3), "left") ? 1 : (!strcmp(argv(3), "right") ? -1 : 0);
-	mode = 0; fk = 0; obj = 0; fast = 0; energy = 0; fixp = 0; kn = 0; tube = 0; hop = 0; look = 0; pace = 0; emin = 0; gens = 0;
+	mode = 0; fk = 0; obj = 0; fast = 0; energy = 0; fixp = 0; kn = 0; tube = 0; hop = 0; look = 0; pace = 0; emin = 0; gens = 0; kex = 0;
 	for (i = 4; i < argc; i = i + 1)
 	{
 		w = argv(i);
@@ -2004,6 +2018,8 @@ void(entity e, float argc) SV_TASOptCommand =
 		else if (pace == -1 && argv(i - 1) == "pace" && FS_TASNumber(w) && stof(w) > 0 && stof(w) <= 20) pace = stof(w);
 		else if (w == "gens" && (mode & 32) && !gens) gens = -1;                 // P1449: a curve search's generations
 		else if (gens == -1 && argv(i - 1) == "gens" && stof(w) >= 4 && stof(w) <= 200 && w == ftos(stof(w))) gens = stof(w);
+		else if (w == "kex" && (mode & 64) && !kex) kex = -1;                   // P1449: the knots' launch split (SV_TASOptKnotD)
+		else if (kex == -1 && argv(i - 1) == "kex" && stof(w) >= 8 && stof(w) <= TOPT_HMAX && w == ftos(stof(w))) kex = stof(w);
 		else if (w == "emin" && (mode & 64) && !emin) emin = -1;                 // P1449: the least energy a reach counts at
 		else if (emin == -1 && argv(i - 1) == "emin" && FS_TASNumber(w) && fabs(stof(w)) <= 20000)    // shown units (signed)
 			emin = sqrt(max(1, stof(w) * fabs(stof(w)) + TOPT_EREF));
@@ -2015,7 +2031,7 @@ void(entity e, float argc) SV_TASOptCommand =
 		else if ((mode & 2) && fk == 4 && argv(i - 1) == "flick" && stof(w) >= 1 && stof(w) <= 32 && stof(w) == floor(stof(w)) && w == ftos(stof(w))) fk = stof(w);
 		else { mode = -1; break; }
 	}
-	if (tube == -1 || look == -1 || pace == -1 || emin == -1 || gens == -1 || (look && !tube)) mode = -1;      // look scores route: it needs a tube
+	if (tube == -1 || look == -1 || pace == -1 || emin == -1 || gens == -1 || kex == -1 || (look && !tube)) mode = -1;      // look scores route: it needs a tube
 	if (mode > 0 && (mode & 128) && (!e.topt_tgton || kn > TOPT_KMAX - ((mode & 256) ? 3 : 2)))
 	{
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: aim steers to the tas target (set one) and takes up to %.0f knots\n", TOPT_KMAX - ((mode & 256) ? 3 : 2)));
@@ -2045,7 +2061,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	}
 	if (argc < 4 || argc > 24 || !(n >= 4 && n <= (fast ? TOPT_HMAX : TAS_TAPE_MAX) && n == floor(n)) || !dir || mode < 0)
 	{
-		sprint(e, PRINT_HIGH, "tas optimize <ticks 4..128, fast 4..768> <left|right> [board | follow | curve [knots 3..16]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [aim] [hop] [gens N] [demo [late (after aim)] [tube R [look N]] [pace X] [emin E]] (with curve): best turn for exit speed (energy: speed + height), or with time the next segment soonest; fast searches by rollout and plays only the best\n");
+		sprint(e, PRINT_HIGH, "tas optimize <ticks 4..128, fast 4..768> <left|right> [board | follow | curve [knots 3..16]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [aim] [hop] [gens N] [demo [late (after aim)] [tube R [look N]] [pace X] [emin E] [kex T]] (with curve): best turn for exit speed (energy: speed + height), or with time the next segment soonest; fast searches by rollout and plays only the best\n");
 		return;
 	}
 	if (!e.run_tas_rwcap || !SV_TASInputReady(e) || !SV_TASCanPause(e)) return;
@@ -2089,6 +2105,9 @@ void(entity e, float argc) SV_TASOptCommand =
 	}
 	e.topt_kd = kn + ((mode & 128) ? ((mode & 256) ? 3 : 2) : 0);
 	e.topt_kspan = ((mode & 128) && !(mode & 256)) ? max(kn, ceil(0.45 * n)) : n;
+	// kex: only with knots enough to split and the target's row well past it (else the even spread)
+	e.topt_kex = e.topt_kend = 0;
+	if (kex > 0 && kn >= 6 && e.topt_tgtj > kex + kn) { e.topt_kex = kex; e.topt_kend = min(e.topt_tgtj, e.topt_kspan - 1); }
 	if (mode & 128) i = SV_TASOptEngineAims(e);
 	if ((mode & 128) && i < 0)
 	{
