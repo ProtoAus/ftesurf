@@ -256,6 +256,10 @@ Rig runs (root C:/FTESurf-worktrees/jargon-courses-1111a, driver tools/p1478_cou
   standstill then its prestrafe; stuck at stretch 2 because stretch 1 boards ramp 1 350-375 u from the guide's point
   (board radius 800) and every stretch-2 line is cut within 3 ticks; the auto-escalation fired there. Not solved.
 - Reviews (two lenses, 17 findings, no crash in the reviewed tree except NaN/fractional notes numbers): all fixed.
+- Delivered 11 Nov ~05:30 local from main 2360c4a9 (fteqcc 73f9a1a4, 0 warnings): the 12 lobbies (build.ps1 -Pi from a
+  clean worktree; one player on lobby 3 warned, all restarted; .prev 91ef42d5 / 01d9d44e) and both installs (cs 56522910 /
+  qw fdce20d0, .prev and .pre1478 the same pair; csprogsvers 16ee036c; menu unchanged 55d01b52); tasrevd codes.txt
+  117 -> 118 (.pre1478). Third review's fixes (b5d836d7) are build-verified and traced, not rerun on the rig.
 - The search is not deterministic from one state: stretch 1's first search from the same replayed start gave 1130,
   1130 and 1092 u/s in three runs (t2chain2-4).
 

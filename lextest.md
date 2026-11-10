@@ -13,7 +13,7 @@
   A real recorder-produced run is still needed; no Terms/consent click is automated
   or inferred from this request. No owner confirmation or genuine-file pass yet.
 
-## P1478 Jargon courses + Continue -- (delivery line added at install)
+## P1478 Jargon courses + Continue -- both installs + 12 lobbies 11 Nov ~05:30 local (cs 56522910 / qw fdce20d0, main 2360c4a9)
 - Open Jargon on a map with stages or bonuses (surf_tensor2, surf_shape): a "Course" row lists Main, each stage and each
   bonus. Pick Stage 2: the guide runs listed are stage-2 runs (and full runs marked "(full run)"); pick Bonus 1 on
   surf_shape: only bonus runs.
