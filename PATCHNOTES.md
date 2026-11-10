@@ -57,11 +57,12 @@
 ### P1451 No string-cleanup hitch early in each map
 - The memory the game code's string cleanup works in is now set up while the map loads, so the first cleanup of each map, usually during your first run, no longer stutters for it.
 
-### P1449 TAS: autosurf a replay, and an Optimizer tab
-- The TAS editor has an Optimizer tab (or type tas optimizer): pick a replay for the map and press Autosurf from here, and the bot searches its way ramp by ramp along that route.
-- A stretch that fails is tried again, and if it keeps failing the bot goes back and searches the stretch before it; the tab shows which stretch it is on.
-- The bot follows the replay's own strafing, lands parallel on the next ramp's face, and hops bhop platforms at their far end.
-- One stretch at a time: aim at a ramp, press Target at crosshair, then Optimize toward it. The search draws its candidates, its best line and the line it plays.
+### P1449 Jargon: a bot that surfs a map from a leaderboard run
+- The TAS menu's Jargon tab: pick one of the leaderboard lines you have on as the guide, and Jargon surfs the map ramp by ramp along it, searching each ramp's board and flight. Manual TAS keeps the old tools.
+- The route is drawn in the world: ramps as see-through planes, boarding points as handles. Edit closes the panel to fly around and drag them; Esc brings it back. You can also place air points to steer a flight.
+- Effort (Quick, Normal, Thorough) sets how hard each ramp is searched. A ramp that keeps failing sends it back to the one before; when it overshoots a ramp, it comes in wider on the next try.
+- Strafing in the air: Tight, or Wider so it does not flip left and right every frame. Where it boards: the guide's spot, or try 5 spots on each ramp and keep the one that carries the most speed to the next ramp.
+- Restart from the start zone, go from where you are, or redo from any stretch. Watch the search lines live, from your view or an overview camera that follows the line, with a thinking panel.
 - These are local practice tools: they are refused on the lobby servers.
 
 ### P1447 Website replays play on Strata maps, and load faster
