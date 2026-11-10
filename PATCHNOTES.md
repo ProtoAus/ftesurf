@@ -21,6 +21,9 @@
 
 ## next
 
+### P1478 Input recordings finish at buffer boundaries
+- Input recordings near a buffer-growth boundary now finish normally instead of being incorrectly marked truncated.
+
 ## 0.1.44 2026-11-10
 
 ### P1475 Water reflections stay put while you move

@@ -1168,9 +1168,6 @@
 - csprogs on first join after a build: the client asks sv_dlURL/ftesurf/csprogs.dat first
   (404), then takes 6.5 MB over the game channel. Served there gzipped (1.4 MB) it would come
   over HTTPS; needs nginx and a deploy step that keeps it in step with the lobbies.
-- A journal that never reached in_journal_maxkb can end in `truncated` instead of `end`: the end
-  path sets in_jrn_max = in_jrn_cap, lowering the cap to the current allocation (in_generic.c,
-  pre-existing; about 0.1% of journals under 64 KB). The receipt still matches the file.
 - Journal compression: 25-32% of size, 13-140 ms of CPU; the collector would have to verify
   the hash of the decompressed bytes. Not the stutter (threading was), so not done.
 
