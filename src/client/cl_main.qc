@@ -1560,6 +1560,8 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	// Patch 671: the editor also owns jump toggles and their releases.
 	if (ZoneEdit_InputEvent(evtype, scanx, chary, devid))
 		return TRUE;
+	if (TASJargon_InputEvent(evtype, scanx, chary, devid))     // P1449: Jargon's route editor (cl_jargon.qc)
+		return TRUE;
 	if (RouteEdit_InputEvent(evtype, scanx, chary, devid))     // P1449: the route's drag editor (cl_tasoptviz.qc)
 		return TRUE;
 
@@ -2099,6 +2101,8 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	{
 		Zone_Draw();
 		TASOptViz_Draw();           // P1449: tas optimize's candidates, same depth-tested pass
+		TASJargon_Frame();          // P1449: Jargon's route editor (cl_jargon.qc)
+		TASJargon_DrawWorld();
 		PTrail_DrawAll();           // P772: after the predraws that feed it
 	}
 	ZoneEdit_Draw3D(!worldonly); // P1348: maintain input/drag without submitting overlays
@@ -2208,6 +2212,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		MPad_Draw(scr);                 // Patch 390: after HUD_Draw's clock; both of its paths
 		TASSearch_Draw(scr);            // P1449: the search panel (cl_tasoptui.qc), live: not in the HUD cache
 		RouteEdit_DrawHint(scr);        // P1449: the route drag editor's line (cl_tasoptviz.qc)
+		TASJargon_DrawHint(scr);        // P1449: Jargon's route editor's line
 		// Patch 871: hud_fps. These three only draw, so they may be drawn into a target a few
 		// hundred times a second and pasted between (cl_hudcache.qc); the key strip is layer 1.
 		HC_Frame();
@@ -2285,6 +2290,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 			Trail_Draw();
 			RG_DrawLines();
 			TASOptViz_Draw2D();
+			TASJargon_Draw2D();
 			LineGraph_WorldLabels();
 		}
 		Line_FrameEnd();
@@ -2578,7 +2584,7 @@ float(string cmd) CSQC_ConsoleCommand =
 			if (strstrofs(tsline, "..") >= 0) tsline = "!";
 			tsline = strcat(" ", tsline);
 			for (tsi = 3; tsi < cmdargc; tsi = tsi + 1)
-				if (argv(tsi) == "tube" || argv(tsi) == "look" || argv(tsi) == "tries" || argv(tsi) == "backs" || argv(tsi) == "nohop" || argv(tsi) == "join" || argv(tsi) == "rideknots" || argv(tsi) == "polish" || argv(tsi) == "low" || argv(tsi) == "apex" || argv(tsi) == "air" || argv(tsi) == "pace" || argv(tsi) == "emin" || argv(tsi) == "start" || argv(tsi) == "zone" ||
+				if (argv(tsi) == "tube" || argv(tsi) == "look" || argv(tsi) == "tries" || argv(tsi) == "backs" || argv(tsi) == "nohop" || argv(tsi) == "join" || argv(tsi) == "rideknots" || argv(tsi) == "polish" || argv(tsi) == "low" || argv(tsi) == "apex" || argv(tsi) == "air" || argv(tsi) == "plan" || argv(tsi) == "pace" || argv(tsi) == "emin" || argv(tsi) == "start" || argv(tsi) == "zone" ||
 				    argv(tsi) == "sg" || argv(tsi) == "sy" || argv(tsi) == "sright" || argv(tsi) == "sflip" || argv(tsi) == "onjump" || argv(tsi) == "onexit" ||
 				    argv(tsi) == "finish" || FS_TASNumber(argv(tsi)))
 					tsline = strcat(tsline, " ", argv(tsi));
@@ -2592,6 +2598,12 @@ float(string cmd) CSQC_ConsoleCommand =
 		{
 			rte_on = !rte_on;
 			print(rte_on ? "tas route edit: aim at a marker and drag it; right click removes it\n" : "tas route edit: done\n");
+		}
+		else if (cmdargc == 3 && !strcmp(argv(1), "jargon") && (argv(2) == "edit" || argv(2) == "show"))
+		{	// P1449: Jargon's route (cl_jargon.qc): the picked guide run's plan, and the in-world editor
+			TASJargon_Guides();
+			if (argv(2) == "show" || !jg_n) TASJargon_RequestPlan();
+			if (argv(2) == "edit") { jg_edit = !jg_edit; print(jg_edit ? "tas jargon edit: on -- noclip round, drag a handle\n" : "tas jargon edit: done\n"); }
 		}
 		else if (cmdargc >= 2 && !strcmp(argv(1), "jargon"))       // P1449: Jargon is autosurf's name in the menus
 		{

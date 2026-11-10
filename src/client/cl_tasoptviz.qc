@@ -112,6 +112,7 @@ vector rte_off;                 // the point less where the crosshair met its pl
 float rte_m1, rte_m2;           // a left/right press was this editor's: its release is too (review)
 float rte_far;                  // the last DragPoint's plane meeting was out of reach: the point stays (review 2)
 float tasu_open;                // the TAS tab is open: its clicks are its own (cl_tasui.qc)
+float jg_show;                  // Jargon's route is drawn (cl_jargon.qc): the old route posts give way
 vector(float k, vector eye, vector fwd) RouteEdit_DragPoint =
 {
 	local vector n, p, q;
@@ -217,7 +218,7 @@ void() TASOptViz_Draw =
 		tov_shader = 1;
 	}
 	RouteEdit_Frame();
-	for (i = 0; i < tov_rn; i = i + 1)
+	for (i = 0; i < tov_rn && !jg_show; i = i + 1)
 	{	// the route: shown whether or not the search lines are (kind 0: a slot this client never saw)
 		if (!tov_rk[i]) continue;
 		col = (tov_rk[i] == 1) ? SUI_THEME_GOOD : ((tov_rk[i] == 2) ? SUI_THEME_WARN : SUI_THEME_INFO);
@@ -267,7 +268,7 @@ void() TASOptViz_Draw =
 // is pinned before renderscene as Trail_Pin does (cs_buildmatricies is lazy: the first project() must come before it).
 void() TASOptViz_Pin =
 {
-	if (!autocvar_tas_viz || autocvar_tas_viz_style != 1) return;
+	if ((!autocvar_tas_viz || autocvar_tas_viz_style != 1) && !jg_show) return;     // Jargon's labels project too
 	makevectors(getproperty(VF_ANGLES));
 	project(getproperty(VF_ORIGIN) + v_forward * 256);
 };
