@@ -24,7 +24,9 @@
 // `polish`: min-max each stretch before going on (Lex, 10 Nov: a human redoes a ramp until the energy is there) --
 // every try but the last needs 99% of the demo's speed at the board and searches its longest, ending only after 20
 // generations without a gain; the last takes the usual minimum, so a stretch that can't be polished is still made.
-// A clicked route has no demo speed: there polish only searches longer.
+// A clicked route has no demo speed: there polish only searches longer. Polish also weighs time a quarter as much
+// (pace): the full runs stuck at surf_null's ramp 10 (Lex's count) arriving 345 u under farsh's line at his speed,
+// 3.4% short of his energy -- energy is what makes a map (Lex), the time a stretch takes much less.
 .float as_polish;
 // `low`: a board stretch's search pays 0.1 a unit boarded past the demo's board point along the ramp's run or above
 // it up the face (optimize `low`; Lex, 10 Nov: board a ramp low and early, on its side)
@@ -221,7 +223,7 @@ string(entity e, float i) SV_TASAutoPace =
 	for (k = as_nrows - 1; k > 0 && as_rows[k*7] > as_wt[i]; k = k - 1)
 		len = len + vlen(SV_TASAutoRowO(k) - SV_TASAutoRowO(k - 1));
 	tl = max(3, as_rows[(as_nrows - 1) * 7] - as_wt[i]);
-	x = bound(0.05, e.as_pace * PM_TICK * (len / tl) / tl, 20);
+	x = bound(0.05, e.as_pace * PM_TICK * (len / tl) / tl * (e.as_polish ? 0.25 : 1), 20);
 	return sprintf(" pace %.2f", x);
 };
 

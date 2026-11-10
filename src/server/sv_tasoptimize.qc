@@ -1951,6 +1951,7 @@ void(entity e, float argc) SV_TASTargetCommand =
 	}
 	p = [stof(argv(2)), stof(argv(3)), stof(argv(4))];
 	if (n_z < 0) n = -n;
+	if (n != '0 0 0') n = normalize(n);     // within 0.02 of unit was taken: hop and face tests read it exactly (review)
 	e.topt_tgt = p; e.topt_tgtr = r; e.topt_tgton = 1; e.topt_tgtn = n;
 	sprint(e, PRINT_HIGH, sprintf("tas target: %s within %.0f u%s; tas optimize ... fast steers to it\n", vtos(p), r,
 		(n == '0 0 0') ? "" : ((n_z >= 0.99) ? ", a hop there" : strcat(", boarding face ", vtos(n)))));
