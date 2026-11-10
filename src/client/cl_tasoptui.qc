@@ -22,6 +22,7 @@ var float taso_lastk = -1;          // the stretch last reached (the line under 
 var float autocvar_tas_searchpanel = 1;
 float tsp_t, tsp_phase, tsp_flags, tsp_gen, tsp_evals, tsp_elapsed, tsp_speed, tsp_ref, tsp_closest;
 float tsp_tube, tsp_wall, tsp_weak, tsp_edge, tsp_cut, tsp_batches, tsp_bwork, tsp_aimx, tsp_aimy, tsp_lead, tsp_from, tsp_bal, tsp_bup, tsp_n;
+float tsp_cegen, tsp_kstall, tsp_cestall, tsp_cemin;   // the generation cap, generations without a gain, the stall that ends it, the floor
 #define TSP_HIST 48
 float tsp_hist[TSP_HIST];   // the best line's speed after each generation, this search
 float tsp_histn;
@@ -36,6 +37,7 @@ void() TASSearch_Event =
 	tsp_batches = readshort(); tsp_bwork = readshort();
 	tsp_aimx = readshort(); tsp_aimy = readshort(); tsp_lead = readbyte() / 100; tsp_from = readshort();
 	tsp_bal = readshort(); tsp_bup = readshort(); tsp_n = readshort();
+	tsp_cegen = readbyte(); tsp_kstall = readbyte(); tsp_cestall = readbyte(); tsp_cemin = readbyte();
 	if (tsp_evals < evals0 || !tsp_t) tsp_histn = 0;      // a new search
 	if (tsp_histn == TSP_HIST)
 	{
@@ -63,40 +65,73 @@ void(vector pos, string s, float sz, vector col, float w) TASSearch_Line =
 	sui_text(pos, [sz, sz], s, col, 1, 0);
 };
 
+// a labelled bar: what share of the candidates a reason ended
+void(vector at, float w, float tsz, string label, float v, float n, vector col) TASSearch_Reason =
+{
+	local float lw, bw, f;
+	lw = w * 0.52; bw = w - lw - tsz * 3.2;
+	f = bound(0, v / max(1, n), 1);
+	TASSearch_Line(at, label, tsz * 0.85, SUI_THEME_DIM, lw - tsz * 0.5);
+	drawfill(at + [lw, tsz * 0.25, 0], [bw, tsz * 0.5, 0], SUI_THEME_WELL, 0.9, 0);
+	if (f > 0) drawfill(at + [lw, tsz * 0.25, 0], [max(1, bw * f), tsz * 0.5, 0], col, 0.95, 0);
+	TASSearch_Line(at + [lw + bw + tsz * 0.4, 0, 0], sprintf("%g%%", rint(100 * f)), tsz * 0.85, SUI_THEME_MUTED, tsz * 2.8);
+};
+
 void(vector scr) TASSearch_Draw =
 {
-	local float tsz, w, row, h, x, y, i, n, lo, hi, v, k, f0;
+	local float tsz, w, row, h, x, y, i, lo, hi, v, f0, cap;
 	local vector at, col;
 	local string s;
 	if (!autocvar_tas_searchpanel || !tsp_t || time < tsp_t || time - tsp_t > 8) return;
 	f0 = ui_font_cur;
 	Font_Set(ui_font_ui);
-	tsz = bound(11, scr_y / 72, 20); row = tsz * 1.55; w = tsz * 33;
-	h = row * 9.6;
-	at = [16, floor(scr_y * 0.24), 0];
-	sui_roundbox(at - [8, 8, 0], [w + 16, h + 16, 0], 8, SUI_THEME_PANEL, 0.86);
+	tsz = bound(11, scr_y / 72, 20); row = tsz * 1.5; w = tsz * 30;
+	h = row * 15.4;
+	at = [16, floor(scr_y * 0.2), 0];
+	sui_roundbox(at - [8, 8, 0], [w + 16, h + 16, 0], 8, SUI_THEME_PANEL, 0.88);
 	y = at_y;
-	// the title, and a scanning dot while it searches
-	sui_text([at_x, y, 0], [tsz * 1.1, tsz * 1.1], "SEARCH", SUI_THEME_ACCENT, 1, 0);
-	x = stringwidth("SEARCH", TRUE, [tsz * 1.1, tsz * 1.1]) + tsz;
-	s = (tsp_phase == 2) ? sprintf("done: %g generations, %.1f s", max(0, tsp_gen), tsp_elapsed)
-		: ((tsp_gen < 0) ? sprintf("seeding grid, %.1f s", tsp_elapsed) : sprintf("generation %g, %.1f s", tsp_gen, tsp_elapsed));
-	TASSearch_Line([at_x + x, y + tsz * 0.1, 0], s, tsz, SUI_THEME_DIM, w - x - tsz * 4.5);
+	// who, and whether it is thinking
+	sui_text([at_x, y, 0], [tsz * 1.15, tsz * 1.15], "JARGON", SUI_THEME_ACCENT, 1, 0);
+	x = stringwidth("JARGON", TRUE, [tsz * 1.15, tsz * 1.15]) + tsz;
+	if (tsp_phase == 2) s = sprintf("done in %.1f s", tsp_elapsed);
+	else if (time - tsp_t > 3) s = "waiting";
+	else s = (tsp_gen < 0) ? "thinking: trying a spread of first guesses" : "thinking";
+	TASSearch_Line([at_x + x, y + tsz * 0.12, 0], s, tsz, (tsp_phase == 2) ? SUI_THEME_GOOD : SUI_THEME_DIM, w - x - tsz * 2);
 	if (tsp_phase != 2 && time - tsp_t < 3)
+		drawfill([at_x + w - tsz * 1.2 + tsz * 0.5 * sin(time * 6), y + tsz * 0.35, 0], [tsz * 0.4, tsz * 0.4, 0], SUI_THEME_ACCENT, 0.9, 0);
+	y = y + row * 1.2;
+	// progress: generations against the cap, and the stall that ends it early
+	cap = max(1, tsp_cegen);
+	drawfill([at_x, y, 0], [w, tsz * 0.5, 0], SUI_THEME_WELL, 0.9, 0);
+	drawfill([at_x, y, 0], [w * bound(0, max(0, tsp_gen) / cap, 1), tsz * 0.5, 0], SUI_THEME_ACCENT, 0.95, 0);
+	y = y + tsz * 0.8;
+	if (tsp_gen < 0) s = sprintf("first guesses: %g tried", tsp_evals);
+	else s = sprintf("generation %g of %g at most", tsp_gen, cap);
+	if (tsp_gen >= 0 && (tsp_flags & 1) && tsp_gen < tsp_cemin)
+		s = strcat(s, sprintf("; may end early from generation %g", tsp_cemin));
+	else if (tsp_gen >= 0 && (tsp_flags & 1))
+		s = strcat(s, sprintf("; ends after %g without a gain (%g so far)", tsp_cestall, tsp_kstall));
+	else if (tsp_gen >= 0)
+		s = strcat(s, "; ends early only once a line makes it");
+	if (tsp_phase == 2)
+		s = (tsp_gen >= cap) ? sprintf("stopped: used all %g generations", cap)
+			: sprintf("stopped: %g generations without a gain after %g", tsp_cestall, tsp_gen);
+	TASSearch_Line([at_x, y, 0], s, tsz * 0.85, SUI_THEME_MUTED, w); y = y + row;
+	// where in the chain
+	if (taso_state == 1 && taso_n > 0)
 	{
-		x = at_x + w - tsz * 4 + (tsz * 3.6) * (0.5 + 0.5 * sin(time * 4));
-		drawfill([x, y + tsz * 0.35, 0], [tsz * 0.4, tsz * 0.4, 0], SUI_THEME_ACCENT, 0.9, 0);
-	}
-	y = y + row * 1.15;
-	// where
-	if (taso_state == 1)
 		s = sprintf("Stretch %g of %g, try %g, %g backtracks so far", taso_i + 1, taso_n, taso_try + 1, taso_backs);
-	else s = "One stretch";
-	TASSearch_Line([at_x, y, 0], s, tsz, SUI_THEME_TEXT, w); y = y + row;
-	// how much (a candidate is one or two rollouts: the demo's keys mapped again by where it went)
-	s = sprintf("%g candidates, %g a second", tsp_evals, rint(tsp_evals / max(0.1, tsp_elapsed)));
-	s = strcat(s, (tsp_flags & 16) ? sprintf(", %g rollouts on worker threads", tsp_bwork) : ", one thread");
-	TASSearch_Line([at_x, y, 0], s, tsz, SUI_THEME_DIM, w); y = y + row;
+		TASSearch_Line([at_x, y, 0], s, tsz, SUI_THEME_TEXT, w);
+		y = y + tsz * 1.25;
+		drawfill([at_x, y, 0], [w, tsz * 0.3, 0], SUI_THEME_WELL, 0.9, 0);
+		drawfill([at_x, y, 0], [w * bound(0, taso_i / taso_n, 1), tsz * 0.3, 0], SUI_THEME_GOOD, 0.9, 0);
+		y = y + row * 0.55;
+	}
+	else { TASSearch_Line([at_x, y, 0], "One stretch", tsz, SUI_THEME_TEXT, w); y = y + row; }
+	// how much
+	s = sprintf("%g candidate lines, %g a second", tsp_evals, rint(tsp_evals / max(0.1, tsp_elapsed)));
+	s = strcat(s, (tsp_flags & 16) ? sprintf(", %g rollouts on other cores", tsp_bwork) : ", one core");
+	TASSearch_Line([at_x, y, 0], s, tsz * 0.9, SUI_THEME_DIM, w); y = y + row;
 	// the best so far
 	if (tsp_flags & 1)
 	{
@@ -105,37 +140,28 @@ void(vector scr) TASSearch_Draw =
 		col = (tsp_ref > 0 && tsp_speed < tsp_ref * 0.98) ? SUI_THEME_WARN : SUI_THEME_GOOD;
 	}
 	else if (tsp_flags & 2) { s = sprintf("Best line makes it, but too slowly: %g u/s", tsp_speed); col = SUI_THEME_WARN; }
-	else { s = sprintf("Nothing makes it yet: the best try misses by %g u", tsp_closest); col = SUI_THEME_BAD; }
+	else { s = sprintf("Nothing makes it yet: the closest misses by %g u", tsp_closest); col = SUI_THEME_BAD; }
 	TASSearch_Line([at_x, y, 0], s, tsz, col, w); y = y + row;
-	// what it tunes on that line
 	if (tsp_flags & 1)
 	{
 		if (tsp_bal || tsp_bup)
 			s = sprintf("Boards %g u %s and %g u %s farsh's point", fabs(tsp_bal), (tsp_bal >= 0) ? "past" : "before", fabs(tsp_bup), (tsp_bup >= 0) ? "above" : "below");
 		else s = "Boards at farsh's point";
-		TASSearch_Line([at_x, y, 0], s, tsz, SUI_THEME_DIM, w);
+		TASSearch_Line([at_x, y, 0], s, tsz * 0.9, SUI_THEME_DIM, w);
 	}
 	y = y + row;
-	s = sprintf("Aims %+g, %+g u off the board, %s (lead %.2f)", tsp_aimx, tsp_aimy, TASSearch_LeadWord(tsp_lead), tsp_lead);
-	if (tsp_from) s = strcat(s, sprintf(", steering from tick %g of %g", tsp_from, tsp_n));
-	TASSearch_Line([at_x, y, 0], s, tsz * 0.9, SUI_THEME_MUTED, w); y = y + row;
-	// why candidates fail
-	n = max(1, tsp_evals);
-	x = at_x;
-	for (k = 0; k < 5; k = k + 1)
-	{
-		v = (k == 0) ? tsp_tube : ((k == 1) ? tsp_wall : ((k == 2) ? tsp_weak : ((k == 3) ? tsp_edge : tsp_cut)));
-		col = (k == 0) ? SUI_THEME_INFO : ((k == 1) ? SUI_THEME_BAD : ((k == 2) ? SUI_THEME_WARN : ((k == 3) ? SUI_THEME_ACCENT : SUI_THEME_MUTED)));
-		v = min(w - (x - at_x), w * v / n);
-		if (v > 0) drawfill([x, y, 0], [v, tsz * 0.55, 0], col, 0.9, 0);
-		x = x + v;
-	}
-	drawfill([x, y, 0], [max(0, w - (x - at_x)), tsz * 0.55, 0], SUI_THEME_WELL, 0.9, 0);
-	y = y + tsz * 0.8;
-	s = sprintf("left corridor %g%%, walls %g%%, too slow %g%%", rint(100 * tsp_tube / n), rint(100 * tsp_wall / n), rint(100 * tsp_weak / n));
-	s = strcat(s, sprintf(", edge bug %g%%, trigger %g%%", rint(100 * tsp_edge / n), rint(100 * tsp_cut / n)));
-	TASSearch_Line([at_x, y, 0], s, tsz * 0.85, SUI_THEME_MUTED, w); y = y + row;
+	s = sprintf("Flies %s at the ramp (lead %.2f), aiming %+g, %+g u off its point", TASSearch_LeadWord(tsp_lead), tsp_lead, tsp_aimx, tsp_aimy);
+	TASSearch_Line([at_x, y, 0], s, tsz * 0.85, SUI_THEME_MUTED, w); y = y + row * 1.15;
+	// why candidates fail: each its own share (one line can do several)
+	TASSearch_Line([at_x, y, 0], "Why lines fail (one can fail several ways):", tsz * 0.85, SUI_THEME_TEXT, w); y = y + row;
+	TASSearch_Reason([at_x, y, 0], w, tsz, "Strayed 300 u off farsh's path", tsp_tube, tsp_evals, SUI_THEME_INFO); y = y + row * 0.85;
+	TASSearch_Reason([at_x, y, 0], w, tsz, "Touched a wall or ceiling", tsp_wall, tsp_evals, SUI_THEME_BAD); y = y + row * 0.85;
+	TASSearch_Reason([at_x, y, 0], w, tsz, "Made it, but too slowly", tsp_weak, tsp_evals, SUI_THEME_WARN); y = y + row * 0.85;
+	TASSearch_Reason([at_x, y, 0], w, tsz, "Only made it by an edge bug", tsp_edge, tsp_evals, SUI_THEME_ACCENT); y = y + row * 0.85;
+	TASSearch_Reason([at_x, y, 0], w, tsz, "Fell into a trigger", tsp_cut, tsp_evals, SUI_THEME_MUTED); y = y + row * 1.05;
 	// the best line's speed, generation by generation
+	TASSearch_Line([at_x, y, 0], (tsp_ref > 0) ? "Best speed by generation (line: farsh)" : "Best speed by generation", tsz * 0.8, SUI_THEME_MUTED, w);
+	y = y + tsz * 1.1;
 	if (tsp_histn >= 2)
 	{
 		lo = 1000000; hi = -1000000;
@@ -144,11 +170,11 @@ void(vector scr) TASSearch_Draw =
 		hi = max(hi, lo + 1);
 		for (i = 0; i < tsp_histn; i = i + 1)
 		{
-			v = (tsp_hist[i] - lo) / (hi - lo) * tsz * 1.6 + 1;
-			drawfill([at_x + i * (w / TSP_HIST), y + tsz * 1.7 - v, 0], [max(1, w / TSP_HIST - 1), v, 0], SUI_THEME_GOOD, 0.8, 0);
+			v = (tsp_hist[i] - lo) / (hi - lo) * tsz * 1.4 + 1;
+			drawfill([at_x + i * (w / TSP_HIST), y + tsz * 1.5 - v, 0], [max(1, w / TSP_HIST - 1), v, 0], SUI_THEME_GOOD, 0.8, 0);
 		}
 		if (tsp_ref > 0)
-			drawfill([at_x, y + tsz * 1.7 - ((tsp_ref - lo) / (hi - lo) * tsz * 1.6 + 1), 0], [w, 1, 0], SUI_THEME_WARN, 0.9, 0);
+			drawfill([at_x, y + tsz * 1.5 - ((tsp_ref - lo) / (hi - lo) * tsz * 1.4 + 1), 0], [w, 1, 0], SUI_THEME_WARN, 0.9, 0);
 	}
 	Font_Set(f0);
 };
@@ -354,7 +380,7 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	bs = taso_backmax ? sprintf(" backs %g", taso_backmax) : "";      // 0: autosurf's own (twice the stretches)
 	running = (taso_state == 1);
 	half = (width - 6) / 2; chip = [half, row, 0];
-	sui_text(at, [tsz, tsz], "Autosurf", SUI_THEME_TEXT, 1, 0); at_y = at_y + tsz * 1.6;
+	sui_text(at, [tsz, tsz], "Jargon, the line finder", SUI_THEME_TEXT, 1, 0); at_y = at_y + tsz * 1.6;
 	label = (taso_note == "") ? "Pick a replay, then how to start. The bot surfs its route, ramp by ramp." : taso_note;
 	if (running) label = sprintf("Ramp %g of %g, try %g -- %s", taso_i + 1, taso_n, taso_try + 1, taso_note);
 	sui_text(at, [hint, hint], label, running ? SUI_THEME_TEXT : SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.8;
@@ -425,7 +451,7 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 			sui_text(at, [hint, hint], label, SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.6;
 		}
 	}
-	if (Profile_Chip("taso_panel", at, [width, row, 0], autocvar_tas_searchpanel ? "Search panel: shown while searching" : "Search panel: hidden", hint, autocvar_tas_searchpanel))
+	if (Profile_Chip("taso_panel", at, [width, row, 0], autocvar_tas_searchpanel ? "Jargon's panel: shown while it thinks" : "Jargon's panel: hidden", hint, autocvar_tas_searchpanel))
 		cvar_set("tas_searchpanel", autocvar_tas_searchpanel ? "0" : "1");
 	at_y = at_y + row + hint * 0.5;
 	if (Profile_Chip("taso_adv", at, [width, row, 0], taso_adv ? "Advanced settings (hide)" : "Advanced settings", hint, taso_adv)) taso_adv = !taso_adv;

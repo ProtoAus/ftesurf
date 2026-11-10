@@ -319,7 +319,7 @@ void(vector scr) TASUI_Draw =
 	at = pos+[pad,tsz*3,0]; chip = [(width-6*(TAS_TAB_COUNT-1))/TAS_TAB_COUNT,row,0];
 	for (i=0;i<TAS_TAB_COUNT;i=i+1)
 	{
-		label = i == TAS_TAB_CONTROLS ? "Controls" : (i == TAS_TAB_TIMELINE ? "Timeline" : (i == TAS_TAB_SHARED ? "Shared" : (i == TAS_TAB_PROJECT ? "Project" : (i == TAS_TAB_OPTIMIZE ? "Optimizer" : "Sections"))));
+		label = i == TAS_TAB_CONTROLS ? "Controls" : (i == TAS_TAB_TIMELINE ? "Timeline" : (i == TAS_TAB_SHARED ? "Shared" : (i == TAS_TAB_PROJECT ? "Project" : (i == TAS_TAB_OPTIMIZE ? "Jargon" : "Sections"))));
 		if (Profile_Chip(sprintf("tasu_tab%g",i),at+[i*(width+6)/TAS_TAB_COUNT,0,0],chip,label,tsz,tasu_tab==i))
 			TASUI_SelectTab(i);
 	}

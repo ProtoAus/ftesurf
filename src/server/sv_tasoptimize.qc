@@ -1285,10 +1285,10 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		if ((e.topt_tgtn_x || e.topt_tgtn_y) && e.topt_tgtn_z < 0.99)      // a face, not a hop's floor (as the hop tests)
 		{
 			SV_TASOptBoardAt(e, bk);
-			// past or above the point: W a unit; before or below it, half that beyond 100 u -- the demo's board point is
-			// the reference every way (Lex: too far along ramp 6, way too low on 7; on 11 the tip, its whole face to drop
-			// and turn parallel to the platforms -- boarded 288 along and 247 under it, the platforms were missed)
-			d = d - e.topt_low * (max(0, e.topt_bal) + max(0, e.topt_bup) + 0.5 * (max(0, -e.topt_bal - 100) + max(0, -e.topt_bup - 100)));
+			// past or above the point: W a unit; below it W beyond 100 u, before it half that beyond 100 u -- the demo's
+			// board point is the reference every way (Lex: too far along ramp 6, way too low on 7; on 10 the top keeps the
+			// height its flight needs, the side made it and the next stretch reset; on 11 the tip)
+			d = d - e.topt_low * (max(0, e.topt_bal) + max(0, e.topt_bup) + max(0, -e.topt_bup - 100) + 0.5 * max(0, -e.topt_bal - 100));
 		}
 		if (e.topt_tgtn_z >= 0.99 && e.topt_tube > 0 && e.topt_tgtj + 4 < e.topt_dn)
 		{	// a hop keeps its horizontal velocity for the next flight: off the demo's heading after its own
@@ -1855,6 +1855,8 @@ void(entity e, float phase) SV_TASOptStatsSend =
 	WriteByte(MSG_MULTICAST, rint(lead * 100)); WriteShort(MSG_MULTICAST, from);
 	WriteShort(MSG_MULTICAST, bound(-30000, rint(e.topt_bestbal), 30000)); WriteShort(MSG_MULTICAST, bound(-30000, rint(e.topt_bestbup), 30000));
 	WriteShort(MSG_MULTICAST, e.topt_n);
+	WriteByte(MSG_MULTICAST, min(255, e.topt_cegen)); WriteByte(MSG_MULTICAST, min(255, e.topt_kstall));
+	WriteByte(MSG_MULTICAST, min(255, e.topt_cestall)); WriteByte(MSG_MULTICAST, TOPT_CEMIN);
 	msg_entity = e; multicast(e.origin, MULTICAST_ONE_R);
 };
 

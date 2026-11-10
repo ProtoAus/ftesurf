@@ -2589,6 +2589,12 @@ float(string cmd) CSQC_ConsoleCommand =
 			rte_on = !rte_on;
 			print(rte_on ? "tas route edit: aim at a marker and drag it; right click removes it\n" : "tas route edit: done\n");
 		}
+		else if (cmdargc >= 2 && !strcmp(argv(1), "jargon"))       // P1449: Jargon is autosurf's name in the menus
+		{
+			tsline = "";
+			for (tsi = 2; tsi < cmdargc; tsi = tsi + 1) tsline = strcat(tsline, " ", argv(tsi));
+			localcmd(strcat("tas autosurf", tsline, "\n"));
+		}
 		else if (cmdargc >= 3 && cmdargc <= 10 && !strcmp(argv(1), "route"))      // P1449: add (six numbers), set (k, six), del (k), undo, clear, show
 		{
 			tsline = "";

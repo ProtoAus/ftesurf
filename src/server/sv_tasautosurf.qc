@@ -28,9 +28,9 @@
 // (pace): the full runs stuck at surf_null's ramp 10 (Lex's count) arriving 345 u under farsh's line at his speed,
 // 3.4% short of his energy -- energy is what makes a map (Lex), the time a stretch takes much less.
 .float as_polish;
-// `low`: a board stretch's search pays 0.25 a unit boarded past the demo's board point along the ramp's run or above
-// it up the face, half that before or below it beyond 100 u (optimize `low`; Lex, 10 Nov: where farsh boards -- 0.1
-// let ramp 11 be boarded 288 u along and 247 u under the tip, and the platform pair after it was missed)
+// `low`: a board stretch's search pays 0.25 a unit boarded past the demo's board point along the ramp's run, above it
+// up the face or more than 100 u below it, half that more than 100 u before it (optimize `low`; Lex, 10 Nov: where
+// farsh boards -- ramp 11's tip, ramp 10's top for the height its flight needs)
 .float as_low;
 .float as_backhead, as_backfail;   // the head at the last rewind request, and requests since it last moved
 .float as_failat, as_failn;            // the stretch that last failed its tries, and how many times in a row
