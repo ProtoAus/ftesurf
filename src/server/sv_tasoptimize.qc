@@ -2209,7 +2209,7 @@ void(entity e, float argc) SV_TASBatchBench =
 };
 
 // P1467: `cmd tas rolldump <ticks> [q]` (developer): one FOLLOW rollout (turn command q, 0 by default) from the paused
-// body, every tick's origin, velocity, ground, ducked and contact written to data/rolldump_<ticks>.txt -- two engines'
+// body, every tick's origin, velocity, ground, ducked and contact written to data/rolldump_<ticks>_<q>.txt -- two engines'
 // files diffed find where their movement parts.
 void(entity e, float argc) SV_TASRollDump =
 {
@@ -2241,7 +2241,7 @@ void(entity e, float argc) SV_TASRollDump =
 		}
 		fclose(fh);
 	}
-	sprint(e, PRINT_HIGH, sprintf("tas rolldump: %.0f ticks run of %.0f, written to data/rolldump_%g.txt\n", ran, n, n));
+	sprint(e, PRINT_HIGH, sprintf("tas rolldump: %.0f ticks run of %.0f, written to data/rolldump_%g_%g.txt\n", ran, n, n, btn));
 	memfree(rows); memfree(out);
 };
 
