@@ -1160,9 +1160,13 @@
 
 ## P1116 leftovers (29 Oct)
 
-- cl_threadedphysics appends to the input journal from its own thread with no lock against
-  the main thread's appends (pre-existing). P1116 hashes such a journal whole at close; a
-  journal mutex would close the race itself.
+- cl_threadedphysics still appends to the input journal without exclusion from normal main
+  appends (in_generic.c Raw/Line/View). P1480 excludes the worker during Begin/replacement
+  and Drop/free/reset ONLY. End/hash/write and normal append/counter synchronization remain
+  open: COM_WriteFile can pump nonlocal-exit callbacks, so a whole-close lock is not yet a
+  safe fix. Falsifier: barrier-schedule actual event/view append and End against an admitted
+  worker, including callback-driven disconnect; require complete ordered bytes and cleanup,
+  not only a lock/no-crash. Keep the working P1480 lifecycle control separate.
 - Cancelling an in-flight journal upload (map load, disconnect, `rec_hid_upload 0`) waits for
   the download thread's current poll: up to 100 ms, or a whole DNS lookup.
 - Two upload follow-ups are in the private tree (checkpoints/p1116-journal-upload-followups.md).

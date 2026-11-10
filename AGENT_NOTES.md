@@ -6991,6 +6991,19 @@ must require42checks and exact8baseline labels, and catch unnumbered warnings.
 
 ## Anti-cheat and run evidence
 
+P1480 existing journal lifecycle (10 Nov2026): main Begin/replacement and Drop
+save/restore CL_AllowIndependantSendCmd permission around the WHOLE reset/publish
+or free/reset. The worker already holds indeplock during SendCmd: never put this
+helper into worker Raw/Line/View or acquire it once per event. Nested main guards
+must retain prior false ownership, not unconditionally enable the worker. End's
+COM_WriteFile can synchronously pump engine work with nonlocal exits; do not
+extend this bounded guard over writer callbacks and claim all-exit restoration.
+Actual Begin/Drop/Raw + actual helper, real OS mutex, synthetic barrier control:
+prechange12checks/4unsafe-admission failures stopped BEFORE free, subject18/0;
+extra subject assertions check completed old-row bytes/new header or reset. This
+is lifecycle evidence-integrity only, not full append/End synchronization, real
+input capture, hardware attestation or detector calibration.
+
 P1450 reader-only accuracy (9 Nov2026): rawkbds counts enumerated/table-bound
 keyboards, not a successful Windows registration. Do not infer why observation
 was off, promise handle-less-key coverage, or treat legacy devid0 as a raw identity

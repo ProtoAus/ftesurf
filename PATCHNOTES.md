@@ -21,6 +21,9 @@
 
 ## next
 
+### P1480 Safer input-recording replacement
+- Starting or clearing an input recording now waits for threaded physics to finish its current write before replacing or freeing the recording.
+
 ### P1479 Input recordings finish at buffer boundaries
 - Input recordings near a buffer-growth boundary now finish normally instead of being incorrectly marked truncated.
 

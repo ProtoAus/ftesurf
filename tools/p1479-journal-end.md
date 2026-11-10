@@ -53,15 +53,14 @@ Nor does this promise terminal capacity for every configured-cap/headroom case.
 ## Delivery state
 
 Implemented, independently reviewed, built and engine source/tag pushed.
-The guarded dual-client update REFUSED before any target or `.prev` write because
-an installed game client was running. No game was stopped. Both installed client
-images remain the inspected patch-1476 predecessor. Deployment needs a brief
-owner-game-free interval; the already qualified images must be reused, not rebuilt.
+The initial guarded attempt REFUSED before target/`.prev` writes on an occupied
+owner client; no game was stopped and the original refusal is retained.
 
-Only `C:/FTESurf/ftesurf64.exe` and `C:/FTEQuake/fteqw64.exe` are intended targets.
-Use the existing `build.ps1` Deploy helper, destination/predecessor guards and
-saved original/previous images. Preserve actual server/plugin/VM/config bytes;
-there is no backend, lobby, ARM, schema or progs change to activate for this
-client-only delta. After deployment require both destination and `.prev` hashes,
-then an isolated installed-image version smoke without touching owner settings.
-Private evidence retains the original refusal and exact source/build binding.
+This fix subsequently shipped in the qualified combined P1480 client,
+source5ce7c7602, to BOTH Windows installs at18:17:11Z on10Nov2026. Destination and
+rollback hashes match and both installed-image `--version` smokes pass, with
+server/plugin/VM/config bytes preserved. There was no Pi/backend/lobby/server/
+progs/ARM change to activate for this compatible client-only delta.
+See `p1480-journal-lifecycle.md` for final hashes, provenance and scope limits.
+The1479-only image above is preserved historical qualification, not the current
+installed image or an outstanding deployment request.
