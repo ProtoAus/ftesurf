@@ -103,6 +103,10 @@ void(entity e) SV_TASAutoFrame;
                                 // autosurf stuck there after 6 backtracks, 10 Nov); 40 left lines brushing walls 1-18 ticks
 #define TOPT_GROUNDPEN 60       // P1449: a board target's score lost per tick on the ground before the reach (surf_null ramp 0's
                                 // segments have angled tops, normal z 0.85: a high arrival stood on one; Lex, 10 Nov)
+// P1449: a hop's score lost per unit its jump comes before the demo's along the demo's heading after it (none past it):
+// with the whole platform counting (TOPT_HOPR), a near-edge jump left surf_null's last flight to fall into the teleport
+// under it; Lex: jump from the very far edges of those platforms
+#define TOPT_HOPEDGE 1
 #define TOPT_HOPDIR 20          // P1449: a hop target's score lost per degree off the demo's heading after it
 #define TOPT_LOOKW 0.01         // P1449 `look N`: a reach's score per unit of demo route survived after it (a reach scores
                                 // sqrt(E + EREF) ~ 5700: 40 u/s at 1800 is ~13; 100 ticks survived ~27 -- at 0.5 survival
@@ -212,6 +216,16 @@ float topt_wseed[TOPT_HMAX];
 .float topt_cegen;              // P1449: a curve search's generations (TOPT_CEGEN, or `gens N`: autosurf's retries)
 float topt_kseed[TOPT_KMAX];
 .float topt_kgen, topt_kidx;    // generation (-1 the seeding grid) and sample
+// P1449 (Lex, 10 Nov: a retry bumped a diagonal wall a search had cleared from the same point): TOPT_CEWIDE of each
+// generation drawn at the starting spread; the spread back to its start every TOPT_CEREWIDE generations without a gain;
+// and each search's best kept against its start state, the first candidates of a later search from that state
+#define TOPT_CEWIDE 4
+#define TOPT_CEREWIDE 6
+#define TOPT_MEMN 24
+float topt_memkey[TOPT_MEMN * 9], topt_memdim[TOPT_MEMN * 3], topt_mempar[TOPT_MEMN * TOPT_KMAX];
+float topt_memnext, topt_memused;
+.float topt_kwiden, topt_memhit;
+.vector topt_mo, topt_mv;       // the search's start state: its memory key
 .float topt_kprev, topt_kstall;  // the best when it last gained, and generations since
 .float topt_kd;                 // P1449: the searched vector: the knots, then (aim) the aim offset x, y
 .float topt_efol;               // P1449: this server's tas_rollout takes FOLLOW rows (exact, one rollout)
@@ -1259,9 +1273,18 @@ float(float base, float x) SV_TASOptBand = { return base + ((x >= TOPT_BANDK) ? 
 // link ends there (what follows does not count, a reset after it included); reached scores
 // TOPT_REACH + the speed/energy there, a miss TOPT_NEAR - its closest distance, and a miss the
 // prediction could not follow to the end (cut) -1.
+// P1449: how far tick k's position is short of the target point along the demo's heading after it (negative: past)
+float(entity e, float k) SV_TASOptHopShort =
+{
+	local vector h;
+	h = [topt_dpos[e.topt_tgtj*3+12] - topt_dpos[e.topt_tgtj*3+3], topt_dpos[e.topt_tgtj*3+13] - topt_dpos[e.topt_tgtj*3+4], 0];
+	if (vlen(h) < 1) return 0;
+	return ([e.topt_tgt_x, e.topt_tgt_y, 0] - [topt_out[k*13], topt_out[k*13+1], 0]) * normalize(h);
+};
+
 float(entity e, float ran) SV_TASOptTargetScore =
 {
-	local float i, d, best, bk, hit, lim, tx, dh, eg;
+	local float i, d, best, bk, hit, lim, tx, dh, eg, hj;
 	best = 1000000; bk = -1; hit = FALSE; e.topt_candeg = 0;
 	lim = (e.topt_rollcut == 1) ? ran - 1 : ran;        // the tick QC acts on is not one the prediction holds
 	tx = SV_TASOptLimit(e, lim);
@@ -1280,6 +1303,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		}
 		if (d < best) { best = d; bk = i; }
 	}
+	hj = bk;        // a hop's jump tick, before the link moves past it
 	if (hit && e.topt_tgtn_z >= 0.99)
 	{	// a hop: the link goes on past the jump until the hull stands (farsh ducks over a platform's lip
 		// and the next search could not start inside the duck transition: rollouts refuse it, -6)
@@ -1336,6 +1360,8 @@ float(entity e, float ran) SV_TASOptTargetScore =
 			dh = vectoyaw([topt_dpos[e.topt_tgtj*3+12] - topt_dpos[e.topt_tgtj*3+3], topt_dpos[e.topt_tgtj*3+13] - topt_dpos[e.topt_tgtj*3+4], 0])
 				- vectoyaw([topt_out[i+3], topt_out[i+4], 0]);
 			d = d - TOPT_HOPDIR * fabs(dh - 360 * floor((dh + 180) / 360));
+			dh = SV_TASOptHopShort(e, hj);
+			d = d - TOPT_HOPEDGE * max(0, dh);
 		}
 		if (e.topt_look > 0 && e.topt_tube > 0)
 		{	// lookahead: the route this candidate goes on along past the reach before a volume QC acts on
@@ -1802,6 +1828,42 @@ float(entity e) SV_TASOptEngineAims =
 };
 
 // P1449 curve: the next sample into topt_kcur.
+float(entity e, float j) SV_TASOptSig0 =
+{
+	if (j >= e.topt_kn) return 200;
+	return (e.topt_mode & 64) ? (e.topt_efol ? 8 : 2) : 40;
+};
+
+// P1449: the remembered best for this start state (position, velocity, target, dimensions), its slot or -1
+float(entity e, vector o, vector v) SV_TASOptMemFind =
+{
+	local float i, k, best;
+	best = -1;
+	for (k = 0; k < topt_memused; k = k + 1)
+	{
+		i = k * 9;
+		if (vlen([topt_memkey[i], topt_memkey[i+1], topt_memkey[i+2]] - o) > 0.5) continue;
+		if (vlen([topt_memkey[i+3], topt_memkey[i+4], topt_memkey[i+5]] - v) > 0.5) continue;
+		if (vlen([topt_memkey[i+6], topt_memkey[i+7], topt_memkey[i+8]] - e.topt_tgt) > 1) continue;
+		if (topt_memdim[k*3] != e.topt_kd || topt_memdim[k*3+1] != e.topt_kn || topt_memdim[k*3+2] != e.topt_mode) continue;
+		best = k;       // the latest write wins: slots are reused in order, so keep scanning
+	}
+	return best;
+};
+
+void(entity e) SV_TASOptMemKeep =
+{
+	local float k, j;
+	if (!e.topt_kn || e.topt_bestv < 0) return;
+	k = SV_TASOptMemFind(e, e.topt_mo, e.topt_mv);
+	if (k < 0) { k = topt_memnext; topt_memnext = (topt_memnext + 1) - TOPT_MEMN * floor((topt_memnext + 1) / TOPT_MEMN); topt_memused = min(TOPT_MEMN, topt_memused + 1); }
+	topt_memkey[k*9] = e.topt_mo_x; topt_memkey[k*9+1] = e.topt_mo_y; topt_memkey[k*9+2] = e.topt_mo_z;
+	topt_memkey[k*9+3] = e.topt_mv_x; topt_memkey[k*9+4] = e.topt_mv_y; topt_memkey[k*9+5] = e.topt_mv_z;
+	topt_memkey[k*9+6] = e.topt_tgt_x; topt_memkey[k*9+7] = e.topt_tgt_y; topt_memkey[k*9+8] = e.topt_tgt_z;
+	topt_memdim[k*3] = e.topt_kd; topt_memdim[k*3+1] = e.topt_kn; topt_memdim[k*3+2] = e.topt_mode;
+	for (j = 0; j < e.topt_kd; j = j + 1) topt_mempar[k * TOPT_KMAX + j] = topt_kbest[j];
+};
+
 void(entity e) SV_TASOptCurveNext =
 {
 	local float j, u, g, c;
@@ -1830,6 +1892,11 @@ void(entity e) SV_TASOptCurveNext =
 				u = SV_TASOptKnotTick(e, j);
 				topt_kcur[j] = topt_wseed[min(u, e.topt_wseedn - 1)];
 			}
+			return;
+		}
+		if (e.topt_kidx == 2 && e.topt_memhit)
+		{	// this state's best from an earlier search: a retry starts no worse than the try before it
+			for (j = 0; j < e.topt_kd; j = j + 1) topt_kcur[j] = topt_mempar[(e.topt_memhit - 1) * TOPT_KMAX + j];
 			return;
 		}
 		if (e.topt_kidx == 0 && e.topt_kseedn == e.topt_kn)
@@ -1862,13 +1929,23 @@ void(entity e) SV_TASOptCurveNext =
 			g = (u - 2) * 1.7320508;
 		}
 		u = (j >= e.topt_kn) ? TOPT_AIMR : ((e.topt_mode & 64) ? (e.topt_efol ? TOPT_DQOFF : TOPT_DOFF) : TOPT_QMAX);
-		topt_kcur[j] = bound(-u, topt_kmean[j] + topt_ksig[j] * g, u);
+		c = (e.topt_kidx >= TOPT_CEPOP - TOPT_CEWIDE) ? max(topt_ksig[j], SV_TASOptSig0(e, j)) : topt_ksig[j];   // the wide few
+		topt_kcur[j] = bound(-u, topt_kmean[j] + c * g, u);
 		topt_kpop[e.topt_kidx * TOPT_KMAX + j] = topt_kcur[j];
 	}
 };
 
 // P1449 curve: one sample scored (v: SV_TASOptRollScore's); the next generation, or the play.
 // P1449 search panel: a curve search's state, each generation and at its end (TAS_EV_SEARCH; cl_tasoptui.qc)
+// the knots' spread against where it started (1 = as wide)
+float(entity e) SV_TASOptWidth =
+{
+	local float j, s;
+	s = 0;
+	for (j = 0; j < e.topt_kn; j = j + 1) s = s + topt_ksig[j] / SV_TASOptSig0(e, j);
+	return e.topt_kn ? s / e.topt_kn : 1;
+};
+
 void(entity e, float phase) SV_TASOptStatsSend =
 {
 	local float sp, fl, lead, from;
@@ -1897,6 +1974,8 @@ void(entity e, float phase) SV_TASOptStatsSend =
 	WriteShort(MSG_MULTICAST, e.topt_n);
 	WriteByte(MSG_MULTICAST, min(255, e.topt_cegen)); WriteByte(MSG_MULTICAST, min(255, e.topt_kstall));
 	WriteByte(MSG_MULTICAST, min(255, e.topt_cestall)); WriteByte(MSG_MULTICAST, TOPT_CEMIN);
+	WriteByte(MSG_MULTICAST, (e.topt_kgen < 0) ? 100 : bound(0, rint(100 * SV_TASOptWidth(e)), 255));
+	WriteByte(MSG_MULTICAST, min(255, e.topt_kwiden)); WriteByte(MSG_MULTICAST, e.topt_memhit ? 1 : 0);
 	msg_entity = e; multicast(e.origin, MULTICAST_ONE_R);
 };
 
@@ -1928,7 +2007,7 @@ void(entity e, float v) SV_TASOptCurveResult =
 		for (j = 0; j < e.topt_kd; j = j + 1)
 		{
 			topt_kmean[j] = topt_kbest[j];
-			topt_ksig[j] = (j >= e.topt_kn) ? 200 : ((e.topt_mode & 64) ? (e.topt_efol ? 8 : 2) : 40);
+			topt_ksig[j] = SV_TASOptSig0(e, j);
 		}
 		e.topt_kgen = 0; e.topt_kidx = 0;
 		SV_TASOptStatsSend(e, 1);
@@ -1977,12 +2056,18 @@ void(entity e, float v) SV_TASOptCurveResult =
 	e.topt_kgen = e.topt_kgen + 1; e.topt_kidx = 0;
 	if (e.topt_kgen == 1 || e.topt_bestv > e.topt_kprev + 0.5) { e.topt_kprev = e.topt_bestv; e.topt_kstall = 0; }
 	else e.topt_kstall = e.topt_kstall + 1;
+	if (e.topt_kstall > 0 && e.topt_kstall == TOPT_CEREWIDE * floor(e.topt_kstall / TOPT_CEREWIDE))
+	{	// stuck: back to the starting spread round the best so far, which a narrowed search could not leave
+		for (j = 0; j < e.topt_kd; j = j + 1) { topt_kmean[j] = topt_kbest[j]; topt_ksig[j] = SV_TASOptSig0(e, j); }
+		e.topt_kwiden = e.topt_kwiden + 1;
+	}
 	SV_TASOptStatsSend(e, 1);
 	if (cvar("developer"))
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: curve generation %.0f, best %.1f, %.0f candidates, %.1f s\n", e.topt_kgen, SV_TASOptEnergyShow(e, e.topt_bestv), e.topt_evals, gettime(1)));
 	if (e.topt_kgen >= e.topt_cegen || (e.topt_kgen >= TOPT_CEMIN && e.topt_kstall >= e.topt_cestall && (!e.topt_tgtuse || e.topt_bestv >= TOPT_REACH)))
 	{
 		for (j = 0; j < e.topt_kd; j = j + 1) topt_kcur[j] = topt_kbest[j];
+		SV_TASOptMemKeep(e);
 		e.topt_phase = 3;
 	}
 };
@@ -2598,6 +2683,10 @@ void(entity e, float argc) SV_TASOptCommand =
 		e.topt_elead = 1; e.topt_kleadj = e.topt_kd; e.topt_kd = e.topt_kd + 1;
 	}
 	e.topt_bestr2 = -1; e.topt_bests = 0.5;
+	e.topt_mo = e.origin; e.topt_mv = e.velocity; e.topt_kwiden = 0;
+	e.topt_memhit = (kn && (mode & 64)) ? SV_TASOptMemFind(e, e.origin, e.velocity) + 1 : 0;      // slot + 1; 0 none
+	if (e.topt_memhit && cvar("developer"))
+		sprint(e, PRINT_HIGH, "tas optimize: an earlier search's best line from this state is among the first candidates\n");
 	e.topt_obj = obj; e.topt_seg0 = e.run_t_seg;
 	e.topt_fast = fast; e.topt_energy = energy; e.topt_z0 = e.origin_z; e.topt_fcut = 0;
 	e.topt_tstart = gettime(1); e.topt_bestbal = e.topt_bestbup = e.topt_refspeed = e.topt_refz = 0;
