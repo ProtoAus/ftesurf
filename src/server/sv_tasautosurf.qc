@@ -452,11 +452,16 @@ float(entity e, float track, float leg) SV_TASAutoCourse =
 // P1478: the guide's own start -- its last standstill on the ground before the course's first row (-1: none, as a
 // full-run guide crossing a stage's box at speed). The start replays its rows from there: surf_tensor2's stage-2 box
 // is 270 u from spawn to exit, where the runway capture (450 u and more) jumped 375 u off the line (rig t2chain1).
-float() SV_TASAutoRest =
+float(entity e) SV_TASAutoRest =
 {
 	local float i;
 	for (i = as_r0 - 1; i >= 1; i = i - 1)
-		if (!as_rows[i*7+4] && !as_rows[i*7+5] && !as_rows[i*7+6] && as_rows[i*7+3] == as_rows[i*7-4]) return i;
+		if (!as_rows[i*7+4] && !as_rows[i*7+5] && !as_rows[i*7+6] && as_rows[i*7+3] == as_rows[i*7-4])
+		{	// in the course's own start box (a full-run guide's spawn before a stage walked out of it: review C)
+			if (e.as_szone >= 0 && e.as_szone < zone_count)     // nested: zone arrays at -1 are fatal
+			if (Zone_PointInside(e.as_szone, SV_TASAutoRowO(i))) return i;
+			return -1;
+		}
 	return -1;
 };
 
@@ -485,20 +490,17 @@ float(float from, float c) SV_TASAutoNums =
 };
 float(float x, float lo, float hi) SV_TASAutoWhole = { return (x == floor(x) && x >= lo && x <= hi); };
 
-// the stretch a saved run of this course had reached (its notes' `at`), 0 none
+// the stretch a saved run of this course had reached, 0 none -- only a run Continue could use: notes that pass, made
+// with this guide as it is now (notes it refuses blocked every new autosave for good: review C)
+float as_cnx, as_cgn, as_cg0, as_cg1;
+string as_cguide;
+float(entity e, float track, float leg, float commit) SV_TASAutoNotes;
 float(entity e) SV_TASAutoSavedAt =
 {
-	local float f, k, c, n;
-	f = fopen(SV_TASAutoSidePath(SV_TASAutoSaveName(e)), FILE_READ);
-	if (f < 0) return 0;
-	n = 0;
-	for (k = 0; k < TAS_ASNOTES; k = k + 1)
-	{
-		c = tokenize(fgets(f));
-		if (argv(0) == "at" && c == 6 && SV_TASAutoNum(argv(1))) { n = stof(argv(1)); k = TAS_ASNOTES; }
-	}
-	fclose(f);
-	return SV_TASAutoWhole(n, 0, TAS_ASMAX) ? n : 0;
+	if (!SV_TASAutoNotes(e, e.as_ctrack, e.as_cleg, 0)) return 0;
+	if (strcmp(as_cguide, e.as_file)) return 0;
+	if (as_cgn >= 0 && (as_nraw != as_cgn || as_traw0 != as_cg0 || as_traw1 != as_cg1)) return 0;
+	return as_cnx;
 };
 
 void(entity e, float next) SV_TASAutoSave =
@@ -508,6 +510,7 @@ void(entity e, float next) SV_TASAutoSave =
 	// strictly further only (a re-reach after a backtrack wrote a revision each time: review B); only a chain that began at
 	// the course's box, in that box's session (a From-here forked the player's own project into jg_: review B)
 	if (e.as_ctrack < 0 || e.as_route || !e.as_fromstart || next - 1 <= e.as_saved || !SV_TASLegalValid(e) || e.run_t_state != TS_RUNNING) return;
+	if (next >= as_n && e.as_finish) return;   // the coast decides the last one (saved there, Continue could never retry it: review C)
 	if (e.taslg_zone != e.as_szone) return;
 	if (e.as_saved < 0 && next <= e.as_savedold)
 	{	// a saved run of this course that got further is the player's Continue: a new Start overwrites it only once it passes
@@ -527,7 +530,7 @@ void(entity e, float next) SV_TASAutoSave =
 	if (f < 0) { SV_TASAutoNote(e, 1, "the Continue notes could not be written"); return; }
 	fputs(f, "jargon 1\n", sprintf("guide %s\n", e.as_file), sprintf("course %g %g\n", e.as_ctrack, e.as_cleg));
 	fputs(f, sprintf("gfp %.0f %.9g %.9g\n", as_nraw, as_traw0, as_traw1));
-	fputs(f, sprintf("opts %g %g %g %g ", e.as_tube, e.as_look, e.as_tries, e.as_backmax), sprintf("%g %g %g %g\n", e.as_hop, e.as_finish, e.as_pace, e.as_emin));
+	fputs(f, sprintf("opts %g %g %g %g ", e.as_tube, e.as_look, e.as_tries, e.as_backmax), sprintf("%g %g %.9g %.9g\n", e.as_hop, e.as_finish, e.as_pace, e.as_emin));
 	fputs(f, sprintf("opts2 %g %g %g %g ", e.as_join, e.as_rideknots, e.as_polish, e.as_low), sprintf("%g %g %g %g\n", e.as_apex, e.as_air, e.as_wide, e.as_spots));
 	fputs(f, sprintf("at %.0f %.0f %.0f %.9g %.0f\n", next, as_n, SV_TimerTicks(e), e.as_tprev, e.as_backs));
 	fputs(f, sprintf("org %.9g %.9g %.9g\n", e.origin_x, e.origin_y, e.origin_z));
@@ -986,17 +989,16 @@ void(entity e) SV_TASAutoBacks =
 // start zone), then the chain from the stretch it had reached (SV_TASAutoFrame stage 30), its records restored so a
 // backtrack can still reach the stretches before.
 float as_cov, as_covtries, as_covbacks, as_covflags;   // a Continue's options from the panel (as_cov 0: the saved ones)
-string as_cguide;               // the notes' guide (strzoned by a commit pass)
-float as_cgn, as_cg0, as_cg1;   // ...and its fingerprint
+// as_cguide, as_cnx, as_cgn/cg0/cg1 (declared above SV_TASAutoSavedAt): the notes' guide, stretch and fingerprint
 // A course's notes: commit 0 checks every line (numbers, ranges, indices, counts) and writes nothing; commit 1, run only
 // after that passed, writes the chain's state from them. TRUE when the file is whole.
 float(entity e, float track, float leg, float commit) SV_TASAutoNotes =
 {
-	local float f, c, ok, k, bad, i, ns, nw, nx, nof;
+	local float f, c, ok, k, bad, i, ns, nw, nx, nof, nso, nwn;
 	local string g;
 	f = fopen(SV_TASAutoSidePath(SV_TASAutoSaveName(e)), FILE_READ);
 	if (f < 0) return FALSE;
-	ok = 0; bad = 0; ns = nw = 0; nx = nof = -1; g = "";
+	ok = 0; bad = 0; ns = nw = nso = nwn = 0; nx = nof = -1; g = "";
 	for (k = 0; k < TAS_ASNOTES && ok < 2 && !bad; k = k + 1)
 	{
 		c = tokenize(fgets(f));
@@ -1044,7 +1046,7 @@ float(entity e, float track, float leg, float commit) SV_TASAutoNotes =
 			i = stof(argv(1));
 			if (!SV_TASAutoWhole(i, 0, TAS_ASMAX - 1)) bad = 1;
 			else if (argv(0) == "s") { ns = ns + 1; if (commit) { as_ws[i] = stof(argv(2)); as_wp[i] = stof(argv(3)); as_rbs[i] = stof(argv(4)); as_rfs[i] = stof(argv(5)); } }
-			else if (commit) { as_sso[i*6] = stof(argv(2)); as_sso[i*6+1] = stof(argv(3)); as_sso[i*6+2] = stof(argv(4)); }
+			else { nso = nso + 1; if (commit) { as_sso[i*6] = stof(argv(2)); as_sso[i*6+1] = stof(argv(3)); as_sso[i*6+2] = stof(argv(4)); } }
 		}
 		else if ((argv(0) == "w" && c == 7) || (argv(0) == "wn" && c == 7))
 		{
@@ -1056,12 +1058,13 @@ float(entity e, float track, float leg, float commit) SV_TASAutoNotes =
 				if (!SV_TASAutoWhole(stof(argv(2)), 1, 5)) bad = 1;
 				else if (commit) { as_wk[i] = stof(argv(2)); as_wt[i] = stof(argv(3)); as_wo[i*3] = stof(argv(4)); as_wo[i*3+1] = stof(argv(5)); as_wo[i*3+2] = stof(argv(6)); }
 			}
-			else if (commit) { as_wn[i*3] = stof(argv(2)); as_wn[i*3+1] = stof(argv(3)); as_wn[i*3+2] = stof(argv(4)); as_wl[i] = stof(argv(5)); as_wr[i] = stof(argv(6)); }
+			else { nwn = nwn + 1; if (commit) { as_wn[i*3] = stof(argv(2)); as_wn[i*3+1] = stof(argv(3)); as_wn[i*3+2] = stof(argv(4)); as_wl[i] = stof(argv(5)); as_wr[i] = stof(argv(6)); } }
 		}
 	}
 	fclose(f);
 	if (commit) return TRUE;
-	return (!bad && ok == 2 && g != "" && nx >= 1 && ns == nx && nw == nof);
+	as_cnx = nx;
+	return (!bad && ok == 2 && g != "" && nx >= 1 && ns == nx && nso == nx && nw == nof && nwn == nof);
 };
 
 // P1478: `tas autosurf continue <track> <leg>`: the course's saved run loaded (SV_TASLegalLoad replays it from the start
@@ -1090,6 +1093,13 @@ void(entity e, float track, float leg) SV_TASAutoContinue =
 		SV_TASAutoNote(e, 0, "the saved run's guide is gone or changed since the save: surf the course from its start");
 		e.as_ctrack = ot; e.as_cleg = ol; return;
 	}
+	e.tasp_result = 0;
+	SV_TASProjectLoad(e, name, "");
+	if (!e.tasp_load && !e.taslg_loading)
+	{	// refused (queued TAS work, a pause not allowed): nothing of the stopped chain is touched yet (review C)
+		SV_TASAutoNote(e, 0, "the saved run could not be loaded (the line before says why)");
+		e.as_ctrack = ot; e.as_cleg = ol; return;
+	}
 	e.as_backmax = -1;
 	SV_TASAutoBacks(e);
 	SV_TASAutoNotes(e, track, leg, 1);
@@ -1103,9 +1113,6 @@ void(entity e, float track, float leg) SV_TASAutoContinue =
 	}
 	if (e.as_file != "") strunzone(e.as_file);
 	e.as_file = strzone(as_cguide);
-	e.tasp_result = 0;
-	SV_TASProjectLoad(e, name, "");
-	if (!e.tasp_load && !e.taslg_loading) { SV_TASAutoNote(e, 0, "the saved run could not be loaded (the line before says why)"); return; }
 	e.as_on = 1; e.as_stage = 30; e.as_route = 0; e.as_i = e.as_cnext; e.as_try = 0; e.as_fromstart = 1; e.as_savedold = 0; e.as_keepsaid = 0;
 	SV_TASAutoNote(e, 1, sprintf("continue: replaying the saved run of %s to stretch %.0f of %.0f", SV_TASAutoCourseName(track, leg), e.as_cnext, e.as_cof));
 };
@@ -1139,10 +1146,11 @@ float(entity e) SV_TASAutoCoastPredict =
 		a = as_cout[i*13 + 12];
 		if (!a) continue;
 		t = edict_num(fabs(a));
-		if (t.classname != "trigger_teleport") return 0;    // another volume: QC acts there, the prediction ends
+		if (strcmp(t.classname, "trigger_teleport") && strcmp(t.classname, "trigger_momentum_teleport")) return 0;  // QC acts there
+		if (t.filtername != "") if (!SV_PassesFilter(t, e)) continue;      // a name filter refuses this body: no teleport
 		d = world;
 		if (t.target != "") d = find(world, targetname, t.target);
-		if (!d) return -1;
+		if (!d) continue;           // no destination: its touch does nothing (review C)
 		if (endz >= 0) return Zone_PointInside(endz, d.origin) ? i + 1 : -1;
 		for (z = 0; z < zone_count; z = z + 1)
 			if (zone_type[z] == ZONE_END)
@@ -1447,7 +1455,7 @@ void(entity e) SV_TASAutoFrame =
 			e.as_tprev = t; e.as_i = e.as_i + 1; e.as_try = 0;
 			SV_TASAutoSave(e, e.as_i);
 			if (e.as_i >= as_n && e.as_ctrack >= 0 && e.as_finish)
-			{	// P1478: the course's last target is within 96 u of its end (SV_TASAutoLink): coast the last ticks in
+			{	// P1478: the course's last target is reached within 400 u of its end: the coast, predicted first, does the rest
 				e.as_stage = 31; e.as_sn = 0;
 				SV_TASAutoNote(e, 1, "the route is done: coasting into the end");
 				return;
@@ -1796,9 +1804,9 @@ void(entity e, float argc) SV_TASAutoCommand =
 	if (ct >= 0 && (zg || arm)) { sprint(e, PRINT_HIGH, "tas autosurf: `course` picks the start itself; not with zone, onjump or onexit\n"); SV_TASAutoOptRestore(e); return; }
 	if (path == "route")
 	{	// the clicked route: no demo, no plan to make; from here (a running attempt, paused)
-		e.as_ctrack = -1; e.as_cleg = 0; e.as_saved = -1; e.as_fromstart = 0;     // no course (review A: an old one finished it at once)
 		if (st || arm) { sprint(e, PRINT_HIGH, "tas autosurf route: from a pause on the route (the start options follow a demo)\n"); return; }
 		if (rt_n < 1) { sprint(e, PRINT_HIGH, "tas autosurf route: no points yet -- tas route add, or the tab's Add at crosshair\n"); return; }
+		e.as_ctrack = -1; e.as_cleg = 0; e.as_saved = -1; e.as_fromstart = 0;     // no course (review A: an old one finished it at once)
 		as_nrows = 0; as_n = rt_n;
 		for (i = 0; i < rt_n; i = i + 1)
 		{
@@ -1856,7 +1864,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		e.as_file = path;
 		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0;
 		e.as_ctrack = nct; e.as_cleg = ncl; e.as_saved = -1; e.as_esc = 0; e.as_keepsaid = 0;
-		e.as_ri = (e.as_ctrack >= 0) ? SV_TASAutoRest() : -1;      // a `zone` start steers as before
+		e.as_ri = (e.as_ctrack >= 0) ? SV_TASAutoRest(e) : -1;      // a `zone` start steers as before
 		e.as_fromstart = 1; e.as_savedold = (e.as_ctrack >= 0) ? SV_TASAutoSavedAt(e) : 0;
 		SV_TASAutoNote(e, 1, (e.as_ctrack >= 0) ? sprintf("start of %s: prestrafe toward the guide's exit line, then one jump", SV_TASAutoCourseName(e.as_ctrack, e.as_cleg))
 			: "start: prestrafe toward the demo's exit line, then one jump");
