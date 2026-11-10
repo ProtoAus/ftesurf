@@ -79,6 +79,8 @@ float as_rmin;                  // the nearest-row search starts here (a full-ru
 .float as_coastf;              // coasts predicted into a wrong teleport this chain (a reach resets as_try: rig t2chain10 looped)
 .float as_cseed;               // P1483: Continues of this course this session (a Continue after "stuck" searched exactly as before: review F)
 float as_visit[TAS_ASMAX];      // P1483: searches of each stretch this chain (in the seed)
+// a set tas_jargon_seed reproduces a chain exactly (the benchmark); unset, each new chain searches anew
+void() SV_TASAutoRunSalt = { topt_runsalt = cvar("tas_jargon_seed") ? 0 : topt_runsalt + 1 - 1000 * floor((topt_runsalt + 1) / 1000); };
 float(entity e, float i) SV_TASAutoSeedOf =
 {	// under 1e6 (the optimizer's limit): try < 10, backs <= 200, esc <= 2, cseed <= 9, visits mod 13
 	return e.as_try + 10 * min(200, e.as_backs) + 2100 * min(2, e.as_esc) + 7000 * min(9, e.as_cseed) + 70000 * (as_visit[i] - 13 * floor(as_visit[i] / 13));
@@ -991,8 +993,7 @@ float(entity e) SV_TASAutoBeamStep =
 	if (e.as_bmph == 2 && e.as_i == i + 1)
 	{
 		if (!k && e.as_bmrb <= -1000000) { e.as_bmrb = as_rbs[i]; e.as_bmrf = as_rfs[i]; }     // the search's own reach's records
-		if (as_wk[i + 1] == 3) as_bms[k] = (e.topt_outcome == 2) ? 100000 + 20 * (TOPT_HMAX - e.topt_reachk) : 50000 - min(49000, e.topt_reachd);
-		else as_bms[k] = (e.topt_outcome == 2) ? 100000 + SV_TASAutoEnergyAt(e, i + 1) : 50000 - min(49000, e.topt_reachd);
+		as_bms[k] = (e.topt_outcome == 2) ? 100000 + SV_TASAutoEnergyAt(e, i + 1) : 50000 - min(49000, e.topt_reachd);
 		SV_TASAutoBeamNext(e); return TRUE;
 	}
 	if (e.as_bmph == 3 && e.as_i == i)
@@ -1074,7 +1075,7 @@ float(float i) SV_TASAutoIsMoved =
 
 void(entity e) SV_TASAutoLink =
 {
-	local float i, h, argc, r, q;
+	local float i, h, argc, r, q, fz, fz2;
 	local vector o, n, cr, cl_v;
 	local string ps, ls, cl;
 	i = e.as_i;
@@ -1158,7 +1159,12 @@ void(entity e) SV_TASAutoLink =
 	else ps = strcat(ps, sprintf(" gens %.0f", e.as_polish ? 90 : min(90, 30 * (1 + e.as_try))));
 	as_visit[i] = as_visit[i] + 1;
 	ps = strcat(ps, sprintf(" seed %.0f", SV_TASAutoSeedOf(e, i)));     // P1483: a retry, an effort step, a Continue, a revisit search anew
-	if (e.as_ctrack >= 0 && e.as_szone >= 0 && e.as_szone < zone_count) ps = strcat(ps, sprintf(" startz %.0f", e.as_szone));
+	if (e.as_ctrack >= 0)
+	{	// a fall lands in the box of the stage the body is in: past stage 1 of a whole-track chain, that stage's (review G)
+		fz = e.as_szone;
+		if (e.as_cleg == 0 && e.run_t_state == TS_RUNNING && e.run_t_seg >= 1) { fz2 = SV_ZoneFindLeg(e.as_ctrack, e.run_t_seg); if (fz2 >= 0) fz = fz2; }
+		if (fz >= 0 && fz < zone_count) ps = strcat(ps, sprintf(" startz %.0f", fz));
+	}
 	if (as_wk[i] == 3 && e.as_ctrack >= 0)
 	{	// P1483: the course's end box, or its track's END boxes: a reach there (or into the teleport to it) is the finish
 		r = (e.as_cleg >= 1) ? SV_ZoneFindLeg(e.as_ctrack, e.as_cleg) : -1;
@@ -1358,7 +1364,7 @@ void(entity e, float track, float leg) SV_TASAutoContinue =
 	if (e.as_file != "") strunzone(e.as_file);
 	e.as_file = strzone(as_cguide);
 	e.as_on = 1; e.as_stage = 30; e.as_route = 0; e.as_i = e.as_cnext; e.as_try = 0; e.as_fromstart = 1; e.as_savedold = 0; e.as_keepsaid = 0;
-	e.as_cseed = min(9, e.as_cseed + 1);
+	e.as_cseed = e.as_cseed + 1 - 10 * floor((e.as_cseed + 1) / 10);
 	SV_TASAutoNote(e, 1, sprintf("continue: replaying the saved run of %s to stretch %.0f of %.0f", SV_TASAutoCourseName(track, leg), e.as_cnext, e.as_cof));
 };
 
@@ -1380,6 +1386,7 @@ float(entity e) SV_TASAutoCoastPredict =
 		as_crows[i*7] = as_crows[i*7+1] = as_crows[i*7+2] = as_crows[i*7+5] = as_crows[i*7+6] = 0;
 		as_crows[i*7+3] = SV_TASPWord(e.v_angle_x); as_crows[i*7+4] = SV_TASPWord(e.v_angle_y);
 	}
+	SV_TASOptSimStart(e);       // review G: else the last search's rollout state
 	SV_NoColPre(e);
 	ran = tas_rollout(e, as_crows, n, as_cout);
 	SV_NoColPost(e);
@@ -1633,6 +1640,7 @@ void(entity e) SV_TASAutoFrame =
 	if (t >= 0)
 	{
 		e.as_on = 0;
+		if (e.as_stage == 2 && e.as_i >= 1 && as_prpi == e.as_i - 1) SV_TASAutoPriorKeep(e, e.as_i - 1);     // review G
 		if (as_prpi == as_n - 1) SV_TASAutoPriorKeep(e, as_n - 1);
 		SV_TASAutoNote(e, 2, sprintf("finished %s in %s, %.0f backtracks", SV_TASAutoCourseName(max(0, e.as_ctrack), max(0, e.as_cleg)),
 			Time_TickString(t, run_t_tick), e.as_backs));
@@ -1670,6 +1678,7 @@ void(entity e) SV_TASAutoFrame =
 	{
 		if (e.as_bmph && SV_TASAutoBeamStep(e)) return;
 		if (e.as_swph && SV_TASAutoSweep(e)) return;
+		if (e.topt_outcome == 2 && !e.as_bmph && !e.as_route && e.as_i > 0 && as_prpi == e.as_i - 1) SV_TASAutoPriorKeep(e, e.as_i - 1);
 		if (e.topt_outcome == 2 && !e.as_bmph) SV_TASAutoBeamStart(e);
 		if (e.topt_outcome == 2)
 		{	// reached: the next stretch's demo rows start where the demo came nearest this state
@@ -2102,7 +2111,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		if (e.as_file != "") strunzone(e.as_file);
 		e.as_file = path;
 		e.as_on = 1; e.as_stage = 20; e.as_arm = arm; e.as_nolegal = 1; e.as_backs = 0; e.as_sair = -1; e.as_sn2 = 0;
-		e.as_ctrack = -1; e.as_cleg = 0; e.as_saved = -1; e.as_esc = 0; e.as_fromstart = 0;
+		e.as_ctrack = -1; e.as_cleg = 0; e.as_saved = -1; e.as_esc = 0; e.as_fromstart = 0; e.as_cseed = 0;
 		e.as_lastground = (e.flags & FL_ONGROUND) ? 1 : 0;
 		SV_TASAutoNote(e, 1, (arm == 2) ? "armed: prestrafe and jump -- I take over at your jump" : "armed: prestrafe out of the box -- I take over at its edge");
 		return;
@@ -2115,6 +2124,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		e.as_file = path;
 		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0;
 		e.as_ctrack = nct; e.as_cleg = ncl; e.as_saved = -1; e.as_esc = 0; e.as_keepsaid = 0; e.as_cseed = 0;
+		SV_TASAutoRunSalt();
 		e.as_ri = (e.as_ctrack >= 0) ? SV_TASAutoRest(e) : -1;      // a `zone` start steers as before
 		e.as_fromstart = 1; e.as_savedold = (e.as_ctrack >= 0) ? SV_TASAutoSavedAt(e) : 0;
 		if (cvar("tas_jargon_fresh"))
@@ -2156,7 +2166,8 @@ void(entity e, float argc) SV_TASAutoCommand =
 	if (as_n < 1) { sprint(e, PRINT_HIGH, "tas autosurf: no ramp, hop or finish ahead on the demo from here\n"); strunzone(path); return; }
 	if (e.as_file != "") strunzone(e.as_file);
 	e.as_file = path;
-	e.as_ctrack = nct; e.as_cleg = ncl; e.as_saved = -1; e.as_esc = 0; e.as_fromstart = 0; e.as_keepsaid = 0;
+	e.as_ctrack = nct; e.as_cleg = ncl; e.as_saved = -1; e.as_esc = 0; e.as_fromstart = 0; e.as_keepsaid = 0; e.as_cseed = 0;
+	SV_TASAutoRunSalt();
 	e.as_on = 1; e.as_stage = 1; e.as_i = 0; e.as_try = 0; e.as_backs = 0; e.as_tprev = as_rows[s*7]; e.as_failat = -1;
 	SV_TASAutoBacks(e);
 	SV_TASAutoNote(e, 1, sprintf("%.0f stretches ahead from demo t=%.2f (%.0f u off its route)", as_n, as_rows[s*7], vlen(SV_TASAutoRowO(s) - e.origin)));

@@ -1439,8 +1439,8 @@ float(entity e, entity t) SV_TASOptEndTele =
 
 float(entity e, float ran) SV_TASOptTargetScore =
 {
-	local float i, d, best, bk, hit, lim, tx, dh, eg, hj, endhit;
-	best = 1000000; bk = -1; hit = FALSE; e.topt_candeg = 0; e.topt_candbr = 0; endhit = FALSE;
+	local float i, d, best, bk, hit, lim, tx, dh, eg, hj, endhit, held;
+	best = 1000000; bk = -1; hit = FALSE; e.topt_candeg = 0; e.topt_candbr = 0; endhit = FALSE; held = FALSE;
 	lim = (e.topt_rollcut == 1) ? ran - 1 : ran;        // the tick QC acts on is not one the prediction holds
 	tx = SV_TASOptLimit(e, lim);
 	if (tx >= 0) lim = tx;                              // a wall touched or the tube left: a cut there
@@ -1449,6 +1449,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		if (e.topt_endz >= 0 || e.topt_endtrack >= 0)
 		if (SV_TASOptInEnd(e, (i > 0) ? [topt_out[i*13-13], topt_out[i*13-12], topt_out[i*13-11]] : e.origin, [topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]]))
 			{ best = 0; bk = i; hit = TRUE; endhit = TRUE; break; }
+		if (held) continue;     // a reach held: only an end hit after it counts
 		d = vlen([topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]] - e.topt_tgt);
 		if (d <= e.topt_tgtr || (e.topt_tgtn_z >= 0.99 && fabs(topt_out[i*13+2] - e.topt_tgt_z) <= TOPT_HOPZ &&
 		    vlen([topt_out[i*13] - e.topt_tgt_x, topt_out[i*13+1] - e.topt_tgt_y, 0]) <= TOPT_HOPR))
@@ -1457,9 +1458,10 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		    (topt_out[i*13+8] == 1 && SV_TASOptFaceDot(e, i) >= TOPT_FACEDOT))
 		{
 			best = d; bk = i; hit = TRUE;
-			break;
+			if (e.topt_endz < 0 && e.topt_endtrack < 0) break;
+			held = TRUE;
 		}
-		if (d < best) { best = d; bk = i; }
+		if (!held) if (d < best) { best = d; bk = i; }
 	}
 	if ((!hit || !endhit) && lim >= 1 && lim == ran - 1 && e.topt_rollcut == 1 && (e.topt_endz >= 0 || e.topt_endtrack >= 0))
 	if (SV_TASOptEndTele(e, e.topt_cutent) == 1)
@@ -2097,6 +2099,7 @@ void(entity e) SV_TASOptMemKeep =
 // each search from its start state, target and `seed`, so one state searches one way: random() gave stretch 1 1130,
 // 1130 and 1092 u/s from one replayed start (rigs t2chain2-4), and a retry differs only by the seed its caller gives it
 float topt_r1, topt_r2, topt_r3;
+float topt_runsalt;             // P1483: a chain's start count while tas_jargon_seed is 0 (a Start after "stuck" searches anew)
 float(float x, float m) SV_TASOptMod = { x = x - m * floor(x / m); if (x < 0) x = x + m; if (x >= m) x = x - m; return x; };
 float() SV_TASOptRand =
 {
@@ -2112,7 +2115,7 @@ void(entity e, float salt) SV_TASOptSeed =
 	cs = cvar("tas_jargon_seed");
 	if (cs != cs || fabs(cs) > 1000000) cs = 0;        // NaN or huge: every draw NaN after it (review D)
 	h = fabs(e.origin_x * 3.1 + e.origin_y * 7.3 + e.origin_z * 11.7 + e.velocity_x * 13.1 + e.velocity_y * 17.9 + e.velocity_z * 19.3
-		+ e.topt_tgt_x * 0.7 + e.topt_tgt_y * 0.3 + salt * 101 + floor(cs) * 977);
+		+ e.topt_tgt_x * 0.7 + e.topt_tgt_y * 0.3 + salt * 101 + floor(cs) * 977 + topt_runsalt * 1913);
 	h = floor(SV_TASOptMod(h, 1000000));
 	topt_r1 = 1 + SV_TASOptMod(h, 30268); topt_r2 = 1 + SV_TASOptMod(floor(h / 7) + salt, 30306); topt_r3 = 1 + SV_TASOptMod(floor(h / 13) + 2 * salt, 30322);
 };
