@@ -97,13 +97,15 @@ void() TASOptViz_Draw =
 		tov_shader = 1;
 	}
 	for (i = 0; i < tov_rn; i = i + 1)
-	{	// the route: shown whether or not the search lines are
+	{	// the route: shown whether or not the search lines are (kind 0: a slot this client never saw)
+		if (!tov_rk[i]) continue;
 		col = (tov_rk[i] == 1) ? SUI_THEME_GOOD : ((tov_rk[i] == 2) ? SUI_THEME_WARN : SUI_THEME_INFO);
 		R_BeginPolygon(TOV_SHADER, 0);
 		R_PolygonVertex(tov_rp[i], '0.5 0 0', col, 0.9);
 		R_PolygonVertex(tov_rp[i] + '0 0 96', '0.5 0 0', col, 0.9);
 		R_EndPolygonRibbon(5, '0 1 0');
 		if (i > 0)
+		if (tov_rk[i - 1])
 		{
 			R_BeginPolygon(TOV_SHADER, 0);
 			R_PolygonVertex(tov_rp[i - 1] + '0 0 48', '0.5 0 0', '1 1 1', 0.45);

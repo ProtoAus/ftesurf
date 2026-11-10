@@ -395,7 +395,6 @@ void(entity e) SV_TASAutoLink =
 		(as_need[i] > 0) ? sprintf(", needs %.0f u/s", as_need[i]) : ""));
 };
 
-// After SV_TASDemoFrame (SV_TASOptFrame): the next step of the chain once no search is running.
 // A chain's start. backs unset: twice the stretches, at least 6 (the full surf_null run spent 10 on its first five of 17)
 void(entity e) SV_TASAutoBacks =
 {
@@ -404,6 +403,7 @@ void(entity e) SV_TASAutoBacks =
 	for (k = 0; k < TAS_ASMAX; k = k + 1) as_rbs[k] = as_need[k] = 0;
 };
 
+// After SV_TASDemoFrame (SV_TASOptFrame): the next step of the chain once no search is running.
 void(entity e) SV_TASAutoFrame =
 {
 	local float head, i, best, d, t, s, along, lat, herr, ee, ph;
@@ -578,6 +578,15 @@ void(entity e) SV_TASAutoFrame =
 		e.as_try = e.as_try + 1;
 		e.as_backhead = -1; e.as_backfail = 0;
 		if (e.as_try < e.as_tries) { e.as_goal = as_ws[e.as_i]; e.as_stage = 3; return; }
+		if (as_need[e.as_i] > 0 && e.as_backs < e.as_backmax)
+		{	// it could not beat its last reach: again without the bar (the next stretch may need another line at the
+			// same speed), a backtrack's worth -- barred stretches cascaded to the first and stopped (review 8)
+			SV_TASAutoNote(e, 1, sprintf("stretch %.0f could not beat %.0f u/s: again without the bar (backtrack %.0f)",
+				e.as_i + 1, as_need[e.as_i], e.as_backs + 1));
+			as_need[e.as_i] = 0; e.as_backs = e.as_backs + 1; e.as_try = 0;
+			e.as_goal = as_ws[e.as_i]; e.as_stage = 3;
+			return;
+		}
 		if (e.as_backs < e.as_backmax && e.as_i > 0)
 		{	// back one stretch, then further each second time the same stretch fails again: one back at a time spent
 			// 8 backtracks re-doing the stretch before, when the deficit came two or three earlier (full run, 10 Nov)
@@ -589,7 +598,10 @@ void(entity e) SV_TASAutoFrame =
 			SV_TASAutoNote(e, 1, sprintf("stretch %.0f failed its tries: backtrack %.0f to stretch %.0f", e.as_failat + 1, e.as_backs, e.as_i + 1));
 			return;
 		}
-		SV_TASAutoStop(e, sprintf("stuck at stretch %.0f of %.0f after %.0f backtracks", e.as_i + 1, as_n, e.as_backs));
+		if (e.as_failat > e.as_i)     // the furthest stretch that failed, not only the one the backtracks ended on (review 8)
+			SV_TASAutoStop(e, sprintf("stuck at stretch %.0f of %.0f after %.0f backtracks (stretch %.0f failed last)",
+				e.as_failat + 1, as_n, e.as_backs, e.as_i + 1));
+		else SV_TASAutoStop(e, sprintf("stuck at stretch %.0f of %.0f after %.0f backtracks", e.as_i + 1, as_n, e.as_backs));
 		return;
 	}
 	if (e.as_stage == 3)

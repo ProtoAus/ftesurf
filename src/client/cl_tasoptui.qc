@@ -18,7 +18,7 @@ var float taso_lastk = -1;          // the stretch last reached (the line under 
 
 void() TASAuto_Event =
 {
-	local float was, wasi, rk, rb, rf, k;
+	local float was, wasi, rk, rb, rf, k, i;
 	was = taso_state; wasi = taso_i;
 	taso_state = readbyte(); taso_i = readshort(); taso_n = readshort();
 	taso_try = readbyte(); taso_backs = readbyte();
@@ -32,18 +32,16 @@ void() TASAuto_Event =
 	if (substring(taso_note, 0, 12) == "your route: ")
 	{	// the server's count; a taken add's note carries its point ("N points, added x y z nx ny nz"), every other
 		// note only trims (an undo, a clear) -- the markers are the server's route, typed adds included (review 6).
-		// tokenize_console: tokenize splits off ':' and ',' (review 7). Only the next slot is taken, so another
-		// player's adds or a reconnect never draw slots this tab did not write.
+		// tokenize_console: tokenize splits off ':' and ',' (review 7). Slots this tab never saw (a reconnect, another
+		// player's adds) are kind 0 and not drawn; the count still follows the server's (review 8).
 		k = tokenize_console(taso_note);
 		rk = stof(argv(2));
 		if (k >= 11 && argv(4) == "added" && rk >= 1 && rk <= TOV_ROUTE)
 		{
-			if (rk <= tov_rn + 1)
-			{
-				tov_rp[rk - 1] = [stof(argv(5)), stof(argv(6)), stof(argv(7))];
-				tov_rk[rk - 1] = (stof(argv(10)) >= 0.99) ? 2 : ((stof(argv(8)) == 0 && stof(argv(9)) == 0 && stof(argv(10)) == 0) ? 3 : 1);
-				tov_rn = rk;
-			}
+			for (i = tov_rn; i < rk - 1; i = i + 1) tov_rk[i] = 0;
+			tov_rp[rk - 1] = [stof(argv(5)), stof(argv(6)), stof(argv(7))];
+			tov_rk[rk - 1] = (stof(argv(10)) >= 0.99) ? 2 : ((stof(argv(8)) == 0 && stof(argv(9)) == 0 && stof(argv(10)) == 0) ? 3 : 1);
+			tov_rn = rk;
 		}
 		else tov_rn = min(tov_rn, max(0, rk));
 		strunzone(taso_note);                      // the status line: the count, not the coordinates
@@ -275,7 +273,7 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	WPU_Slider("taso_tube", "Route tube (u)", at, width, taso_tube, '100 600 50', TASOptUI_Tube, tsz); at_y = at_y + tsz * 2.2;
 	WPU_Slider("taso_look", "Look ahead", at, width, taso_look, '0 200 20', TASOptUI_Look, tsz); at_y = at_y + tsz * 2.2;
 	WPU_Slider("taso_tries", "Tries", at, width, taso_tries, '1 5 4', TASOptUI_Tries, tsz); at_y = at_y + tsz * 2.2;
-	WPU_Slider("taso_backs", taso_backmax ? "Backtracks" : "Backtracks (auto)", at, width, taso_backmax, '0 40 40', TASOptUI_Backs, tsz); at_y = at_y + tsz * 2.2;
+	WPU_Slider("taso_backs", taso_backmax ? "Backtracks" : "Backs: auto", at, width, taso_backmax, '0 40 40', TASOptUI_Backs, tsz); at_y = at_y + tsz * 2.2;
 	if (Profile_Chip("taso_hop", at, chip, taso_hop ? "Bhop platforms: hop" : "Bhop platforms: off", hint, taso_hop)) taso_hop = !taso_hop;
 	if (Profile_Chip("taso_finish", at + [half + 6, 0, 0], chip, taso_finish ? "To the end zone" : "Ramps only", hint, taso_finish)) taso_finish = !taso_finish;
 	at_y = at_y + row + 3;

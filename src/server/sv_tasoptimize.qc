@@ -431,10 +431,11 @@ float(entity e, float r, float f) SV_TASOptFollow =
 	{	// the engine applies the command from each tick's own velocity and writes back what it played. Rolled twice
 		// when the first roll rides a ramp: then each ride tick's next row strafes into that ramp (q +-30: the view on
 		// the velocity, the wish across it on the ramp's side), as a human holds the key in -- with no demo's keys the
-		// knots slid a clicked route's ride off ramp 1 into the teleport under it (rig troute1, 10 Nov)
+		// knots slid a clicked route's ride off ramp 1 into the teleport under it (rig troute1, 10 Nov). Rolled again
+		// while the ride grows (4 rolls at most): held in, it rides past where the first roll slid off (review 8)
 		for (i = 0; i < e.topt_n; i = i + 1) topt_ride[i] = 0;
 		ran = -1;
-		for (pass = 0; pass < 2; pass = pass + 1)
+		for (pass = 0; pass < 4; pass = pass + 1)
 		{
 		for (i = 0; i < e.topt_n; i = i + 1)
 		{
@@ -453,12 +454,14 @@ float(entity e, float r, float f) SV_TASOptFollow =
 		else
 			ran = tas_rollout(e, topt_rows, e.topt_n, topt_out);
 		SV_NoColPost(e);
-		if (pass > 0 || ran < 2) break;
+		if (pass >= 3 || ran < 2) break;
 		ch = FALSE;
 		for (i = 0; i + 1 < ran; i = i + 1)
-			if (topt_out[i*13+8] == 1)
-			{	// a world ramp under this tick: the next row strafes into it (the wish against its horizontal normal)
+			if (topt_out[i*13+8] == 1 && !topt_ride[i + 1])
+			{	// a world ramp under this tick: the next row strafes into it (the wish against its horizontal normal;
+				// the engine passes a displacement's normal as wound, which can face down: pm_source.c fabs(nz))
 				rn = [topt_out[i*13+9], topt_out[i*13+10], 0];
+				if (topt_out[i*13+11] < 0) rn = -rn;
 				rl = [-topt_out[i*13+4], topt_out[i*13+3], 0];        // left of the velocity
 				topt_ride[i + 1] = (rn * rl < 0) ? 1 : -1;
 				ch = TRUE;
@@ -2027,7 +2030,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	}
 	if (argc < 4 || argc > 24 || !(n >= 4 && n <= (fast ? TOPT_HMAX : TAS_TAPE_MAX) && n == floor(n)) || !dir || mode < 0)
 	{
-		sprint(e, PRINT_HIGH, "tas optimize <ticks 4..128, fast 4..768> <left|right> [board | follow | curve [knots 3..16]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [aim [late (with demo)]] [hop] [gens N] [demo [tube R [look N]] [pace X] [emin E]] (with curve): best turn for exit speed (energy: speed + height), or with time the next segment soonest; fast searches by rollout and plays only the best\n");
+		sprint(e, PRINT_HIGH, "tas optimize <ticks 4..128, fast 4..768> <left|right> [board | follow | curve [knots 3..16]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [aim] [hop] [gens N] [demo [late (after aim)] [tube R [look N]] [pace X] [emin E]] (with curve): best turn for exit speed (energy: speed + height), or with time the next segment soonest; fast searches by rollout and plays only the best\n");
 		return;
 	}
 	if (!e.run_tas_rwcap || !SV_TASInputReady(e) || !SV_TASCanPause(e)) return;
