@@ -59,6 +59,7 @@
 .float topt_endz, topt_endtrack;    // P1483: a course's end (a zone box, or -1; the track whose END boxes, or -1): a reach there
 .entity topt_cutent;            // P1483: the volume a rollout was cut at (topt_rollcut 1)
 .float topt_playk;              // P1483: `play K`: the search's K-th kept candidate played, no search (0 none, else K + 1)
+float(entity e, entity t) SV_TASOptEndTele;
 .float topt_phase;              // 1 grid, 2 golden, 3 the best, played last
 .float topt_k, topt_cand, topt_evals, topt_bestr, topt_bestv, topt_next;
 .float topt_lo, topt_hi, topt_a, topt_b, topt_fa, topt_fb, topt_which, topt_iter;
@@ -1152,6 +1153,10 @@ void(entity e, float r, float y, float f) SV_TASOptPredict =
 			// a miss ended on a trigger (a fail teleport) as early: the state it started from was already falling off
 			// (tfull4b: ramp 9 boarded 371 u down its face, every ramp-10 line on a trigger 7-21 ticks on)
 			e.topt_trigcut = (e.topt_reachv < TOPT_WEAK && e.topt_rollcut == 1 && ran <= TOPT_EARLYCUT && cut < 0) ? ran : 0;
+			// P1483: a miss that ends in a teleport other than the course's end fell, however late (surf_tensor2 stage 5:
+			// every stretch-4 line fell 50-70 ticks in and the chain asked stretch 3 for more speed, boarding it further off)
+			if (!e.topt_trigcut && e.topt_reachv < TOPT_WEAK && e.topt_rollcut == 1 && cut < 0 && ran <= 4 * TOPT_EARLYCUT)
+			if (SV_TASOptEndTele(e, e.topt_cutent) == -1) e.topt_trigcut = ran;
 			e.topt_lowneed = (e.topt_reachv < TOPT_WEAK && e.topt_tgtn_z >= 0.99) ? SV_TASOptLowNeed(e, ran) : 0;
 			e.topt_over = 0;
 			if (e.topt_reachv < TOPT_REACH && e.topt_reachk >= 1 && e.topt_reachk <= ran)
