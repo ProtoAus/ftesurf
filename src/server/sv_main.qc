@@ -586,6 +586,7 @@ void() worldspawn =
 	forceinfokey(world, "fs_sourcephase", "1");
 	forceinfokey(world, "fs_savelead", "3"); // P1437: coherent E8 saved / L14 loaded capsules; 2 added STAT_FS_SLCURID
 	vbsp_conveyor_any = 0;
+	registercvar("tas_viz_rate", "4");      // P1449: Jargon's candidate lines sent a second (sv_tasoptimize.qc); set before a search
 	SV_MapTierInit(FALSE);
 	// worldspawn is the first entity in the lump, so this zeroes the spawn
 	// tallies before anything counts into them -- and re-arms the report.

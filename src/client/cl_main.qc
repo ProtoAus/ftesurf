@@ -1560,6 +1560,10 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	// Patch 671: the editor also owns jump toggles and their releases.
 	if (ZoneEdit_InputEvent(evtype, scanx, chary, devid))
 		return TRUE;
+	if (TASJargon_InputEvent(evtype, scanx, chary, devid))     // P1449: Jargon's route editor (cl_jargon.qc)
+		return TRUE;
+	if (RouteEdit_InputEvent(evtype, scanx, chary, devid))     // P1449: the route's drag editor (cl_tasoptviz.qc)
+		return TRUE;
 
 	/*
 	  BUILD 48: the results card, and it sits AHEAD of the leaderboard because it
@@ -2012,6 +2016,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	  braces.
 	*/
 	Ghost_Frame();
+	TASOptViz_Body();               // P1449: tas_viz_cam's follow views show the body (cl_tasoptviz.qc)
 
 	// Patch 457: your own trail, which nothing else draws -- lobby_av_self 0
 	// means your avatar is never networked back to you.  Straight after
@@ -2097,6 +2102,8 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	{
 		Zone_Draw();
 		TASOptViz_Draw();           // P1449: tas optimize's candidates, same depth-tested pass
+		TASJargon_Frame();          // P1449: Jargon's route editor (cl_jargon.qc)
+		TASJargon_DrawWorld();
 		PTrail_DrawAll();           // P772: after the predraws that feed it
 	}
 	ZoneEdit_Draw3D(!worldonly); // P1348: maintain input/drag without submitting overlays
@@ -2139,6 +2146,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// was not readable when WorldLoaded ran (Patch 207's ordering wart).
 	Trig_Frame();
 
+	TASOptViz_Cam();                // P1449: tas_viz_cam -- before anything reads the view
 	Spec_Trace();                   // Patch 385: what is actually drawn
 	Scores_LinesFrame();            // Patch 433: the board lines' downloads and builds
 	Scores_LinesPin();              // ...and their projection (Watch_Path pins only in mode 2)
@@ -2146,6 +2154,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// Scores_LinesPin returns early when the board lines are off.
 	Trail_Pin();
 	RG_Pin();                       // Patch 746: the ghosts' highlights, the same 2D pass
+	TASOptViz_Pin();                // P1449: Jargon's lines in that pass too (tas_viz_style 1)
 
 	// Patch 467.  The sky's camera and user data (its passes ran before clearscene, P1235).
 	if (!worldonly) MilkSky_Frame();
@@ -2158,6 +2167,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		Inv_GlowPre();              // P1230: keeps this view's depth for the aura's pass
 	}
 	renderscene();
+	TASOptViz_AfterScene();         // P1449: tas_viz_cam's near plane back
 	if (!worldonly)
 	{
 		Inv_GlowPass(TRUE);
@@ -2201,6 +2211,9 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 
 		HUD_Draw(scr);
 		MPad_Draw(scr);                 // Patch 390: after HUD_Draw's clock; both of its paths
+		TASSearch_Draw(scr);            // P1449: the search panel (cl_tasoptui.qc), live: not in the HUD cache
+		RouteEdit_DrawHint(scr);        // P1449: the route drag editor's line (cl_tasoptviz.qc)
+		TASJargon_DrawHint(scr);        // P1449: Jargon's route editor's line
 		// Patch 871: hud_fps. These three only draw, so they may be drawn into a target a few
 		// hundred times a second and pasted between (cl_hudcache.qc); the key strip is layer 1.
 		HC_Frame();
@@ -2277,6 +2290,8 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 			Scores_LinesDraw(); // P433: deferred world lines, before their labels.
 			Trail_Draw();
 			RG_DrawLines();
+			TASOptViz_Draw2D();
+			TASJargon_Draw2D();
 			LineGraph_WorldLabels();
 		}
 		Line_FrameEnd();
@@ -2558,7 +2573,7 @@ float(string cmd) CSQC_ConsoleCommand =
 			else
 				localcmd(sprintf("p%g cmd tas seed%s\n", tsseat + 1, tsline));
 		}
-		else if (cmdargc >= 3 && cmdargc <= 14 && !strcmp(argv(1), "autosurf"))  // P1449: a path, then known words and numbers
+		else if (cmdargc >= 3 && cmdargc <= 16 && !strcmp(argv(1), "autosurf"))  // P1449: a path, then known words and numbers
 		{
 			tsline = argv(2);
 			for (tsi = 0; tsi < strlen(tsline); tsi = tsi + 1)
@@ -2570,14 +2585,44 @@ float(string cmd) CSQC_ConsoleCommand =
 			if (strstrofs(tsline, "..") >= 0) tsline = "!";
 			tsline = strcat(" ", tsline);
 			for (tsi = 3; tsi < cmdargc; tsi = tsi + 1)
-				if (argv(tsi) == "tube" || argv(tsi) == "look" || argv(tsi) == "tries" || argv(tsi) == "backs" || argv(tsi) == "nohop" ||
+				if (argv(tsi) == "tube" || argv(tsi) == "look" || argv(tsi) == "tries" || argv(tsi) == "backs" || argv(tsi) == "nohop" || argv(tsi) == "join" || argv(tsi) == "rideknots" || argv(tsi) == "polish" || argv(tsi) == "low" || argv(tsi) == "apex" || argv(tsi) == "air" || argv(tsi) == "plan" || argv(tsi) == "pace" || argv(tsi) == "emin" || argv(tsi) == "start" || argv(tsi) == "zone" ||
+				    argv(tsi) == "sg" || argv(tsi) == "sy" || argv(tsi) == "sright" || argv(tsi) == "sflip" || argv(tsi) == "onjump" || argv(tsi) == "onexit" ||
 				    argv(tsi) == "finish" || FS_TASNumber(argv(tsi)))
 					tsline = strcat(tsline, " ", argv(tsi));
 				else tsline = " !";
 			if (strstrofs(tsline, "!") >= 0)
-				print("tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [nohop] [finish] | stop | status\n");
+				print("tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [emin F] [nohop] [join] [rideknots] [polish] [low] [apex] [air] [finish] | stop | status | startpause\n");
 			else
 				localcmd(sprintf("p%g cmd tas autosurf%s\n", tsseat + 1, tsline));
+		}
+		else if (cmdargc == 3 && !strcmp(argv(1), "route") && argv(2) == "edit")    // P1449: the drag editor, this client's
+		{
+			rte_on = !rte_on;
+			print(rte_on ? "tas route edit: aim at a marker and drag it; right click removes it\n" : "tas route edit: done\n");
+		}
+		else if (cmdargc == 3 && !strcmp(argv(1), "jargon") && (argv(2) == "edit" || argv(2) == "show"))
+		{	// P1449: Jargon's route (cl_jargon.qc): the picked guide run's plan, and the in-world editor
+			TASJargon_Guides();
+			if (argv(2) == "show" || !jg_n) TASJargon_RequestPlan();
+			if (argv(2) == "edit") { jg_edit = !jg_edit; print(jg_edit ? "tas jargon edit: on -- noclip round, drag a handle\n" : "tas jargon edit: done\n"); }
+		}
+		else if (cmdargc >= 2 && !strcmp(argv(1), "jargon"))       // P1449: Jargon is autosurf's name in the menus
+		{
+			tsline = "";
+			for (tsi = 2; tsi < cmdargc; tsi = tsi + 1) tsline = strcat(tsline, " ", argv(tsi));
+			localcmd(strcat("tas autosurf", tsline, "\n"));
+		}
+		else if (cmdargc >= 3 && cmdargc <= 10 && !strcmp(argv(1), "route"))      // P1449: add (six numbers), set (k, six), del (k), undo, clear, show
+		{
+			tsline = "";
+			for (tsi = 2; tsi < cmdargc; tsi = tsi + 1)
+				if ((tsi == 2 && (argv(2) == "add" || argv(2) == "here" || argv(2) == "set" || argv(2) == "del" || argv(2) == "undo" || argv(2) == "clear" || argv(2) == "show")) || (tsi > 2 && FS_TASNumber(argv(tsi))))
+					tsline = strcat(tsline, " ", argv(tsi));
+				else tsline = "!";
+			if (substring(tsline, 0, 1) == "!")
+				print("tas route add <x y z> <nx ny nz> | here | set <k> <x y z> <nx ny nz> | del <k> | undo | clear | show | edit\n");
+			else
+				localcmd(sprintf("p%g cmd tas route%s\n", tsseat + 1, tsline));
 		}
 		else if (cmdargc >= 2 && cmdargc <= 9 && !strcmp(argv(1), "target"))     // P1449: numbers, clear or show only
 		{
@@ -2591,19 +2636,21 @@ float(string cmd) CSQC_ConsoleCommand =
 			else
 				localcmd(sprintf("p%g cmd tas target%s\n", tsseat + 1, tsline));
 		}
-		else if (cmdargc >= 4 && cmdargc <= 17 && !strcmp(argv(1), "optimize"))    // P1088; P1092 board/flick; P1097 time; P1443 energy/fast
+		else if (cmdargc >= 4 && cmdargc <= 30 && !strcmp(argv(1), "optimize"))    // P1088; P1092 board/flick; P1097 time; P1443 energy/fast
 		{
 			tsvalue = stof(argv(2));
 			tsline = "";
 			for (tsi = 4; tsi < cmdargc; tsi = tsi + 1)    // the server checks their order; only known words pass
 				if (argv(tsi) == "board" || argv(tsi) == "flick" || argv(tsi) == "time" || argv(tsi) == "energy" ||
-				    argv(tsi) == "fast" || argv(tsi) == "zigzag" || argv(tsi) == "split" || argv(tsi) == "fixedpitch" || argv(tsi) == "follow" || argv(tsi) == "curve" || argv(tsi) == "demo" || argv(tsi) == "aim" || argv(tsi) == "late" || argv(tsi) == "tube" || argv(tsi) == "hop" || argv(tsi) == "look" ||
+				    argv(tsi) == "fast" || argv(tsi) == "zigzag" || argv(tsi) == "split" || argv(tsi) == "fixedpitch" || argv(tsi) == "follow" || argv(tsi) == "curve" || argv(tsi) == "demo" || argv(tsi) == "aim" || argv(tsi) == "late" || argv(tsi) == "tube" || argv(tsi) == "hop" || argv(tsi) == "look" || argv(tsi) == "pace" || argv(tsi) == "emin" || argv(tsi) == "gens" || argv(tsi) == "kex" || argv(tsi) == "stall" || argv(tsi) == "low" || argv(tsi) == "edgeok" ||
+				    ((argv(tsi - 1) == "pace" || argv(tsi - 1) == "emin" || argv(tsi - 1) == "low") && FS_TASNumber(argv(tsi))) ||    // decimals (review)
+				    ((argv(tsi - 1) == "gens" || argv(tsi - 1) == "kex" || argv(tsi - 1) == "stall") && FS_TASNumber(argv(tsi))) ||
 				    (stof(argv(tsi)) >= 1 && stof(argv(tsi)) <= ((argv(tsi - 1) == "tube") ? 4096 : ((argv(tsi - 1) == "look") ? 400 : 32)) && argv(tsi) == ftos(stof(argv(tsi)))))
 					tsline = strcat(tsline, " ", argv(tsi));
 				else tsline = "!";
 			if (!(tsvalue >= 4 && tsvalue <= 768 && tsvalue == floor(tsvalue)) ||       // P1449: the server holds played searches to 128
 			    (strcmp(argv(3), "left") && strcmp(argv(3), "right")) || substring(tsline, 0, 1) == "!")
-				print("tas optimize <ticks 4..128, fast 4..768> <left|right> [board | follow | curve [knots 3..12]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [demo [aim [late]] [tube R [look N]] [hop]]\n");
+				print("tas optimize <ticks 4..128, fast 4..768> <left|right> [board | follow | curve [knots 3..16]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [aim] [hop] [gens N] [demo [late (after aim)] [tube R [look N]] [pace X] [emin E] [kex T]] [stall N] [low W] [edgeok] (with curve)\n");
 			else
 				localcmd(sprintf("p%g cmd tas optimize %g %s%s\n", tsseat + 1, tsvalue, argv(3), tsline));
 		}

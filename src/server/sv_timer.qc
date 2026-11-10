@@ -269,7 +269,9 @@ float(entity player, float op, float a, float b, vector moves, vector angles, fl
 // P1443: ticks rows of tas_tape words (7 floats) through the mover from the paused body, nothing
 // kept; 13 floats a tick out (origin, velocity, onground, ducked, contact kind and normal, and the
 // first entity per-command QC could act on: a touched solid, a non-world ground, a trigger volume).
-float(entity player, float *rows, float ticks, float *out, optional vector aim, optional float aimgain, optional vector aimface) tas_rollout = #0:tas_rollout;
+float(entity player, float *rows, float ticks, float *out, optional vector aim, optional float aimgain, optional vector aimface, optional float aimlead) tas_rollout = #0:tas_rollout;
+// P1467: count candidates on worker threads (params: 5 floats each -- aim x y z, aimlead, and the ticks run on return)
+float(entity player, float *rows, float ticks, float *out, float count, float *params, float aimgain, vector aimface) tas_rollout_batch = #0:tas_rollout_batch;
 float(optional float timetype) gettime = #519;  // P1443: 1 = wall-clock seconds, to the millisecond (tas rollbench)
 
 /*

@@ -10,7 +10,7 @@ float tasu_open, tasu_nextclick, tasu_frames, tasu_advanced, tasu_dirty;
 var float tasu_mode = TAS_PLAN_HOLD;
 float tasu_forward, tasu_side, tasu_pitch, tasu_yaw, tasu_bits;
 var float tasu_count = 8, tasu_amount = 1, tasu_follow;
-float tasu_tab;
+var float tasu_tab = TAS_TAB_OPTIMIZE;     // P1449: Jargon first (Lex: the workshop was too confusing)
 var float tasu_head = -1, tasu_servermode = -1, tasu_serveramount = -1, tasu_serverfollow = -1;
 vector tasu_servermove, tasu_serverangles;
 float tasu_serverbits;
@@ -305,7 +305,7 @@ void(vector scr) TASUI_Draw =
 	if (seat != 0) return;
 	if (numclientseats > 1 || UI_CursorHeld() != UIC_TAS || rec_sb_open || !LT_StatsAreMine()) { TASUI_Close(); return; }
 	tasu_frames = tasu_frames+1;
-	panelrows = tasu_tab == TAS_TAB_SECTIONS ? 65 : ((tasu_advanced || tasu_tab == TAS_TAB_OPTIMIZE) ? 58 : 46);
+	panelrows = tasu_tab == TAS_TAB_SECTIONS ? 65 : ((tasu_tab == TAS_TAB_OPTIMIZE) ? 50 : (tasu_advanced ? 58 : 46));
 	sc = max(.5,ui_cv_scale);
 	while (sc > .5 && (Font_Px(8*sc)*48 > scr_x-12 || Font_Px(8*sc)*panelrows > scr_y-12)) sc = sc-.5;
 	oldfont = drawfont; Font_Set(ui_font_ui);
@@ -313,19 +313,30 @@ void(vector scr) TASUI_Draw =
 	size = [min(scr_x-8,tsz*48),min(scr_y-8,tsz*panelrows),0];
 	pos = [scr_x-size_x-6,max(4,(scr_y-size_y)*.5),0]; width = size_x-pad*2;
 	sui_begin(scr_x,scr_y); sui_style_panel(pos,size,ceil(pad*.75),.98);
-	sui_text(pos+[pad,pad,0],[tsz*1.25,tsz*1.25],"Surf line editor",SUI_THEME_TEXT,1,0);
+	sui_text(pos+[pad,pad,0],[tsz*1.25,tsz*1.25],(tasu_tab == TAS_TAB_OPTIMIZE) ? "Jargon" : "Manual TAS",
+		(tasu_tab == TAS_TAB_OPTIMIZE) ? SUI_THEME_ACCENT : SUI_THEME_TEXT,1,0);
 	if (Profile_Chip("tasu_close",pos+[size_x-pad-row,pad*.6,0],[row,row,0],"X",tsz,FALSE))
 		{ TASUI_Close(); sui_end(); Font_Set(oldfont); return; }
-	at = pos+[pad,tsz*3,0]; chip = [(width-6*(TAS_TAB_COUNT-1))/TAS_TAB_COUNT,row,0];
-	for (i=0;i<TAS_TAB_COUNT;i=i+1)
+	// P1449: two tabs -- Jargon, and the manual frame-by-frame workshop with its own five under it (Lex, 10 Nov:
+	// "the whole menu wiped and start from scratch")
+	at = pos+[pad,tsz*3,0]; chip = [(width-6)/2,row,0];
+	if (Profile_Chip("tasu_tabj",at,chip,"Jargon",tsz,tasu_tab==TAS_TAB_OPTIMIZE)) TASUI_SelectTab(TAS_TAB_OPTIMIZE);
+	if (Profile_Chip("tasu_tabm",at+[(width+6)/2,0,0],chip,"Manual TAS",tsz,tasu_tab!=TAS_TAB_OPTIMIZE))
+		if (tasu_tab == TAS_TAB_OPTIMIZE) TASUI_SelectTab(TAS_TAB_CONTROLS);
+	if (tasu_tab != TAS_TAB_OPTIMIZE)
 	{
-		label = i == TAS_TAB_CONTROLS ? "Controls" : (i == TAS_TAB_TIMELINE ? "Timeline" : (i == TAS_TAB_SHARED ? "Shared" : (i == TAS_TAB_PROJECT ? "Project" : (i == TAS_TAB_OPTIMIZE ? "Optimizer" : "Sections"))));
-		if (Profile_Chip(sprintf("tasu_tab%g",i),at+[i*(width+6)/TAS_TAB_COUNT,0,0],chip,label,tsz,tasu_tab==i))
-			TASUI_SelectTab(i);
+		at_y = at_y+row+4; chip = [(width-6*4)/5,row,0];
+		for (i=0;i<TAS_TAB_COUNT-1;i=i+1)
+		{
+			label = i == TAS_TAB_CONTROLS ? "Controls" : (i == TAS_TAB_TIMELINE ? "Timeline" : (i == TAS_TAB_SHARED ? "Shared" : (i == TAS_TAB_PROJECT ? "Project" : "Sections")));
+			if (Profile_Chip(sprintf("tasu_tab%g",i),at+[i*(width+6)/5,0,0],chip,label,hint,tasu_tab==i))
+				TASUI_SelectTab(i);
+		}
 	}
 	if (TASUI_UsesTimeline(tasu_tab)) TASTimeline_Pump();
 	if (tasu_tab == TAS_TAB_SECTIONS) TASSections_Pump();
 	at_y = at_y+row+hint; chip = [(width-12)/3,row,0];
+	if (tasu_tab == TAS_TAB_OPTIMIZE) { TASOptUI_Draw(at,width,tsz,hint,row); sui_end(); Font_Set(oldfont); return; }
 	paused = (getstatf(STAT_FS_TASPAUSE) == 1);
 	sui_text(at,[hint,hint],sprintf("%s | tick %.0f | queued %.0f | ASSISTED / PRACTICE",paused?"PAUSED":"PLAYING",getstatf(STAT_FS_TIMERTICKS),getstatf(STAT_FS_TASPENDING)),SUI_THEME_DIM,1,0);
 	at_y = at_y+hint*1.7;
@@ -338,7 +349,6 @@ void(vector scr) TASUI_Draw =
 	if (tasu_tab != TAS_TAB_CONTROLS)
 	{
 		if (tasu_tab == TAS_TAB_SHARED) TASShare_Draw(at,width,tsz,hint,row);
-		else if (tasu_tab == TAS_TAB_OPTIMIZE) TASOptUI_Draw(at,width,tsz,hint,row);
 		else if (tasu_tab == TAS_TAB_PROJECT) TASProject_Draw(at,width,tsz,hint,row);
 		else if (tasu_tab == TAS_TAB_SECTIONS) TASSections_Draw(at,width,tsz,hint,row);
 		else TASTimeline_Draw(at,width,tsz,hint,row);
