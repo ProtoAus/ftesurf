@@ -78,6 +78,8 @@ float as_rbs[TAS_ASMAX], as_need[TAS_ASMAX];
 float as_lowx[TAS_ASMAX];       // a board stretch's `low` weight in 0.25s, doubled by each backtrack its handover caused (0: as_low)
 float as_leadmin[TAS_ASMAX];    // a board stretch's least lead, raised by each try that overshot its point (Lex: ramp 9 to 10)
 float as_rfs[TAS_ASMAX];        // farsh's energy at each stretch's board (as_rf when it was reached)
+float as_hb[TAS_ASMAX];         // a ramp's backtracks for the hops after it falling short (the second goes past it)
+float as_fresh[TAS_ASMAX];      // a backtrack's stretch: its next search starts without its remembered line
 float as_wt[TAS_ASMAX];         // the demo's time there
 float as_wo[TAS_ASMAX * 3];     // its origin
 float as_wn[TAS_ASMAX * 3];     // the face to board ('0 0 1' a hop: a jump there; '0 0 0' any contact)
@@ -711,6 +713,7 @@ void(entity e) SV_TASAutoLink =
 		ps = strcat(ps, sprintf(" kex %.0f", min(TOPT_HMAX, rint((as_wl[i - 1] - e.as_tprev) / PM_TICK) + 15)));   // past the cap: refused (review 13)
 	if (e.as_wide) ps = strcat(ps, " wide");
 	if (as_leadmin[i] > 0 && as_wk[i] == 1) ps = strcat(ps, sprintf(" leadmin %g", as_leadmin[i]));
+	if (as_fresh[i]) { ps = strcat(ps, " fresh"); as_fresh[i] = 0; }   // a backtrack's: not the line that led to it
 	e.as_lmused = as_leadmin[i];
 	cl = sprintf("tas optimize %.0f left curve 12 demo aim late tube %.0f%s%s%s energy fast", h, e.as_tube, e.as_hop ? " hop" : "", ls, ps);
 	}
@@ -737,7 +740,7 @@ void(entity e) SV_TASAutoBacks =
 {
 	local float k;
 	if (e.as_backmax < 0) e.as_backmax = max(6, 2 * as_n);
-	for (k = 0; k < TAS_ASMAX; k = k + 1) { as_rbs[k] = as_need[k] = as_lowx[k] = as_rfs[k] = as_ws[k] = as_leadmin[k] = as_swd[k] = as_fsm[k] = 0; as_fsl[k] = -1; }
+	for (k = 0; k < TAS_ASMAX; k = k + 1) { as_rbs[k] = as_need[k] = as_lowx[k] = as_rfs[k] = as_ws[k] = as_leadmin[k] = as_swd[k] = as_fsm[k] = as_hb[k] = as_fresh[k] = 0; as_fsl[k] = -1; }
 	e.as_failmax = -1; e.as_swph = 0; e.as_redo = 0;
 };
 
@@ -947,7 +950,7 @@ void(entity e) SV_TASAutoFrame =
 			{
 				e.as_backs = e.as_backs + 1; e.as_i = t; e.as_try = 0;
 				for (i = t + 1; i < as_n; i = i + 1) as_need[i] = 0;
-				as_need[t] = max(as_need[t], as_rbs[t] * min(1.08, e.topt_lowneed));
+				as_need[t] = max(as_need[t], as_rbs[t] * min(1.08, e.topt_lowneed)); as_fresh[t] = 1;
 				e.as_tprev = as_wp[t]; e.as_goal = as_ws[t]; e.as_stage = 3;
 				SV_TASAutoNote(e, 1, sprintf("stretch %.0f came in under its platform: backtrack %.0f to stretch %.0f, needing %.0f u/s (it had %.0f)",
 					d + 1, e.as_backs, t + 1, as_need[t], as_rbs[t]));
@@ -960,18 +963,41 @@ void(entity e) SV_TASAutoFrame =
 			// nearer farsh's point and with no speed bar -- the bar made a retry board lower still (surf_null ramp 9 for 10,
 			// 280-333 u under; Lex: the top keeps the height that flight needs)
 			e.as_backs = e.as_backs + 1; e.as_i = e.as_i - 1; e.as_try = 0;
-			as_lowx[e.as_i] = as_lowx[e.as_i] ? as_lowx[e.as_i] * 2 : (e.as_low ? 4 : 2);
+			as_lowx[e.as_i] = as_lowx[e.as_i] ? as_lowx[e.as_i] * 2 : (e.as_low ? 4 : 2); as_fresh[e.as_i] = 1;
 			for (i = e.as_i; i < as_n; i = i + 1) as_need[i] = 0;
 			e.as_tprev = as_wp[e.as_i]; e.as_goal = as_ws[e.as_i]; e.as_stage = 3;
 			SV_TASAutoNote(e, 1, sprintf("stretch %.0f left the guide's path %.0f ticks in, from where the board before put it: backtrack %.0f to stretch %.0f, boarding nearer the guide's point (low %g)",
 				e.as_i + 2, e.topt_earlycut, e.as_backs, e.as_i + 1, 0.25 * as_lowx[e.as_i]));
 			return;
 		}
+		if (e.as_backs < e.as_backmax && e.as_i > 0 && !e.as_route)
+		if (as_wk[e.as_i - 1] == 2)     // nested: as_wk[-1] on stretch 1
+		{	// only hops back to the ramp before them: a hop carries what it is handed (one state, one line), so back to that
+			// ramp needing the guide's energy there -- surf_null's last flight: from farsh's state the hops carried
+			// 3093/3101 and it finished; from the chain's 3059/3064 every line fell short, and one-at-a-time backtracks
+			// replayed the hops. A second time for the same ramp goes to the stretch before it.
+			for (t = e.as_i - 1; t > 0 && as_wk[t] == 2; t = t - 1) ;
+			if (as_wk[t] == 1 && as_rbs[t] > 0)
+			{
+				d = e.as_i;
+				as_hb[t] = as_hb[t] + 1;
+				if (as_hb[t] > 1 && t > 0) t = t - 1;
+				e.as_backs = e.as_backs + 1; e.as_i = t; e.as_try = 0;
+				for (i = t + 1; i < as_n; i = i + 1) as_need[i] = 0;
+				as_need[t] = max(as_need[t], as_rbs[t] * 1.0025);
+				if (as_rfs[t] > as_need[t]) as_need[t] = min(as_rfs[t], as_rbs[t] * 1.03);  // the guide's, 3% a time at most
+				as_fresh[t] = 1;
+				e.as_tprev = as_wp[t]; e.as_goal = as_ws[t]; e.as_stage = 3;
+				SV_TASAutoNote(e, 1, sprintf("stretch %.0f fell short after the hops: backtrack %.0f to stretch %.0f, needing %.0f u/s (it had %.0f, the guide %.0f)",
+					d + 1, e.as_backs, t + 1, as_need[t], as_rbs[t], as_rfs[t]));
+				return;
+			}
+		}
 		if (e.as_backs < e.as_backmax && e.as_i > 0)
 		{	// back one stretch, then further each second time the same stretch fails again: one back at a time spent
 			// 8 backtracks re-doing the stretch before, when the deficit came two or three earlier (full run, 10 Nov)
 			if (e.as_failat == e.as_i) e.as_failn = e.as_failn + 1; else { e.as_failat = e.as_i; e.as_failn = 1; }
-			e.as_backs = e.as_backs + 1; e.as_i = max(0, e.as_i - 1 - floor((e.as_failn - 1) / 2)); e.as_try = 0;
+			e.as_backs = e.as_backs + 1; e.as_i = max(0, e.as_i - 1 - floor((e.as_failn - 1) / 2)); e.as_try = 0; as_fresh[e.as_i] = 1;
 			for (i = e.as_i + 1; i < as_n; i = i + 1) as_need[i] = 0;       // reached from a new state: no bar of their own
 			if (!e.as_route && as_rbs[e.as_i] > 0) as_need[e.as_i] = max(as_need[e.as_i], as_rbs[e.as_i] * 1.0025);
 			// under farsh there: toward 99.5% of his energy, 2% at a time -- a retry from one state replays one line, so
@@ -1061,7 +1087,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		if (n >= as_n) { SV_TASAutoNote(e, 0, "the route changed: restart from the start zone"); return; }
 		for (i = n; i < as_n; i = i + 1)
 		{	// from here on a new attempt: no bars, no "failed from this state", no later stretch's start tick
-			as_need[i] = 0; as_fsl[i] = -1; as_swd[i] = 0; as_leadmin[i] = 0;
+			as_need[i] = 0; as_fsl[i] = -1; as_swd[i] = 0; as_leadmin[i] = 0; as_hb[i] = 0; as_fresh[i] = 0;
 			if (i > n) as_ws[i] = 0;
 		}
 		if (e.as_backmax < 0) e.as_backmax = max(6, 2 * as_n);

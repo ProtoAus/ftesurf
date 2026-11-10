@@ -1248,6 +1248,7 @@ float(float n) SV_TASOptWallTicks =
 // target's row plus the distance off the path -- progress a miss scores by, where the straight
 // distance to a far target says nothing (a ride heading away from the next board, every candidate
 // cut on it the same distance short: board 4, 9 Nov).
+#define TOPT_TUBEEX 200
 float(entity e, float ran) SV_TASOptTubeIn =
 {
 	local float i, j, d, d2, onr, iex, dex, allow;
@@ -1281,8 +1282,11 @@ float(entity e, float ran) SV_TASOptTubeIn =
 		// ramp-1 board at farsh's speed but elsewhere left every ramp-2 candidate cut at the ride's end, tstart11)
 		if (topt_out[i*13+8] == 1) onr = 1;
 		else if (onr) { onr = 0; iex = i; dex = d; }
+		else if (i == 0) { iex = 0; dex = d; }      // a start in the air off the path, as a ride's exit
 		allow = e.topt_tube;
-		if (iex >= 0 && dex > allow) allow = allow + (dex - allow) * max(0, 1 - (i - iex) / max(1, e.topt_tgtj - iex));
+		// TOPT_TUBEEX of slack past the exit's offset: narrowing from the offset itself cut a flight that drifted a
+		// tick past it -- a better ramp-1 board (2720 u/s, the guide 2719) left all 638 ramp-2 lines cut 20 ticks on
+		if (iex >= 0 && dex + TOPT_TUBEEX > allow) allow = allow + (dex + TOPT_TUBEEX - allow) * max(0, 1 - (i - iex) / max(1, e.topt_tgtj - iex));
 		if (d > allow && !(e.topt_tgtuse && vlen(p - e.topt_tgt) < max(2 * e.topt_tube, e.topt_tgtr + e.topt_tube)) && topt_out[i*13+8] != 1) return i;
 		e.topt_tubejend = j;
 		d2 = max(0, topt_dlen[e.topt_tgtj] - topt_dlen[j]) + d;
@@ -2653,11 +2657,11 @@ void(entity e) SV_TASOptReset =
 // tas optimize <ticks> <left|right> [board] [flick [k]] [time] [energy] [fast]
 void(entity e, float argc) SV_TASOptCommand =
 {
-	local float n, dir, i, mode, fk, searches, obj, fast, energy, fixp, kn, tube, hop, look, pace, emin, gens, kex, stall, low, edgeok, ride, wide, leadmin;
+	local float n, dir, i, mode, fk, searches, obj, fast, energy, fixp, kn, tube, hop, look, pace, emin, gens, kex, stall, low, edgeok, ride, wide, leadmin, fresh;
 	local string w;
 	n = stof(argv(2));
 	dir = !strcmp(argv(3), "left") ? 1 : (!strcmp(argv(3), "right") ? -1 : 0);
-	mode = 0; fk = 0; obj = 0; fast = 0; energy = 0; fixp = 0; kn = 0; tube = 0; hop = 0; look = 0; pace = 0; emin = 0; gens = 0; kex = 0; stall = 0; low = 0; edgeok = 0; ride = 0; wide = 0; leadmin = 0;
+	mode = 0; fk = 0; obj = 0; fast = 0; energy = 0; fixp = 0; kn = 0; tube = 0; hop = 0; look = 0; pace = 0; emin = 0; gens = 0; kex = 0; stall = 0; low = 0; edgeok = 0; ride = 0; wide = 0; leadmin = 0; fresh = 0;
 	for (i = 4; i < argc; i = i + 1)
 	{
 		w = argv(i);
@@ -2679,6 +2683,7 @@ void(entity e, float argc) SV_TASOptCommand =
 		else if (w == "low" && (mode & 32) && !low) low = -1;                    // P1449: score lost a unit boarded past/above
 		else if (w == "edgeok" && !edgeok) edgeok = 1;                           // P1449: an edge-bugged reach counts
 		else if (w == "wide" && (mode & 128) && !wide) wide = 1;                 // P1476: wider strafe weaves in flight
+		else if (w == "fresh" && !fresh) fresh = 1;                             // no remembered line among the first candidates
 		else if (w == "leadmin" && (mode & 128) && !leadmin) leadmin = -1;       // P1449: the least lead (an approach along the face)
 		else if (leadmin == -1 && argv(i - 1) == "leadmin" && FS_TASNumber(w) && stof(w) > 0 && stof(w) <= 0.9) leadmin = stof(w);
 		else if (low == -1 && argv(i - 1) == "low" && FS_TASNumber(w) && stof(w) > 0 && stof(w) <= 10) low = stof(w);
@@ -2811,7 +2816,13 @@ void(entity e, float argc) SV_TASOptCommand =
 	}
 	e.topt_bestr2 = -1; e.topt_bests = 0.5;
 	e.topt_mo = e.origin; e.topt_mv = e.velocity; e.topt_kwiden = 0;
-	e.topt_memhit = (kn && (mode & 64)) ? SV_TASOptMemFind(e, e.origin, e.velocity) + 1 : 0;      // slot + 1; 0 none
+	if (fresh && kn && (mode & 64))
+	{	// the remembered line from here led the chain to a failure: forgotten, so a retry without a bar does not replay
+		// it (tdrift8c: ramp 1's 2719 u/s line left every ramp-2 line on a trigger 13 ticks in, and came back each try)
+		i = SV_TASOptMemFind(e, e.origin, e.velocity);
+		if (i >= 0) { topt_memkey[i*9] = topt_memkey[i*9] + 100000; topt_memreach[i] = 0; }
+	}
+	e.topt_memhit = (kn && (mode & 64) && !fresh) ? SV_TASOptMemFind(e, e.origin, e.velocity) + 1 : 0;      // slot + 1; 0 none
 	if (e.topt_memhit && cvar("developer"))
 		sprint(e, PRINT_HIGH, "tas optimize: an earlier search's best line from this state is among the first candidates\n");
 	e.topt_obj = obj; e.topt_seg0 = e.run_t_seg;
