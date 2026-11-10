@@ -86,6 +86,90 @@ void(float base, float n, vector col, float alpha, float halfw) TASOptViz_Line =
 float tov_rn;
 vector tov_rp[TOV_ROUTE];
 float tov_rk[TOV_ROUTE];
+vector tov_rnorm[TOV_ROUTE];   // each point's face (0 0 0 a point, 0 0 1 a bhop floor)
+
+// P1449 route editor (Lex, 10 Nov): noclip round, aim at a route marker, drag it with the left button -- it stays on
+// its own face's plane (on the face itself where the crosshair meets it), a bhop point on its floor, a point on
+// whatever the crosshair hits; the right button removes it. Released, `tas route set` makes it the server's.
+float rte_on;
+var float rte_hover = -1, rte_drag = -1;
+vector rte_pos;
+vector(float k, vector eye, vector fwd) RouteEdit_DragPoint =
+{
+	local vector n, p, q;
+	local float d, t;
+	n = tov_rnorm[k]; p = tov_rp[k]; q = p;
+	traceline(eye, eye + fwd * 8192, MOVE_NOMONSTERS, world);
+	if (n == '0 0 0') return (trace_fraction < 1) ? trace_endpos : p;
+	d = fwd * n;
+	if (fabs(d) > 0.01)
+	{
+		t = ((p - eye) * n) / d;
+		if (t > 0) q = eye + fwd * t;
+	}
+	if (trace_fraction < 1 && trace_plane_normal * n > 0.95 && vlen(trace_endpos - q) < 96) q = trace_endpos;     // the face itself
+	return q;
+};
+void() RouteEdit_Frame =
+{
+	local vector eye, fwd;
+	local float i, d, best;
+	if (!rte_on) { rte_hover = rte_drag = -1; return; }
+	eye = getproperty(VF_ORIGIN);
+	makevectors(getproperty(VF_ANGLES));
+	fwd = v_forward;
+	if (rte_drag >= 0)
+	{
+		if (rte_drag >= tov_rn) { rte_drag = -1; return; }
+		rte_pos = RouteEdit_DragPoint(rte_drag, eye, fwd);
+		return;
+	}
+	rte_hover = -1; best = cos(3 * M_PI / 180);       // the post nearest the crosshair, within 3 degrees
+	for (i = 0; i < tov_rn; i = i + 1)
+		if (tov_rk[i])
+		{
+			d = normalize(tov_rp[i] + '0 0 48' - eye) * fwd;
+			if (d > best) { best = d; rte_hover = i; }
+		}
+};
+float(float evtype, float scanx, float chary, float devid) RouteEdit_InputEvent =
+{
+	local vector n;
+	if (!rte_on) return FALSE;
+	if (evtype == IE_KEYDOWN && scanx == K_MOUSE1 && rte_hover >= 0)
+	{
+		rte_drag = rte_hover; rte_pos = tov_rp[rte_drag];
+		return TRUE;
+	}
+	if (evtype == IE_KEYUP && scanx == K_MOUSE1 && rte_drag >= 0)
+	{
+		n = tov_rnorm[rte_drag];
+		localcmd(sprintf("tas route set %g %.1f %.1f %.1f ", rte_drag + 1, rte_pos_x, rte_pos_y, rte_pos_z));
+		localcmd(sprintf("%.4f %.4f %.4f\n", n_x, n_y, n_z));
+		tov_rp[rte_drag] = rte_pos;       // drawn there until the server's note says where it is
+		rte_drag = -1;
+		return TRUE;
+	}
+	if (evtype == IE_KEYDOWN && scanx == K_MOUSE2 && rte_hover >= 0)
+	{
+		localcmd(sprintf("tas route del %g\n", rte_hover + 1));
+		return TRUE;
+	}
+	if (evtype == IE_KEYUP && scanx == K_MOUSE2 && rte_hover >= 0) return TRUE;
+	return FALSE;
+};
+void(vector scr) RouteEdit_DrawHint =
+{
+	local float tsz;
+	local string s;
+	if (!rte_on) return;
+	tsz = bound(11, scr_y / 72, 20);
+	s = (rte_drag >= 0) ? sprintf("Moving point %g: let go to place it", rte_drag + 1)
+		: ((rte_hover >= 0) ? sprintf("Point %g: drag with the left button, right button removes it", rte_hover + 1)
+		: "Route edit: aim at a marker (noclip to fly round); tas route edit or the tab ends it");
+	sui_roundbox([scr_x * 0.5 - tsz * 17, scr_y * 0.62 - 6, 0], [tsz * 34, tsz + 12, 0], 6, SUI_THEME_PANEL, 0.8);
+	sui_text([scr_x * 0.5 - tsz * 16.4, scr_y * 0.62, 0], [tsz, tsz], s, (rte_drag >= 0 || rte_hover >= 0) ? SUI_THEME_ACCENT : SUI_THEME_DIM, 1, 0);
+};
 
 void() TASOptViz_Draw =
 {
@@ -96,14 +180,16 @@ void() TASOptViz_Draw =
 		shaderforname(TOV_SHADER, "{\ncull disable\n{\nmap $whiteimage\nblendfunc blend\nrgbgen vertex\nalphagen vertex\n}\n}\n");
 		tov_shader = 1;
 	}
+	RouteEdit_Frame();
 	for (i = 0; i < tov_rn; i = i + 1)
 	{	// the route: shown whether or not the search lines are (kind 0: a slot this client never saw)
 		if (!tov_rk[i]) continue;
 		col = (tov_rk[i] == 1) ? SUI_THEME_GOOD : ((tov_rk[i] == 2) ? SUI_THEME_WARN : SUI_THEME_INFO);
+		if (i == rte_hover || i == rte_drag) col = SUI_THEME_ACCENT;
 		R_BeginPolygon(TOV_SHADER, 0);
-		R_PolygonVertex(tov_rp[i], '0.5 0 0', col, 0.9);
-		R_PolygonVertex(tov_rp[i] + '0 0 96', '0.5 0 0', col, 0.9);
-		R_EndPolygonRibbon(5, '0 1 0');
+		R_PolygonVertex((i == rte_drag) ? rte_pos : tov_rp[i], '0.5 0 0', col, 0.9);
+		R_PolygonVertex(((i == rte_drag) ? rte_pos : tov_rp[i]) + '0 0 96', '0.5 0 0', col, 0.9);
+		R_EndPolygonRibbon((i == rte_hover || i == rte_drag) ? 10 : 5, '0 1 0');
 		if (i > 0)
 		if (tov_rk[i - 1])
 		{

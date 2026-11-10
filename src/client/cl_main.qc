@@ -1560,6 +1560,8 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	// Patch 671: the editor also owns jump toggles and their releases.
 	if (ZoneEdit_InputEvent(evtype, scanx, chary, devid))
 		return TRUE;
+	if (RouteEdit_InputEvent(evtype, scanx, chary, devid))     // P1449: the route's drag editor (cl_tasoptviz.qc)
+		return TRUE;
 
 	/*
 	  BUILD 48: the results card, and it sits AHEAD of the leaderboard because it
@@ -2202,6 +2204,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		HUD_Draw(scr);
 		MPad_Draw(scr);                 // Patch 390: after HUD_Draw's clock; both of its paths
 		TASSearch_Draw(scr);            // P1449: the search panel (cl_tasoptui.qc), live: not in the HUD cache
+		RouteEdit_DrawHint(scr);        // P1449: the route drag editor's line (cl_tasoptviz.qc)
 		// Patch 871: hud_fps. These three only draw, so they may be drawn into a target a few
 		// hundred times a second and pasted between (cl_hudcache.qc); the key strip is layer 1.
 		HC_Frame();
@@ -2581,15 +2584,20 @@ float(string cmd) CSQC_ConsoleCommand =
 			else
 				localcmd(sprintf("p%g cmd tas autosurf%s\n", tsseat + 1, tsline));
 		}
-		else if (cmdargc >= 3 && cmdargc <= 9 && !strcmp(argv(1), "route"))      // P1449: add (six numbers), undo, clear, show
+		else if (cmdargc == 3 && !strcmp(argv(1), "route") && argv(2) == "edit")    // P1449: the drag editor, this client's
+		{
+			rte_on = !rte_on;
+			print(rte_on ? "tas route edit: aim at a marker and drag it; right click removes it\n" : "tas route edit: done\n");
+		}
+		else if (cmdargc >= 3 && cmdargc <= 10 && !strcmp(argv(1), "route"))      // P1449: add (six numbers), set (k, six), del (k), undo, clear, show
 		{
 			tsline = "";
 			for (tsi = 2; tsi < cmdargc; tsi = tsi + 1)
-				if ((tsi == 2 && (argv(2) == "add" || argv(2) == "undo" || argv(2) == "clear" || argv(2) == "show")) || (tsi > 2 && FS_TASNumber(argv(tsi))))
+				if ((tsi == 2 && (argv(2) == "add" || argv(2) == "set" || argv(2) == "del" || argv(2) == "undo" || argv(2) == "clear" || argv(2) == "show")) || (tsi > 2 && FS_TASNumber(argv(tsi))))
 					tsline = strcat(tsline, " ", argv(tsi));
 				else tsline = "!";
 			if (substring(tsline, 0, 1) == "!")
-				print("tas route add <x y z> <nx ny nz> | undo | clear | show\n");
+				print("tas route add <x y z> <nx ny nz> | set <k> <x y z> <nx ny nz> | del <k> | undo | clear | show | edit\n");
 			else
 				localcmd(sprintf("p%g cmd tas route%s\n", tsseat + 1, tsline));
 		}

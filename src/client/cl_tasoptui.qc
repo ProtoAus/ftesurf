@@ -164,7 +164,23 @@ void() TASAuto_Event =
 		{
 			for (i = tov_rn; i < rk - 1; i = i + 1) tov_rk[i] = 0;
 			tov_rp[rk - 1] = [stof(argv(5)), stof(argv(6)), stof(argv(7))];
+			tov_rnorm[rk - 1] = [stof(argv(8)), stof(argv(9)), stof(argv(10))];
 			tov_rk[rk - 1] = (stof(argv(10)) >= 0.99) ? 2 : ((stof(argv(8)) == 0 && stof(argv(9)) == 0 && stof(argv(10)) == 0) ? 3 : 1);
+			tov_rn = rk;
+		}
+		else if (k >= 12 && argv(4) == "set" && stof(argv(5)) >= 1 && stof(argv(5)) <= min(rk, TOV_ROUTE))
+		{	// a dragged point (the drag editor, cl_tasoptviz.qc)
+			i = stof(argv(5)) - 1;
+			tov_rp[i] = [stof(argv(6)), stof(argv(7)), stof(argv(8))];
+			tov_rnorm[i] = [stof(argv(9)), stof(argv(10)), stof(argv(11))];
+			tov_rk[i] = (stof(argv(11)) >= 0.99) ? 2 : ((stof(argv(9)) == 0 && stof(argv(10)) == 0 && stof(argv(11)) == 0) ? 3 : 1);
+		}
+		else if (k >= 6 && argv(4) == "removed" && stof(argv(5)) >= 1 && stof(argv(5)) <= tov_rn)
+		{
+			for (i = stof(argv(5)) - 1; i + 1 < tov_rn; i = i + 1)
+			{
+				tov_rp[i] = tov_rp[i + 1]; tov_rnorm[i] = tov_rnorm[i + 1]; tov_rk[i] = tov_rk[i + 1];
+			}
 			tov_rn = rk;
 		}
 		else tov_rn = min(tov_rn, max(0, rk));
@@ -375,6 +391,10 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 		if (tov_rn > 0)
 			if (Profile_Chip("taso_rgo", at + [half + 6, 0, 0], chip, "Surf my route", tsz, FALSE))
 				localcmd(sprintf("tas autosurf route tries %g%s%s\n", taso_tries, bs, taso_hop ? "" : " nohop"));
+			// P1449: the drag editor (cl_tasoptviz.qc): noclip round, aim at a marker, drag it along its face
+			at_y = at_y + row + hint * 0.4;
+			if (Profile_Chip("taso_rte", at, [width, row, 0], rte_on ? "Editing points: drag them, right click removes (done)" : "Edit points: drag them on their ramps", hint, rte_on))
+				rte_on = !rte_on;
 	}
 	else at_y = at_y + row + 3;
 	at_y = at_y + row + hint;

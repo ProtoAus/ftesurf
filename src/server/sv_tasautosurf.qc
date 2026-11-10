@@ -332,7 +332,8 @@ string(entity e, float i) SV_TASAutoEmin =
 	return sprintf(" emin %.1f", x);
 };
 
-// tas route add <x y z> <nx ny nz> | undo | clear | show -- the clicked route `tas autosurf route` surfs.
+// tas route add <x y z> <nx ny nz> | set <k> <x y z> <nx ny nz> | del <k> | undo | clear | show -- the clicked route
+// `tas autosurf route` surfs (set and del: the Optimizer tab's drag editor, cl_tasoptviz.qc).
 void(entity e, float argc) SV_TASRouteCommand =
 {
 	local float i, ad;
@@ -359,12 +360,35 @@ void(entity e, float argc) SV_TASRouteCommand =
 			}
 		}
 	}
+	else if (argc == 10 && argv(2) == "set")
+	{	// a point dragged: its place and the face it boards (the face is the editor's, kept from the click)
+		ad = stof(argv(3));
+		for (i = 3; i < 10; i = i + 1) if (!FS_TASNumber(argv(i)) || fabs(stof(argv(i))) > 65536) i = 100;
+		if (i >= 100 || ad < 1 || ad > rt_n || ad != floor(ad)) { sprint(e, PRINT_HIGH, "tas route set <k> <x y z> <nx ny nz>\n"); return; }
+		i = vlen([stof(argv(7)), stof(argv(8)), stof(argv(9))]);
+		if (i > 0.01 && fabs(i - 1) > 0.02) { sprint(e, PRINT_HIGH, "tas route set: the normal is a unit vector, or 0 0 0 for a point\n"); return; }
+		rt_o[ad*3-3] = stof(argv(4)); rt_o[ad*3-2] = stof(argv(5)); rt_o[ad*3-1] = stof(argv(6));
+		if (i <= 0.01) rt_nn[ad*3-3] = rt_nn[ad*3-2] = rt_nn[ad*3-1] = 0;
+		else { rt_nn[ad*3-3] = stof(argv(7)); rt_nn[ad*3-2] = stof(argv(8)); rt_nn[ad*3-1] = stof(argv(9)); }
+		SV_TASAutoNote(e, e.as_on ? 1 : 0, strcat(sprintf("your route: %.0f points, set %.0f ", rt_n, ad),
+			sprintf("%.1f %.1f %.1f %.4f %.4f %.4f", rt_o[ad*3-3], rt_o[ad*3-2], rt_o[ad*3-1], rt_nn[ad*3-3], rt_nn[ad*3-2], rt_nn[ad*3-1])));
+		return;
+	}
+	else if (argc == 4 && argv(2) == "del")
+	{
+		ad = stof(argv(3));
+		if (ad < 1 || ad > rt_n || ad != floor(ad)) { sprint(e, PRINT_HIGH, "tas route del <k>\n"); return; }
+		for (i = ad * 3 - 3; i < rt_n * 3 - 3; i = i + 1) { rt_o[i] = rt_o[i + 3]; rt_nn[i] = rt_nn[i + 3]; }
+		rt_n = rt_n - 1;
+		SV_TASAutoNote(e, e.as_on ? 1 : 0, sprintf("your route: %.0f points, removed %.0f", rt_n, ad));
+		return;
+	}
 	else if (argc == 3 && argv(2) == "undo") { if (rt_n > 0) rt_n = rt_n - 1; }
 	else if (argc == 3 && argv(2) == "clear") rt_n = 0;
 	else if (argc == 3 && argv(2) == "show")
 		for (i = 0; i < rt_n; i = i + 1)
 			sprint(e, PRINT_HIGH, sprintf("tas route %.0f: %v, %v\n", i + 1, [rt_o[i*3], rt_o[i*3+1], rt_o[i*3+2]], [rt_nn[i*3], rt_nn[i*3+1], rt_nn[i*3+2]]));
-	else { sprint(e, PRINT_HIGH, "tas route add <x y z> <nx ny nz> | undo | clear | show\n"); return; }
+	else { sprint(e, PRINT_HIGH, "tas route add <x y z> <nx ny nz> | set <k> <x y z> <nx ny nz> | del <k> | undo | clear | show\n"); return; }
 	if (ad)
 		SV_TASAutoNote(e, e.as_on ? 1 : 0, strcat(sprintf("your route: %.0f points, added ", rt_n),
 			sprintf("%.1f %.1f %.1f %.4f %.4f %.4f", rt_o[rt_n*3-3], rt_o[rt_n*3-2], rt_o[rt_n*3-1], rt_nn[rt_n*3-3], rt_nn[rt_n*3-2], rt_nn[rt_n*3-1])));
