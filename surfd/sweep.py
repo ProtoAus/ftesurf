@@ -1098,7 +1098,7 @@ def similarity_step(conn, limit=50, max_pairs=200, max_seconds=10.0,
                                        read_budget=reads)
     except Exception as exc:
         print("sweep: similarity step failed: %r" % exc, file=sys.stderr)
-        return 0, 0, ""
+        return 0, 0, "sims unavailable: collection failed (coverage not measured)"
 
 
 def _simcheck():

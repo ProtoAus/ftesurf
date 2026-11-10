@@ -6116,6 +6116,13 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
 
 ## Run and test
 
+- **SQLite refusal controls on Python3.10 (10 Nov 2026).** Initialize only the
+  fixture's empty collector schema before refusing owner setup. Do not assume
+  `conn.set_authorizer(None)` removes a test authorizer on3.10: the subsequent
+  real read was still not authorized. An all-SQLITE_OK callback clears the
+  fixture refusal on supported versions; prove recovery by actually comparing
+  the same pending pair. Keep the first incomplete control as failed evidence.
+
 - **Minimal reader overlays still need their source-contract dependencies (P1359).**
   The focused/held reader fixtures import `surfd/test_sweep.py`, and the full
   recording checker suite reads `src/server/sv_timer.qc`. A flat tools-only
