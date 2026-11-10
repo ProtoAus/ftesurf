@@ -179,6 +179,28 @@ ramp 5, ramps 6-8 with the rising ramps within 1%; placed at the ceiling ramp, r
 with no backtracks (hops and the last ramp above farsh's speed). A full start-box run reached 11 of 17 stretches
 before its backtracks ran out (the budget now scales).
 
+## P1449 Jargon (branch p1449-wall, merged 8cf14308): delivered to both installs 10 Nov ~20:30 local
+
+- Search and chain: soft walls, rides and boards scored (the board must stay on its face min(40, 0.4 x the guide's
+  ride) ticks), placement free above/before the guide's point, `low` 0.5, CEM widening and a per-state memory, a
+  stretch failing from the state it already failed from skips its search, human air points (`tas route here`,
+  autosurf `air`, 200 u, 85% floor). Placed at farsh's state every remaining stretch makes 99-100% of his energy; the
+  full chain still drifts 1-3% (ramp 7's board, after the ramp-6 flight, the worst) -- the open problem.
+- Panel rebuilt (Lex: "way too confusing ... more human"): the TAS panel opens on Jargon -- guide run (leaderboard
+  lines on + KSF replays), its route auto-filled and drawn (ramp faces, numbered handles) and dragged in noclip, surf
+  from the start zone or here, Effort Quick/Normal/Thorough, camera Mine/Overview (third person while it searches,
+  first person while it rides). The old workshop is the "Manual TAS" tab.
+- Search lines as the demo line (tas_viz_style), tas_viz_rate/lines/fade, widths from gl_2dline_width. The reliable
+  stream overflowed a UDP rig client past ~3 KB/s extra: rates above 4 a second are capped there (12 KB/s loopback).
+- One review (frozen 846d5e21): two server crashes (as_wk[-1] on a first-stretch failure -- arm tcrashA crashed,
+  tcrashB "stuck at stretch 1"; jg_ovt[64]), the camera's lifetime, gl_mindist restore, chunked plans, safe names: all
+  fixed in ebb5f9d8.
+- Installed: both installs csprogs 50851dd8 / qwprogs 1e15ff34 (built from 8cf14308, fteqcc 73f9a1a4, 0 warnings;
+  .prev and .pre1449j = dfedbd7e / 1b2e0c00, the P1447/P1448 delivery's); menu.dat unchanged (55d01b52); csprogsvers
+  7f80b5be seeded in both; tasrevd codes.txt 115 -> 116 (.pre1449j). Engine unchanged (P1466/P1467 still need review:
+  without them the QC rolls one candidate at a time and reads no ride-wall bit). Not on the lobbies (TAS is off there).
+  Rig-checked on that exact build (tdeploy1): route auto-filled, stretches reached, no QC error.
+
 ## Next
 
 Point the fast energy search at a surf_null ride (the board and ride, not the drop); then horizons past one 128-tick

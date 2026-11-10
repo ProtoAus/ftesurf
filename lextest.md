@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1449 Jargon -- both installs 10 Nov ~20:30 local (cs 50851dd8 / qw 1e15ff34, main 8cf14308)
+- Open the TAS panel: it opens on Jargon. Turn on a run's line in the leaderboard first and it is listed as a guide
+  run; the route fills in by itself (ramp faces and numbered handles in the world).
+- "Edit in the world": noclip (V), aim at a handle, drag it; "Add air point here" in noclip; "Undo my moves".
+- "From the start zone" with Effort Normal: it should do the start, prestrafe and jump itself and surf.
+- Camera "Overview": third person while it searches (your body at its start), first person while it rides.
+- Settings: tas_viz_rate (lines a second), tas_viz_lines, tas_viz_fade, gl_2dline_width.
+
 ## P1464 join message -- LIVE on 12 lobbies 18:58Z 9 Nov (qw 1b2e0c00, deploy/p1464-lexlist49) + both installs
 - Join a lobby someone else is on (or have a friend join yours): the others see "<name> joined <map>".
 
