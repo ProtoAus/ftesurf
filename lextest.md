@@ -1,5 +1,20 @@
 # lextest.md — things waiting on a human
 
+## P1449 Jargon round 3 -- both installs + lobbies 10 Nov ~22:20 local (cs 01d9d44e / qw 91ef42d5, exe b0349be2)
+- Jargon tab: "Where it boards each ramp" -- Try 5 spots (slower): the panel lists each spot's next-ramp speed and the
+  one it keeps.
+- "Strafing in the air: Wider": flights weave instead of flipping side every frame (needs this exe).
+- Ramp 9 to 10: an overshoot should be followed by "comes in wider (lead 0.5 or more)" and a board.
+- The thinking panel's lines are readable (no tiny stepped-down line); the Edit/Restart help lines are crisp.
+
+## P1449 Jargon -- both installs 10 Nov ~20:30 local (cs 50851dd8 / qw 1e15ff34, main 8cf14308)
+- Open the TAS panel: it opens on Jargon. Turn on a run's line in the leaderboard first and it is listed as a guide
+  run; the route fills in by itself (ramp faces and numbered handles in the world).
+- "Edit in the world": noclip (V), aim at a handle, drag it; "Add air point here" in noclip; "Undo my moves".
+- "From the start zone" with Effort Normal: it should do the start, prestrafe and jump itself and surf.
+- Camera "Overview": third person while it searches (your body at its start), first person while it rides.
+- Settings: tas_viz_rate (lines a second), tas_viz_lines, tas_viz_fade, gl_2dline_width.
+
 ## P1464 join message -- LIVE on 12 lobbies 18:58Z 9 Nov (qw 1b2e0c00, deploy/p1464-lexlist49) + both installs
 - Join a lobby someone else is on (or have a friend join yours): the others see "<name> joined <map>".
 
@@ -45,7 +60,9 @@
   partial; a queued raw/legacy pair split across resumption can still count as uncorrelated afterward. That
   is not proof of injected input. No new detection, input blocking, ranking or enforcement policy ships here.
 
-## P1447 website replays on Strata maps, faster builds -- on main 9 Nov; NOT live until the surfd generation
+## P1447 website replays on Strata maps, faster builds -- LIVE website 10 Nov; human check pending
+- Backend accepted00:24 UTC; public viewer/board assets matched its manifest00:57 UTC. This is deployment,
+  not observed rendering or a new performance measurement. See tools/p1447-p1448-delivery.md.
 - Watch in 3D a run on a Strata map (bhop_ahi, bhop_canals, bhop_2006isback): the map draws instead of "could not be
   drawn". A map with lots of curved ground (ahop_coast, bhop_dunes) builds in a couple of seconds, not ten.
 - Known gaps: decals (overlays) on Strata maps, and df_elco-gbparadise draws no world.
@@ -57,12 +74,17 @@
 - Map changes, quitting and disconnecting should behave as before (the change touches what happens when a map's
   game code unloads).
 
-## P1448 Fetch: any leg, any player, from KSF and Momentum -- on main 9 Nov; NOT live until the surfd generation
+## P1448 Fetch: any leg, any player, from KSF and Momentum -- LIVE website +12 lobbies +both Windows 10 Nov; human check pending
+- Public HTTPS single-leg press00:53 UTC returned202/Momentum queued; unhosted control404. All12 lobbies
+  advertise f87e7c2a/5223474. Both local Windows DAT/LNO sets were hash-verified03:20:55 UTC10Nov.
+  Actual client download/render/Fetch and human acceptance are not inferred; smoke preflight was gated
+  by low memory and a peer fixture, not launched. See tools/p1447-p1448-delivery.md.
 - TAB board (KSF, Momentum or All filter), the menu's leaderboard and the website's map page: press Fetch on a leg
   with no times here yet; the footer says what KSF and Momentum answered. Refresh after a few minutes: times, and
   KSF replays for that leg, arrive in the background. Say if a leg you know exists says "not listed".
 - A profile's Fetch (game and site): stage and bonus records arrive over the next hour or so for a KSF player.
-- Until the new surfd is live, Fetch on a board still queues KSF as before and a profile's Fetch says it failed.
+- Confirm the real in-game/menu responses and eventual upstream arrival; the measured website queue reply
+  does not confirm those or a complete player-profile walk.
 
 ## P1443 tas optimize fast / energy -- LIVE 9 Nov (both installs' exe patch-1443 + QC; lobbies' QC); owner check pending
 

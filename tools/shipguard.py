@@ -232,11 +232,17 @@ DENY_EXACT = {
                                   "content; Explode_Have probes it first. Not ours to redistribute.",
     "sound/weapons/debris1.wav": "P1435: CS:S's fallback explosion sound from the player's mounted "
                                  "Source content; Explode_Have probes it first. Not ours to redistribute.",
+    "models/props/de_dust/dust_crate.mdl": "P1453: the loading screen's sample step name for a CS:S prop "
+                                           "(mounted Source content). Not ours to redistribute.",
+    "models/disres_models/dagger.mdl": "P1453: the loading screen's sample step name for a map's own model "
+                                       "(surf_gigapede's, with the map). Not ours to redistribute.",
 }
 
 # The literal must START WITH the key.  Covers a strcat prefix (`scripts/
 # soundscapes_` + map + `.txt`) as well as a whole subtree.
 DENY_PREFIX = {
+    "cfg/ksfreplays/": "P1448/P1449: KSF replays Fetch downloads per player at runtime; "
+                       "the TAS tools read them there. Never shipped.",
     "gfx/mapshots/": "1.1 GB of generated map photography. Must never ship; "
                      "ui_bgprobe falls back to the mapthumb atlas.",
     "maps/zones/online": "Resolves into the Momentum install, not our tree "

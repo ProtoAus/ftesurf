@@ -16,6 +16,7 @@ import time
 import unittest
 
 import surfd_import_dispatch as dispatch
+import surfd_transition_guard as guard
 
 
 OUT = None
@@ -53,7 +54,7 @@ class DispatchTests(unittest.TestCase):
             (self.home / relative).write_text(
                 "from pathlib import Path\nPath(%r).write_text(__file__)\nVALUE = 42\n" %
                 str(self.marker))
-        self.files = set(dispatch.FILES)
+        self.files = set(guard.FILES)  # Legacy manifests retain their exact six members.
         self.manifest = {"generation": GENERATION, "source_home": str(self.home),
                          "hashes": {}, "routes": {"fixture": [str(Path(sys.executable).resolve()), "-V"]}}
         self.state_write("OPEN")
@@ -110,6 +111,51 @@ class DispatchTests(unittest.TestCase):
         target.write_text(target.read_text() + "import accounts, social\n")
         self.refresh()
 
+    def test_exact_seven_entrypoints_preserve_legacy_six(self):
+        self.assertEqual(dispatch.FILES, guard.FILES | {'momgrab.py'})
+        self.assertEqual(len(guard.FILES), 6)
+
+    def check_momgrab_profile(self, profile, count):
+        self.files = set(guard.CURRENT_FAMILY_FILES) | {'inventory.py', 'playstats.py', 'momprofile.py'}
+        if profile == 'fetch85-v1':
+            self.files.add('fetchq.py')
+        self.assertEqual(len(self.files), count)
+        for relative in self.files:
+            path = self.home / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if not path.exists():
+                path.write_text('# Pinned synthetic runtime member\n')
+        target = self.home / 'momgrab.py'
+        target.write_text("from pathlib import Path\nPath(%r).write_text(__file__)\nVALUE = 42\n" %
+                          str(self.marker))
+        external = self.root / 'external'
+        external.mkdir()
+        self.manifest['external_python'] = {}
+        for name in ('momimport', 'momreimport', 'momreplay'):
+            path = external / (name + '.py')
+            path.write_text('# Pinned synthetic converter\n')
+            self.manifest['external_python'][name] = {'origin': str(path), 'sha256': digest(path)}
+        self.manifest.update(target_schema=26, runtime_profile=profile)
+        self.refresh()
+        self.run_code("import momgrab\nassert momgrab.VALUE == 42\n")
+        self.assertEqual(self.marker.read_text(), str(target), 'selected Mom source did not act')
+        self.marker.unlink()
+        self.state_write('CLOSED')
+        result = self.run_code('import momgrab', False)
+        self.assertIn('admission not OPEN', result.stderr)
+        self.assertFalse(self.marker.exists(), 'CLOSED Mom application ran')
+
+    def test_momgrab_collectors84_open_then_closed(self):
+        self.check_momgrab_profile('collectors84-v1', 84)
+
+    def test_momgrab_fetch85_open_then_closed(self):
+        self.check_momgrab_profile('fetch85-v1', 85)
+
+    def test_momgrab_unsealed_legacy_refuses(self):
+        result = self.run_code('import momgrab', False)
+        self.assertIn('entrypoint not sealed in manifest', result.stderr)
+        self.assertFalse(self.marker.exists(), 'unsealed Mom source ran')
+
     def test_schema20_dependency_origins(self):
         self.schema20()
         self.run_code("import surfd\nassert surfd.VALUE == 42\n")
@@ -152,7 +198,7 @@ class DispatchTests(unittest.TestCase):
         self.schema20()
         self.files.remove("social.py")
         self.refresh()
-        self.refused('exact schema20 raw hash set required')
+        self.refused('exact schema20/profile raw hash set required')
 
     def test_closed(self):
         self.state_write("CLOSED")
@@ -230,7 +276,7 @@ class DispatchTests(unittest.TestCase):
         self.assertFalse(list(self.legacy.rglob("*.pyc")))
 
     def test_all_six_script_main_argv(self):
-        for relative in sorted(dispatch.FILES):
+        for relative in sorted(guard.FILES):
             path = self.home / relative
             path.write_text("import sys\nassert __name__ == '__main__'\n"
                             "assert __spec__ is None\nassert sys.argv[1:] == ['fixed', 'argument']\n"
@@ -238,7 +284,7 @@ class DispatchTests(unittest.TestCase):
                             "assert __file__ == %r\nprint('SCRIPT ACTED')\n" %
                             (str(self.legacy / relative), str(path)))
         self.refresh()
-        for relative in sorted(dispatch.FILES):
+        for relative in sorted(guard.FILES):
             result = subprocess.run([sys.executable, "-B", str(self.legacy / relative),
                                      "fixed", "argument"], cwd=self.legacy,
                                     capture_output=True, text=True, timeout=10)

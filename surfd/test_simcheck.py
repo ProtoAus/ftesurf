@@ -34,6 +34,8 @@ likely to be wrong:
 
 import importlib
 import atexit
+import contextlib
+import io
 import logging
 import os
 import shutil
@@ -469,6 +471,52 @@ check("--sims 0 disables the step: nothing said", cron(EMPTY3, sims=0), (0, "not
 rc3, line3 = cron(os.path.join(REPO, "tools"))
 check("CONTROL: the same tick with recsim deployed stores the pair",
       (rc3, line3.startswith("nothing to verify sims +1 "), nsims()), (0, True, 1))
+
+print("\n--- 9a. owner setup failure is unavailable, not a silent tick ---")
+
+surfd, sweep, simcheck, conn, runs, home = fresh()
+simcheck.ensure_schema(conn)
+for leaf, player in (("0001000_proto-26c95e00_run.rec", "pa"),
+                     ("0001100_kap-ab9ae4aa_run.rec", "pb")):
+    write_rec(runs, "surf_unavailable", leaf, big)
+    add_replay(conn, "surf_unavailable", leaf, player)
+verdicts = [tuple(row) for row in conn.execute("SELECT * FROM verdicts")]
+owner_calls = []
+
+
+def refuse_owner_setup(action, arg1, arg2, database, trigger):
+    if action == sqlite3.SQLITE_PRAGMA and arg1 == "busy_timeout":
+        owner_calls.append(arg1)
+        return sqlite3.SQLITE_DENY
+    return sqlite3.SQLITE_OK
+
+
+conn.set_authorizer(refuse_owner_setup)
+try:
+    diagnostic = io.StringIO()
+    with contextlib.redirect_stderr(diagnostic):
+        failed_step = sweep.similarity_step(conn, limit=10)
+    truthy("CONTROL: real SQLite refused the attempted owner setup", owner_calls)
+    check("a failed attempted collection carries its unavailable summary", failed_step,
+          (0, 0, "sims unavailable: collection failed (coverage not measured)"))
+    truthy("the original stderr diagnostic is retained",
+           "sweep: similarity step failed:" in diagnostic.getvalue())
+    calls = len(owner_calls)
+    check("explicit zero-pair disable remains silent", sweep.similarity_step(conn, max_pairs=0),
+          (0, 0, ""))
+    check("disabled collection attempts no owner SQL", len(owner_calls), calls)
+finally:
+    # Python 3.10 does not support None as the authorizer-disabling API.
+    conn.set_authorizer(lambda *args: sqlite3.SQLITE_OK)
+check("failed collection stored no observations", conn.execute("SELECT COUNT(*) FROM sims").fetchone()[0], 0)
+check("failed collection moved no verdict", [tuple(row) for row in conn.execute("SELECT * FROM verdicts")], verdicts)
+previous_timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
+recovered = sweep.similarity_step(conn, limit=10)
+truthy("CONTROL: the SAME pending real pair is collected after refusal clears", recovered[0] > 0)
+truthy("the recovered collection reports measured pairs", recovered[2].startswith("sims +"))
+check("the recovered owner scope restores its busy timeout",
+      conn.execute("PRAGMA busy_timeout").fetchone()[0], previous_timeout)
+check("recovery still moves no verdict", [tuple(row) for row in conn.execute("SELECT * FROM verdicts")], verdicts)
 
 print("\n--- 10. the comparisons hold no write lock ---")
 

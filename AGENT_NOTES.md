@@ -6116,6 +6116,13 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
 
 ## Run and test
 
+- **SQLite refusal controls on Python3.10 (10 Nov 2026).** Initialize only the
+  fixture's empty collector schema before refusing owner setup. Do not assume
+  `conn.set_authorizer(None)` removes a test authorizer on3.10: the subsequent
+  real read was still not authorized. An all-SQLITE_OK callback clears the
+  fixture refusal on supported versions; prove recovery by actually comparing
+  the same pending pair. Keep the first incomplete control as failed evidence.
+
 - **Minimal reader overlays still need their source-contract dependencies (P1359).**
   The focused/held reader fixtures import `surfd/test_sweep.py`, and the full
   recording checker suite reads `src/server/sv_timer.qc`. A flat tools-only
@@ -10385,6 +10392,15 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+- **Private JSON modes and kernel read-only mounts are separate (10 Nov 2026).**
+  A staged controller manifest at0400 failed the unchanged CLI's private-JSON0600
+  predicate before either candidate could start. Correct only the owned unused
+  manifest's mode after proving original bytes/inode/epoch and no grants or
+  receipts; do not reset state or relax the parser. Keep kernel manifestRO checks.
+  Qualify an artifact with its actual consuming CLI, not only a permissive reader.
+  Preserve the failed attempt; a bounded continuation must revalidate original
+  dependencies/DATA and restore only its exact owned parking on known failure.
+
 - **A CLOSED process is not a CLOSED HTTP application (9 Nov).** Starting an
   authorized candidate under a process-lifetime lease does not fence its requests.
   `surfd_http_admission.py` uses the selected Gunicorn config's post-worker hook;
@@ -10393,6 +10409,18 @@ script rather than passing it as an argument, where `ps` would show it.
   before application entry while CLOSED. Use a new sealed generation and qualify
   the actual prior application on the same schema/nonempty queues before stopping
   serving. Never mutate an old generation or relabel a failed DATA comparison.
+- **Current wrapper targets are not the legacy schema hash set (9 Nov).**
+  The dispatcher must render seven targets including the persistent `momgrab.py`
+  importer, but schema19/20 keep their exact original six/eight dependency sets.
+  Require the requested target in the selected manifest before compilation. Real
+  synthetic collectors84/fetch85 Mom imports must act OPEN and refuse CLOSED;
+  an unsealed legacy Mom target must refuse before its marker. Check renderer
+  coverage before preparing a cutover, not after stopping the current importer.
+- **A new host directory can still be read-only in the service namespace.**
+  Probe the actual PID's mount flags, with an existing writable state as control.
+  New nested generation state needs explicit writable scope plus immutable manifest
+  pins; the fixed one-plain-root/five-pin installer cannot represent every layout.
+  Do not assume host writes, old epoch preflight or source RO proves new state RW.
 - **Persistent request workers need exception-safe lock ownership (9 Nov).**
   `lock_file` must close a locally opened fd when metadata/fstat validation raises;
   its caller cannot close a descriptor that was never returned. Synthetic invalid

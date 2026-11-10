@@ -179,6 +179,49 @@ ramp 5, ramps 6-8 with the rising ramps within 1%; placed at the ceiling ramp, r
 with no backtracks (hops and the last ramp above farsh's speed). A full start-box run reached 11 of 17 stretches
 before its backtracks ran out (the budget now scales).
 
+## P1449 Jargon (branch p1449-wall, merged 8cf14308): delivered to both installs 10 Nov ~20:30 local
+
+- Search and chain: soft walls, rides and boards scored (the board must stay on its face min(40, 0.4 x the guide's
+  ride) ticks), placement free above/before the guide's point, `low` 0.5, CEM widening and a per-state memory, a
+  stretch failing from the state it already failed from skips its search, human air points (`tas route here`,
+  autosurf `air`, 200 u, 85% floor). Placed at farsh's state every remaining stretch makes 99-100% of his energy; the
+  full chain still drifts 1-3% (ramp 7's board, after the ramp-6 flight, the worst) -- the open problem.
+- Panel rebuilt (Lex: "way too confusing ... more human"): the TAS panel opens on Jargon -- guide run (leaderboard
+  lines on + KSF replays), its route auto-filled and drawn (ramp faces, numbered handles) and dragged in noclip, surf
+  from the start zone or here, Effort Quick/Normal/Thorough, camera Mine/Overview (third person while it searches,
+  first person while it rides). The old workshop is the "Manual TAS" tab.
+- Search lines as the demo line (tas_viz_style), tas_viz_rate/lines/fade, widths from gl_2dline_width. The reliable
+  stream overflowed a UDP rig client past ~3 KB/s extra: rates above 4 a second are capped there (12 KB/s loopback).
+- One review (frozen 846d5e21): two server crashes (as_wk[-1] on a first-stretch failure -- arm tcrashA crashed,
+  tcrashB "stuck at stretch 1"; jg_ovt[64]), the camera's lifetime, gl_mindist restore, chunked plans, safe names: all
+  fixed in ebb5f9d8.
+- Installed: both installs csprogs 50851dd8 / qwprogs 1e15ff34 (built from 8cf14308, fteqcc 73f9a1a4, 0 warnings;
+  .prev and .pre1449j = dfedbd7e / 1b2e0c00, the P1447/P1448 delivery's); menu.dat unchanged (55d01b52); csprogsvers
+  7f80b5be seeded in both; tasrevd codes.txt 115 -> 116 (.pre1449j). Engine unchanged (P1466/P1467 still need review:
+  without them the QC rolls one candidate at a time and reads no ride-wall bit). Not on the lobbies (TAS is off there).
+  Rig-checked on that exact build (tdeploy1): route auto-filled, stretches reached, no QC error.
+
+## P1449 Jargon, rounds 2-3 + P1476 (main 8d8fd18d): both installs and the 12 lobbies, 10 Nov ~22:20 local
+
+- Lex's asks of 10 Nov: overshoot on ramp 9 to 10 (a board that flies past its point along the ramp's run by 100+ u
+  raises that stretch's least lead to 0.5, 0.7, 0.8: tchain15 overshot 788/786 u, then reached at 0.7); no "hyper
+  wiggle" (Wider strafing: engine P1476 AIMWIDE, side flips a stretch 12 -> 4, 46 -> 8); "more points on the ramp"
+  (`spots`: the guide's spot, 160 u back/on along the edge, 96 u up, the top-back corner, each on the guide's own plane,
+  searched with the next stretch and the best next-ramp energy kept; tspots2 kept a non-guide spot on 4 of 7 swept
+  ramps, e.g. further along +28 and +21 u/s, higher where the guide's spot missed); panel text at native sizes.
+- Reviews: round 2 (818067fa + engine 231f02a7b) -- `redo 0` read as_ws[-1] (server down), previews clobbered the
+  chain's options, redo kept the failed-state memory, the editor camera outlived a map load; engine: the hold capped at
+  half the aim gain. Round 3 (50a97b15..544ec249) -- a stale as_redo, chip ids shared with the stretch buttons, a raised
+  lead skipped as "failed again", spots on a parallel plane. All fixed (eb900d62, 887e1a213, ed63d469); rig tspots1 found
+  one more (as_swv[5], no short-circuit), fixed before 544ec249.
+- Engine: patch-1476 = 0b223e614 (P1476/P1467/P1466 on patch-1475), both installs' client exe b0349be2, plugin 8204a248
+  kept (same sources); rig tspots1/2/3 ran that exact exe (client and server), rollouts bit-equal, 62 batches a search
+  on the worker threads.
+- Installed: csprogs 01d9d44e / qwprogs 91ef42d5 (8d8fd18d, fteqcc 73f9a1a4, 0 warnings) in both installs (.prev =
+  50851dd8 / 1e15ff34) and on the 12 lobbies (nobody on; .prev = dfedbd7e / 1b2e0c00); menu.dat unchanged (55d01b52);
+  csprogsvers b40dd39f seeded in both installs; tasrevd codes.txt 116 -> 117 (.pre1476). Rig tspots3 ran
+  these bytes: a sweep, its redo with the kept spot, `redo 0` refused, no QC error. Release 0.1.44 carries this set.
+
 ## Next
 
 Point the fast energy search at a surf_null ride (the board and ride, not the drop); then horizons past one 128-tick

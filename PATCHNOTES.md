@@ -21,6 +21,23 @@
 
 ## next
 
+## 0.1.44 2026-11-10
+
+### P1475 Water reflections stay put while you move
+- Between redraws, a water reflection or refraction is now shifted by how far you have moved, using each pixel's own depth, so it no longer slides off the water's edges at lower capture rates. r_captureparallax 0 turns it off.
+
+### P1474 Smoother frames over water: captures take turns
+- Water's reflection and refraction are now redrawn on different frames instead of the same one, so a frame that redraws water carries one extra scene instead of two. r_capturestagger 0 brings back the old behaviour.
+
+### P1472 No frame cap below the server's tick rate
+- While playing, a cl_maxfps under the server's tick rate (66.67 on surf, 100 on bhop) is raised to it, so every physics tick gets its own input. Uncapped (0), menus and demos are unchanged.
+
+### P1470 r_projection works again
+- r_projection 1-6 (fisheye, panini, panoramic, equirectangular and the rest) draw again with anti-aliasing and render scale on, instead of filling the console with errors at a few frames a second.
+
+### P1465 / P1463 / P1457 See-through surfaces sorted faster
+- Maps with many overlapping see-through surfaces (surf_fairy) spend much less time ordering them each frame: sorts that cannot succeed are skipped and off-screen faces are left out. The picture is the same.
+
 ### P1464 Join message names the map
 - When someone joins a lobby, the others now see "<name> joined <map>" instead of "server: <name> joined".
 
@@ -57,11 +74,12 @@
 ### P1451 No string-cleanup hitch early in each map
 - The memory the game code's string cleanup works in is now set up while the map loads, so the first cleanup of each map, usually during your first run, no longer stutters for it.
 
-### P1449 TAS: autosurf a replay, and an Optimizer tab
-- The TAS editor has an Optimizer tab (or type tas optimizer): pick a replay for the map and press Autosurf from here, and the bot searches its way ramp by ramp along that route.
-- A stretch that fails is tried again, and if it keeps failing the bot goes back and searches the stretch before it; the tab shows which stretch it is on.
-- The bot follows the replay's own strafing, lands parallel on the next ramp's face, and hops bhop platforms at their far end.
-- One stretch at a time: aim at a ramp, press Target at crosshair, then Optimize toward it. The search draws its candidates, its best line and the line it plays.
+### P1449 Jargon: a bot that surfs a map from a leaderboard run
+- The TAS menu's Jargon tab: pick one of the leaderboard lines you have on as the guide, and Jargon surfs the map ramp by ramp along it, searching each ramp's board and flight. Manual TAS keeps the old tools.
+- The route is drawn in the world: ramps as see-through planes, boarding points as handles. Edit closes the panel to fly around and drag them; Esc brings it back. You can also place air points to steer a flight.
+- Effort (Quick, Normal, Thorough) sets how hard each ramp is searched. A ramp that keeps failing sends it back to the one before; when it overshoots a ramp, it comes in wider on the next try.
+- Strafing in the air: Tight, or Wider so it does not flip left and right every frame. Where it boards: the guide's spot, or try 5 spots on each ramp and keep the one that carries the most speed to the next ramp.
+- Restart from the start zone, go from where you are, or redo from any stretch. Watch the search lines live, from your view or an overview camera that follows the line, with a thinking panel.
 - These are local practice tools: they are refused on the lobby servers.
 
 ### P1447 Website replays play on Strata maps, and load faster
@@ -69,7 +87,8 @@
 - Maps with lots of curved terrain build up to 5x faster in the viewer (ahop_coast 11 s to 2 s).
 
 ### P1446 Smaller stutters every 15-20 seconds, on every map
-- The game code's string cleanup used to freeze one or two frames every 15-20 seconds while it copied and freed a large block of memory. It now keeps that memory between cleanups: the slowest frame it causes went from 7.5-12 ms to 4.5-6.4 ms on surf_nuclear, and the same applies on every map.
+- The game code's string cleanup used to freeze one or two frames every 15-20 seconds while it copied and freed a large block of memory.
+- It now keeps that memory between cleanups: the slowest frame it causes went from 7.5-12 ms to 4.5-6.4 ms on surf_nuclear, and the same applies on every map.
 - `r_spikes` (see P1444) now also shows what the slow frames did in prediction and network handling, and `r_spikes 2` names the game-code functions behind a slow frame.
 
 ### P1448 Fetch: any leg, any player, from KSF and Momentum

@@ -1,6 +1,26 @@
 # Backend generation swap: P996 (25 Oct 2026) -- the procedure as run
 
-> **P1434 backend delivery, verified 9 November 2026 at 04:20:08 UTC:**
+> **P1447/P1448 paired backend delivery, accepted10 November2026 00:24:39 UTC:**
+> primary `bf18baf8c88731e44d3eb37dca37587abba59cde` OPEN; predecessor and new
+> conservative fallback CLOSED. Explicit runtime85/external3, actual namespace,
+> dependencies, CLOSED ordinary-request fencing and fresh acceptance verified.
+> Same CURRENT inode/schema26/original44 DATA policy/eight identities preserved;
+> only the two declared optional queues allowed, existing queue DATA retained.
+> No old DB restore or original grant reset. All12 lobby QC updated and all198
+> recorder/resume prefixes unchanged; both local Windows DAT/LNO copies promoted
+> and hash-verified03:20:55 UTC10Nov in an owned brief fixture window, with native/
+> plugins/configs unchanged. Actual client smoke remains memory/fixture gated.
+> Website asset hashes and one real public Fetch
+> accepted; human Strata/Fetch/download checks are not inferred.
+> **Retain BOTH** `/srv/nvme/agent-work/ac-resume-20261109T0300Z-c2aa/http-admission/`
+> `fenced-primary-seven/` and `fenced-fallback-seven/` including runtime/control/
+> state, plus all predecessor dependencies and original failure/receipt history.
+> Qualified rollback is code-only against CURRENT data; never reopen/reset an old
+> grant or restore an old DB. This is a dated snapshot, not new detector/formal
+> credit. Inspect the actual live tuple before later work; do not replay healthy
+> activation. Details/remaining checks: [paired delivery](p1447-p1448-delivery.md).
+>
+> **Historical P1434 delivery, verified 9 November 2026 at 04:20:08 UTC:**
 > accepted primary OPEN after the existing guarded activation completed at
 > 04:15:00 UTC. Runtime84/external3 and the input-diagnostics reader delivery
 > were verified in the actual namespace. The SAME current database inode/schema26

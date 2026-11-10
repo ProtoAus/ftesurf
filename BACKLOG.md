@@ -265,6 +265,26 @@
   face order identical in 6 traced views, transparent ~0.1-0.2 ms less at fairy t=7.6 (worst view now 1.63 ms, was
   2.31 before P1457). What is left in a failing sort: plane-side tests (~20k units), pass-0 verdicts, projection.
   Bigger fairy lever now: csqc 2.4-4.3 ms on paused views (glare rays, Lex's budget call).
+  P1474 + P1475 INSTALLED 10 Nov (both installs exe 50db36e1 + hl2 plugin 8204a248, patch-1475): captures
+  staggered (r_capturestagger) and moved with the eye (r_captureparallax). At the 300 cap no lows change on
+  nuclear (capture frames fit); uncapped stagger 1% 160 -> 217. r_capturerate 30 vs 60 at the cap: 60 kept.
+  Open: one parallax step leaves a third of the error on 64-unit slides; vmt/lmreflect glass is turned only;
+  moving the capture's CPU prep to a worker (Lex asked) needs a thread-safe world walk -- not now.
+  P1470 + P1472 INSTALLED 10 Nov (both installs exe 87c31448, patch-1472): r_projection 1-6 draw under MSAA and
+  render scale; cl_maxfps floors at 1/pm_ticrate while playing (Lex: nobody plays below 66 fps). Smoke on pantheon:
+  30 -> 15.28 ms, 100 -> 10.01 ms, uncapped 298 fps; six projections + renderscale 2 drawn, 0 GL error lines.
+  P1473 r_framewarp PARKED (branch p1473-framewarp): a Reflex-2-style rotation warp needs input read mid-frame, and an
+  early WM_INPUT pump breaks P1424/P307's raw-vs-legacy pairing (handling-time windows). First make that pairing use
+  message arrival time; see tools/p1473-claim.md.
+  P1468 PARKED (measured): compact arrays for the hl2 world walk's marks changed nothing on pantheon's PrepareFrame
+  (0.39/0.41/0.39, 0.25/0.22/0.22 ms, cvar A/B/A); branch p1468-walkarrays. Next CPU lead from the profiles: screen
+  copies (MSAA resolve + CopyTexSubImage under T_Gen_CurrentRender/ScreenWater) ~6% of pantheon's frame in the driver.
+  P1465 INSTALLED 10 Nov (both installs exe 95429e85, patch-1465): failure certificates (a failed sort's pass-1
+  and pass-2 cycle or barrier crossing, re-proved each view; ~19 of 20 fairy failures are pass 1 crossing a barrier,
+  not a cycle) and the clip-volume cull. Paused t=7.6 transparent 1.38 -> 0.56 ms; verify 0 wrong, a mutant 1223.
+  Replay lows NOT claimed: on 1% 110/109/107 0.1% 95/90/88 vs off 109/106 87/84 (third off run failed to start,
+  machine short of memory) -- rerun 3+3 on fairy when the machine is quiet. Timer split of a failing sort (trace-only
+  build, artifacts/diag1465.diff): plane-side 0.22, pass-0 verdicts 0.33 (projection 0.14), lazy pass 1 0.11 ms.
 - NEXT for water capture frames (why P1455 could not help: a one-view capture frame still costs 3.2-4 ms against
   3.3 at a 300 cap; sys_framepacing 5 already plans by the slowest of 64 frames, so pacing cannot help a frame longer
   than the interval). Each nested view spends ~1 ms in the hl2 plugin's PrepareFrame because (a) gl_rmain.c ~1760
