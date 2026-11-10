@@ -1274,9 +1274,10 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		if ((e.topt_tgtn_x || e.topt_tgtn_y) && e.topt_tgtn_z < 0.99)      // a face, not a hop's floor (as the hop tests)
 		{
 			SV_TASOptBoardAt(e, bk);
-			// past or above the point: W a unit; before or below it, half that beyond 200 u (Lex: boarded way too low on
-			// ramp 7, the rest was next to impossible -- a little lower and earlier than farsh is free)
-			d = d - e.topt_low * (max(0, e.topt_bal) + max(0, e.topt_bup) + 0.5 * (max(0, -e.topt_bal - 200) + max(0, -e.topt_bup - 200)));
+			// past or above the point: W a unit; before or below it, half that beyond 100 u -- the demo's board point is
+			// the reference every way (Lex: too far along ramp 6, way too low on 7; on 11 the tip, its whole face to drop
+			// and turn parallel to the platforms -- boarded 288 along and 247 under it, the platforms were missed)
+			d = d - e.topt_low * (max(0, e.topt_bal) + max(0, e.topt_bup) + 0.5 * (max(0, -e.topt_bal - 100) + max(0, -e.topt_bup - 100)));
 		}
 		if (e.topt_tgtn_z >= 0.99 && e.topt_tube > 0 && e.topt_tgtj + 4 < e.topt_dn)
 		{	// a hop keeps its horizontal velocity for the next flight: off the demo's heading after its own

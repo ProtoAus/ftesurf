@@ -28,8 +28,9 @@
 // (pace): the full runs stuck at surf_null's ramp 10 (Lex's count) arriving 345 u under farsh's line at his speed,
 // 3.4% short of his energy -- energy is what makes a map (Lex), the time a stretch takes much less.
 .float as_polish;
-// `low`: a board stretch's search pays 0.1 a unit boarded past the demo's board point along the ramp's run or above
-// it up the face (optimize `low`; Lex, 10 Nov: board a ramp low and early, on its side)
+// `low`: a board stretch's search pays 0.25 a unit boarded past the demo's board point along the ramp's run or above
+// it up the face, half that before or below it beyond 100 u (optimize `low`; Lex, 10 Nov: where farsh boards -- 0.1
+// let ramp 11 be boarded 288 u along and 247 u under the tip, and the platform pair after it was missed)
 .float as_low;
 .float as_backhead, as_backfail;   // the head at the last rewind request, and requests since it last moved
 .float as_failat, as_failn;            // the stretch that last failed its tries, and how many times in a row
@@ -412,7 +413,7 @@ void(entity e) SV_TASAutoLink =
 	// a retry searches longer: 30 generations more a try (the pillar stretch's narrow line came in some searches only)
 	ps = strcat(ps, sprintf(" gens %.0f", e.as_polish ? 90 : min(90, 30 * (1 + e.as_try))));
 	if (e.as_polish && e.as_try < e.as_tries - 1) ps = strcat(ps, " stall 20");
-	if (e.as_low && as_wk[i] == 1) ps = strcat(ps, " low 0.1");
+	if (e.as_low && as_wk[i] == 1) ps = strcat(ps, " low 0.25");
 	if (e.as_rideknots && i > 0)
 	if (as_wk[i - 1] == 1 && as_wl[i - 1] > e.as_tprev)
 		ps = strcat(ps, sprintf(" kex %.0f", min(TOPT_HMAX, rint((as_wl[i - 1] - e.as_tprev) / PM_TICK) + 15)));   // past the cap: refused (review 13)
