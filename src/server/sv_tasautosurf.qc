@@ -76,13 +76,13 @@ float as_rmin;                  // the nearest-row search starts here (a full-ru
 .float as_ctrack, as_cleg;      // the chain's course: track (0 main, k bonus k), leg (0 the whole track, k stage k); -1 none
 .float as_saved;                // the furthest stretch autosaved for Continue (-1 none)
 .float as_esc;                  // P1478: effort steps a stuck course chain has taken by itself (2 at most)
-.float as_coastf;
-.float as_cseed;
+.float as_coastf;              // coasts predicted into a wrong teleport this chain (a reach resets as_try: rig t2chain10 looped)
+.float as_cseed;               // P1483: Continues of this course this session (a Continue after "stuck" searched exactly as before: review F)
 float as_visit[TAS_ASMAX];      // P1483: searches of each stretch this chain (in the seed)
 float(entity e, float i) SV_TASAutoSeedOf =
 {	// under 1e6 (the optimizer's limit): try < 10, backs <= 200, esc <= 2, cseed <= 9, visits mod 13
 	return e.as_try + 10 * min(200, e.as_backs) + 2100 * min(2, e.as_esc) + 7000 * min(9, e.as_cseed) + 70000 * (as_visit[i] - 13 * floor(as_visit[i] / 13));
-};                // P1483: Continues of this course this session (a Continue after "stuck" searched exactly as before: review F)
+};
 // P1483 `beam`: after a stretch reaches, its search's kept candidates (SV_TASOptArcKeep, up to TOPT_ARCN) are each played
 // from the stretch's start and judged by a quick search of the stretch after; the best is played again and the chain goes
 // on from it -- a board that wins now and leaves the next ramp unmakeable loses (surf_shape bonus 1: stretch 1 boarded
@@ -101,7 +101,7 @@ vector as_bmmo, as_bmmv, as_bmtgt;
 float as_prs[TAS_ASMAX], as_prkd[TAS_ASMAX], as_prk[TAS_ASMAX * TOPT_KMAX], as_prt[TAS_ASMAX], as_prw[TAS_ASMAX];
 float as_prp[TOPT_KMAX], as_prpkd, as_prpi, as_prpsh;  // the last reach's line, kept as its stretch's prior once the next reaches
 // P1483: the older repair rules, each switched off by a bit of tas_jargon_off for the benchmark (P1478 tools/jgbench.py)
-float(float b) SV_TASAutoRule = { return !(cvar("tas_jargon_off") & b); };               // coasts predicted into a wrong teleport this chain (a reach resets as_try: rig t2chain10 looped)
+float(float b) SV_TASAutoRule = { return !(cvar("tas_jargon_off") & b); };
 .float as_fromstart;            // the chain began at the course's start box (a Start or a Continue): only these autosave
 .float as_savedold, as_keepsaid; // a saved run of this course that got further (its stretch), and the note that kept it said
 .float as_finrec;               // run_t_finrec when the chain began: a finish since counts (a stage's hands over to the next arm)
@@ -326,6 +326,37 @@ void() SV_TASAutoMoved =
 };
 
 // from < 0: from the sample nearest the body; else from that sample (the preview's: the start box's exit)
+// the guide's velocity heading change from row j-1 to j (0 under 200 u/s, where a heading is noise)
+float(float j) SV_TASAutoHeadD =
+{
+	local float d;
+	if (vlen([as_rows[j*7+4], as_rows[j*7+5], 0]) < 200 || vlen([as_rows[j*7-3], as_rows[j*7-2], 0]) < 200) return 0;
+	d = vectoyaw([as_rows[j*7+4], as_rows[j*7+5], 0]) - vectoyaw([as_rows[j*7-3], as_rows[j*7-2], 0]);
+	return d - 360 * floor((d + 180) / 360);
+};
+// P1483: a flight that turns 90 degrees or more gets an air point where half of its turn is done -- surf_shape bonus 1
+// turns 237 degrees in one 1.4 s flight and every line flew straight on, 1522 u past ramp 2; surf_tensor2 stage 5's
+// stretch 4 is an S (-73 then +172) whose lines fell into the fail teleport on the first swing (tools/jgturns.py).
+// Progress is signed: an S's swing the other way is not half the turn. tas_jargon_off 512: none.
+void(float a, float b) SV_TASAutoTurn =
+{
+	local float j, c, tot;
+	if (as_rows[b*7] - as_rows[a*7] < 0.6 - 0.0001) return;
+	tot = 0;
+	for (j = a + 1; j <= b; j = j + 1) tot = tot + SV_TASAutoHeadD(j);
+	if (fabs(tot) < 90) return;
+	c = 0;
+	for (j = a + 1; j <= b; j = j + 1)
+	{
+		c = c + SV_TASAutoHeadD(j);
+		if (c * tot >= 0.5 * tot * tot) break;
+	}
+	if (j > b) return;
+	if (as_rows[j*7] - as_rows[a*7] < 0.25 - 0.0001 || as_rows[b*7] - as_rows[j*7] < 0.25 - 0.0001) return;     // the board's own turn
+	SV_TASAutoAdd(5, j, '0 0 0');
+	as_wr[as_n - 1] = TAS_AIRR; as_wl[as_n - 1] = 0;
+};
+
 float(entity e, float from) SV_TASAutoPlan =
 {
 	local float i, s, d, best, st, lastleave, gdt, j, pk;
@@ -369,6 +400,7 @@ float(entity e, float from) SV_TASAutoPlan =
 							}
 							j = st;
 						}
+				if (as_n == pk && st > s + 2 && SV_TASAutoRule(512)) SV_TASAutoTurn(max(lastleave, s), st);   // after any hop or peak: none
 				if (st > s + 2)
 				{
 					j = as_n;
