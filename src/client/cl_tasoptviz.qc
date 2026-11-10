@@ -95,7 +95,8 @@ float rte_on;
 var float rte_hover = -1, rte_drag = -1;
 vector rte_pos;
 vector rte_off;                 // the point less where the crosshair met its plane at the press: a click does not jump it
-float rte_m2;                   // a right press was this editor's: its release is too (review)
+float rte_m1, rte_m2;           // a left/right press was this editor's: its release is too (review)
+float rte_far;                  // the last DragPoint's plane meeting was out of reach: the point stays (review 2)
 float tasu_open;                // the TAS tab is open: its clicks are its own (cl_tasui.qc)
 vector(float k, vector eye, vector fwd) RouteEdit_DragPoint =
 {
@@ -103,12 +104,13 @@ vector(float k, vector eye, vector fwd) RouteEdit_DragPoint =
 	local float d, t;
 	n = tov_rnorm[k]; p = tov_rp[k]; q = p;
 	traceline(eye, eye + fwd * 8192, MOVE_NOMONSTERS, world);
-	if (n == '0 0 0') return (trace_fraction < 1) ? trace_endpos : p;
+	if (n == '0 0 0') { rte_far = (trace_fraction >= 1); return rte_far ? p : trace_endpos; }
 	d = fwd * n;
+	rte_far = TRUE;
 	if (fabs(d) > 0.01)
 	{
 		t = ((p - eye) * n) / d;
-		if (t > 0) q = eye + fwd * min(t, 8192);     // a nearly parallel aim stays within reach (review)
+		if (t > 0 && t < 8192) { q = eye + fwd * t; rte_far = FALSE; }    // on the plane, or not moved (review 2)
 	}
 	if (trace_fraction < 1 && trace_plane_normal * n > 0.95 && vlen(trace_endpos - q) < 96) q = trace_endpos;     // the face itself
 	return q;
@@ -124,7 +126,8 @@ void() RouteEdit_Frame =
 	if (rte_drag >= 0)
 	{
 		if (rte_drag >= tov_rn) { rte_drag = -1; return; }
-		rte_pos = RouteEdit_DragPoint(rte_drag, eye, fwd) + rte_off;
+		eye = RouteEdit_DragPoint(rte_drag, eye, fwd);
+		if (!rte_far) rte_pos = eye + rte_off;
 		return;
 	}
 	if (tasu_open) { rte_hover = -1; return; }       // the tab's cursor, not the crosshair, is aiming (review)
@@ -139,14 +142,17 @@ void() RouteEdit_Frame =
 float(float evtype, float scanx, float chary, float devid) RouteEdit_InputEvent =
 {
 	local vector n;
+	// its own presses' releases only, even after the editor closed or a drag was dropped (review 2)
+	if (evtype == IE_KEYUP && scanx == K_MOUSE2 && rte_m2) { rte_m2 = FALSE; return TRUE; }
+	if (evtype == IE_KEYUP && scanx == K_MOUSE1 && rte_m1 && rte_drag < 0) { rte_m1 = FALSE; return TRUE; }
 	if (!rte_on) return FALSE;
-	if (evtype == IE_KEYUP && scanx == K_MOUSE2 && rte_m2) { rte_m2 = FALSE; return TRUE; }    // its own press's release only
 	if (tasu_open && rte_drag < 0) return FALSE;      // the TAS tab's clicks are its own (review)
 	if (evtype == IE_KEYDOWN && scanx == K_MOUSE1 && rte_hover >= 0)
 	{
-		rte_drag = rte_hover; rte_pos = tov_rp[rte_drag];
+		rte_drag = rte_hover; rte_pos = tov_rp[rte_drag]; rte_m1 = TRUE;
 		makevectors(getproperty(VF_ANGLES));
 		rte_off = rte_pos - RouteEdit_DragPoint(rte_drag, getproperty(VF_ORIGIN), v_forward);   // grabbed where it is
+		if (rte_far || tov_rnorm[rte_drag] == '0 0 0') rte_off = '0 0 0';     // a point follows the crosshair's hit itself (review 2)
 		return TRUE;
 	}
 	if (evtype == IE_KEYUP && scanx == K_MOUSE1 && rte_drag >= 0)
@@ -155,7 +161,7 @@ float(float evtype, float scanx, float chary, float devid) RouteEdit_InputEvent 
 		localcmd(sprintf("tas route set %g %.1f %.1f %.1f ", rte_drag + 1, rte_pos_x, rte_pos_y, rte_pos_z));
 		localcmd(sprintf("%.4f %.4f %.4f\n", n_x, n_y, n_z));
 		tov_rp[rte_drag] = rte_pos;       // drawn there until the server's note says where it is
-		rte_drag = -1;
+		rte_drag = -1; rte_m1 = FALSE;
 		return TRUE;
 	}
 	if (evtype == IE_KEYDOWN && scanx == K_MOUSE2 && rte_hover >= 0 && rte_drag < 0)     // not mid-drag (review)
