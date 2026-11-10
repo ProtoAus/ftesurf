@@ -9,7 +9,7 @@
 */
 #define JG_MAX 64
 float jg_n, jg_at;
-float jg_k[JG_MAX];             // 1 a ramp to board, 2 a bhop, 3 the end, 4 a peak, 5 an air point
+float jg_k[JG_MAX];             // 1 a ramp to board, 2 a bhop, 3 the end, 4 a peak, 5 an air point, 6 a turn point (P1483)
 float jg_t[JG_MAX];             // the guide run's time there
 vector jg_o[JG_MAX];
 vector jg_nn[JG_MAX];
@@ -321,7 +321,7 @@ vector(float i) TASJargon_Col =
 	if (i == jg_hover || i == jg_drag) return SUI_THEME_ACCENT;
 	if (jg_k[i] == 1) return jg_mv[i] ? '0.55 1 0.75' : SUI_THEME_GOOD;
 	if (jg_k[i] == 2) return SUI_THEME_WARN;
-	if (jg_k[i] == 5) return SUI_THEME_INFO;
+	if (jg_k[i] == 5 || jg_k[i] == 6) return SUI_THEME_INFO;
 	return SUI_THEME_DIM;
 };
 
@@ -330,6 +330,7 @@ string(float i) TASJargon_Word =
 	if (jg_k[i] == 1) return "Ramp";
 	if (jg_k[i] == 2) return "Bhop";
 	if (jg_k[i] == 5) return "Air point";
+	if (jg_k[i] == 6) return "Turn point";
 	if (jg_k[i] == 3) return "End";
 	return "Point";
 };
@@ -384,6 +385,7 @@ void() TASJargon_Frame =
 	for (i = 0; i < jg_n; i = i + 1)
 	{
 		d = normalize(jg_o[i] + '0 0 24' - eye) * fwd;
+		if (jg_k[i] == 1 || jg_k[i] == 2 || jg_k[i] == 5)
 		if (d > best) { best = d; jg_hover = i; }
 	}
 };

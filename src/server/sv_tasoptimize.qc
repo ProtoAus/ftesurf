@@ -57,7 +57,7 @@
 .float topt_on, topt_head, topt_n, topt_dir, topt_yaw0, topt_pitch0;
 .float topt_stage;              // 1 go back to the head and stage the tape, 2 the tape is running
 .float topt_endz, topt_endtrack;    // P1483: a course's end (a zone box, or -1; the track whose END boxes, or -1): a reach there
-.float topt_startz;             // P1483: the course's start box: a teleport landing there is a fall (`startz`, -1 none)
+.float topt_startz, topt_startz2;             // P1483: the course's start box: a teleport landing there is a fall (`startz`, -1 none)
 .entity topt_cutent;            // P1483: the volume a rollout was cut at (topt_rollcut 1)
 .float topt_playk;              // P1483: `play K`: the search's K-th kept candidate played, no search (0 none, else K + 1)
 float(entity e, entity t) SV_TASOptEndTele;
@@ -1158,7 +1158,7 @@ void(entity e, float r, float y, float f) SV_TASOptPredict =
 			// P1483: a miss that ends in a teleport other than the course's end fell, however late (surf_tensor2 stage 5:
 			// every stretch-4 line fell 50-70 ticks in and the chain asked stretch 3 for more speed, boarding it further off)
 			if (!e.topt_trigcut && e.topt_reachv < TOPT_WEAK && e.topt_rollcut == 1 && cut < 0 && ran <= 4 * TOPT_EARLYCUT && e.topt_startz >= 0)
-			if (SV_TASOptTeleTo(e, e.topt_cutent, e.topt_startz) >= 0) e.topt_trigcut = ran;
+			if (max(SV_TASOptTeleTo(e, e.topt_cutent, e.topt_startz), SV_TASOptTeleTo(e, e.topt_cutent, e.topt_startz2)) >= 0) e.topt_trigcut = ran;
 			e.topt_lowneed = (e.topt_reachv < TOPT_WEAK && e.topt_tgtn_z >= 0.99) ? SV_TASOptLowNeed(e, ran) : 0;
 			e.topt_over = 0;
 			if (e.topt_reachv < TOPT_REACH && e.topt_reachk >= 1 && e.topt_reachk <= ran)
@@ -2108,14 +2108,14 @@ float() SV_TASOptRand =
 	u = topt_r1 / 30269 + topt_r2 / 30307 + topt_r3 / 30323;
 	return u - floor(u);
 };
-void(entity e, float salt) SV_TASOptSeed =
+void(entity e, float salt, float run) SV_TASOptSeed =
 {
 	local float h;
 	local float cs;
 	cs = cvar("tas_jargon_seed");
 	if (cs != cs || fabs(cs) > 1000000) cs = 0;        // NaN or huge: every draw NaN after it (review D)
 	h = fabs(e.origin_x * 3.1 + e.origin_y * 7.3 + e.origin_z * 11.7 + e.velocity_x * 13.1 + e.velocity_y * 17.9 + e.velocity_z * 19.3
-		+ e.topt_tgt_x * 0.7 + e.topt_tgt_y * 0.3 + salt * 101 + floor(cs) * 977 + topt_runsalt * 1913);
+		+ e.topt_tgt_x * 0.7 + e.topt_tgt_y * 0.3 + salt * 101 + floor(cs) * 977 + run * topt_runsalt * 1913);
 	h = floor(SV_TASOptMod(h, 1000000));
 	topt_r1 = 1 + SV_TASOptMod(h, 30268); topt_r2 = 1 + SV_TASOptMod(floor(h / 7) + salt, 30306); topt_r3 = 1 + SV_TASOptMod(floor(h / 13) + 2 * salt, 30322);
 };
@@ -2853,12 +2853,12 @@ void(entity e) SV_TASOptReset =
 void(entity e, float argc) SV_TASOptCommand =
 {
 	local float n, dir, i, mode, fk, searches, obj, fast, energy, fixp, kn, tube, hop, look, pace, emin, gens, kex, stall, low, edgeok, ride, wide, leadmin, fresh, slack;
-	local float seed, playk, endz, endtr, k, startz;
+	local float seed, playk, endz, endtr, k, startz, startz2;
 	local string w;
 	n = stof(argv(2));
 	dir = !strcmp(argv(3), "left") ? 1 : (!strcmp(argv(3), "right") ? -1 : 0);
 	mode = 0; fk = 0; obj = 0; fast = 0; energy = 0; fixp = 0; kn = 0; tube = 0; hop = 0; look = 0; pace = 0; emin = 0; gens = 0; kex = 0; stall = 0; low = 0; edgeok = 0; ride = 0; wide = 0; leadmin = 0; fresh = 0; slack = 0;
-	seed = -2; playk = -2; endz = -2; endtr = -2; startz = -2;      // -2 not given, -1 its number expected next
+	seed = -2; playk = -2; endz = -2; endtr = -2; startz = -2; startz2 = -2;      // -2 not given, -1 its number expected next
 	for (i = 4; i < argc; i = i + 1)
 	{
 		w = argv(i);
@@ -2890,6 +2890,8 @@ void(entity e, float argc) SV_TASOptCommand =
 		else if (endz == -1 && argv(i - 1) == "endz" && FS_TASNumber(w) && stof(w) >= 0 && stof(w) < zone_count && stof(w) == floor(stof(w))) endz = stof(w);
 		else if (w == "startz" && startz == -2) startz = -1;                    // P1483: the course's start box (a fall lands there)
 		else if (startz == -1 && argv(i - 1) == "startz" && FS_TASNumber(w) && stof(w) >= 0 && stof(w) < zone_count && stof(w) == floor(stof(w))) startz = stof(w);
+		else if (w == "startz2" && startz2 == -2) startz2 = -1;                 // ...and the track's own start box, past stage 1
+		else if (startz2 == -1 && argv(i - 1) == "startz2" && FS_TASNumber(w) && stof(w) >= 0 && stof(w) < zone_count && stof(w) == floor(stof(w))) startz2 = stof(w);
 		else if (w == "endtrack" && endtr == -2) endtr = -1;                    // P1483: ...or its track's END boxes
 		else if (endtr == -1 && argv(i - 1) == "endtrack" && FS_TASNumber(w) && stof(w) >= 0 && stof(w) < ZONE_MAXTRACKS && stof(w) == floor(stof(w))) endtr = stof(w);
 		else if (slack == -1 && argv(i - 1) == "slack" && FS_TASNumber(w) && stof(w) > 0 && stof(w) <= 600) slack = stof(w);
@@ -2917,7 +2919,7 @@ void(entity e, float argc) SV_TASOptCommand =
 		else { mode = -1; break; }
 	}
 	if (tube == -1 || look == -1 || pace == -1 || emin == -1 || gens == -1 || kex == -1 || stall == -1 || low == -1 || ride == -1 || leadmin == -1 || (look && !tube)) mode = -1;
-	if (seed == -1 || playk == -1 || endz == -1 || endtr == -1 || startz == -1) mode = -1;      // look scores route: it needs a tube
+	if (seed == -1 || playk == -1 || endz == -1 || endtr == -1 || startz == -1 || startz2 == -1) mode = -1;      // look scores route: it needs a tube
 	if (mode > 0 && (mode & 128) && (!e.topt_tgton || kn > TOPT_KMAX - ((mode & 256) ? 3 : 2)))
 	{
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: aim steers to the tas target (set one) and takes up to %.0f knots\n", TOPT_KMAX - ((mode & 256) ? 3 : 2)));
@@ -2945,7 +2947,7 @@ void(entity e, float argc) SV_TASOptCommand =
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: the flick (%.0f ticks) must be shorter than the run (%.0f ticks)\n", fk, n));
 		return;
 	}
-	if (argc < 4 || argc > 48 || !(n >= 4 && n <= (fast ? TOPT_HMAX : TAS_TAPE_MAX) && n == floor(n)) || !dir || mode < 0)
+	if (argc < 4 || argc > 64 || !(n >= 4 && n <= (fast ? TOPT_HMAX : TAS_TAPE_MAX) && n == floor(n)) || !dir || mode < 0)
 	{
 		sprint(e, PRINT_HIGH, "tas optimize <ticks 4..128, fast 4..768> <left|right> [board | follow | curve [knots 3..16]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [aim] [hop] [gens N] [demo [late (after aim)] [tube R [look N]] [pace X] [emin E] [kex T] [ride T]] [stall N] [low W] [edgeok] [wide, leadmin L (with aim)] (with curve): best turn for exit speed (energy: speed + height), or with time the next segment soonest; fast searches by rollout and plays only the best\n");
 		return;
@@ -3026,8 +3028,8 @@ void(entity e, float argc) SV_TASOptCommand =
 	}
 	e.topt_bestr2 = -1; e.topt_bests = 0.5;
 	e.topt_mo = e.origin; e.topt_mv = e.velocity; e.topt_kwiden = 0;
-	e.topt_endz = (endz >= 0) ? endz : -1; e.topt_endtrack = (endtr >= 0) ? endtr : -1; e.topt_startz = (startz >= 0) ? startz : -1;
-	SV_TASOptSeed(e, max(0, seed));
+	e.topt_endz = (endz >= 0) ? endz : -1; e.topt_endtrack = (endtr >= 0) ? endtr : -1; e.topt_startz = (startz >= 0) ? startz : -1; e.topt_startz2 = (startz2 >= 0) ? startz2 : -1;
+	SV_TASOptSeed(e, max(0, seed), seed >= 0);
 	e.topt_playk = (playk >= 0) ? playk + 1 : 0;
 	if (!e.topt_playk) { topt_arcn = 0; topt_arcmo = e.origin; topt_arcmv = e.velocity; topt_arctgt = e.topt_tgt; topt_arckd = e.topt_kd; topt_arcnn = n; topt_arcmode = mode; }
 	e.topt_spriorn = 0;
