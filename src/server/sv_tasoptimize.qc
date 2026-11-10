@@ -666,9 +666,38 @@ float(entity e, float j) SV_TASOptKnotTick =
 	return rint(e.topt_kex + (j - ka) * (e.topt_kend - e.topt_kex) / max(1, e.topt_kn - 1 - ka));
 };
 
+// P1449: a demo curve's rows for this sample (topt_kcur) and key map (topt_dmap), into topt_rows -- the engine
+// follows them (P1467: SV_TASOptDemoRoll and a batch build them alike)
+void(entity e) SV_TASOptDemoRows =
+{
+	local float i, d, k, off, j, a;
+	for (i = 0; i < e.topt_n; i = i + 1)
+	{
+		d = SV_TASOptKnotD(e, i); k = floor(d);
+		off = (k >= e.topt_kn - 1) ? topt_kcur[e.topt_kn - 1] : topt_kcur[k] + (d - k) * (topt_kcur[k + 1] - topt_kcur[k]);
+		j = topt_dmap[i];
+		topt_rows[i*7] = topt_drow[j*5]; topt_rows[i*7+1] = topt_drow[j*5+1]; topt_rows[i*7+2] = 0;
+		topt_rows[i*7+3] = SV_TASPWord(topt_drow[j*5+2]);
+		// the correction changes how hard the demo's side is used, never which side (an added constant
+		// flipped its right-hand flight strafes left: Lex, 9 Nov)
+		topt_rows[i*7+4] = (topt_dq[j] == 0) ? 0 : ((topt_dq[j] > 0) ? 1 : -1) * bound(0, fabs(topt_dq[j]) + off, TOPT_QMAX);
+		topt_rows[i*7+5] = 0;
+		// this row aims: only where the demo holds a side key (before the engine's aim takes over, airk < 3,
+		// FOLLOW strafes a 0 command at side 0 as 450 left -- review)
+		a = ((e.topt_mode & 128) && (!(e.topt_mode & 256) || i >= SV_TASOptAimFrom(e)) && topt_dq[j]);
+		topt_rows[i*7+6] = (e.topt_hop ? (topt_drow[j*5+4] | 1) : topt_drow[j*5+4]) + (e.topt_pfoff ? 0 : TOPT_EPITCHV)
+			+ ((topt_dq[j] || a) ? TOPT_EFOLLOW : 0) + (a ? TOPT_EAIM : 0) + (e.topt_ewall ? TOPT_EWALL : 0);
+		if (!topt_dq[j] && !a)
+		{	// no side key held: FOLLOW would strafe (the engine reads side 0 as 450 left) -- the demo's own view (review)
+			topt_rows[i*7+1] = 0;
+			topt_rows[i*7+4] = SV_TASPWord(topt_drow[j*5+3]);     // off is a command correction here, not degrees
+		}
+	}
+};
+
 float(entity e) SV_TASOptDemoRoll =
 {
-	local float i, d, k, off, j, ran, a, pass;
+	local float i, d, k, off, j, ran, pass;
 	if (e.topt_efol)
 	{	// the demo's own command each tick plus the curve, applied by the engine from the body's velocity:
 		// its technique (side switches included) on this run's state, so drift does not compound. Rolled
@@ -677,28 +706,7 @@ float(entity e) SV_TASOptDemoRoll =
 		ran = -1;
 		for (pass = 0; pass < 2; pass = pass + 1)
 		{
-		for (i = 0; i < e.topt_n; i = i + 1)
-		{
-			d = SV_TASOptKnotD(e, i); k = floor(d);
-			off = (k >= e.topt_kn - 1) ? topt_kcur[e.topt_kn - 1] : topt_kcur[k] + (d - k) * (topt_kcur[k + 1] - topt_kcur[k]);
-			j = topt_dmap[i];
-			topt_rows[i*7] = topt_drow[j*5]; topt_rows[i*7+1] = topt_drow[j*5+1]; topt_rows[i*7+2] = 0;
-			topt_rows[i*7+3] = SV_TASPWord(topt_drow[j*5+2]);
-			// the correction changes how hard the demo's side is used, never which side (an added constant
-			// flipped its right-hand flight strafes left: Lex, 9 Nov)
-			topt_rows[i*7+4] = (topt_dq[j] == 0) ? 0 : ((topt_dq[j] > 0) ? 1 : -1) * bound(0, fabs(topt_dq[j]) + off, TOPT_QMAX);
-			topt_rows[i*7+5] = 0;
-			// this row aims: only where the demo holds a side key (before the engine's aim takes over, airk < 3,
-			// FOLLOW strafes a 0 command at side 0 as 450 left -- review)
-			a = ((e.topt_mode & 128) && (!(e.topt_mode & 256) || i >= SV_TASOptAimFrom(e)) && topt_dq[j]);
-			topt_rows[i*7+6] = (e.topt_hop ? (topt_drow[j*5+4] | 1) : topt_drow[j*5+4]) + (e.topt_pfoff ? 0 : TOPT_EPITCHV)
-				+ ((topt_dq[j] || a) ? TOPT_EFOLLOW : 0) + (a ? TOPT_EAIM : 0) + (e.topt_ewall ? TOPT_EWALL : 0);
-			if (!topt_dq[j] && !a)
-			{	// no side key held: FOLLOW would strafe (the engine reads side 0 as 450 left) -- the demo's own view (review)
-				topt_rows[i*7+1] = 0;
-				topt_rows[i*7+4] = SV_TASPWord(topt_drow[j*5+3]);     // off is a command correction here, not degrees
-			}
-		}
+		SV_TASOptDemoRows(e);
 		SV_NoColPre(e);
 		if ((e.topt_mode & 128) && e.topt_tgtn != '0 0 0' && e.topt_elead)
 			ran = tas_rollout(e, topt_rows, e.topt_n, topt_out, e.topt_tgt + [topt_kcur[e.topt_kn], topt_kcur[e.topt_kn + 1], 0], TOPT_AIMGAIN, e.topt_tgtn, SV_TASOptLead(e));
@@ -804,6 +812,121 @@ void(entity e) SV_TASOptSimStart =
 		}
 };
 
+// P1467: a generation's candidates rolled at once on the engine's worker threads (tas_rollout_batch). Drawn in the
+// order the search draws them (the same random sequence: scoring draws none), each one's rows built as
+// SV_TASOptDemoRoll builds them, pass 2 for those whose key map moves; then the search scores each from the stored
+// rows and outputs as before. A demo curve with the engine's FOLLOW rows only (topt_ebatch).
+#define TOPT_BATMAX 40          // the seeding grid's TOPT_CEGRID 38, a generation's TOPT_CEPOP 20
+void(entity e) SV_TASOptCurveNext;
+// one a line: fteqcc reads `float *a, *b` as a float* and b a float**
+float *topt_bat_rows;
+float *topt_bat_out;
+float *topt_bat_par;
+float *topt_bat_rows2;
+float *topt_bat_out2;
+float *topt_bat_par2;
+float topt_bat_kcur[TOPT_BATMAX * TOPT_KMAX];
+float topt_bat_map[TOPT_BATMAX];
+.float topt_ebatch;             // this search rolls generations in batches
+.float topt_batgen, topt_batcount;  // the generation held (topt_kgen + 2; 0 none) and its candidates
+.float topt_batruns, topt_batworkers;   // batches run and candidates the workers ran (the report's)
+void(entity e, float c) SV_TASOptBatchAim =
+{
+	topt_bat_par[c*5] = e.topt_tgt_x + topt_kcur[e.topt_kn]; topt_bat_par[c*5+1] = e.topt_tgt_y + topt_kcur[e.topt_kn + 1];
+	topt_bat_par[c*5+2] = e.topt_tgt_z; topt_bat_par[c*5+3] = e.topt_elead ? SV_TASOptLead(e) : 0.5; topt_bat_par[c*5+4] = -99;
+};
+float(entity e, float m, float *rows, float *out, float *par) SV_TASOptBatchRoll =
+{
+	local float r;
+	SV_NoColPre(e);
+	r = tas_rollout_batch(e, rows, e.topt_n, out, m, par, (e.topt_mode & 128) ? TOPT_AIMGAIN : 0,
+		(e.topt_mode & 128) ? e.topt_tgtn : '0 0 0');
+	SV_NoColPost(e);
+	if (r >= 0) { e.topt_batruns = e.topt_batruns + 1; e.topt_batworkers = e.topt_batworkers + r; }
+	return r;
+};
+void(entity e) SV_TASOptBatchPrefetch =
+{
+	local float c, j, i, count, m, n, ran, r, kidx0;
+	n = e.topt_n;
+	if (!topt_bat_rows)
+	{
+		topt_bat_rows = (float*)memalloc(TOPT_BATMAX * TOPT_HMAX * 7 * 4); topt_bat_out = (float*)memalloc(TOPT_BATMAX * TOPT_HMAX * 13 * 4);
+		topt_bat_par = (float*)memalloc(TOPT_BATMAX * 5 * 4); topt_bat_rows2 = (float*)memalloc(TOPT_BATMAX * TOPT_HMAX * 7 * 4);
+		topt_bat_out2 = (float*)memalloc(TOPT_BATMAX * TOPT_HMAX * 13 * 4); topt_bat_par2 = (float*)memalloc(TOPT_BATMAX * 5 * 4);
+	}
+	e.topt_batgen = 0;
+	if (!topt_bat_rows || !topt_bat_out || !topt_bat_par || !topt_bat_rows2 || !topt_bat_out2 || !topt_bat_par2)
+	{
+		e.topt_ebatch = 0;
+		return;
+	}
+	count = (e.topt_kgen < 0) ? TOPT_CEGRID : TOPT_CEPOP;
+	kidx0 = e.topt_kidx;
+	for (c = 0; c < count; c = c + 1)
+	{	// pass 1: each sample as the search draws it, its rows by the clock's key map
+		e.topt_kidx = c;
+		SV_TASOptCurveNext(e);
+		for (j = 0; j < e.topt_kd; j = j + 1) topt_bat_kcur[c * TOPT_KMAX + j] = topt_kcur[j];
+		for (i = 0; i < n; i = i + 1) topt_dmap[i] = min(i, e.topt_dn - 1);
+		SV_TASOptDemoRows(e);
+		memcpy((__variant*)&topt_bat_rows[c * n * 7], (__variant*)topt_rows, (int)(n * 7 * 4));
+		SV_TASOptBatchAim(e, c);
+	}
+	e.topt_kidx = kidx0;
+	r = SV_TASOptBatchRoll(e, count, topt_bat_rows, topt_bat_out, topt_bat_par);
+	if (r < 0)
+	{
+		e.topt_ebatch = 0;      // refused: the search rolls one at a time (the same refusal comes back there)
+		return;
+	}
+	m = 0;
+	for (c = 0; c < count; c = c + 1)
+	{	// pass 2: those whose key map moves more than 2 rows, compacted
+		ran = topt_bat_par[c*5+4];
+		if (ran < 1) continue;
+		for (j = 0; j < e.topt_kd; j = j + 1) topt_kcur[j] = topt_bat_kcur[c * TOPT_KMAX + j];
+		for (i = 0; i < n; i = i + 1) topt_dmap[i] = min(i, e.topt_dn - 1);
+		memcpy((__variant*)topt_out, (__variant*)&topt_bat_out[c * n * 13], (int)(n * 13 * 4));
+		if (!SV_TASOptDemoMap(e, ran)) continue;
+		SV_TASOptDemoRows(e);
+		memcpy((__variant*)&topt_bat_rows2[m * n * 7], (__variant*)topt_rows, (int)(n * 7 * 4));
+		for (j = 0; j < 5; j = j + 1) topt_bat_par2[m*5+j] = topt_bat_par[c*5+j];
+		topt_bat_map[m] = c;
+		m = m + 1;
+	}
+	if (m > 0)
+	{
+		r = SV_TASOptBatchRoll(e, m, topt_bat_rows2, topt_bat_out2, topt_bat_par2);
+		if (r < 0)
+		{
+			e.topt_ebatch = 0;
+			return;
+		}
+		for (j = 0; j < m; j = j + 1)
+		{
+			c = topt_bat_map[j];
+			memcpy((__variant*)&topt_bat_out[c * n * 13], (__variant*)&topt_bat_out2[j * n * 13], (int)(n * 13 * 4));
+			memcpy((__variant*)&topt_bat_rows[c * n * 7], (__variant*)&topt_bat_rows2[j * n * 7], (int)(n * 7 * 4));
+			topt_bat_par[c*5+4] = topt_bat_par2[j*5+4];
+		}
+	}
+	e.topt_batgen = e.topt_kgen + 2; e.topt_batcount = count;
+};
+// the held candidate this sample is: its stored rows and outputs, as its rollout left them
+float(entity e) SV_TASOptBatchHeld =
+{
+	return e.topt_ebatch && e.topt_batgen == e.topt_kgen + 2 && e.topt_kidx < e.topt_batcount && e.topt_phase != 3;
+};
+float(entity e) SV_TASOptBatchTake =
+{
+	local float c, n;
+	c = e.topt_kidx; n = e.topt_n;
+	memcpy((__variant*)topt_out, (__variant*)&topt_bat_out[c * n * 13], (int)(n * 13 * 4));
+	memcpy((__variant*)topt_rows, (__variant*)&topt_bat_rows[c * n * 7], (int)(n * 7 * 4));
+	return topt_bat_par[c*5+4];
+};
+
 float(entity e, float r, float y, float f) SV_TASOptRoll =
 {
 	local float i, ran, a;
@@ -814,7 +937,7 @@ float(entity e, float r, float y, float f) SV_TASOptRoll =
 	if (!topt_rows || !topt_out) return -20;
 	e.topt_curp = SV_TASOptValue(e, 4); e.topt_curr2 = SV_TASOptValue(e, 5); e.topt_curs = SV_TASOptValue(e, 6);
 	if (e.topt_mode & 64)
-		ran = SV_TASOptDemoRoll(e);
+		ran = SV_TASOptBatchHeld(e) ? SV_TASOptBatchTake(e) : SV_TASOptDemoRoll(e);
 	else if (e.topt_mode & 16)
 		ran = SV_TASOptFollow(e, r, f);
 	else
@@ -1310,6 +1433,8 @@ void(entity e, float v) SV_TASOptResult =
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: %.0f of %.0f candidates met something QC acts on (or stopped early) and were not counted\n",
 				e.topt_fcut, e.topt_evals - 1));
 		SV_TASOptRollReport(e);
+		if (e.topt_batruns)
+			sprint(e, PRINT_HIGH, sprintf("tas optimize: %.0f batches on the worker threads (%.0f candidates there)\n", e.topt_batruns, e.topt_batworkers));
 		if (e.topt_tube > 0)
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: %.0f candidates left the tube (%.0f u round the demo's path) and scored as cut there\n",
 				e.topt_tubeout, e.topt_tube));
@@ -1627,6 +1752,11 @@ float(entity e) SV_TASOptEngineAims =
 void(entity e) SV_TASOptCurveNext =
 {
 	local float j, u, g, c;
+	if (SV_TASOptBatchHeld(e))
+	{	// P1467: drawn already, in this order, by the batch
+		for (j = 0; j < e.topt_kd; j = j + 1) topt_kcur[j] = topt_bat_kcur[e.topt_kidx * TOPT_KMAX + j];
+		return;
+	}
 	if (e.topt_kgen < 0)
 	{
 		for (j = e.topt_kn; j < e.topt_kd; j = j + 1) topt_kcur[j] = 0;    // aim: the grid aims at the target
@@ -1860,6 +1990,8 @@ void(entity e) SV_TASOptFrame =
 		for (k = 0; k < 256 && (k == 0 || gettime(1) - topt_frstart < TOPT_FRAMEBUDGET) && e.topt_on && e.topt_phase != 3; k = k + 1)
 		{	// P1449: ~40 ms of rollouts a call, not a tick count (a follow candidate rolls up to 12 times to
 			// its fixed point; calls come with the client's packets, a few a second from an unfocused window)
+			if (e.topt_kn && e.topt_ebatch && e.topt_kidx == 0 && e.topt_batgen != e.topt_kgen + 2)
+				SV_TASOptBatchPrefetch(e);      // P1467: a generation at once on the worker threads
 			if (e.topt_kn) SV_TASOptCurveNext(e);
 			v = SV_TASOptRollScore(e, SV_TASOptValue(e, 1), SV_TASOptValue(e, 2), SV_TASOptValue(e, 3));
 			if (v == -1 && e.topt_rollcut == 1 && !e.topt_rollran)
@@ -1946,6 +2078,77 @@ void(entity e, float argc) SV_TASRollBench =
 	if (ran < 0) { sprint(e, PRINT_HIGH, sprintf("tas rollbench: refused (code %.0f)\n", ran)); return; }
 	sprint(e, PRINT_HIGH, sprintf("tas rollbench: %.0f rollouts of %.0f ticks (%.0f ticks) in %.3f s: %.0f rollouts/s, %.0f ticks/s\n",
 		c, n, total, t1 - t0, c / max(0.001, t1 - t0), total / max(0.001, t1 - t0)));
+};
+
+// P1467: `cmd tas batchbench <ticks> <count>` (developer): count FOLLOW candidates (each its own turn command,
+// the wall bit on) through tas_rollout_batch, then each through tas_rollout from the same unplayed rows; every
+// output float and written-back row compared exactly, and both timed -- the threads' falsifier.
+void(entity e, float argc) SV_TASBatchBench =
+{
+	local float n, c, i, k, j, ran, t0, t1, t2, bad, w, workers, firstk, firsti;
+	local float *rows0;
+	local float *rowsb;
+	local float *rows1;
+	local float *outb;
+	local float *out1;
+	local float *par;
+	n = stof(argv(2)); c = stof(argv(3));
+	if (!cvar("developer") || !checkbuiltin(tas_rollout_batch) || argc != 4 ||
+		!(n >= 1 && n <= 2048 && n == floor(n)) || !(c >= 1 && c <= 256 && c == floor(c)) || n * c > 100000)
+	{
+		sprint(e, PRINT_HIGH, "tas batchbench <ticks 1..2048> <count 1..256>, ticks x count <= 100000 (developer 1, an engine with tas_rollout_batch)\n");
+		return;
+	}
+	rows0 = (float*)memalloc(n * c * 7 * 4); rowsb = (float*)memalloc(n * c * 7 * 4); rows1 = (float*)memalloc(n * 7 * 4);
+	outb = (float*)memalloc(n * c * 13 * 4); out1 = (float*)memalloc(n * 13 * 4); par = (float*)memalloc(c * 5 * 4);
+	if (!rows0 || !rowsb || !rows1 || !outb || !out1 || !par)
+	{
+		sprint(e, PRINT_HIGH, "tas batchbench: out of memory\n");
+		if (rows0) memfree(rows0); if (rowsb) memfree(rowsb); if (rows1) memfree(rows1);
+		if (outb) memfree(outb); if (out1) memfree(out1); if (par) memfree(par);
+		return;
+	}
+	for (k = 0; k < c; k = k + 1)
+	{
+		for (i = 0; i < n; i = i + 1)
+		{	// candidate k turns at its own command: -55 .. 55, through 0
+			j = (k * n + i) * 7;
+			rows0[j] = 0; rows0[j+1] = -450; rows0[j+2] = 0; rows0[j+3] = SV_TASPWord(e.v_angle_x);
+			rows0[j+4] = (c > 1) ? -55 + 110 * k / (c - 1) : 30; rows0[j+5] = 0;
+			rows0[j+6] = TOPT_EFOLLOW + TOPT_EPITCHV + TOPT_EWALL;
+			rowsb[j] = rows0[j]; rowsb[j+1] = rows0[j+1]; rowsb[j+2] = rows0[j+2]; rowsb[j+3] = rows0[j+3];
+			rowsb[j+4] = rows0[j+4]; rowsb[j+5] = rows0[j+5]; rowsb[j+6] = rows0[j+6];
+		}
+		par[k*5] = par[k*5+1] = par[k*5+2] = 0; par[k*5+3] = 0.5; par[k*5+4] = -99;
+	}
+	t0 = gettime(1);
+	workers = tas_rollout_batch(e, rowsb, n, outb, c, par, 0, '0 0 0');
+	t1 = gettime(1);
+	if (workers < 0)
+	{
+		sprint(e, PRINT_HIGH, sprintf("tas batchbench: refused (code %.0f)\n", workers));
+		memfree(rows0); memfree(rowsb); memfree(rows1); memfree(outb); memfree(out1); memfree(par);
+		return;
+	}
+	bad = 0; firstk = -1; firsti = -1; w = 0;
+	for (k = 0; k < c; k = k + 1)
+	{
+		for (i = 0; i < n * 7; i = i + 1) rows1[i] = rows0[k * n * 7 + i];
+		ran = tas_rollout(e, rows1, n, out1);
+		if (ran != par[k*5+4]) { bad = bad + 1; if (firstk < 0) { firstk = k; firsti = -1; } }
+		for (i = 0; i < max(0, ran) * 13; i = i + 1)
+			if (out1[i] != outb[k * n * 13 + i]) { bad = bad + 1; if (firstk < 0) { firstk = k; firsti = i; } }
+		for (i = 0; i < max(0, ran) * 7; i = i + 1)
+			if (rows1[i] != rowsb[k * n * 7 + i]) { bad = bad + 1; if (firstk < 0) { firstk = k; firsti = 100000 + i; } }
+		for (i = 0; i < max(0, ran); i = i + 1)
+			if (out1[i*13+7] & 2) w = w + 1;
+	}
+	t2 = gettime(1);
+	sprint(e, PRINT_HIGH, sprintf("tas batchbench: %.0f candidates of %.0f ticks: batch %.3f s (%.0f on workers), one by one %.3f s: %.2fx; ",
+		c, n, t1 - t0, workers, t2 - t1, (t2 - t1) / max(0.0001, t1 - t0)));
+	sprint(e, PRINT_HIGH, sprintf("%.0f values differ%s (wall ticks %.0f)\n", bad,
+		(bad > 0) ? sprintf(", first candidate %.0f at %.0f", firstk, firsti) : "", w));
+	memfree(rows0); memfree(rowsb); memfree(rows1); memfree(outb); memfree(out1); memfree(par);
 };
 
 // P1449: tas target <x> <y> <z> [radius 8..4096, default 64] [nx ny nz] | clear | show -- a point (a face
@@ -2237,6 +2440,9 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_ewall = 0;
 	if (kn) { i = SV_TASOptEngineFollows(e); if (i == 1) e.topt_efol = 1; }    // demo too: its command in the engine
 	if (e.topt_efol) e.topt_ewall = SV_TASOptEngineWalls(e);
+	// P1467: a demo curve's generations in batches on the engine's worker threads (sv_tas_threads 1: one at a time)
+	e.topt_ebatch = (e.topt_efol && (mode & 64) && kn && checkbuiltin(tas_rollout_batch) && cvar("sv_tas_threads") > 1);
+	e.topt_batgen = 0; e.topt_batruns = e.topt_batworkers = 0;
 	if (kn && i < 0)
 	{
 		SV_TASOptStop(e, SV_TASRollWhy(i));

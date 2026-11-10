@@ -1635,6 +1635,7 @@ void(entity e, float argc) SV_TASCommand =
 	if (!strcmp(action,"solve2")) { SV_TASSolveCommand(e,argc); return; }
 	if (!strcmp(action, "optimize")) { SV_TASOptCommand(e, argc); return; }
 	if (!strcmp(action, "rollbench")) { SV_TASRollBench(e, argc); return; }   // P1443
+	if (!strcmp(action, "batchbench")) { SV_TASBatchBench(e, argc); return; }   // P1467
 	if (!strcmp(action, "target")) { SV_TASTargetCommand(e, argc); return; }  // P1449
 	if (!strcmp(action, "route")) { SV_TASRouteCommand(e, argc); return; }    // P1449: the clicked route
 	if (!strcmp(action, "seed")) { SV_TASSeedCommand(e, argc); return; }      // P1449
