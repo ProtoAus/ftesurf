@@ -344,7 +344,27 @@ float(float j) SV_TASAutoHeadD =
 // placed after the boards, hops and finish, into free slots only (tools/jgturns.py over 337 guides: 3 more would pass
 // TAS_ASMAX, and a turn point must never take a board's place).
 float as_tpj[TAS_ASMAX], as_tpn;
-float as_rdt[TAS_ASMAX], as_rdk[TAS_ASMAX];     // a redo's plan before its replan
+float as_rdt[TAS_ASMAX], as_rdk[TAS_ASMAX], as_rdr[TAS_ASMAX], as_rdl[TAS_ASMAX], as_rdo[TAS_ASMAX * 3], as_rdn[TAS_ASMAX * 3], as_rdnn;
+void(float back) SV_TASAutoPlanCopy =
+{	// a redo's plan before its replan; back: put it back
+	local float i, j;
+	if (back)
+	{
+		as_n = as_rdnn;
+		for (i = 0; i < as_n; i = i + 1)
+		{
+			as_wt[i] = as_rdt[i]; as_wk[i] = as_rdk[i]; as_wr[i] = as_rdr[i]; as_wl[i] = as_rdl[i];
+			for (j = 0; j < 3; j = j + 1) { as_wo[i*3+j] = as_rdo[i*3+j]; as_wn[i*3+j] = as_rdn[i*3+j]; }
+		}
+		return;
+	}
+	as_rdnn = as_n;
+	for (i = 0; i < as_n; i = i + 1)
+	{
+		as_rdt[i] = as_wt[i]; as_rdk[i] = as_wk[i]; as_rdr[i] = as_wr[i]; as_rdl[i] = as_wl[i];
+		for (j = 0; j < 3; j = j + 1) { as_rdo[i*3+j] = as_wo[i*3+j]; as_rdn[i*3+j] = as_wn[i*3+j]; }
+	}
+};
 void(float a, float b) SV_TASAutoTurn =
 {
 	local float j, c, tot;
@@ -1033,6 +1053,7 @@ void(entity e) SV_TASAutoPriorLoad =
 		if (j >= 1000) continue;
 		for (j = 0; j < as_n; j = j + 1) if (fabs(as_wt[j] - stof(argv(4))) <= 0.05) if (as_wk[j] == stof(argv(5))) { i = j; j = 1000; }
 		if (j < 1000) continue;     // no stretch of this plan is that ramp (review H)
+		if (as_prkd[i] > 0 && stof(argv(2)) <= as_prs[i]) continue;    // two entries on one ramp: the better share (review I)
 		as_prs[i] = stof(argv(2)); as_prkd[i] = kd; as_prt[i] = stof(argv(4)); as_prw[i] = stof(argv(5));
 		for (j = 0; j < kd; j = j + 1) as_prk[i * TOPT_KMAX + j] = stof(argv(6 + j));
 	}
@@ -1998,11 +2019,12 @@ void(entity e, float argc) SV_TASAutoCommand =
 		if (as_nrows < 2) { SV_TASAutoNote(e, 0, "the guide run's file cannot be read"); return; }
 		if (e.as_ctrack >= 0) if (!SV_TASAutoCourse(e, e.as_ctrack, e.as_cleg)) return;
 		for (s = 0; s < as_nrows - 1 && as_rows[s*7] < as_wp[0] - 0.0001; s = s + 1) ;
-		for (i = 0; i <= n; i = i + 1) { as_rdt[i] = as_wt[i]; as_rdk[i] = as_wk[i]; }
+		SV_TASAutoPlanCopy(0);
 		SV_TASAutoPlan(e, s);
-		if (n >= as_n) { SV_TASAutoNote(e, 0, "the route changed: restart from the start zone"); return; }
+		if (n >= as_n) { SV_TASAutoPlanCopy(1); SV_TASAutoNote(e, 0, "the route changed: restart from the start zone"); return; }
 		for (i = 0; i <= n; i = i + 1) if (fabs(as_wt[i] - as_rdt[i]) > 0.0001 || as_wk[i] != as_rdk[i]) i = 1000;
-		if (i >= 1000) { SV_TASAutoNote(e, 0, "the route changed: restart from the start zone"); return; }     // review H
+		if (i >= 1000) { SV_TASAutoPlanCopy(1); SV_TASAutoNote(e, 0, "the route changed: restart from the start zone"); return; }     // review H
+		SV_TASAutoPriorLoad(e);     // stretches after n may have moved: priors re-slotted, or a keep erased a moved ramp's (review I)
 		for (i = n; i < as_n; i = i + 1)
 		{	// from here on a new attempt: no bars, no "failed from this state", no later stretch's start tick
 			as_need[i] = 0; as_fsl[i] = -1; as_swd[i] = 0; as_leadmin[i] = 0; as_hb[i] = 0; as_fresh[i] = 0; as_slack[i] = 0; as_lost[i] = 0; as_back[i] = as_up[i] = 0; as_bmd[i] = 0;
@@ -2077,6 +2099,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		if (st || arm) { sprint(e, PRINT_HIGH, "tas autosurf route: from a pause on the route (the start options follow a demo)\n"); return; }
 		if (rt_n < 1) { sprint(e, PRINT_HIGH, "tas autosurf route: no points yet -- tas route add, or the tab's Add at crosshair\n"); return; }
 		e.as_ctrack = -1; e.as_cleg = 0; e.as_saved = -1; e.as_fromstart = 0;     // no course (review A: an old one finished it at once)
+		e.as_cseed = 0; SV_TASAutoRunSalt();
 		as_nrows = 0; as_n = rt_n;
 		for (i = 0; i < rt_n; i = i + 1)
 		{
