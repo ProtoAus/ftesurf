@@ -60,7 +60,8 @@ float as_n;                     // waypoints
 // A backtrack's stretch must beat the reach that led to the failure (speed at farsh's board height, +0.25%): the
 // full run re-took ramp 5 at 2810-2838 eleven times and failed ramp 6 from each (rigs/tnullfull4, 10 Nov)
 float as_rbs[TAS_ASMAX], as_need[TAS_ASMAX];
-float as_lowx[TAS_ASMAX];       // a board stretch's `low` weight in 0.25s, doubled by each backtrack its handover caused (0: as_low)
+float as_lowx[TAS_ASMAX];
+float as_rfs[TAS_ASMAX];        // farsh's energy at each stretch's board (as_rf when it was reached)       // a board stretch's `low` weight in 0.25s, doubled by each backtrack its handover caused (0: as_low)
 float as_wt[TAS_ASMAX];         // the demo's time there
 float as_wo[TAS_ASMAX * 3];     // its origin
 float as_wn[TAS_ASMAX * 3];     // the face to board ('0 0 1' a hop: a jump there; '0 0 0' any contact)
@@ -466,7 +467,7 @@ void(entity e) SV_TASAutoBacks =
 {
 	local float k;
 	if (e.as_backmax < 0) e.as_backmax = max(6, 2 * as_n);
-	for (k = 0; k < TAS_ASMAX; k = k + 1) as_rbs[k] = as_need[k] = as_lowx[k] = 0;
+	for (k = 0; k < TAS_ASMAX; k = k + 1) as_rbs[k] = as_need[k] = as_lowx[k] = as_rfs[k] = 0;
 	e.as_failmax = -1;
 };
 
@@ -629,7 +630,7 @@ void(entity e) SV_TASAutoFrame =
 			// speed at farsh's board height (the energy carried there) against his own: vE near 0 magnified the gap
 			d = e.velocity * e.velocity + 2 * cvar("sv_gravity") * (e.origin_z - as_rows[i*7+3]);
 			as_rk = e.as_i; as_rb = (d < 0) ? -sqrt(-d) : sqrt(d); as_rf = vlen([as_rows[i*7+4], as_rows[i*7+5], as_rows[i*7+6]]);
-			as_rbs[e.as_i] = as_rb;
+			as_rbs[e.as_i] = as_rb; as_rfs[e.as_i] = as_rf;
 			SV_TASAutoNote(e, 1, sprintf("stretch %.0f reached: %.0f u/s at farsh's board height, farsh %.0f", e.as_i + 1, as_rb, as_rf));
 			}
 			e.as_tprev = t; e.as_i = e.as_i + 1; e.as_try = 0;
@@ -690,6 +691,11 @@ void(entity e) SV_TASAutoFrame =
 			e.as_backs = e.as_backs + 1; e.as_i = max(0, e.as_i - 1 - floor((e.as_failn - 1) / 2)); e.as_try = 0;
 			for (i = e.as_i + 1; i < as_n; i = i + 1) as_need[i] = 0;       // reached from a new state: no bar of their own
 			if (!e.as_route && as_rbs[e.as_i] > 0) as_need[e.as_i] = max(as_need[e.as_i], as_rbs[e.as_i] * 1.0025);
+			// under farsh there: toward 99.5% of his energy, 2% at a time -- a retry from one state replays one line, so
+			// 0.25% more was never found and the bar was dropped each time (surf_null: 97.9% at the board before the
+			// platforms failed the last ramp three times; from farsh's own state the last three stretches took 20 s)
+			if (!e.as_route && as_rfs[e.as_i] * 0.995 > as_rbs[e.as_i] && as_rbs[e.as_i] > 0)
+				as_need[e.as_i] = max(as_need[e.as_i], min(as_rfs[e.as_i] * 0.995, as_rbs[e.as_i] * 1.02));
 			e.as_tprev = as_wp[e.as_i]; e.as_goal = as_ws[e.as_i]; e.as_stage = 3;
 			SV_TASAutoNote(e, 1, sprintf("stretch %.0f failed its tries: backtrack %.0f to stretch %.0f", e.as_failat + 1, e.as_backs, e.as_i + 1));
 			return;
