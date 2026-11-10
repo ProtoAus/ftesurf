@@ -930,7 +930,7 @@ void(entity e) SV_TASAutoFrame =
 			e.as_stage = 1;
 			return;
 		}
-		if (!e.as_route && as_wk[e.as_i] == 1 && (e.topt_briefn >= 10 || e.topt_over > 100) && as_back[e.as_i] < 400)
+		if (!e.as_route && as_wk[e.as_i] == 1 && (e.topt_briefn >= 10 || (e.topt_over > 100 && e.topt_over < 800)) && as_back[e.as_i] < 400)     // a near overshoot, not a line flown past the ramp
 		{	// it flew past the point, or its boards skimmed off the face at once (ramp 10: 11-59 a search, the guide rode 58
 			// ticks): the next try boards further back along the ramp and higher (Lex: "near the tip and far back"). A wider
 			// approach (the lead below) cost ~3% and made more of them skim; aiming lower made 41 into 137 (tfull4s6)
@@ -985,7 +985,7 @@ void(entity e) SV_TASAutoFrame =
 			{
 				t = e.as_i; as_lost[d] = as_lost[d] + 1;
 				e.as_backs = e.as_backs + 1; e.as_i = d; e.as_try = 0;
-				for (i = d + 1; i < as_n; i = i + 1) as_need[i] = as_leadmin[i] = 0;
+				for (i = d + 1; i < as_n; i = i + 1) as_need[i] = as_leadmin[i] = as_back[i] = as_up[i] = 0;
 				as_need[d] = max(as_rbs[d] * 1.0025, min(as_rfs[d] * 0.995, as_rbs[d] * 1.03)); as_fresh[d] = 1;
 				e.as_tprev = as_wp[d]; e.as_goal = as_ws[d]; e.as_stage = 3;
 				SV_TASAutoNote(e, 1, sprintf("stretch %.0f could not beat its bar: the energy went at stretch %.0f (%.1f%% of the guide's): backtrack %.0f there, needing %.0f u/s",
@@ -1010,7 +1010,7 @@ void(entity e) SV_TASAutoFrame =
 			if (as_wk[t] == 1 && as_rbs[t] > 0)
 			{
 				e.as_backs = e.as_backs + 1; e.as_i = t; e.as_try = 0;
-				for (i = t + 1; i < as_n; i = i + 1) as_need[i] = as_leadmin[i] = 0;
+				for (i = t + 1; i < as_n; i = i + 1) as_need[i] = as_leadmin[i] = as_back[i] = as_up[i] = 0;
 				as_need[t] = max(as_need[t], as_rbs[t] * min(1.08, e.topt_lowneed)); as_fresh[t] = 1;
 				e.as_tprev = as_wp[t]; e.as_goal = as_ws[t]; e.as_stage = 3;
 				SV_TASAutoNote(e, 1, sprintf("stretch %.0f came in under its platform: backtrack %.0f to stretch %.0f, needing %.0f u/s (it had %.0f)",
@@ -1025,7 +1025,7 @@ void(entity e) SV_TASAutoFrame =
 			// 280-333 u under; Lex: the top keeps the height that flight needs)
 			e.as_backs = e.as_backs + 1; e.as_i = e.as_i - 1; e.as_try = 0;
 			as_lowx[e.as_i] = as_lowx[e.as_i] ? as_lowx[e.as_i] * 2 : (e.as_low ? 4 : 2); as_fresh[e.as_i] = 1;
-			for (i = e.as_i; i < as_n; i = i + 1) { as_need[i] = 0; if (i > e.as_i) as_leadmin[i] = 0; }
+			for (i = e.as_i; i < as_n; i = i + 1) { as_need[i] = 0; if (i > e.as_i) as_leadmin[i] = as_back[i] = as_up[i] = 0; }
 			e.as_tprev = as_wp[e.as_i]; e.as_goal = as_ws[e.as_i]; e.as_stage = 3;
 			SV_TASAutoNote(e, 1, sprintf("stretch %.0f %s %.0f ticks in, from where the board before put it: backtrack %.0f to stretch %.0f, boarding nearer the guide's point (low %g)",
 				e.as_i + 2, e.topt_earlycut ? "left the guide's path" : "fell into a trigger", e.topt_earlycut ? e.topt_earlycut : e.topt_trigcut,
@@ -1045,7 +1045,7 @@ void(entity e) SV_TASAutoFrame =
 				as_hb[t] = as_hb[t] + 1;
 				if (as_hb[t] > 1 && t > 0) t = t - 1;
 				e.as_backs = e.as_backs + 1; e.as_i = t; e.as_try = 0;
-				for (i = t + 1; i < as_n; i = i + 1) as_need[i] = as_leadmin[i] = 0;
+				for (i = t + 1; i < as_n; i = i + 1) as_need[i] = as_leadmin[i] = as_back[i] = as_up[i] = 0;
 				as_need[t] = max(as_need[t], as_rbs[t] * 1.0025);
 				if (as_rfs[t] > as_need[t]) as_need[t] = min(as_rfs[t], as_rbs[t] * 1.03);  // the guide's, 3% a time at most
 				as_fresh[t] = 1;
@@ -1060,7 +1060,7 @@ void(entity e) SV_TASAutoFrame =
 			// 8 backtracks re-doing the stretch before, when the deficit came two or three earlier (full run, 10 Nov)
 			if (e.as_failat == e.as_i) e.as_failn = e.as_failn + 1; else { e.as_failat = e.as_i; e.as_failn = 1; }
 			e.as_backs = e.as_backs + 1; e.as_i = max(0, e.as_i - 1 - floor((e.as_failn - 1) / 2)); e.as_try = 0; as_fresh[e.as_i] = 1;
-			for (i = e.as_i + 1; i < as_n; i = i + 1) as_need[i] = as_leadmin[i] = 0;       // reached from a new state: no bar or raised lead of their own
+			for (i = e.as_i + 1; i < as_n; i = i + 1) as_need[i] = as_leadmin[i] = as_back[i] = as_up[i] = 0;       // reached from a new state: no bar or raised lead of their own
 			if (!e.as_route && as_rbs[e.as_i] > 0) as_need[e.as_i] = max(as_need[e.as_i], as_rbs[e.as_i] * 1.0025);
 			// under farsh there: toward 99.5% of his energy, 2% at a time -- a retry from one state replays one line, so
 			// 0.25% more was never found and the bar was dropped each time (surf_null: 97.9% at the board before the
