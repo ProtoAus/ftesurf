@@ -38,6 +38,9 @@ void(entity e, float z) SV_TASLegalStart;
 float rt_n;
 float rt_o[TAS_ASMAX * 3], rt_nn[TAS_ASMAX * 3];
 float as_n;                     // waypoints
+// A backtrack's stretch must beat the reach that led to the failure (speed at farsh's board height, +0.25%): the
+// full run re-took ramp 5 at 2810-2838 eleven times and failed ramp 6 from each (rigs/tnullfull4, 10 Nov)
+float as_rbs[TAS_ASMAX], as_need[TAS_ASMAX];
 float as_wt[TAS_ASMAX];         // the demo's time there
 float as_wo[TAS_ASMAX * 3];     // its origin
 float as_wn[TAS_ASMAX * 3];     // the face to board ('0 0 1' a hop: a jump there; '0 0 0' any contact)
@@ -294,10 +297,10 @@ float(vector v, float z) SV_TASAutoVE =
 string(entity e, float i) SV_TASAutoEmin =
 {
 	local float k, v2, x;
-	if (e.as_emin <= 0) return "";
+	if (e.as_emin <= 0 && as_need[i] <= 0) return "";
 	for (k = 0; k < as_nrows - 1 && as_rows[k*7] < as_wt[i] - 0.0001; k = k + 1) ;
 	v2 = as_rows[k*7+4] * as_rows[k*7+4] + as_rows[k*7+5] * as_rows[k*7+5] + as_rows[k*7+6] * as_rows[k*7+6];
-	x = 2 * cvar("sv_gravity") * (as_rows[k*7+3] - e.origin_z) + e.as_emin * e.as_emin * v2;
+	x = 2 * cvar("sv_gravity") * (as_rows[k*7+3] - e.origin_z) + max(max(0, e.as_emin) * max(0, e.as_emin) * v2, as_need[i] * as_need[i]);
 	x = (x < 0) ? -sqrt(-x) : sqrt(x);
 	return sprintf(" emin %.1f", x);
 };
@@ -387,13 +390,19 @@ void(entity e) SV_TASAutoLink =
 	e.as_stage = 2;
 	if (e.as_route) SV_TASAutoNote(e, 1, sprintf("point %.0f of %.0f (%s), try %.0f", i + 1, as_n,
 		(as_wk[i] == 1) ? "ramp" : ((as_wk[i] == 2) ? "bhop" : "point"), e.as_try + 1));
-	else SV_TASAutoNote(e, 1, sprintf("stretch %.0f of %.0f (%s at demo t=%.2f), try %.0f", i + 1, as_n,
-		(as_wk[i] == 1) ? "board" : ((as_wk[i] == 2) ? "hop" : "finish"), as_wt[i], e.as_try + 1));
+	else SV_TASAutoNote(e, 1, sprintf("stretch %.0f of %.0f (%s at demo t=%.2f), try %.0f%s", i + 1, as_n,
+		(as_wk[i] == 1) ? "board" : ((as_wk[i] == 2) ? "hop" : "finish"), as_wt[i], e.as_try + 1,
+		(as_need[i] > 0) ? sprintf(", needs %.0f u/s", as_need[i]) : ""));
 };
 
 // After SV_TASDemoFrame (SV_TASOptFrame): the next step of the chain once no search is running.
-// backs unset: twice the stretches, at least 6 (the full surf_null run spent 10 on its first five of 17 stretches)
-void(entity e) SV_TASAutoBacks = { if (e.as_backmax < 0) e.as_backmax = max(6, 2 * as_n); };
+// A chain's start. backs unset: twice the stretches, at least 6 (the full surf_null run spent 10 on its first five of 17)
+void(entity e) SV_TASAutoBacks =
+{
+	local float k;
+	if (e.as_backmax < 0) e.as_backmax = max(6, 2 * as_n);
+	for (k = 0; k < TAS_ASMAX; k = k + 1) as_rbs[k] = as_need[k] = 0;
+};
 
 void(entity e) SV_TASAutoFrame =
 {
@@ -553,6 +562,7 @@ void(entity e) SV_TASAutoFrame =
 			// speed at farsh's board height (the energy carried there) against his own: vE near 0 magnified the gap
 			d = e.velocity * e.velocity + 2 * cvar("sv_gravity") * (e.origin_z - as_rows[i*7+3]);
 			as_rk = e.as_i; as_rb = (d < 0) ? -sqrt(-d) : sqrt(d); as_rf = vlen([as_rows[i*7+4], as_rows[i*7+5], as_rows[i*7+6]]);
+			as_rbs[e.as_i] = as_rb;
 			SV_TASAutoNote(e, 1, sprintf("stretch %.0f reached: %.0f u/s at farsh's board height, farsh %.0f", e.as_i + 1, as_rb, as_rf));
 			}
 			e.as_tprev = t; e.as_i = e.as_i + 1; e.as_try = 0;
@@ -573,6 +583,8 @@ void(entity e) SV_TASAutoFrame =
 			// 8 backtracks re-doing the stretch before, when the deficit came two or three earlier (full run, 10 Nov)
 			if (e.as_failat == e.as_i) e.as_failn = e.as_failn + 1; else { e.as_failat = e.as_i; e.as_failn = 1; }
 			e.as_backs = e.as_backs + 1; e.as_i = max(0, e.as_i - 1 - floor((e.as_failn - 1) / 2)); e.as_try = 0;
+			for (i = e.as_i + 1; i < as_n; i = i + 1) as_need[i] = 0;       // reached from a new state: no bar of their own
+			if (!e.as_route && as_rbs[e.as_i] > 0) as_need[e.as_i] = max(as_need[e.as_i], as_rbs[e.as_i] * 1.0025);
 			e.as_tprev = as_wp[e.as_i]; e.as_goal = as_ws[e.as_i]; e.as_stage = 3;
 			SV_TASAutoNote(e, 1, sprintf("stretch %.0f failed its tries: backtrack %.0f to stretch %.0f", e.as_failat + 1, e.as_backs, e.as_i + 1));
 			return;
