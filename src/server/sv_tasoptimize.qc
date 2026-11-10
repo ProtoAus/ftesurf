@@ -43,7 +43,9 @@
 #define TOPT_EFOLLOW 256        // P1449: tas_rollout row bits (sv_tas_rollout.inc): the engine sets the yaw and
 #define TOPT_EPITCHV 512        // side from the velocity each tick (yaw slot = turn command), the pitch too
 #define TOPT_DOFF  6            // P1449 curve demo: the yaw correction's range, degrees either way
-#define TOPT_DQOFF 30           // ...with the engine following: the command correction's range
+#define TOPT_DQOFF 30           // ...with the engine following: the command correction's range (the first grid)
+#define TOPT_DQMAX 60           // ...and the search's: past +30 a command over 60 brakes as it turns (Lex: at this speed take the
+                                // turns wider or strafe harder; chains pinned 6-29% of searches at +-30, farsh's state none)
 #define TOPT_EAIM  1024         // P1449: tas_rollout AIM rows -- a flight steers to the aim point (sv_tas_rollout.inc)
 #define TOPT_EWALL 2048         // P1466: tas_rollout reports a wall or ceiling clipped on any tick (out[7] bit 2), rides too
 #define TOPT_AIMR  500          // P1449 curve aim: the aim point's offset from the target, units either way (x, y)
@@ -1280,15 +1282,16 @@ float(float base, float x) SV_TASOptBand = { return base + ((x >= TOPT_BANDK) ? 
 // link ends there (what follows does not count, a reset after it included); reached scores
 // TOPT_REACH + the speed/energy there, a miss TOPT_NEAR - its closest distance, and a miss the
 // prediction could not follow to the end (cut) -1.
-// P1449: ticks after tick k (up to k + m) the body still rides: a ramp contact or a vertical speed off free fall, gaps
-// of up to 3 ticks bridged
-float(float k, float m) SV_TASOptRideAfter =
+// P1449: ticks after tick k (up to k + m) the body still rides the target's face (a world contact within TOPT_FACEDOT of
+// it, or a brush entity's or two planes', which carry no normal), gaps of up to 3 ticks bridged. Any vz off free fall
+// counted a fall onto whatever lay below: tchain10's ramp-9 board passed and was off the ramp 14 ticks into the next stretch
+float(entity e, float k, float m) SV_TASOptRideAfter =
 {
-	local float i, gap, last, gdt;
-	gdt = cvar("sv_gravity") * PM_TICK; last = k; gap = 0;
+	local float i, gap, last;
+	last = k; gap = 0;
 	for (i = k + 1; i <= k + m; i = i + 1)
 	{
-		if ((topt_out[i*13+8] >= 1 && topt_out[i*13+8] <= 3) || fabs(topt_out[i*13+5] - topt_out[i*13-8] + gdt) > 1.5) { last = i; gap = 0; }
+		if ((topt_out[i*13+8] == 1 && SV_TASOptFaceDot(e, i) >= TOPT_FACEDOT) || topt_out[i*13+8] == 2 || topt_out[i*13+8] == 3) { last = i; gap = 0; }
 		else
 		{
 			gap = gap + 1;
@@ -1369,9 +1372,9 @@ float(entity e, float ran) SV_TASOptTargetScore =
 			// ticks it rode (0: not brief)
 			eg = ceil(min(TOPT_RIDEMIN, TOPT_RIDEFRAC * e.topt_rideT));
 			if (bk + eg < ((e.topt_rollcut == 1) ? ran - 1 : ran))
-			if (SV_TASOptRideAfter(bk, eg) < eg)
+			if (SV_TASOptRideAfter(e, bk, eg) < eg)
 			{
-				e.topt_candbr = 1 + SV_TASOptRideAfter(bk, eg);
+				e.topt_candbr = 1 + SV_TASOptRideAfter(e, bk, eg);
 				e.topt_briefn = e.topt_briefn + 1;
 				return SV_TASOptBand(TOPT_WEAK, d - 3000);
 			}
@@ -1386,10 +1389,10 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		if ((e.topt_tgtn_x || e.topt_tgtn_y) && e.topt_tgtn_z < 0.99)      // a face, not a hop's floor (as the hop tests)
 		{
 			SV_TASOptBoardAt(e, bk);
-			// past or above the point: W a unit; below it W beyond 100 u, before it half that beyond 100 u -- the demo's
-			// board point is the reference every way (Lex: too far along ramp 6, way too low on 7; on 10 the top keeps the
-			// height its flight needs, the side made it and the next stretch reset; on 11 the tip)
-			d = d - e.topt_low * (max(0, e.topt_bal) + max(0, e.topt_bup) + max(0, -e.topt_bup - 100) + 0.5 * max(0, -e.topt_bal - 100));
+			// past the point along the run: W a unit; below it W beyond 50 u. Above it and before it are free (Lex: too
+			// far along ramp 6, way too low on 7; ramp 10's top corner; ramp 11 near the tip and far back, room to convert
+			// the energy for the bhop) -- the old above/before terms pushed boards down the face
+			d = d - e.topt_low * (max(0, e.topt_bal) + max(0, -e.topt_bup - 50));
 		}
 		if (e.topt_tgtn_z >= 0.99 && e.topt_tube > 0 && e.topt_tgtj + 4 < e.topt_dn)
 		{	// a hop keeps its horizontal velocity for the next flight: off the demo's heading after its own
@@ -1976,7 +1979,7 @@ void(entity e) SV_TASOptCurveNext =
 			u = random() + random() + random() + random();
 			g = (u - 2) * 1.7320508;
 		}
-		u = (j >= e.topt_kn) ? TOPT_AIMR : ((e.topt_mode & 64) ? (e.topt_efol ? TOPT_DQOFF : TOPT_DOFF) : TOPT_QMAX);
+		u = (j >= e.topt_kn) ? TOPT_AIMR : ((e.topt_mode & 64) ? (e.topt_efol ? TOPT_DQMAX : TOPT_DOFF) : TOPT_QMAX);
 		c = (e.topt_kidx >= TOPT_CEPOP - TOPT_CEWIDE) ? max(topt_ksig[j], SV_TASOptSig0(e, j)) : topt_ksig[j];   // the wide few
 		topt_kcur[j] = bound(-u, topt_kmean[j] + c * g, u);
 		topt_kpop[e.topt_kidx * TOPT_KMAX + j] = topt_kcur[j];

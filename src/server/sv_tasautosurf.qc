@@ -477,7 +477,8 @@ void(entity e) SV_TASAutoLink =
 	// a retry searches longer: 30 generations more a try (the pillar stretch's narrow line came in some searches only)
 	ps = strcat(ps, sprintf(" gens %.0f", e.as_polish ? 90 : min(90, 30 * (1 + e.as_try))));
 	if (e.as_polish && e.as_try < e.as_tries - 1) ps = strcat(ps, " stall 20");
-	if ((e.as_low || as_lowx[i]) && as_wk[i] == 1) ps = strcat(ps, sprintf(" low %g", 0.25 * max(e.as_low ? 1 : 0, as_lowx[i])));
+	// `low` 0.5 (as_lowx 2): at 0.25 tchain10 boarded ramp 10 557 u under farsh's point; its 0.5 retry boarded 8 u off and faster
+	if ((e.as_low || as_lowx[i]) && as_wk[i] == 1) ps = strcat(ps, sprintf(" low %g", 0.25 * max(e.as_low ? 2 : 0, as_lowx[i])));
 	if (as_wk[i] == 1 && as_wl[i] > as_wt[i]) ps = strcat(ps, sprintf(" ride %.0f", rint((as_wl[i] - as_wt[i]) / PM_TICK)));
 	if (e.as_rideknots && i > 0)
 	if (as_wk[i - 1] == 1 && as_wl[i - 1] > e.as_tprev)
@@ -721,7 +722,7 @@ void(entity e) SV_TASAutoFrame =
 			// nearer farsh's point and with no speed bar -- the bar made a retry board lower still (surf_null ramp 9 for 10,
 			// 280-333 u under; Lex: the top keeps the height that flight needs)
 			e.as_backs = e.as_backs + 1; e.as_i = e.as_i - 1; e.as_try = 0;
-			as_lowx[e.as_i] = as_lowx[e.as_i] ? as_lowx[e.as_i] * 2 : 2;
+			as_lowx[e.as_i] = as_lowx[e.as_i] ? as_lowx[e.as_i] * 2 : (e.as_low ? 4 : 2);
 			for (i = e.as_i; i < as_n; i = i + 1) as_need[i] = 0;
 			e.as_tprev = as_wp[e.as_i]; e.as_goal = as_ws[e.as_i]; e.as_stage = 3;
 			SV_TASAutoNote(e, 1, sprintf("stretch %.0f left farsh's path %.0f ticks in, from where the board before put it: backtrack %.0f to stretch %.0f, boarding nearer farsh's point (low %g)",
