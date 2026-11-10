@@ -74,6 +74,10 @@ float as_wr[TAS_ASMAX];         // a peak's radius
 float as_wl[TAS_ASMAX];         // a board's ride: the demo time of its last sample off free fall (0: none known)
 float as_ws[TAS_ASMAX];         // the head tick its stretch started at
 float as_wp[TAS_ASMAX];         // the demo time its stretch started from
+// A stretch's start state (origin, velocity) this attempt, and the one it last failed all its tries from with no bar,
+// with that search's low weight (as_fsl -1: none). From the same state a search replays the line the search memory kept
+// there and fails the same way: tchain9 (10 Nov) failed stretch 12 three times from one 3034 u/s state.
+float as_sso[TAS_ASMAX * 6], as_fso[TAS_ASMAX * 6], as_fsl[TAS_ASMAX];
 float *as_rows;                 // the demo's samples: t x y z vx vy vz
 float as_nrows;
 
@@ -430,6 +434,15 @@ void(entity e) SV_TASAutoLink =
 	local string ps, ls, cl;
 	i = e.as_i;
 	as_ws[i] = SV_TimerTicks(e); as_wp[i] = e.as_tprev;
+	as_sso[i*6] = e.origin_x; as_sso[i*6+1] = e.origin_y; as_sso[i*6+2] = e.origin_z;
+	as_sso[i*6+3] = e.velocity_x; as_sso[i*6+4] = e.velocity_y; as_sso[i*6+5] = e.velocity_z;
+	if (!e.as_route && e.as_try == 0 && as_need[i] <= 0 && as_fsl[i] == as_lowx[i])
+	if (e.origin == [as_fso[i*6], as_fso[i*6+1], as_fso[i*6+2]] && e.velocity == [as_fso[i*6+3], as_fso[i*6+4], as_fso[i*6+5]])
+	{	// counted as failed again without a search: the failure handler goes on to the next backtrack
+		SV_TASAutoNote(e, 1, sprintf("stretch %.0f starts in the state it failed from before: counted as failed again", i + 1));
+		e.topt_outcome = 1; e.topt_lowneed = e.topt_earlycut = 0; e.as_try = e.as_tries - 1; e.as_stage = 2;
+		return;
+	}
 	o = [as_wo[i*3], as_wo[i*3+1], as_wo[i*3+2]]; n = [as_wn[i*3], as_wn[i*3+1], as_wn[i*3+2]];
 	if (e.as_route)
 	{	// a clicked point: the horizon from its distance at this speed (1.5x and 40 ticks over), a radius for a click
@@ -493,7 +506,7 @@ void(entity e) SV_TASAutoBacks =
 {
 	local float k;
 	if (e.as_backmax < 0) e.as_backmax = max(6, 2 * as_n);
-	for (k = 0; k < TAS_ASMAX; k = k + 1) as_rbs[k] = as_need[k] = as_lowx[k] = as_rfs[k] = 0;
+	for (k = 0; k < TAS_ASMAX; k = k + 1) { as_rbs[k] = as_need[k] = as_lowx[k] = as_rfs[k] = 0; as_fsl[k] = -1; }
 	e.as_failmax = -1;
 };
 
@@ -673,6 +686,11 @@ void(entity e) SV_TASAutoFrame =
 		e.as_backhead = -1; e.as_backfail = 0;
 		if (e.as_try < e.as_tries) { e.as_goal = as_ws[e.as_i]; e.as_stage = 3; return; }
 		e.as_failmax = max(e.as_failmax, e.as_i);
+		if (!e.as_route && as_need[e.as_i] <= 0)
+		{
+			as_fsl[e.as_i] = as_lowx[e.as_i];
+			for (i = 0; i < 6; i = i + 1) as_fso[e.as_i*6 + i] = as_sso[e.as_i*6 + i];
+		}
 		if (as_need[e.as_i] > 0 && e.as_backs < e.as_backmax)
 		{	// it could not beat its last reach: again without the bar (the next stretch may need another line at the
 			// same speed), a backtrack's worth -- barred stretches cascaded to the first and stopped (review 8)
