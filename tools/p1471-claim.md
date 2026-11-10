@@ -1,6 +1,14 @@
-# P1471 claim (ftesurf-1d, 10 Nov 2026)
+# P1471 — park-only elapsed-time verification
 
-Lex (10 Nov): "People don't play below 66fps ... we could just cap the fps to 66.6667>fps". While playing with the
-Source mover, a cl_maxfps under the server's tick rate (1/pm_ticrate: 66.67 surf, 100 bhop) is raised to it -- below
-it one usercmd covers two of pm_source.c's whole ticks with one input. Engine client cl_main.c (limiter) and sys_win.c
-(present pacing reads the same cap). 0 (uncapped), menus, demos and the minimised throttle unchanged.
+Claimed 10 November 2026 after fetching both repositories and inspecting public
+patch headings, claim/test filenames and canonical untracked pNNN files; P1470
+belongs to the renderer workstream.
+
+Scope: investigate and implement verification of the existing recorded offline
+park carry across supported session boundaries. Preserve independent physical
+replay, session continuity and finish-time reconciliation. Online viewing remains
+outside this bounded model. No new captured fields, thresholds, enforcement or
+ranking policy is authorized by this claim.
+
+Status: implementation and acting controls pending. This claim is not a verified,
+published runtime or deployment assertion.
