@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1481 / P1477 / P1482 engine -- both installs 11 Nov 20:18Z (exe 7930cc92); owner check PENDING
+- Play normally for a while, including a board replay or a race against a ghost. Report any wrong, garbled or
+  missing HUD text, or a crash (P1481 changed how the game frees its text memory; verified on the rig, not by you).
+- Your r_capturerate 10 now really is 10 (the engine floored it at 20 before); water should look the same.
+- Optional, 1 minute, tells me whether the frame stalls I measured are real for you: in FULLSCREEN, on surf_fairy or
+  surf_jumble, type `r_frametime 1; r_spikes 1; r_frametime_reset`, surf 30 s, then `r_frametime_dump` and paste the
+  clipboard to me. On the windowed rig most of the slowest frames were swap/present stalls and WM_PAINT; if your
+  fullscreen dump has none, they were the rig's.
+
 ## P1484 input-journal close — both Windows clients10Nov19:45Z; owner check PENDING
 - If you normally use `cl_threadedphysics 1` and input recording, finish a normal
   recording, then start/retry once and disconnect. Report a freeze/crash or a

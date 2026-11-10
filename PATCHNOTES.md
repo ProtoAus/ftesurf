@@ -24,6 +24,9 @@
 ### P1484 Recordings finish without disturbing a newer recording
 - A finishing recording keeps its own bytes and result through callbacks, so its cleanup cannot discard a newer recording. Aborted closes release their buffers without publishing an unfinished result.
 
+### P1481 Steadier frames while the game tidies its text memory
+- The game's text-memory cleanup no longer pauses a frame for a few milliseconds: it copies only what changed since its last pass, and after a replay loads it cleans up in small steps instead of rare big ones.
+
 ### P1480 Safer input-recording replacement
 - Starting or clearing an input recording now waits for threaded physics to finish its current write before replacing or freeing the recording.
 
@@ -38,6 +41,9 @@
 - Long maps say when a route is longer than Jargon plans at once (64 ramps): surf them stage by stage. Long chains also backtrack more sensibly (sloped roofs count as walls, overshot ramps are boarded further back).
 
 ## 0.1.44 2026-11-10
+
+### P1477 Water reflections take turns even when you move fast
+- Fast moves and turns no longer make a water surface redraw its reflection and refraction in the same frame, and the reflection rate setting (r_capturerate) now goes down to 10.
 
 ### P1475 Water reflections stay put while you move
 - Between redraws, a water reflection or refraction is now shifted by how far you have moved, using each pixel's own depth, so it no longer slides off the water's edges at lower capture rates. r_captureparallax 0 turns it off.

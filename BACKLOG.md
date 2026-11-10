@@ -208,6 +208,26 @@
   start (mode 4, ~7 ms more input age) hides them. Driver-forced vsync detection (swap median > 1 ms) is
   untested: windowed, vid_vsync 1 did not block the swap; needs exclusive fullscreen on a fixed-refresh display.
 
+## 0.1%-low survey 3 (11 Nov, ftesurf-18; tools/p1481-survey3.md)
+
+- 20 of survey 2's 32 worst maps, first play + warm, r_spikes per frame. Worst warm 0.1%: fairy 75, jumble 90,
+  andromeda 90 (an 87 ms present stall), lovetunnel 91, mesa_revo 92, nuclear/pantheon 112, colony 115. Not run
+  (stopped by the low-memory reaper; restart only on Lex's word): agtricks, ceaseless, aircontrol, boreas, frost,
+  garden, het, kitsune, monolith, nova, quarantine, tensor2.
+- swap/present 5-15 ms stalls and WM_PAINT's 3.7-5.1 ms dispatch lead most maps' slowest frames on the windowed rig;
+  handling WM_PAINT ourselves changed nothing (outside the engine). Waiting on Lex's fullscreen dump (lextest).
+- csqc 5-9 ms frames on fairy and jumble with tiny QC self time: the cost is in builtins QC calls. Needs per-builtin
+  attribution (r_spikes 2 shows QC self only).
+- First-play opaque-draw hitches with no late compile/upload: tendies 44-147 ms (setpos -1021 10388 3962, repeats
+  across launches), orgrimmar 40-48, original 44, citypop 39. Driver first use. Probe ready but not run: a release-build
+  GL debug callback that counts the known spam and stamps frames over 20 ms (lows2 scratchpad gldebug2.py, branch
+  p1481-gcwritewatch); the first probe's 60-line cap was eaten by the spam below.
+- GL_LazyBind (gl_backend.c ~800) glEnable/glDisable's a TMU's texture target on the compatibility path, including
+  GL_TEXTURE_2D_ARRAY / CUBE_MAP_ARRAY, which are not enable caps: GL_INVALID_ENUM many times a second. Skip the
+  enable for those targets.
+- PRAddressableExtend's relocation (initlib.c ~104) reserves the OLD addressablesize, then commits up to the new size
+  (Sys_Error); live only with pr_ssqc_memsize -2. Pre-existing (found by P1481's lifetimes review).
+
 ## 0.1%-low survey (8 Nov, all 60 maps)
 
 - artifacts/run_lowsurvey.py -> survey2-results.tsv: each map's best board replay from a fresh load, 35 s, one build
