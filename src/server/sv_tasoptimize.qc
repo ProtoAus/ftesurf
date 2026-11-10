@@ -1426,6 +1426,8 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		if (SV_TASOptInEnd(e, [topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]]))
 			{ best = 0; bk = i; hit = TRUE; endhit = TRUE; break; }
 		d = vlen([topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]] - e.topt_tgt);
+		if (e.topt_endz < 0 && e.topt_endtrack < 0)    // P1483: with a course's end set only the end itself reaches (a 400 u reach
+		                                                // stopped short and its coast fell into stage 2's fail teleport: bench p2)
 		if (d <= e.topt_tgtr || (e.topt_tgtn_z >= 0.99 && fabs(topt_out[i*13+2] - e.topt_tgt_z) <= TOPT_HOPZ &&
 		    vlen([topt_out[i*13] - e.topt_tgt_x, topt_out[i*13+1] - e.topt_tgt_y, 0]) <= TOPT_HOPR))
 		if (e.topt_tgtn == '0 0 0' ||

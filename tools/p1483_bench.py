@@ -31,6 +31,7 @@ p.add_argument('--port', type=int, default=27614); p.add_argument('--runs', type
 p.add_argument('--courses', default='all'); p.add_argument('--svset', default=''); p.add_argument('--effort', default='tries 2 rideknots low')
 p.add_argument('--seed', type=int, default=1, help='tas_jargon_seed of the first run; each run adds 1')
 p.add_argument('--label', default='')
+p.add_argument('--plugin', type=Path, default=ROOT / 'fteplug_hl2_x64.dll')
 p.add_argument('--sameseed', action='store_true', help='every run the first seed (a learning arm: runs differ by what earlier runs saved)')
 a = p.parse_args()
 assert a.out.is_absolute() and a.progs.is_absolute()
@@ -89,7 +90,7 @@ def prepare(base, mapname, guides):
     shutil.copy2(ROOT / 'ftesurf/cfg/default.cfg', game / 'cfg/default.cfg')
     for g in guides:
         (game / g).parent.mkdir(parents=True, exist_ok=True); shutil.copy2(ROOT / 'ftesurf' / g, game / g)
-    shutil.copy2(ROOT / 'fteplug_hl2_x64.dll', base / 'fteplug_hl2_x64.dll')
+    shutil.copy2(a.plugin, base / 'fteplug_hl2_x64.dll')
     (base / 'default.fmf').write_text('FTEMANIFEST 1\nGAME FTESurfP1483Fixture\nBASEGAME ftesurf\nDISABLEHOMEDIR 1\n'
                                       'MAINCONFIG p1483-unused\nset sv_mintic 0.015\nset sv_maxtic 0.015\nset cl_netfps 66.6667\n')
     subprocess.run([sys.executable, '-B', str(ROOT / 'tools/seed_csprogs.py'), str(game / 'csprogs.dat')], check=True, capture_output=True)
@@ -122,6 +123,7 @@ courses = list(COURSES) if a.courses == 'all' else a.courses.split(',')
 bymap = {}
 for c in courses: bymap.setdefault(COURSES[c][0], []).append(c)
 res = {'utc': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'label': a.label, 'svset': a.svset, 'effort': a.effort,
+       'bin': {'cl': sha(a.clexe)[:8], 'sv': sha(a.svexe)[:8], 'plugin': sha(a.plugin)[:8]},
        'progs': {n: sha(a.progs / n)[:8] for n in ['qwprogs.dat', 'csprogs.dat']}, 'runs': []}
 a.out.mkdir(parents=True, exist_ok=False)
 for mapname, cs in bymap.items():
