@@ -265,6 +265,9 @@
   face order identical in 6 traced views, transparent ~0.1-0.2 ms less at fairy t=7.6 (worst view now 1.63 ms, was
   2.31 before P1457). What is left in a failing sort: plane-side tests (~20k units), pass-0 verdicts, projection.
   Bigger fairy lever now: csqc 2.4-4.3 ms on paused views (glare rays, Lex's budget call).
+  P1473 r_framewarp PARKED (branch p1473-framewarp): a Reflex-2-style rotation warp needs input read mid-frame, and an
+  early WM_INPUT pump breaks P1424/P307's raw-vs-legacy pairing (handling-time windows). First make that pairing use
+  message arrival time; see tools/p1473-claim.md.
   P1468 PARKED (measured): compact arrays for the hl2 world walk's marks changed nothing on pantheon's PrepareFrame
   (0.39/0.41/0.39, 0.25/0.22/0.22 ms, cvar A/B/A); branch p1468-walkarrays. Next CPU lead from the profiles: screen
   copies (MSAA resolve + CopyTexSubImage under T_Gen_CurrentRender/ScreenWater) ~6% of pantheon's frame in the driver.
