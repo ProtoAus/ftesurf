@@ -23,9 +23,9 @@
 
 ### P1478 Jargon: one click for the map, a bonus or a stage, and Continue
 - Jargon's panel now lists the map's courses (Main, each stage, each bonus). Pick one and it offers only runs of that course as guides, from leaderboard, KSF and Momentum replays and your own recordings.
-- "Surf <course> from its start" does the rest: the right start box, the guide's own prestrafe when you stand where it stood, every ramp, and the run into the end, then says your time.
+- "Surf <course> from its start" does the rest: the right start box, a walk to where the guide stood and its own prestrafe, every ramp, and the run into the end, then says your time. When it gets stuck it tries harder by itself before giving up.
 - A stage can be guided by a full run of the map: Jargon cuts that stage out of it.
-- The run saves itself as it goes. "Continue" replays the saved run exactly and carries on from where it stopped, with the effort you pick now.
+- The run saves itself as it goes (a new start never replaces a saved run that got further). "Continue" replays the saved run exactly and carries on from where it stopped, with the effort you pick now.
 - Long maps say when a route is longer than Jargon plans at once (64 ramps): surf them stage by stage. Long chains also backtrack more sensibly (sloped roofs count as walls, overshot ramps are boarded further back).
 
 ## 0.1.44 2026-11-10

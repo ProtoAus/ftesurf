@@ -1,5 +1,12 @@
 # BACKLOG.md
 
+## Jargon courses -- leftovers of P1478 (11 Nov)
+
+- Site: SV_TASAutoLink board stretches (sv_tasautosurf.qc). surf_shape bonus 1 (KSF x, ksfmoves 0): stretch 1 boards ramp 1 350-375 u from the guide's point (board radius 800) and every stretch-2 candidate is cut within 3 ticks (a trigger), so the chain backtracks between them until its budget and both effort steps run out (rigs shape2/shape3). Falsifier: the same one-click start reaches stretch 3.
+- Site: the end of a course that is a trigger_teleport into the next box (surf_tensor2 stage 2). The optimizer scores a rollout cut by that teleport as a miss, so the finish target is a 400 u reach and the predicted coast does the rest; when the coast meets another teleport the last stretch is retried. A rollout cut by the course's own end teleport could count as the reach. Falsifier: a stage-2 one-click run ends "finished stage 2" without a "would fall into a teleport" retry.
+- Site: TAS_ASMAX (64 points a route). surf_tensor2's main course has more; the panel says so and stages work. Falsifier: a 64+ ramp main course finishes from one Start.
+- Site: the curve search is not deterministic from one state (stretch 1 from the same replayed start: 1130, 1130, 1092 u/s in rigs t2chain2-4). Falsifier: two searches from one paused state print the same best.
+
 ## Timer zones built from map triggers -- leftovers of P1461 (10 Nov)
 
 - Map data, needs a zone file (zoners): surf_loweffort2_css writes zone_number 5 on two stage triggers ~10,000 u apart and no 6, so stage 6 never splits and its box arms "stage 5"; surf_oompa2 (`timer_start` 2,803 u from `rs_1_end`), surf_angelinaaa (start 695 128 u above end 691) and surf_hope_css carry unlabelled second start/end pairs that still time as main runs; surf_devs_ksf has no start and surf_spooky_css no end. Live boards held no ranked/community row on any of them (10 Nov). Falsifier: `zone_list` after a zone file lands shows one start/end per track.

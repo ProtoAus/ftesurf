@@ -62,7 +62,7 @@ float(string p) TASJargon_Safe =
 
 // P1478: the map's courses from its zones -- main, its stages, its bonuses -- one picked; the guide runs offered are runs
 // of that course by their own .rec header (track, leg): a KSF bonus replay was offered for the main start before
-#define JG_COURSES 24
+#define JG_COURSES 40
 float jg_cn, jg_cpick, jg_czc;
 float jg_ct[JG_COURSES], jg_cl[JG_COURSES];     // track (0 main, k bonus k), leg (0 the whole track, k stage k)
 string jg_cmap;
@@ -188,20 +188,22 @@ void(string dir, float want, float most) TASJargon_Folder =
 };
 void(float want) TASJargon_Ksf =
 {
-	local float i, h, n;
+	local float i, h, n, k, g;
 	local string p, l, m, pre;
 	m = strtolower(zone_mapname);
 	if (substring(m, 0, 5) == "surf_") m = substring(m, 5, -1);
 	pre = strcat("ksf_", m, "_");
 	h = search_begin("cfg/ksfreplays/*.rec", TRUE, TRUE);
 	if (h < 0) return;
-	n = search_getsize(h);
-	for (i = 0; i < n && jg_gn < JG_GUIDES; i = i + 1)
+	n = search_getsize(h); k = 0;
+	for (i = 0; i < n && jg_gn < JG_GUIDES && k < 3; i = i + 1)
 	{
 		p = search_getfilename(h, i);
 		l = TASJargon_Base(p);
 		if (strstrofs(strtolower(l), pre) != 0) continue;
+		g = jg_gn;
 		TASJargon_Add(p, strcat("KSF ", substring(l, strlen(pre), -1)), want);
+		if (jg_gn > g) k = k + 1;
 	}
 	search_end(h);
 };
@@ -214,7 +216,7 @@ float jg_grt;
 void() TASJargon_Guides =
 {
 	local float i, w;
-	local string p, l, key, leg, full;
+	local string p, l, key, leg, full, keep;
 	if (cltime < jg_gat) return;
 	jg_gat = cltime + 1;
 	TASJargon_Courses();
@@ -223,7 +225,8 @@ void() TASJargon_Guides =
 		for (i = 0; i < SB_LNMAX; i = i + 1)
 			if (sb_ln_st[i] == SBL_ON) key = strcat(key, " ", sb_ln_path[i], sb_ln_key[i]);
 	if (key == jg_gkey && cltime < jg_grt) return;      // the folders again every 5 s (new downloads)
-	if (key != jg_gkey) { if (jg_gkey != "") strunzone(jg_gkey); jg_gkey = strzone(key); jg_pick = 0; }
+	if (key != jg_gkey) { if (jg_gkey != "") strunzone(jg_gkey); jg_gkey = strzone(key); jg_pick = 0; keep = ""; }
+	else keep = (jg_pick < jg_gn) ? strzone(jg_gp[jg_pick]) : "";      // a faster download sorts in ahead: keep the file (review B)
 	jg_grt = cltime + 5;
 	for (i = 0; i < jg_gn; i = i + 1) { strunzone(jg_gp[i]); strunzone(jg_gl[i]); }
 	jg_gn = 0;
@@ -245,10 +248,16 @@ void() TASJargon_Guides =
 					TASJargon_Add(p, l, w);
 				}
 		if (w == 1 && (jg_cpick >= jg_cn || !jg_cl[jg_cpick])) break;     // whole runs are the course itself
-		TASJargon_Folder(sprintf("data/online/%s/%s", zone_mapname, (w == 2) ? leg : full), w, (w == 2) ? 3 : 2);
+		p = Online_CacheDir(zone_mapname, jg_ct[min(jg_cpick, max(0, jg_cn - 1))] * (jg_cn > 0), (w == 2 && jg_cpick < jg_cn) ? jg_cl[jg_cpick] : 0);
+		TASJargon_Folder(substring(p, 0, strlen(p) - 1), w, (w == 2) ? 3 : 2);    // lowercased, as written (ext4: review B)
 		TASJargon_Ksf(w);
 		TASJargon_Folder(sprintf("data/momentum/%s/%s", zone_mapname, (w == 2) ? leg : full), w, (w == 2) ? 3 : 2);
 		if (w == 2) TASJargon_Folder("data", 2, 4);
+	}
+	if (keep != "")
+	{
+		for (i = 0; i < jg_gn; i = i + 1) if (!strcmp(jg_gp[i], keep)) jg_pick = i;
+		strunzone(keep);
 	}
 	if (jg_pick >= jg_gn) jg_pick = 0;
 };
@@ -277,6 +286,7 @@ void() TASJargon_RequestPlan =
 {
 	if (jg_pick >= jg_gn) return;
 	localcmd(sprintf("tas autosurf %s plan%s%s\n", jg_gp[jg_pick], TASJargon_CourseWords(), TASJargon_Airs() ? " air" : ""));
+	jg_n = 0; jg_hover = jg_drag = -1;     // until the plan arrives: a refused one left the last course's route up (review B)
 	if (jg_planned != "") strunzone(jg_planned);
 	jg_planned = strzone(jg_gp[jg_pick]);
 	jg_plannedc = jg_cpick;

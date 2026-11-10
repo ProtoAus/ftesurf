@@ -222,6 +222,43 @@ before its backtracks ran out (the budget now scales).
   csprogsvers b40dd39f seeded in both installs; tasrevd codes.txt 116 -> 117 (.pre1476). Rig tspots3 ran
   these bytes: a sweep, its redo with the kept spot, `redo 0` refused, no QC error. Release 0.1.44 carries this set.
 
+## After round 3 on p1449-wall (11 Nov ~01:00, ftesurf-b8; shipped with P1478)
+
+8e91b3d4 / 15de0242 / a17d6e65 / 7625d984: sloped roofs scored as walls, a wall tick costs the energy it took, backtracks
+clear later leads and board shifts, the energy-loss backtrack only for a real deficit nearby, an overshot or skimmed ramp
+boards further back and higher, `slack` only on a retry after an early path cut, hops that fall short go back to the
+feeding ramp, `fresh` searches after a backtrack. From farsh's ramp-6 state the last 7 stretches finished (ttip6).
+
+## P1478: courses -- one click for the main course, a bonus or a stage, and Continue (ftesurf-16, 11 Nov)
+
+Lex: start maps, bonuses and stages with a click, or continue where you left off; searches that look for the correct
+thing. What changed (ENGINE_PATCHES.md "Patch 1478" has the full list):
+- The panel lists the map's courses from its zones; guide runs are filtered by their .rec header (track, leg), so a
+  bonus replay is never a main guide; a stage may be cut from a full-run guide.
+- The server takes `course T L` (or the guide's own header), refuses another course's guide, starts in that course's
+  box, cuts the guide at the course's end box, replays the guide's own prestrafe when the body lands where it stood,
+  and reports the finish from the timer's finish record.
+- Continue: each furthest stretch autosaves `jg_<leg>` (legal-start project) + `jg_<leg>.jargon`; `tas autosurf
+  continue T L [effort]` replays it exactly and goes on with a fresh backtrack budget.
+
+Rig runs (root C:/FTESurf-worktrees/jargon-courses-1111a, driver tools/p1478_courses.py), surf_tensor2:
+- t2plan1: stage 2 cut from farsh's 3:23 full run = proto's stage-2 replay's 4 boards (within ~40 u, same faces);
+  wrong-course guides refused. Main plans 64 points (TAS_ASMAX) of a longer course: now said in the note.
+- t2chain1: the P1449 runway start in stage 2's 270 u box jumped 375 u off the line -> the guide-prestrafe replay.
+- t2chain2: replay start 20 u from the guide's standstill, stretch 1 at 1130 u/s (guide 1129); saves revs 1-2; stop;
+  Continue "reproduced every saved state exactly", went on, backtracked, saved revs 3-6.
+- t2chain3/4: the finish target kept the 95% floor (reached too slowly) -> no floor for a course's end; then the
+  400 u reach radius let the coast fall off the end and be teleported back to the box -> 96 u.
+- t2chain6/7: a 400 u reach then a coast fell into the stage's fail teleport; a padded 96 u target still ended 350 u
+  short (its lines cut by a trigger). Final: the 400 u target, then the coast predicted by rollout -- played only when
+  the teleport it meets leads into the course's end box, else the last stretch is a failed try.
+- shape1-3 (surf_shape bonus 1, KSF x, ksfmoves 0): course start right (zone 2, track 1), the walk to the guide's
+  standstill then its prestrafe; stuck at stretch 2 because stretch 1 boards ramp 1 350-375 u from the guide's point
+  (board radius 800) and every stretch-2 line is cut within 3 ticks; the auto-escalation fired there. Not solved.
+- Reviews (two lenses, 17 findings, no crash in the reviewed tree except NaN/fractional notes numbers): all fixed.
+- The search is not deterministic from one state: stretch 1's first search from the same replayed start gave 1130,
+  1130 and 1092 u/s in three runs (t2chain2-4).
+
 ## Next
 
 Point the fast energy search at a surf_null ride (the board and ride, not the drop); then horizons past one 128-tick

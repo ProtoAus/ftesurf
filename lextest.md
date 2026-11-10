@@ -4,8 +4,9 @@
 - Open Jargon on a map with stages or bonuses (surf_tensor2, surf_shape): a "Course" row lists Main, each stage and each
   bonus. Pick Stage 2: the guide runs listed are stage-2 runs (and full runs marked "(full run)"); pick Bonus 1 on
   surf_shape: only bonus runs.
-- "Surf <course> from its start": it should start in that course's box, do the guide's prestrafe, surf the ramps and
-  end with "finished <course> in <time>".
+- "Surf <course> from its start": it should start in that course's box, walk to where the guide stood, do its
+  prestrafe, surf the ramps and end with "finished <course> in <time>". If it gets stuck it says "trying harder" (twice
+  at most) before it stops.
 - Press Stop half way, then "Continue <course> from stretch N": the saved run replays (a few seconds) and it goes on.
   Close the game in between and Continue still works next time (data/tasproj/<map>/jg_*.tasp + .jargon).
 - surf_tensor2 Main says "the first 64 points of a longer course (surf it stage by stage)".
