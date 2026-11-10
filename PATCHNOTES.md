@@ -21,6 +21,9 @@
 
 ## next
 
+### Replays
+- Ladder climbs and descents are no longer mistaken for standing still by replay idle skipping.
+
 ### P1486 Recording statistics keep their measurement state
 - Input-recording identity counters publish without racing the physics worker. Never-measured values stay unknown, and the last recording's measurements remain available after it closes; settings callbacks still run outside the recording update's lock.
 

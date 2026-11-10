@@ -450,12 +450,10 @@ float  rec_wt_p2wild;            // segments dropped for absurd screen coordinat
   clock backwards, and re-deriving spans from t0 on every frame of a drag would
   be six thousand iterations per frame.
 
-  WHAT COUNTS AS STILL.  Horizontal speed only, and the vertical is left out
-  deliberately: standing on a lift, or hanging at the apex of a jump, is not
-  "not moving" in the sense the report means, and a run that idles usually idles
-  on the ground where vertical speed is zero anyway.  hud_watch_idle_speed
-  defaults to 20 u/s, which is under a walk and well under anything a surf map
-  gives you for free.
+  WHAT COUNTS AS STILL.  Full recorded speed, including vertical travel: a
+  ladder climb or fall must not become dead air just because its sideways
+  speed is zero.  hud_watch_idle_speed defaults to 20 u/s; the duration gate
+  below keeps a brief slow jump apex from becoming a stationary stretch.
 
   FOR HOW LONG.  hud_watch_idle_time, 0.5 s.  SEG_MINTIME (0.10) is this
   codebase's existing answer to "too short to be a thing", and this wants to be
@@ -2232,7 +2230,7 @@ void(float ra, float rb) Watch_ScanRange =
 		  questions they are.
 		*/
 		t   = stof(argv(WT_C_T));
-		spd = vlen([stof(argv(WT_C_VEL + 0)), stof(argv(WT_C_VEL + 1)), 0]);
+		spd = vlen(v);
 
 		idnow = FALSE;
 		if (spd < idlim)
@@ -7043,7 +7041,7 @@ void() Watch_RegisterCvars =
 	/*
 	  BUILD 43 -- the dead air, and skipping it.
 
-	  hud_watch_idle_speed is the horizontal speed under which the run counts as
+	  hud_watch_idle_speed is the full speed under which the run counts as
 	  parked, and hud_watch_idle_time is how long it has to stay under it before
 	  the bar says so.  Both are read ONCE, in Watch_Scan, because the spans are
 	  built at load -- so changing either takes effect on the NEXT `replay`, not

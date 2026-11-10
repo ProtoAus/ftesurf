@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1487 replay ladder idle skip — owner check PENDING
+- In a replay with a ladder climb, enable idle skipping (`hud_watch_skipidle 1`): the climb should remain visible, while a genuine long stationary pause still skips. Check a descent too if the run contains one. Report map/demo and rough timestamp if any climb still disappears.
+- Production CSQC control/subject scans at 66.7/100 Hz retain both real stationary spans and remove only the two vertical-travel spans from the idle table (4 -> 2). The headless renderer does not run the replay frame hook; this is not rendered playback or owner confirmation.
+- Story allocation screenshot matches the exact P1417 error already fixed in release 0.1.42. Confirm the affected player's version. A recurrence on 0.1.42+ needs their crash record (F6 report offered on next lobby join), not another speculative allocator change. Earlier P1417 reproduction remains the evidence; no new fixed-build recurrence reproduced here.
+
 ## P1485/P1486 journal updates — latest both Windows clients10Nov22:35Z; owner check PENDING
 - If you normally use `cl_threadedphysics 1` and input recording, make one normal
   recording with mouse movement, then stop/retry. Chat or paste should still
