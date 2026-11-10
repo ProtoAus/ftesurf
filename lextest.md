@@ -45,7 +45,9 @@
   partial; a queued raw/legacy pair split across resumption can still count as uncorrelated afterward. That
   is not proof of injected input. No new detection, input blocking, ranking or enforcement policy ships here.
 
-## P1447 website replays on Strata maps, faster builds -- on main 9 Nov; NOT live until the surfd generation
+## P1447 website replays on Strata maps, faster builds -- LIVE website 10 Nov; human check pending
+- Backend accepted00:24 UTC; public viewer/board assets matched its manifest00:57 UTC. This is deployment,
+  not observed rendering or a new performance measurement. See tools/p1447-p1448-delivery.md.
 - Watch in 3D a run on a Strata map (bhop_ahi, bhop_canals, bhop_2006isback): the map draws instead of "could not be
   drawn". A map with lots of curved ground (ahop_coast, bhop_dunes) builds in a couple of seconds, not ten.
 - Known gaps: decals (overlays) on Strata maps, and df_elco-gbparadise draws no world.
@@ -57,12 +59,16 @@
 - Map changes, quitting and disconnecting should behave as before (the change touches what happens when a map's
   game code unloads).
 
-## P1448 Fetch: any leg, any player, from KSF and Momentum -- on main 9 Nov; NOT live until the surfd generation
+## P1448 Fetch: any leg, any player, from KSF and Momentum -- LIVE website +12 lobbies 10 Nov; local Windows copies pending
+- Public HTTPS single-leg press00:53 UTC returned202/Momentum queued; unhosted control404. All12 lobbies
+  advertise f87e7c2a/5223474. The local DAT/LNO copies await the shared fixture gate; no in-game or human
+  acceptance is inferred. See tools/p1447-p1448-delivery.md.
 - TAB board (KSF, Momentum or All filter), the menu's leaderboard and the website's map page: press Fetch on a leg
   with no times here yet; the footer says what KSF and Momentum answered. Refresh after a few minutes: times, and
   KSF replays for that leg, arrive in the background. Say if a leg you know exists says "not listed".
 - A profile's Fetch (game and site): stage and bonus records arrive over the next hour or so for a KSF player.
-- Until the new surfd is live, Fetch on a board still queues KSF as before and a profile's Fetch says it failed.
+- Confirm the real in-game/menu responses and eventual upstream arrival; the measured website queue reply
+  does not confirm those or a complete player-profile walk.
 
 ## P1443 tas optimize fast / energy -- LIVE 9 Nov (both installs' exe patch-1443 + QC; lobbies' QC); owner check pending
 

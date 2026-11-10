@@ -10385,6 +10385,15 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+- **Private JSON modes and kernel read-only mounts are separate (10 Nov 2026).**
+  A staged controller manifest at0400 failed the unchanged CLI's private-JSON0600
+  predicate before either candidate could start. Correct only the owned unused
+  manifest's mode after proving original bytes/inode/epoch and no grants or
+  receipts; do not reset state or relax the parser. Keep kernel manifestRO checks.
+  Qualify an artifact with its actual consuming CLI, not only a permissive reader.
+  Preserve the failed attempt; a bounded continuation must revalidate original
+  dependencies/DATA and restore only its exact owned parking on known failure.
+
 - **A CLOSED process is not a CLOSED HTTP application (9 Nov).** Starting an
   authorized candidate under a process-lifetime lease does not fence its requests.
   `surfd_http_admission.py` uses the selected Gunicorn config's post-worker hook;
