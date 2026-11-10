@@ -1160,13 +1160,14 @@
 
 ## P1116 leftovers (29 Oct)
 
-- cl_threadedphysics still appends to the input journal without exclusion from normal main
-  appends (in_generic.c Raw/Line/View). P1480 excludes the worker during Begin/replacement
-  and Drop/free/reset ONLY. End/hash/write and normal append/counter synchronization remain
-  open: COM_WriteFile can pump nonlocal-exit callbacks, so a whole-close lock is not yet a
-  safe fix. Falsifier: barrier-schedule actual event/view append and End against an admitted
-  worker, including callback-driven disconnect; require complete ordered bytes and cleanup,
-  not only a lock/no-crash. Keep the working P1480 lifecycle control separate.
+- cl_threadedphysics still overlaps ordinary main-side event/frame/note journal producers
+  (in_generic.c IN_Commands/Frame/Event/Note). P1480 protects Begin/Drop; P1484 protects
+  finalization/hash and owns detached close bytes through callbacks/abort, without locking
+  over the writer. Those are NOT general append/counter/plugin thread safety. Native-plugin
+  MarkSynth can also enter on a foreign producer thread. Falsifier: barrier-schedule actual
+  main drain and admitted worker View/append, preserve complete ordered rows/accumulator
+  state, and test a foreign plugin marker separately before any broader safety claim.
+  Do not batch journal rows ahead of input callbacks or add a real wait once per event.
 - Cancelling an in-flight journal upload (map load, disconnect, `rec_hid_upload 0`) waits for
   the download thread's current poll: up to 100 ms, or a whole DNS lookup.
 - Two upload follow-ups are in the private tree (checkpoints/p1116-journal-upload-followups.md).

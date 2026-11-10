@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1484 input-journal close — both Windows clients10Nov19:45Z; owner check PENDING
+- If you normally use `cl_threadedphysics 1` and input recording, finish a normal
+  recording, then start/retry once and disconnect. Report a freeze/crash or a
+  later recording unexpectedly disappearing. No need to change your usual
+  settings or attempt callback stress for this optional check.
+- Actual-code/OS-thread/crypto/abort controls and installed `--version` passed;
+  those are NOT owner-observed gameplay or complete journal/plugin thread safety.
+
 ## P1480 input-journal lifecycle — both Windows clients10Nov18:17Z; owner check PENDING
 - If you normally use `cl_threadedphysics 1`, try one normal start, retry/start,
   then disconnect or change map. Report a freeze/crash at those transitions.

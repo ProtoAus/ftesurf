@@ -6991,6 +6991,19 @@ must require42checks and exact8baseline labels, and catch unnumbered warnings.
 
 ## Anti-cheat and run evidence
 
+P1484 close ownership (10Nov2026): finalize/hash with existing worker exclusion,
+then detach the exact closed buffer and restore prior permission BEFORE file work
+or diagnostics. Resource LIFO and current digest-publication identity are distinct:
+new Begin/Drop/no-open End revoke an older completion; never restore outer identity
+when a nested close finishes. Free detached owners just before each actual host_abort
+jump while stack contexts live, not from returning ClearState. Host_EndGame is not
+all client exits: client SV_Error alternate and Android quit/error also jump.
+Actual VFS consumes/closes bytes BEFORE hash-work pumping; don't turn that source
+finding into a claimed post-callback VFS read/UAF. Injected returning command
+callbacks are test schedules, not discovered production command dispatch. New
+actual-SHA/close/abort/real-worker control132/37failures vs136/0; cap628/0,
+lifecycle18/0. Normal append/backend counters/foreign-plugin marker stay OPEN.
+
 P1480 existing journal lifecycle (10 Nov2026): main Begin/replacement and Drop
 save/restore CL_AllowIndependantSendCmd permission around the WHOLE reset/publish
 or free/reset. The worker already holds indeplock during SendCmd: never put this

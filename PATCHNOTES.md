@@ -21,6 +21,9 @@
 
 ## next
 
+### P1484 Recordings finish without disturbing a newer recording
+- A finishing recording keeps its own bytes and result through callbacks, so its cleanup cannot discard a newer recording. Aborted closes release their buffers without publishing an unfinished result.
+
 ### P1480 Safer input-recording replacement
 - Starting or clearing an input recording now waits for threaded physics to finish its current write before replacing or freeing the recording.
 
