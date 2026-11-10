@@ -655,6 +655,22 @@ void(entity e) SV_TASAutoFrame =
 			e.as_goal = as_ws[e.as_i]; e.as_stage = 3;
 			return;
 		}
+		if (e.as_backs < e.as_backmax && e.as_i > 0 && e.topt_lowneed > 1 && !e.as_route)
+		{	// a hop's flight came in under its platform: the board feeding the hops again, needing the energy that flight
+			// lacked (Lex: min-max a ramp until the energy is high enough; surf_null's second platform 29-41 u under)
+			d = e.as_i;
+			for (t = e.as_i - 1; t > 0 && as_wk[t] != 1; t = t - 1) ;
+			if (as_wk[t] == 1 && as_rbs[t] > 0)
+			{
+				e.as_backs = e.as_backs + 1; e.as_i = t; e.as_try = 0;
+				for (i = t + 1; i < as_n; i = i + 1) as_need[i] = 0;
+				as_need[t] = max(as_need[t], as_rbs[t] * min(1.08, e.topt_lowneed));
+				e.as_tprev = as_wp[t]; e.as_goal = as_ws[t]; e.as_stage = 3;
+				SV_TASAutoNote(e, 1, sprintf("stretch %.0f came in under its platform: backtrack %.0f to stretch %.0f, needing %.0f u/s (it had %.0f)",
+					d + 1, e.as_backs, t + 1, as_need[t], as_rbs[t]));
+				return;
+			}
+		}
 		if (e.as_backs < e.as_backmax && e.as_i > 0 && e.topt_earlycut && !e.as_route && as_wk[e.as_i - 1] == 1 && as_lowx[e.as_i - 1] < 8)
 		{	// it left farsh's path within 40 ticks (TOPT_EARLYCUT): the board before handed over the wrong place, so that board again
 			// nearer farsh's point and with no speed bar -- the bar made a retry board lower still (surf_null ramp 9 for 10,

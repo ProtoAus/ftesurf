@@ -91,6 +91,10 @@ void(entity e) SV_TASAutoFrame;
 #define TOPT_NEAR  50000        // P1449: a miss scores this - its closest distance
 #define TOPT_WEAK  75000        // P1449 `emin`: a reach under the minimum energy scores this + its energy - 3 x the shortfall
                                 // (between every reach and every miss; the search treats it as not reached)
+// P1449: a hop lands on the platform, not on farsh's own spot: within this horizontally and TOPT_HOPZ of his height (the
+// 50 u radius asked for his spot, and every miss on surf_null's second platform came in beside it, 10 Nov)
+#define TOPT_HOPR 128
+#define TOPT_HOPZ 16
 #define TOPT_FACEDOT 0.95       // P1449: a contact boards the target's face within ~18 degrees of it: a bent ramp's two faces
                                 // sit 11.4 degrees apart (surf_monolith's ramp 2: 0.9797, under the old 0.98); its flat top
                                 // (0.72 there) and sides stay out
@@ -283,6 +287,9 @@ float(entity e, float ran) SV_TASOptLimit;
 // place to 0.01 u. Not "before the aim starts": the curve knots steer from tick 0, and a cut at 248 was the search's own
 #define TOPT_EARLYCUT 40
 .float topt_earlycut;
+// the played miss of a hop came in under the platform: 1 + the flight time it lacked over its flight time (the energy the
+// board feeding it needs, as a ratio), or 0 -- surf_null's second platform, 29-41 u under at 2-3% under farsh's speed
+.float topt_lowneed;
 
 // P1097: what is scored. Speed, or with `time` segments reached, the tick the last one opened and
 // speed / 10: one segment scores below 2^19, where float32 still tells 0.3 u/s apart.
@@ -1025,6 +1032,24 @@ void(entity e, float ran) SV_TASOptDump =
 };
 
 void(entity e, float ran) SV_TASOptMissWhy;
+// P1449: a hop's played miss -- where it passed nearest the platform horizontally, how far under the hop's height and
+// how fast falling; the flight time that costs over the flight's own (from its last ground, or the stretch's start)
+float(entity e, float ran) SV_TASOptLowNeed =
+{
+	local float i, k, dxy, best, dz, vz, g;
+	best = 1000000; k = -1;
+	for (i = 0; i < ran; i = i + 1)
+	{
+		dxy = vlen([topt_out[i*13] - e.topt_tgt_x, topt_out[i*13+1] - e.topt_tgt_y, 0]);
+		if (dxy < best) { best = dxy; k = i; }
+	}
+	if (k < 1 || best > TOPT_HOPR + 100) return 0;
+	dz = e.topt_tgt_z - topt_out[k*13+2]; vz = -topt_out[k*13+5];
+	if (dz <= 2 || vz <= 50) return 0;
+	for (g = k; g > 0 && !topt_out[g*13+6]; g = g - 1) ;
+	return 1 + (dz / vz) / max(0.1, (k - g + 1) * PM_TICK);
+};
+
 void(entity e, float r, float y, float f) SV_TASOptPredict =
 {
 	local float ran, i, ran2, cut, ok, p;
@@ -1080,6 +1105,7 @@ void(entity e, float r, float y, float f) SV_TASOptPredict =
 		{
 			cut = (e.topt_reachv < TOPT_WEAK) ? SV_TASOptLimit(e, (e.topt_rollcut == 1) ? ran - 1 : ran) : -1;
 			e.topt_earlycut = (cut >= 0 && e.topt_limwhy == 1 && cut < TOPT_EARLYCUT) ? cut + 1 : 0;
+			e.topt_lowneed = (e.topt_reachv < TOPT_WEAK && e.topt_tgtn_z >= 0.99) ? SV_TASOptLowNeed(e, ran) : 0;
 		}
 		if (e.topt_phase == 3 && e.topt_reachv < TOPT_WEAK && cvar("developer"))
 			SV_TASOptMissWhy(e, ran);
@@ -1243,7 +1269,8 @@ float(entity e, float ran) SV_TASOptTargetScore =
 	for (i = 0; i < lim; i = i + 1)
 	{
 		d = vlen([topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]] - e.topt_tgt);
-		if (d <= e.topt_tgtr)
+		if (d <= e.topt_tgtr || (e.topt_tgtn_z >= 0.99 && fabs(topt_out[i*13+2] - e.topt_tgt_z) <= TOPT_HOPZ &&
+		    vlen([topt_out[i*13] - e.topt_tgt_x, topt_out[i*13+1] - e.topt_tgt_y, 0]) <= TOPT_HOPR))
 		if (e.topt_tgtn == '0 0 0' ||
 		    (e.topt_tgtn_z >= 0.99 && topt_out[i*13+5] - ((i > 0) ? topt_out[i*13-8] : e.velocity_z) > 200) ||
 		    (topt_out[i*13+8] == 1 && SV_TASOptFaceDot(e, i) >= TOPT_FACEDOT))
@@ -1260,6 +1287,9 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		bk = min(bk, lim - 1);
 	}
 	if (!hit && e.topt_tube > 0 && e.topt_tubebk >= 0) { best = e.topt_tubebest; bk = e.topt_tubebk; }   // a miss: route progress
+	if (!hit && bk >= 0 && e.topt_tgtn_z >= 0.99)
+	if (vlen([topt_out[bk*13] - e.topt_tgt_x, topt_out[bk*13+1] - e.topt_tgt_y, 0]) < max(2 * e.topt_tube, e.topt_tgtr + e.topt_tube))
+		best = best + 2 * max(0, e.topt_tgt_z - topt_out[bk*13+2]);      // a hop's miss under its platform: you cannot land from there
 	e.topt_candk = bk + 1; e.topt_candd = best;
 	e.topt_candw = SV_TASOptWallTicks(bk + 1);
 	if (e.topt_candw) e.topt_wallhit = e.topt_wallhit + 1;
@@ -2526,7 +2556,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_mode = mode; e.topt_fk = fk; e.topt_srch = 0; e.topt_besty = 0; e.topt_bestf = 0; e.topt_bestp = 12;
 	e.topt_pfoff = fixp; e.topt_pfon = 0;
 	e.topt_kn = kn; e.topt_kgen = -1; e.topt_kidx = 0; e.topt_wok = e.topt_bok = 0; e.topt_vizt = 0;   // vizt before the clear below
-	e.topt_efol = 0; e.topt_tube = tube; e.topt_tubeout = e.topt_wallhit = 0; e.topt_hop = hop; e.topt_look = look; e.topt_pace = pace; e.topt_emin = emin; e.topt_weakn = 0; e.topt_cegen = gens ? gens : TOPT_CEGEN; e.topt_cestall = stall ? stall : TOPT_CESTALL; e.topt_low = low; e.topt_edgeok = edgeok; e.topt_edgen = 0; e.topt_earlycut = 0;
+	e.topt_efol = 0; e.topt_tube = tube; e.topt_tubeout = e.topt_wallhit = 0; e.topt_hop = hop; e.topt_look = look; e.topt_pace = pace; e.topt_emin = emin; e.topt_weakn = 0; e.topt_cegen = gens ? gens : TOPT_CEGEN; e.topt_cestall = stall ? stall : TOPT_CESTALL; e.topt_low = low; e.topt_edgeok = edgeok; e.topt_edgen = 0; e.topt_earlycut = 0; e.topt_lowneed = 0;
 	e.topt_tgtj = 0;
 	if (tube)
 		for (i = 1; i < e.topt_dn; i = i + 1)
