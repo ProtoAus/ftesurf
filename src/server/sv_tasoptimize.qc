@@ -143,6 +143,14 @@ vector(float i) SV_TASOptFaceUp =
 	n = [topt_out[i*13+9], topt_out[i*13+10], topt_out[i*13+11]];
 	return (n_z < 0) ? -n : n;
 };
+// and against the target's face, which the same traces give as wound (review 10)
+float(entity e, float i) SV_TASOptFaceDot =
+{
+	local vector t;
+	t = e.topt_tgtn;
+	if (t_z < 0) t = -t;
+	return SV_TASOptFaceUp(i) * t;
+};
 .float topt_dn;
 float topt_dpos[TOPT_HMAX * 3]; // the rows' origins (each after its tick), for `tube`
 .float topt_tube, topt_tubeout; // P1449 `tube R`: candidates stay within R of that path; how many left it
@@ -886,13 +894,13 @@ void(entity e, float ran) SV_TASOptMissWhy =
 	if (ran < 1) { sprint(e, PRINT_HIGH, "tas optimize: miss: no ticks run\n"); return; }
 	k = bound(0, e.topt_reachk - 1, ran - 1) * 13;       // reachk counts ticks (TargetScore's bk + 1: review 9)
 	sprint(e, PRINT_HIGH, strcat(sprintf("tas optimize: miss: target %v r %.0f n %v; ", e.topt_tgt, e.topt_tgtr, e.topt_tgtn),
-		sprintf("closest tick %.0f at %v vel %v contact %.0f n %v\n", k / 13, [topt_out[k], topt_out[k+1], topt_out[k+2]],
+		sprintf("closest tick %.0f at %v vel %v contact %.0f n %v\n", k / 13 + 1, [topt_out[k], topt_out[k+1], topt_out[k+2]],
 		[topt_out[k+3], topt_out[k+4], topt_out[k+5]], topt_out[k+8], [topt_out[k+9], topt_out[k+10], topt_out[k+11]])));
 	c = SV_TASOptLimit(e, (e.topt_rollcut == 1) ? ran - 1 : ran);
 	if (c >= 0)
 	{
 		i = c * 13;
-		sprint(e, PRINT_HIGH, sprintf("tas optimize: miss: cut at tick %.0f (%s) at %v vel %v contact %.0f, %.0f u from the target\n", c,
+		sprint(e, PRINT_HIGH, sprintf("tas optimize: miss: cut at tick %.0f (%s) at %v vel %v contact %.0f, %.0f u from the target\n", c + 1,
 			(e.topt_limwhy == 1) ? "left the tube" : "limit", [topt_out[i], topt_out[i+1], topt_out[i+2]], [topt_out[i+3], topt_out[i+4], topt_out[i+5]],
 			topt_out[i+8], vlen([topt_out[i], topt_out[i+1], topt_out[i+2]] - e.topt_tgt)));
 	}
@@ -900,8 +908,8 @@ void(entity e, float ran) SV_TASOptMissWhy =
 	for (i = 0; i < ran; i = i + 1)
 		if (topt_out[i*13+8] == 1 && vlen([topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]] - e.topt_tgt) < 2 * e.topt_tgtr)
 		{	// the first ride near the target: the face it met against the one asked for
-			sprint(e, PRINT_HIGH, sprintf("tas optimize: miss: first ride near it at tick %.0f, %.0f u off, face %v (dot %.3f)\n", i,
-				vlen([topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]] - e.topt_tgt), SV_TASOptFaceUp(i), SV_TASOptFaceUp(i) * e.topt_tgtn));
+			sprint(e, PRINT_HIGH, sprintf("tas optimize: miss: first ride near it at tick %.0f, %.0f u off, face %v (dot %.3f)\n", i + 1,
+				vlen([topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]] - e.topt_tgt), SV_TASOptFaceUp(i), SV_TASOptFaceDot(e, i)));
 			i = ran;
 		}
 };
@@ -1005,7 +1013,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		if (d <= e.topt_tgtr)
 		if (e.topt_tgtn == '0 0 0' ||
 		    (e.topt_tgtn_z >= 0.99 && topt_out[i*13+5] - ((i > 0) ? topt_out[i*13-8] : e.velocity_z) > 200) ||
-		    (topt_out[i*13+8] == 1 && SV_TASOptFaceUp(i) * e.topt_tgtn >= TOPT_FACEDOT))
+		    (topt_out[i*13+8] == 1 && SV_TASOptFaceDot(e, i) >= TOPT_FACEDOT))
 		{
 			best = d; bk = i; hit = TRUE;
 			break;
