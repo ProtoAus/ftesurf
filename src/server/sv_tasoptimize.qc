@@ -619,6 +619,15 @@ float(entity e, float i) SV_TASOptKnotD =
 	if (i <= e.topt_kex) return i * ka / e.topt_kex;
 	return ka + (min(i, e.topt_kend) - e.topt_kex) * (e.topt_kn - 1 - ka) / max(1, e.topt_kend - e.topt_kex);
 };
+// and knot j's own tick (the warm seed puts each knot back where SV_TASOptKnotD has it: review 12)
+float(entity e, float j) SV_TASOptKnotTick =
+{
+	local float ka;
+	if (e.topt_kex <= 0) return rint(j * (e.topt_kspan - 1) / max(1, e.topt_kn - 1));
+	ka = rint(0.6 * (e.topt_kn - 1));
+	if (j <= ka) return rint(j * e.topt_kex / ka);
+	return rint(e.topt_kex + (j - ka) * (e.topt_kend - e.topt_kex) / max(1, e.topt_kn - 1 - ka));
+};
 
 float(entity e) SV_TASOptDemoRoll =
 {
@@ -811,7 +820,7 @@ void(entity e) SV_TASOptWarmKeep =
 	e.topt_wseedn = 0;
 	for (i = e.topt_reachk; i < e.topt_n; i = i + 1)
 	{
-		d = min(i, e.topt_kspan - 1) * (e.topt_kn - 1) / max(1, e.topt_kspan - 1); k = floor(d);
+		d = SV_TASOptKnotD(e, i); k = floor(d);
 		topt_wseed[e.topt_wseedn] = (k >= e.topt_kn - 1) ? topt_kbest[e.topt_kn - 1] : topt_kbest[k] + (d - k) * (topt_kbest[k + 1] - topt_kbest[k]);
 		e.topt_wseedn = e.topt_wseedn + 1;
 	}
@@ -1519,7 +1528,7 @@ void(entity e) SV_TASOptCurveNext =
 		{	// the last search's lookahead from here (SV_TASOptWarmKeep), each knot at its own tick
 			for (j = 0; j < e.topt_kn; j = j + 1)
 			{
-				u = rint(j * (e.topt_kspan - 1) / max(1, e.topt_kn - 1));
+				u = SV_TASOptKnotTick(e, j);
 				topt_kcur[j] = topt_wseed[min(u, e.topt_wseedn - 1)];
 			}
 			return;
@@ -2065,7 +2074,7 @@ void(entity e, float argc) SV_TASOptCommand =
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: the flick (%.0f ticks) must be shorter than the run (%.0f ticks)\n", fk, n));
 		return;
 	}
-	if (argc < 4 || argc > 24 || !(n >= 4 && n <= (fast ? TOPT_HMAX : TAS_TAPE_MAX) && n == floor(n)) || !dir || mode < 0)
+	if (argc < 4 || argc > 30 || !(n >= 4 && n <= (fast ? TOPT_HMAX : TAS_TAPE_MAX) && n == floor(n)) || !dir || mode < 0)
 	{
 		sprint(e, PRINT_HIGH, "tas optimize <ticks 4..128, fast 4..768> <left|right> [board | follow | curve [knots 3..16]] [split] [flick [ticks 1..32] | zigzag] [time | energy] [fast] [fixedpitch] [aim] [hop] [gens N] [demo [late (after aim)] [tube R [look N]] [pace X] [emin E] [kex T]] (with curve): best turn for exit speed (energy: speed + height), or with time the next segment soonest; fast searches by rollout and plays only the best\n");
 		return;
@@ -2113,7 +2122,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_kspan = ((mode & 128) && !(mode & 256)) ? max(kn, ceil(0.45 * n)) : n;
 	// kex: only with knots enough to split and the target's row well past it (else the even spread)
 	e.topt_kex = e.topt_kend = 0;
-	if (kex > 0 && kn >= 6 && e.topt_tgtj > kex + kn) { e.topt_kex = kex; e.topt_kend = min(e.topt_tgtj, e.topt_kspan - 1); }
+	if (kex > 0 && kn >= 6 && min(e.topt_tgtj, e.topt_kspan - 1) >= kex + kn) { e.topt_kex = kex; e.topt_kend = min(e.topt_tgtj, e.topt_kspan - 1); }
 	if (mode & 128) i = SV_TASOptEngineAims(e);
 	if ((mode & 128) && i < 0)
 	{
