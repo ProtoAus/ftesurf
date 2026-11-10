@@ -499,6 +499,12 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 				localcmd(sprintf("tas autosurf %s%s start%s\n", jg_gp[jg_pick], go, cw));
 			at_y = at_y + row + 3;
 		}
+		if (jg_klearn > 0 && cw != "")
+		{	// P1483: what earlier runs left it (each stretch's best line, tried first)
+			sui_text(at, [hint, hint], sprintf("Learned from earlier runs: lines for %g stretch%s of %s.", jg_klearn, (jg_klearn == 1) ? "" : "es", cn),
+				SUI_THEME_DIM, 1, 0);
+			at_y = at_y + hint * 1.5;
+		}
 		if (jg_knext > 0 && cw != "")
 		{	// the run saved as it went (data/tasproj/<map>/jg_<course>): replayed, then on from the stretch it had reached
 			if (Profile_Chip("jg_gocont", at, [width, row, 0], (jg_knext >= jg_kof) ? sprintf("Load the saved %s run (route done)", cn)

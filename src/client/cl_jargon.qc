@@ -264,6 +264,7 @@ void() TASJargon_Guides =
 
 // The picked course's Continue, if one is saved (sv_tasautosurf.qc SV_TASAutoSave): its stretch and of, read every 2 s
 float jg_knext, jg_kof, jg_kat;
+float jg_klearn;                // P1483: stretches of this course with a learned line (data/jargon/<map>/<leg>.prior)
 var float jg_kc = -1;
 void() TASJargon_Saved =
 {
@@ -271,6 +272,13 @@ void() TASJargon_Saved =
 	if (cltime < jg_kat && jg_kc == jg_cpick) return;
 	jg_kat = cltime + 2; jg_kc = jg_cpick; jg_knext = jg_kof = 0;
 	if (jg_cpick >= jg_cn) return;
+	jg_klearn = 0;
+	fh = fopen(sprintf("data/jargon/%s/%s.prior", zone_mapname, FS_LegDir(jg_ct[jg_cpick], jg_cl[jg_cpick])), FILE_READ);
+	if (fh >= 0)
+	{
+		for (i = 0; i < 70; i = i + 1) if (substring(fgets(fh), 0, 2) == "p ") jg_klearn = jg_klearn + 1;
+		fclose(fh);
+	}
 	fh = fopen(sprintf("data/tasproj/%s/jg_%s.jargon", zone_mapname, FS_LegDir(jg_ct[jg_cpick], jg_cl[jg_cpick])), FILE_READ);
 	if (fh < 0) return;
 	for (i = 0; i < 12; i = i + 1)
