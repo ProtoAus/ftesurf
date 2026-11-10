@@ -1180,16 +1180,19 @@
 
 ## P1116 leftovers (29 Oct)
 
-- Input-journal status/counter/native-producer synchronization remains partial.
+- Input-journal native-producer synchronization remains partial.
   P1480 protects Begin/Drop, P1484 owns close/hash/callback/abort, P1485 protects ordinary
-  main Frame/Event/Note/Synth with relative batching and actual callback release. Current
-  status publication in IN_Commands still reads worker-updated journal counters before
-  callback-capable Cvar_ForceSetValue; native backend snapshots/ring and foreign plugin
-  markers are separate open producers. The five Input-table shims ARE live in the default
-  client (their unused warnings are SERVERONLY), not proof that a foreign caller ran.
-  Falsifier: actual admitted writer versus status snapshot/foreign marker, complete exact
-  values/bytes, correct final poison/digest and no unsupported main-helper call. Keep
-  callback chronology, prior false ownership and no per-event real relative-input wait.
+  main Frame/Event/Note/Synth with relative batching and actual callback release. P1486
+  captures the seven identity scalars for five cvars under exclusion, releasing before
+  setters and rechecking each next field; inactive retained values still publish.
+  Native backend snapshots/ring and foreign plugin markers remain separate producers.
+  The five Input-table shims ARE live in the default client (their unused warnings are
+  SERVERONLY), not proof that an arbitrary foreign caller ran. Falsifier: actual foreign
+  marker versus an active/closing/replaced capture, exact final poison/bytes/digest and
+  no unsupported main-helper call; establish the supported thread/atomic lifetime and
+  call-time versus queued/accumulated influence boundary before claiming a handoff fix.
+  No blanket API/lifecycle or atomic cross-cvar-tuple claim; keep callback chronology,
+  prior false ownership and no per-event real relative-input wait.
 - Cancelling an in-flight journal upload (map load, disconnect, `rec_hid_upload 0`) waits for
   the download thread's current poll: up to 100 ms, or a whole DNS lookup.
 - Two upload follow-ups are in the private tree (checkpoints/p1116-journal-upload-followups.md).

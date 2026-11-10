@@ -21,6 +21,9 @@
 
 ## next
 
+### P1486 Recording statistics keep their measurement state
+- Input-recording identity counters publish without racing the physics worker. Never-measured values stay unknown, and the last recording's measurements remain available after it closes; settings callbacks still run outside the recording update's lock.
+
 ### P1485 Threaded recording updates keep their callback order
 - Ordinary recording updates no longer overlap the physics producer. Relative mouse updates stay grouped across empty paste polls, while actual key/paste callbacks retain their original position and ownership. Already-marked synthetic input does not acquire a lock for every call.
 

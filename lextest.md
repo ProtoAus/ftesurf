@@ -1,11 +1,13 @@
 # lextest.md — things waiting on a human
 
-## P1485 ordinary journal updates — both Windows clients10Nov21:44Z; owner check PENDING
+## P1485/P1486 journal updates — latest both Windows clients10Nov22:35Z; owner check PENDING
 - If you normally use `cl_threadedphysics 1` and input recording, make one normal
   recording with mouse movement, then stop/retry. Chat or paste should still
   arrive once in its usual position. Report a freeze/crash, missing input or a
-  later recording disappearing. No need to change your normal settings or
-  attempt callback stress for this optional check.
+  later recording disappearing. After stopping, the identity diagnostic cvars
+  should retain that recording's measurements; retry starts fresh, while a process
+  that never recorded still reports unknown. No need to change your normal
+  settings or attempt callback stress for this optional check.
 - Actual-source/OS-thread/callback/cache controls and clean native build passed;
   installed version/hash matches. Those are NOT owner gameplay confirmation,
   latency measurement or complete backend/foreign-plugin safety. The separate

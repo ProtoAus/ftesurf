@@ -5839,6 +5839,13 @@ bound that candidate; they did not qualify its version metadata. A final tagged
 full build supplied the correct stamp. Derive it from the actual build script:
 its revision count includes the historical +29 offset, not just Git's count.
 
+P1486 (10Nov2026) repeated this known pitfall: changed in_generic.o rebuilt, but
+sys_win.o retained P1485 command-line git/tag macros. Incremental exit0/QC3x0 and
+no warnings did NOT qualify the linked stamp. Required staged --version refused
+it before any copy. Same clean tagged source via existing -Engine -Full supplied
+the correct stamp and final dual image. Use Full for changed version/tag macros,
+not only changed headers; retain rejected stage/probe, never re-label old bytes.
+
 A retained ARM legacy driver also named an older phase. Read and hash the actual
 helper and its input closure before invoking it; do not infer qualification from
 a familiar filename. Reuse the same qualified driver through its supported label
@@ -6990,6 +6997,20 @@ must require42checks and exact8baseline labels, and catch unnumbered warnings.
   re-derives its tables, `--compare` replays the frames through a Python model).
 
 ## Anti-cheat and run evidence
+
+P1486 identity publication (10Nov2026): INCommands still read seven unsigned
+worker-written scalars before P1485's first Frame guard. Ready before EACH desired
+expression; capture unsigned by value, compare old int casts, release ONLY owned
+transition before ENTIRE CvarForceSetValue, next field reads current state after
+callbacks. Ready false after Drop must NOT suppress retained last-capture values;
+unknown -1 branch/order stay distinct. Don't snapshot all five values across a
+callback or re-read the field as an argument after releasing. Active empty now
+needs1bounded read group, unchanged mirrors reuse it into relative CPU work;
+inactive/disabled0OSlocks, not a per-event mutex. Actual full CheckIdentity/View
+writer+OSbarrier control982/42 vs971/0 (38repeatedownership). Fixtureunknown/retained/
+callbackBeginDrop/borrowfalse cases; model setter core update-before-callback is
+NOT nativeCvar_SetCore execution or atomicity of all five cvars. Initial968/4
+quiet-worker synthetic precondition failed and is retained, not counted as pass.
 
 P1485 ordinary producers (10Nov2026): a main-only activity hint is NOT buffer
 access permission. Sys_IsMainThread must qualify BEFORE reading it: the shared
