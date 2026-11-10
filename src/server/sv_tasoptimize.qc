@@ -276,6 +276,11 @@ float(entity e, float p) SV_TASOptHi = { if (p == 2) return TOPT_YMAX; if (p == 
 	if (e.topt_mode & 16) { if (p == 3) return TOPT_FFLK; return TOPT_FOFF; }
 	if (p == 3) return TOPT_FMAX; return e.topt_rmax; };
 float(entity e, float k) SV_TASOptAimFromK;
+float(entity e, float ran) SV_TASOptLimit;
+.float topt_limwhy;
+// the played miss left the demo's path before its steering began (the tick, or 0): the state it started from missed, not
+// the search -- surf_null, 10 Nov: ramp 9 boarded 280-333 u under farsh's point, every ramp-10 candidate out at tick 23
+.float topt_earlycut;
 
 // P1097: what is scored. Speed, or with `time` segments reached, the tick the last one opened and
 // speed / 10: one segment scores below 2^19, where float32 still tells 0.3 u/s apart.
@@ -1069,6 +1074,12 @@ void(entity e, float r, float y, float f) SV_TASOptPredict =
 		e.topt_rbal = e.topt_bal; e.topt_rbup = e.topt_bup; e.topt_reacheg = e.topt_candeg;
 		if (e.topt_phase == 3 && e.topt_look > 0 && e.topt_kn && (e.topt_mode & 64) && e.topt_reachv >= TOPT_REACH)
 			SV_TASOptWarmKeep(e);
+		if (e.topt_phase == 3)
+		{
+			cut = (e.topt_reachv < TOPT_WEAK) ? SV_TASOptLimit(e, (e.topt_rollcut == 1) ? ran - 1 : ran) : -1;
+			p = (e.topt_mode & 256) ? SV_TASOptAimFromK(e, topt_kbest[e.topt_kn + 2]) : 0;
+			e.topt_earlycut = (cut >= 0 && e.topt_limwhy == 1 && cut < max(40, p)) ? cut + 1 : 0;
+		}
 		if (e.topt_phase == 3 && e.topt_reachv < TOPT_WEAK && cvar("developer"))
 			SV_TASOptMissWhy(e, ran);
 	}
@@ -1083,8 +1094,6 @@ void(entity e, float r, float y, float f) SV_TASOptPredict =
 
 // P1449 developer: what the played miss did -- its closest tick and where and why it was cut (ramp 6 of surf_null:
 // every candidate within 150-220 u of the board point and none boarding, 10 Nov)
-.float topt_limwhy;
-float(entity e, float ran) SV_TASOptLimit;
 void(entity e, float ran) SV_TASOptMissWhy =
 {
 	local float k, c, i;
@@ -2516,7 +2525,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_mode = mode; e.topt_fk = fk; e.topt_srch = 0; e.topt_besty = 0; e.topt_bestf = 0; e.topt_bestp = 12;
 	e.topt_pfoff = fixp; e.topt_pfon = 0;
 	e.topt_kn = kn; e.topt_kgen = -1; e.topt_kidx = 0; e.topt_wok = e.topt_bok = 0; e.topt_vizt = 0;   // vizt before the clear below
-	e.topt_efol = 0; e.topt_tube = tube; e.topt_tubeout = e.topt_wallhit = 0; e.topt_hop = hop; e.topt_look = look; e.topt_pace = pace; e.topt_emin = emin; e.topt_weakn = 0; e.topt_cegen = gens ? gens : TOPT_CEGEN; e.topt_cestall = stall ? stall : TOPT_CESTALL; e.topt_low = low; e.topt_edgeok = edgeok; e.topt_edgen = 0;
+	e.topt_efol = 0; e.topt_tube = tube; e.topt_tubeout = e.topt_wallhit = 0; e.topt_hop = hop; e.topt_look = look; e.topt_pace = pace; e.topt_emin = emin; e.topt_weakn = 0; e.topt_cegen = gens ? gens : TOPT_CEGEN; e.topt_cestall = stall ? stall : TOPT_CESTALL; e.topt_low = low; e.topt_edgeok = edgeok; e.topt_edgen = 0; e.topt_earlycut = 0;
 	e.topt_tgtj = 0;
 	if (tube)
 		for (i = 1; i < e.topt_dn; i = i + 1)

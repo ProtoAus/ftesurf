@@ -60,6 +60,7 @@ float as_n;                     // waypoints
 // A backtrack's stretch must beat the reach that led to the failure (speed at farsh's board height, +0.25%): the
 // full run re-took ramp 5 at 2810-2838 eleven times and failed ramp 6 from each (rigs/tnullfull4, 10 Nov)
 float as_rbs[TAS_ASMAX], as_need[TAS_ASMAX];
+float as_lowx[TAS_ASMAX];       // a board stretch's `low` weight in 0.25s, doubled by each backtrack its handover caused (0: as_low)
 float as_wt[TAS_ASMAX];         // the demo's time there
 float as_wo[TAS_ASMAX * 3];     // its origin
 float as_wn[TAS_ASMAX * 3];     // the face to board ('0 0 1' a hop: a jump there; '0 0 0' any contact)
@@ -437,7 +438,7 @@ void(entity e) SV_TASAutoLink =
 	// a retry searches longer: 30 generations more a try (the pillar stretch's narrow line came in some searches only)
 	ps = strcat(ps, sprintf(" gens %.0f", e.as_polish ? 90 : min(90, 30 * (1 + e.as_try))));
 	if (e.as_polish && e.as_try < e.as_tries - 1) ps = strcat(ps, " stall 20");
-	if (e.as_low && as_wk[i] == 1) ps = strcat(ps, " low 0.25");
+	if ((e.as_low || as_lowx[i]) && as_wk[i] == 1) ps = strcat(ps, sprintf(" low %g", 0.25 * max(e.as_low ? 1 : 0, as_lowx[i])));
 	if (e.as_rideknots && i > 0)
 	if (as_wk[i - 1] == 1 && as_wl[i - 1] > e.as_tprev)
 		ps = strcat(ps, sprintf(" kex %.0f", min(TOPT_HMAX, rint((as_wl[i - 1] - e.as_tprev) / PM_TICK) + 15)));   // past the cap: refused (review 13)
@@ -465,7 +466,7 @@ void(entity e) SV_TASAutoBacks =
 {
 	local float k;
 	if (e.as_backmax < 0) e.as_backmax = max(6, 2 * as_n);
-	for (k = 0; k < TAS_ASMAX; k = k + 1) as_rbs[k] = as_need[k] = 0;
+	for (k = 0; k < TAS_ASMAX; k = k + 1) as_rbs[k] = as_need[k] = as_lowx[k] = 0;
 	e.as_failmax = -1;
 };
 
@@ -652,6 +653,18 @@ void(entity e) SV_TASAutoFrame =
 				e.as_i + 1, as_need[e.as_i], e.as_backs + 1));
 			as_need[e.as_i] = 0; e.as_backs = e.as_backs + 1; e.as_try = 0;
 			e.as_goal = as_ws[e.as_i]; e.as_stage = 3;
+			return;
+		}
+		if (e.as_backs < e.as_backmax && e.as_i > 0 && e.topt_earlycut && !e.as_route && as_wk[e.as_i - 1] == 1 && as_lowx[e.as_i - 1] < 8)
+		{	// its start left farsh's path before it steered: the board before handed over the wrong place, so that board again
+			// nearer farsh's point and with no speed bar -- the bar made a retry board lower still (surf_null ramp 9 for 10,
+			// 280-333 u under; Lex: the top keeps the height that flight needs)
+			e.as_backs = e.as_backs + 1; e.as_i = e.as_i - 1; e.as_try = 0;
+			as_lowx[e.as_i] = as_lowx[e.as_i] ? as_lowx[e.as_i] * 2 : 2;
+			for (i = e.as_i; i < as_n; i = i + 1) as_need[i] = 0;
+			e.as_tprev = as_wp[e.as_i]; e.as_goal = as_ws[e.as_i]; e.as_stage = 3;
+			SV_TASAutoNote(e, 1, sprintf("stretch %.0f left farsh's path at tick %.0f, before it steered: backtrack %.0f to stretch %.0f, boarding nearer farsh's point (low %g)",
+				e.as_i + 2, e.topt_earlycut, e.as_backs, e.as_i + 1, 0.25 * as_lowx[e.as_i]));
 			return;
 		}
 		if (e.as_backs < e.as_backmax && e.as_i > 0)
