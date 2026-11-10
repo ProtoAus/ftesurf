@@ -77,6 +77,12 @@ float as_rmin;                  // the nearest-row search starts here (a full-ru
 .float as_saved;                // the furthest stretch autosaved for Continue (-1 none)
 .float as_esc;                  // P1478: effort steps a stuck course chain has taken by itself (2 at most)
 .float as_coastf;
+.float as_cseed;
+float as_visit[TAS_ASMAX];      // P1483: searches of each stretch this chain (in the seed)
+float(entity e, float i) SV_TASAutoSeedOf =
+{	// under 1e6 (the optimizer's limit): try < 10, backs <= 200, esc <= 2, cseed <= 9, visits mod 13
+	return e.as_try + 10 * min(200, e.as_backs) + 2100 * min(2, e.as_esc) + 7000 * min(9, e.as_cseed) + 70000 * (as_visit[i] - 13 * floor(as_visit[i] / 13));
+};                // P1483: Continues of this course this session (a Continue after "stuck" searched exactly as before: review F)
 // P1483 `beam`: after a stretch reaches, its search's kept candidates (SV_TASOptArcKeep, up to TOPT_ARCN) are each played
 // from the stretch's start and judged by a quick search of the stretch after; the best is played again and the chain goes
 // on from it -- a board that wins now and leaves the next ramp unmakeable loses (surf_shape bonus 1: stretch 1 boarded
@@ -92,7 +98,8 @@ vector as_bmmo, as_bmmv, as_bmtgt;
 // P1483: what past runs learned about this course with this guide -- each stretch's best played line (its knots) and the
 // share of the guide's energy it carried -- in data/jargon/<map>/<leg folder>.prior; a search starts with it among its
 // first candidates, so a course run again starts from its best so far (tas_jargon_off 256: none)
-float as_prs[TAS_ASMAX], as_prkd[TAS_ASMAX], as_prk[TAS_ASMAX * TOPT_KMAX];
+float as_prs[TAS_ASMAX], as_prkd[TAS_ASMAX], as_prk[TAS_ASMAX * TOPT_KMAX], as_prt[TAS_ASMAX], as_prw[TAS_ASMAX];
+float as_prp[TOPT_KMAX], as_prpkd, as_prpi, as_prpsh;  // the last reach's line, kept as its stretch's prior once the next reaches
 // P1483: the older repair rules, each switched off by a bit of tas_jargon_off for the benchmark (P1478 tools/jgbench.py)
 float(float b) SV_TASAutoRule = { return !(cvar("tas_jargon_off") & b); };               // coasts predicted into a wrong teleport this chain (a reach resets as_try: rig t2chain10 looped)
 .float as_fromstart;            // the chain began at the course's start box (a Start or a Continue): only these autosave
@@ -884,6 +891,7 @@ float(entity e) SV_TASAutoBeamStart =
 	if (!e.as_beam || e.as_route || e.as_bmph || i + 1 >= as_n || topt_arcn < 2) return FALSE;
 	if (as_bmd[i] && vlen([as_sso[i*6], as_sso[i*6+1], as_sso[i*6+2]] - [as_bmso[i*3], as_bmso[i*3+1], as_bmso[i*3+2]]) < 0.5) return FALSE;
 	if (as_wk[i] != 1 && as_wk[i] != 2) return FALSE;
+	if (as_wk[i + 1] == 3) return FALSE;     // review E: the finish's quick search would end the course
 	for (h = 0; h < TOPT_ARCN * TOPT_KMAX; h = h + 1) as_bmkn[h] = topt_arck[h];
 	for (h = 0; h < TOPT_ARCN; h = h + 1) { as_bmv[h] = topt_arcv[h]; as_bme[h] = topt_arce[h]; as_bms[h] = -1000000; }
 	for (h = 0; h < TOPT_ARCN * 3; h = h + 1) as_bmo[h] = topt_arco[h];
@@ -913,7 +921,8 @@ void(entity e) SV_TASAutoBeamNext =
 			(as_bms[0] >= 100000) ? sprintf("%.0f", as_bms[0] - 100000) : "missed it"));
 	}
 	e.as_bmph = (k < e.as_bmn) ? 1 : 3;
-	e.as_i = i; e.as_try = e.as_bmtry; e.as_tprev = as_wp[i];      // the try that kept them: polish's emin differs by try (review D) e.as_goal = as_ws[i]; e.as_backhead = -1; e.as_backfail = 0; e.as_stage = 3;
+	// the try that kept them (polish's emin differs by try: review D)
+	e.as_i = i; e.as_try = e.as_bmtry; e.as_tprev = as_wp[i]; e.as_goal = as_ws[i]; e.as_backhead = -1; e.as_backfail = 0; e.as_stage = 3;
 };
 // a search ended inside a beam: TRUE when the beam took the outcome (the chain's own handling skipped)
 float(entity e) SV_TASAutoBeamStep =
@@ -928,7 +937,8 @@ float(entity e) SV_TASAutoBeamStep =
 	if (e.as_bmph == 2 && e.as_i == i + 1)
 	{
 		if (!k && e.as_bmrb <= -1000000) { e.as_bmrb = as_rbs[i]; e.as_bmrf = as_rfs[i]; }     // the search's own reach's records
-		as_bms[k] = (e.topt_outcome == 2) ? 100000 + SV_TASAutoEnergyAt(e, i + 1) : 50000 - min(49000, e.topt_reachd);
+		if (as_wk[i + 1] == 3) as_bms[k] = (e.topt_outcome == 2) ? 100000 + 20 * (TOPT_HMAX - e.topt_reachk) : 50000 - min(49000, e.topt_reachd);
+		else as_bms[k] = (e.topt_outcome == 2) ? 100000 + SV_TASAutoEnergyAt(e, i + 1) : 50000 - min(49000, e.topt_reachd);
 		SV_TASAutoBeamNext(e); return TRUE;
 	}
 	if (e.as_bmph == 3 && e.as_i == i)
@@ -948,6 +958,7 @@ void(entity e) SV_TASAutoPriorLoad =
 {
 	local float f, k, c, i, j, kd;
 	for (i = 0; i < TAS_ASMAX; i = i + 1) as_prs[i] = as_prkd[i] = 0;
+	as_prpi = -1;
 	if (e.as_ctrack < 0 || e.as_route || !SV_TASAutoRule(256)) return;
 	f = fopen(SV_TASAutoPriorPath(e), FILE_READ);
 	if (f < 0) return;
@@ -956,34 +967,43 @@ void(entity e) SV_TASAutoPriorLoad =
 		c = tokenize(fgets(f));
 		if (!k) { if (c != 2 || argv(0) != "jprior" || argv(1) != "1") k = 1000; continue; }
 		if (argv(0) == "guide") { if (c != 2 || strcmp(argv(1), e.as_file)) k = 1000; continue; }    // another guide's stretches
-		if (argv(0) != "p" || c < 5 || !SV_TASAutoNums(1, c)) continue;
+		if (argv(0) != "p" || c < 7 || !SV_TASAutoNums(1, c)) continue;
 		i = stof(argv(1)); kd = stof(argv(3));
-		if (!SV_TASAutoWhole(i, 0, TAS_ASMAX - 1) || !SV_TASAutoWhole(kd, 1, TOPT_KMAX) || c != 4 + kd) continue;
+		if (!SV_TASAutoWhole(i, 0, TAS_ASMAX - 1) || !SV_TASAutoWhole(kd, 1, TOPT_KMAX) || c != 6 + kd) continue;
 		if (stof(argv(2)) < 0 || stof(argv(2)) > 2) continue;
-		for (j = 0; j < kd; j = j + 1) if (fabs(stof(argv(4 + j))) > 1000) j = 1000;
+		for (j = 0; j < kd; j = j + 1) if (fabs(stof(argv(6 + j))) > 1000) j = 1000;
 		if (j >= 1000) continue;
-		as_prs[i] = stof(argv(2)); as_prkd[i] = kd;
-		for (j = 0; j < kd; j = j + 1) as_prk[i * TOPT_KMAX + j] = stof(argv(4 + j));
+		as_prs[i] = stof(argv(2)); as_prkd[i] = kd; as_prt[i] = stof(argv(4)); as_prw[i] = stof(argv(5));
+		for (j = 0; j < kd; j = j + 1) as_prk[i * TOPT_KMAX + j] = stof(argv(6 + j));
 	}
 	fclose(f);
 };
-// a stretch reached with more of the guide's energy than its best so far: that line becomes the stretch's prior
+// a stretch's reach: its line held until the stretch after reaches from it
+void(entity e, float i) SV_TASAutoPriorPend =
+{
+	local float j;
+	as_prpi = -1;
+	if (e.as_ctrack < 0 || e.as_route || e.as_bmph || !SV_TASAutoRule(256) || e.topt_kd < 1 || e.topt_kd > TOPT_KMAX || as_rfs[i] <= 0) return;
+	for (j = 0; j < e.topt_kd; j = j + 1) as_prp[j] = topt_kbest[j];
+	as_prpkd = e.topt_kd; as_prpi = i; as_prpsh = as_rbs[i] / as_rfs[i];
+};
+// a held line with more of the guide's energy than its stretch's best so far becomes that stretch's prior
 void(entity e, float i) SV_TASAutoPriorKeep =
 {
 	local float f, j, k, sh;
-	if (e.as_ctrack < 0 || e.as_route || e.as_bmph || !SV_TASAutoRule(256) || e.topt_kd < 1 || e.topt_kd > TOPT_KMAX) return;
-	if (as_rfs[i] <= 0) return;
-	sh = as_rbs[i] / as_rfs[i];
+	if (e.as_ctrack < 0 || e.as_route || e.as_bmph || !SV_TASAutoRule(256) || as_prpi != i) return;
+	sh = as_prpsh;
+	if (as_prkd[i] > 0 && (fabs(as_prt[i] - as_wt[i]) > 0.05 || as_prw[i] != as_wk[i])) as_prs[i] = 0;   // another plan's ramp
 	if (sh <= as_prs[i] + 0.0005 || sh > 2) return;
-	as_prs[i] = sh; as_prkd[i] = e.topt_kd;
-	for (j = 0; j < e.topt_kd; j = j + 1) as_prk[i * TOPT_KMAX + j] = topt_kbest[j];
+	as_prs[i] = sh; as_prkd[i] = as_prpkd; as_prt[i] = as_wt[i]; as_prw[i] = as_wk[i];
+	for (j = 0; j < as_prpkd; j = j + 1) as_prk[i * TOPT_KMAX + j] = as_prp[j];
 	f = fopen(SV_TASAutoPriorPath(e), FILE_WRITE);
 	if (f < 0) return;
 	fputs(f, "jprior 1\n", sprintf("guide %s\n", e.as_file));
 	for (k = 0; k < TAS_ASMAX; k = k + 1)
 	{
 		if (as_prkd[k] < 1) continue;
-		fputs(f, sprintf("p %.0f %.6f %.0f", k, as_prs[k], as_prkd[k]));
+		fputs(f, sprintf("p %.0f %.6f %.0f %.9g %.0f", k, as_prs[k], as_prkd[k], as_prt[k], as_prw[k]));
 		for (j = 0; j < as_prkd[k]; j = j + 1) fputs(f, sprintf(" %.9g", as_prk[k * TOPT_KMAX + j]));
 		fputs(f, "\n");
 	}
@@ -1069,8 +1089,11 @@ void(entity e) SV_TASAutoLink =
 	SV_TASTargetCommand(e, argc);
 	if (!e.topt_tgton) { SV_TASAutoStop(e, "this stretch's target was refused"); return; }
 	if (e.as_route)
-		cl = sprintf("tas optimize %.0f left curve 12 aim%s gens %.0f%s energy fast", h, (e.as_hop && as_wk[i] == 2) ? " hop" : "",
-			e.as_polish ? 90 : min(90, 30 * (1 + e.as_try)), (e.as_polish && e.as_try < e.as_tries - 1) ? " stall 20" : "");
+	{
+		as_visit[i] = as_visit[i] + 1;
+		cl = sprintf("tas optimize %.0f left curve 12 aim%s gens %.0f%s seed %.0f energy fast", h, (e.as_hop && as_wk[i] == 2) ? " hop" : "",
+			e.as_polish ? 90 : min(90, 30 * (1 + e.as_try)), (e.as_polish && e.as_try < e.as_tries - 1) ? " stall 20" : "", SV_TASAutoSeedOf(e, i));
+	}
 	else
 	{
 	ps = strcat(SV_TASAutoPace(e, i), SV_TASAutoEmin(e, i));
@@ -1079,7 +1102,9 @@ void(entity e) SV_TASAutoLink =
 	// beam's look at the stretch after is a quick one (P1483)
 	if (e.as_bmph == 2 && i == e.as_bmi + 1) ps = strcat(ps, " gens 20");
 	else ps = strcat(ps, sprintf(" gens %.0f", e.as_polish ? 90 : min(90, 30 * (1 + e.as_try))));
-	ps = strcat(ps, sprintf(" seed %.0f", e.as_try + 8 * e.as_backs + 64 * e.as_esc));     // P1483: a retry searches anew
+	as_visit[i] = as_visit[i] + 1;
+	ps = strcat(ps, sprintf(" seed %.0f", SV_TASAutoSeedOf(e, i)));     // P1483: a retry, an effort step, a Continue, a revisit search anew
+	if (e.as_ctrack >= 0 && e.as_szone >= 0 && e.as_szone < zone_count) ps = strcat(ps, sprintf(" startz %.0f", e.as_szone));
 	if (as_wk[i] == 3 && e.as_ctrack >= 0)
 	{	// P1483: the course's end box, or its track's END boxes: a reach there (or into the teleport to it) is the finish
 		r = (e.as_cleg >= 1) ? SV_ZoneFindLeg(e.as_ctrack, e.as_cleg) : -1;
@@ -1112,7 +1137,7 @@ void(entity e) SV_TASAutoLink =
 	argc = tokenize(cl);
 	e.topt_over = 0; e.topt_trigcut = 0;
 	topt_priorn = 0;
-	if (!e.as_route && as_prkd[i] > 0)
+	if (!e.as_route && as_prkd[i] > 0 && fabs(as_prt[i] - as_wt[i]) <= 0.05 && as_prw[i] == as_wk[i])     // this ramp's (review F)
 	{
 		for (q = 0; q < as_prkd[i]; q = q + 1) topt_prior[q] = as_prk[i * TOPT_KMAX + q];
 		topt_priorn = as_prkd[i];
@@ -1137,7 +1162,8 @@ void(entity e) SV_TASAutoBacks =
 {
 	local float k;
 	if (e.as_backmax < 0) e.as_backmax = max(6, 2 * as_n);
-	e.as_finrec = e.run_t_finrec; e.as_coastf = 0; e.as_bmph = 0;
+	e.as_finrec = e.run_t_finrec; e.as_coastf = 0; e.as_bmph = 0; as_prpi = -1;
+	for (k = 0; k < TAS_ASMAX; k = k + 1) as_visit[k] = 0;
 	SV_TASAutoPriorLoad(e);
 	for (k = 0; k < TAS_ASMAX; k = k + 1) as_bmd[k] = 0;
 	for (k = 0; k < TAS_ASMAX; k = k + 1) { as_rbs[k] = as_need[k] = as_lowx[k] = as_rfs[k] = as_ws[k] = as_leadmin[k] = as_swd[k] = as_fsm[k] = as_hb[k] = as_fresh[k] = as_slack[k] = as_lost[k] = as_back[k] = as_up[k] = 0; as_fsl[k] = -1; }
@@ -1278,6 +1304,7 @@ void(entity e, float track, float leg) SV_TASAutoContinue =
 	if (e.as_file != "") strunzone(e.as_file);
 	e.as_file = strzone(as_cguide);
 	e.as_on = 1; e.as_stage = 30; e.as_route = 0; e.as_i = e.as_cnext; e.as_try = 0; e.as_fromstart = 1; e.as_savedold = 0; e.as_keepsaid = 0;
+	e.as_cseed = min(9, e.as_cseed + 1);
 	SV_TASAutoNote(e, 1, sprintf("continue: replaying the saved run of %s to stretch %.0f of %.0f", SV_TASAutoCourseName(track, leg), e.as_cnext, e.as_cof));
 };
 
@@ -1552,6 +1579,7 @@ void(entity e) SV_TASAutoFrame =
 	if (t >= 0)
 	{
 		e.as_on = 0;
+		if (as_prpi == as_n - 1) SV_TASAutoPriorKeep(e, as_n - 1);
 		SV_TASAutoNote(e, 2, sprintf("finished %s in %s, %.0f backtracks", SV_TASAutoCourseName(max(0, e.as_ctrack), max(0, e.as_cleg)),
 			Time_TickString(t, run_t_tick), e.as_backs));
 		return;
@@ -1610,7 +1638,8 @@ void(entity e) SV_TASAutoFrame =
 			d = e.velocity * e.velocity + 2 * cvar("sv_gravity") * (e.origin_z - as_rows[i*7+3]);
 			as_rk = e.as_i; as_rb = (d < 0) ? -sqrt(-d) : sqrt(d); as_rf = vlen([as_rows[i*7+4], as_rows[i*7+5], as_rows[i*7+6]]);
 			as_rbs[e.as_i] = as_rb; as_rfs[e.as_i] = as_rf;
-			SV_TASAutoPriorKeep(e, e.as_i);
+			if (as_prpi == e.as_i - 1 && e.as_i > 0) SV_TASAutoPriorKeep(e, e.as_i - 1);
+			SV_TASAutoPriorPend(e, e.as_i);
 			SV_TASAutoNote(e, 1, sprintf("stretch %.0f reached: %.0f u/s at the guide's board height, the guide %.0f", e.as_i + 1, as_rb, as_rf));
 			}
 			e.as_tprev = t; e.as_i = e.as_i + 1; e.as_try = 0;
@@ -1725,7 +1754,11 @@ void(entity e) SV_TASAutoFrame =
 			// 280-333 u under; Lex: the top keeps the height that flight needs)
 			e.as_backs = e.as_backs + 1; e.as_i = e.as_i - 1; e.as_try = 0;
 			as_lowx[e.as_i] = as_lowx[e.as_i] ? as_lowx[e.as_i] * 2 : (e.as_low ? 4 : 2); as_fresh[e.as_i] = 1;
-			for (i = e.as_i; i < as_n; i = i + 1) { as_need[i] = 0; if (i > e.as_i) as_leadmin[i] = as_back[i] = as_up[i] = 0; }
+			for (i = e.as_i; i < as_n; i = i + 1)
+			{
+				if (e.topt_trigcut <= TOPT_EARLYCUT || i > e.as_i) as_need[i] = 0;    // a late fall keeps the board's speed bar (review F)
+				if (i > e.as_i) as_leadmin[i] = as_back[i] = as_up[i] = 0;
+			}
 			e.as_tprev = as_wp[e.as_i]; e.as_goal = as_ws[e.as_i]; e.as_stage = 3;
 			SV_TASAutoNote(e, 1, sprintf("stretch %.0f %s %.0f ticks in, from where the board before put it: backtrack %.0f to stretch %.0f, boarding nearer the guide's point (low %g)",
 				e.as_i + 2, e.topt_earlycut ? "left the guide's path" : "fell into a trigger", e.topt_earlycut ? e.topt_earlycut : e.topt_trigcut,
@@ -1783,7 +1816,7 @@ void(entity e) SV_TASAutoFrame =
 			for (i = t; i < as_n; i = i + 1)
 			{
 				as_need[i] = 0; as_fsl[i] = -1; as_swd[i] = 0; as_leadmin[i] = 0; as_hb[i] = 0; as_fresh[i] = 1; as_slack[i] = 0;
-				as_lost[i] = 0; as_back[i] = as_up[i] = 0;
+				as_lost[i] = 0; as_back[i] = as_up[i] = 0; as_lowx[i] = 0;
 				if (i > t) as_ws[i] = 0;
 			}
 			SV_TASAutoNote(e, 1, sprintf("trying harder at stretch %.0f of %.0f (step %.0f: %.0f tries%s), again from stretch %.0f",
@@ -1899,7 +1932,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		if (n >= as_n) { SV_TASAutoNote(e, 0, "the route changed: restart from the start zone"); return; }
 		for (i = n; i < as_n; i = i + 1)
 		{	// from here on a new attempt: no bars, no "failed from this state", no later stretch's start tick
-			as_need[i] = 0; as_fsl[i] = -1; as_swd[i] = 0; as_leadmin[i] = 0; as_hb[i] = 0; as_fresh[i] = 0; as_slack[i] = 0; as_lost[i] = 0; as_back[i] = as_up[i] = 0;
+			as_need[i] = 0; as_fsl[i] = -1; as_swd[i] = 0; as_leadmin[i] = 0; as_hb[i] = 0; as_fresh[i] = 0; as_slack[i] = 0; as_lost[i] = 0; as_back[i] = as_up[i] = 0; as_bmd[i] = 0;
 			if (i > n) as_ws[i] = 0;
 		}
 		if (e.as_backmax < 0) e.as_backmax = max(6, 2 * as_n);
@@ -2027,7 +2060,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		if (e.as_file != "") strunzone(e.as_file);
 		e.as_file = path;
 		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0;
-		e.as_ctrack = nct; e.as_cleg = ncl; e.as_saved = -1; e.as_esc = 0; e.as_keepsaid = 0;
+		e.as_ctrack = nct; e.as_cleg = ncl; e.as_saved = -1; e.as_esc = 0; e.as_keepsaid = 0; e.as_cseed = 0;
 		e.as_ri = (e.as_ctrack >= 0) ? SV_TASAutoRest(e) : -1;      // a `zone` start steers as before
 		e.as_fromstart = 1; e.as_savedold = (e.as_ctrack >= 0) ? SV_TASAutoSavedAt(e) : 0;
 		if (cvar("tas_jargon_fresh"))

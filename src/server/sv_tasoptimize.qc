@@ -57,9 +57,11 @@
 .float topt_on, topt_head, topt_n, topt_dir, topt_yaw0, topt_pitch0;
 .float topt_stage;              // 1 go back to the head and stage the tape, 2 the tape is running
 .float topt_endz, topt_endtrack;    // P1483: a course's end (a zone box, or -1; the track whose END boxes, or -1): a reach there
+.float topt_startz;             // P1483: the course's start box: a teleport landing there is a fall (`startz`, -1 none)
 .entity topt_cutent;            // P1483: the volume a rollout was cut at (topt_rollcut 1)
 .float topt_playk;              // P1483: `play K`: the search's K-th kept candidate played, no search (0 none, else K + 1)
 float(entity e, entity t) SV_TASOptEndTele;
+float(entity e, entity t, float z) SV_TASOptTeleTo;
 .float topt_phase;              // 1 grid, 2 golden, 3 the best, played last
 .float topt_k, topt_cand, topt_evals, topt_bestr, topt_bestv, topt_next;
 .float topt_lo, topt_hi, topt_a, topt_b, topt_fa, topt_fb, topt_which, topt_iter;
@@ -1155,8 +1157,8 @@ void(entity e, float r, float y, float f) SV_TASOptPredict =
 			e.topt_trigcut = (e.topt_reachv < TOPT_WEAK && e.topt_rollcut == 1 && ran <= TOPT_EARLYCUT && cut < 0) ? ran : 0;
 			// P1483: a miss that ends in a teleport other than the course's end fell, however late (surf_tensor2 stage 5:
 			// every stretch-4 line fell 50-70 ticks in and the chain asked stretch 3 for more speed, boarding it further off)
-			if (!e.topt_trigcut && e.topt_reachv < TOPT_WEAK && e.topt_rollcut == 1 && cut < 0 && ran <= 4 * TOPT_EARLYCUT)
-			if (SV_TASOptEndTele(e, e.topt_cutent) == -1) e.topt_trigcut = ran;
+			if (!e.topt_trigcut && e.topt_reachv < TOPT_WEAK && e.topt_rollcut == 1 && cut < 0 && ran <= 4 * TOPT_EARLYCUT && e.topt_startz >= 0)
+			if (SV_TASOptTeleTo(e, e.topt_cutent, e.topt_startz) >= 0) e.topt_trigcut = ran;
 			e.topt_lowneed = (e.topt_reachv < TOPT_WEAK && e.topt_tgtn_z >= 0.99) ? SV_TASOptLowNeed(e, ran) : 0;
 			e.topt_over = 0;
 			if (e.topt_reachv < TOPT_REACH && e.topt_reachk >= 1 && e.topt_reachk <= ran)
@@ -1388,33 +1390,50 @@ float(entity e, float k) SV_TASOptHopShort =
 
 // P1483: a course's end -- the hull in its end box (zones are positions: no rollout sees them), or a teleport whose
 // destination is in it (surf_tensor2's stage 2 ends in one; a rollout is cut there and scored a miss: rigs t2chain5-10)
-float(entity e, vector p) SV_TASOptInEnd =
+float(entity e, vector q, vector p) SV_TASOptInEnd =
 {
 	local float z;
-	if (e.topt_endz >= 0 && e.topt_endz < zone_count) return Zone_BoxInside(e.topt_endz, p, PM_HULL_MINS, PM_HULL_MAXS);
+	if (e.topt_endz >= 0 && e.topt_endz < zone_count) return Zone_BoxSwept(e.topt_endz, q, p, PM_HULL_MINS, PM_HULL_MAXS);
 	if (e.topt_endtrack < 0) return FALSE;
 	for (z = 0; z < zone_count; z = z + 1)
 		if (zone_type[z] == ZONE_END)
 		if (zone_track[z] == e.topt_endtrack)
-		if (Zone_BoxInside(z, p, PM_HULL_MINS, PM_HULL_MAXS)) return TRUE;
+		if (Zone_BoxSwept(z, q, p, PM_HULL_MINS, PM_HULL_MAXS)) return TRUE;
 	return FALSE;
+};
+// the zone a teleport puts this body in: its destination's hull tested as the timer does (-1 none, -2 not a teleport
+// that acts on this body). The name filter reads the simulated name, as SV_TASOptVolumeEnds does.
+float(entity e, entity t, float z) SV_TASOptTeleTo =
+{
+	local entity d;
+	local string keep;
+	local float pass;
+	if (!t || (strcmp(t.classname, "trigger_teleport") && strcmp(t.classname, "trigger_momentum_teleport"))) return -2;
+	if (t.filtername != "")
+	{
+		keep = e.targetname; e.targetname = topt_simname;
+		pass = SV_PassesFilter(t, e);
+		e.targetname = keep;
+		if (!pass) return -2;
+	}
+	d = world;
+	if (t.target != "") d = find(world, targetname, t.target);
+	if (!d) return -2;          // no destination: its touch does nothing
+	if (z < 0 || z >= zone_count) return -1;
+	return (Zone_BoxInside(z, d.origin, PM_HULL_MINS, PM_HULL_MAXS) || Zone_PointInside(z, d.origin)) ? z : -1;
 };
 // 1 a teleport into the end, -1 a teleport elsewhere, 0 not a teleport that acts on this body
 float(entity e, entity t) SV_TASOptEndTele =
 {
-	local entity d;
-	local float z;
-	if (!t || (strcmp(t.classname, "trigger_teleport") && strcmp(t.classname, "trigger_momentum_teleport"))) return 0;
-	if (t.filtername != "") if (!SV_PassesFilter(t, e)) return 0;
-	d = world;
-	if (t.target != "") d = find(world, targetname, t.target);
-	if (!d) return 0;           // no destination: its touch does nothing
-	if (e.topt_endz >= 0 && e.topt_endz < zone_count) return Zone_PointInside(e.topt_endz, d.origin) ? 1 : -1;
+	local float z, k;
+	k = SV_TASOptTeleTo(e, t, e.topt_endz);
+	if (k == -2) return 0;
+	if (e.topt_endz >= 0) return (k >= 0) ? 1 : -1;
 	if (e.topt_endtrack >= 0)
 		for (z = 0; z < zone_count; z = z + 1)
 			if (zone_type[z] == ZONE_END)
 			if (zone_track[z] == e.topt_endtrack)
-			if (Zone_PointInside(z, d.origin)) return 1;
+			if (SV_TASOptTeleTo(e, t, z) >= 0) return 1;
 	return -1;
 };
 
@@ -1428,11 +1447,9 @@ float(entity e, float ran) SV_TASOptTargetScore =
 	for (i = 0; i < lim; i = i + 1)
 	{
 		if (e.topt_endz >= 0 || e.topt_endtrack >= 0)
-		if (SV_TASOptInEnd(e, [topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]]))
+		if (SV_TASOptInEnd(e, (i > 0) ? [topt_out[i*13-13], topt_out[i*13-12], topt_out[i*13-11]] : e.origin, [topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]]))
 			{ best = 0; bk = i; hit = TRUE; endhit = TRUE; break; }
 		d = vlen([topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]] - e.topt_tgt);
-		if (e.topt_endz < 0 && e.topt_endtrack < 0)    // P1483: with a course's end set only the end itself reaches (a 400 u reach
-		                                                // stopped short and its coast fell into stage 2's fail teleport: bench p2)
 		if (d <= e.topt_tgtr || (e.topt_tgtn_z >= 0.99 && fabs(topt_out[i*13+2] - e.topt_tgt_z) <= TOPT_HOPZ &&
 		    vlen([topt_out[i*13] - e.topt_tgt_x, topt_out[i*13+1] - e.topt_tgt_y, 0]) <= TOPT_HOPR))
 		if (e.topt_tgtn == '0 0 0' ||
@@ -1444,7 +1461,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		}
 		if (d < best) { best = d; bk = i; }
 	}
-	if (!hit && lim >= 1 && lim == ran - 1 && e.topt_rollcut == 1 && (e.topt_endz >= 0 || e.topt_endtrack >= 0))
+	if ((!hit || !endhit) && lim >= 1 && lim == ran - 1 && e.topt_rollcut == 1 && (e.topt_endz >= 0 || e.topt_endtrack >= 0))
 	if (SV_TASOptEndTele(e, e.topt_cutent) == 1)
 		{ best = 0; bk = lim - 1; hit = TRUE; endhit = TRUE; }     // the tick before the teleport into the end
 	hj = bk;        // a hop's jump tick, before the link moves past it
@@ -1477,8 +1494,8 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		i = bk * 13;
 		e.topt_cande = SV_TASOptStateScore(e, [topt_out[i], topt_out[i+1], topt_out[i+2]], [topt_out[i+3], topt_out[i+4], topt_out[i+5]]);
 		d = e.topt_cande - TOPT_WALLPEN * e.topt_candw - TOPT_WALLLOSS * e.topt_candwl - TOPT_GROUNDPEN * e.topt_candg;
-		if (endhit)     // P1483: the course is over: sooner is all that counts (a tick 50, energy a hundredth)
-			return SV_TASOptBand(TOPT_REACH, 20000 - 50 * (bk + 1) + 0.01 * e.topt_cande);
+		if (endhit)     // P1483: the course is over: above every other reach, sooner all that counts (a tick 50, energy a hundredth)
+			return SV_TASOptBand(TOPT_REACH, 30000 + 50 * (TOPT_HMAX - bk - 1) + 0.01 * e.topt_cande);
 		if (!e.topt_edgeok)
 			for (eg = 1; eg <= bk; eg = eg + 1)          // its own counter: i is the reach's offset below (review)
 				if (SV_TASOptEdgeAt(eg, ran))
@@ -2108,7 +2125,8 @@ float topt_prior[TOPT_KMAX], topt_priorn;
 float topt_sprior[TOPT_KMAX];
 .float topt_spriorn;
 #define TOPT_ARCN 4
-float topt_arck[TOPT_ARCN * TOPT_KMAX], topt_arcv[TOPT_ARCN], topt_arce[TOPT_ARCN], topt_arco[TOPT_ARCN * 3];
+float topt_arck[TOPT_ARCN * TOPT_KMAX], topt_arcv[TOPT_ARCN], topt_arce[TOPT_ARCN], topt_arco[TOPT_ARCN * 3], topt_arch[TOPT_ARCN];
+float(float a, float b) SV_TASOptYawDiff = { local float d; d = a - b; return d - 360 * floor((d + 180) / 360); };
 float topt_arcn, topt_arckd, topt_arcnn, topt_arcmode;
 vector topt_arcmo, topt_arcmv, topt_arctgt;
 void(entity e, float v) SV_TASOptArcKeep =
@@ -2121,7 +2139,10 @@ void(entity e, float v) SV_TASOptArcKeep =
 	near = worst = -1;
 	for (k = 0; k < topt_arcn; k = k + 1)
 	{
-		if (vlen(o - [topt_arco[k*3], topt_arco[k*3+1], topt_arco[k*3+2]]) < 48) near = k;
+		if (vlen(o - [topt_arco[k*3], topt_arco[k*3+1], topt_arco[k*3+2]]) < 96)
+		if (fabs(SV_TASOptYawDiff(vectoyaw([topt_out[b+3], topt_out[b+4], 0]), topt_arch[k])) < 10)
+		if (near < 0 || vlen(o - [topt_arco[k*3], topt_arco[k*3+1], topt_arco[k*3+2]]) < vlen(o - [topt_arco[near*3], topt_arco[near*3+1], topt_arco[near*3+2]]))
+			near = k;
 		if (worst < 0) worst = k;
 		else if (topt_arcv[k] < topt_arcv[worst]) worst = k;
 	}
@@ -2129,7 +2150,7 @@ void(entity e, float v) SV_TASOptArcKeep =
 	else if (topt_arcn < TOPT_ARCN) { k = topt_arcn; topt_arcn = topt_arcn + 1; }
 	else { if (v <= topt_arcv[worst]) return; k = worst; }
 	for (j = 0; j < e.topt_kd; j = j + 1) topt_arck[k * TOPT_KMAX + j] = topt_kcur[j];
-	topt_arcv[k] = v; topt_arce[k] = e.topt_cande;
+	topt_arcv[k] = v; topt_arce[k] = e.topt_cande; topt_arch[k] = vectoyaw([topt_out[b+3], topt_out[b+4], 0]);
 	topt_arco[k*3] = o_x; topt_arco[k*3+1] = o_y; topt_arco[k*3+2] = o_z;
 };
 // the slot of the r-th best kept candidate, -1 none
@@ -2354,7 +2375,8 @@ void(entity e, float v) SV_TASOptCurveResult =
 	SV_TASOptStatsSend(e, 1);
 	if (cvar("developer"))
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: curve generation %.0f, best %.1f, %.0f candidates, %.1f s\n", e.topt_kgen, SV_TASOptEnergyShow(e, e.topt_bestv), e.topt_evals, gettime(1)));
-	if (e.topt_kgen >= e.topt_cegen || (e.topt_kgen >= TOPT_CEMIN && e.topt_kstall >= e.topt_cestall && (!e.topt_tgtuse || e.topt_bestv >= TOPT_REACH)))
+	if (e.topt_kgen >= e.topt_cegen || (e.topt_kgen >= TOPT_CEMIN && e.topt_kstall >= e.topt_cestall && (!e.topt_tgtuse || e.topt_bestv >= TOPT_REACH)
+	    && (e.topt_endz < 0 && e.topt_endtrack < 0 || e.topt_bestv >= TOPT_REACH + 30000)))
 	{
 		for (j = 0; j < e.topt_kd; j = j + 1) topt_kcur[j] = topt_kbest[j];
 		SV_TASOptMemKeep(e);
@@ -2828,12 +2850,12 @@ void(entity e) SV_TASOptReset =
 void(entity e, float argc) SV_TASOptCommand =
 {
 	local float n, dir, i, mode, fk, searches, obj, fast, energy, fixp, kn, tube, hop, look, pace, emin, gens, kex, stall, low, edgeok, ride, wide, leadmin, fresh, slack;
-	local float seed, playk, endz, endtr, k;
+	local float seed, playk, endz, endtr, k, startz;
 	local string w;
 	n = stof(argv(2));
 	dir = !strcmp(argv(3), "left") ? 1 : (!strcmp(argv(3), "right") ? -1 : 0);
 	mode = 0; fk = 0; obj = 0; fast = 0; energy = 0; fixp = 0; kn = 0; tube = 0; hop = 0; look = 0; pace = 0; emin = 0; gens = 0; kex = 0; stall = 0; low = 0; edgeok = 0; ride = 0; wide = 0; leadmin = 0; fresh = 0; slack = 0;
-	seed = -2; playk = -2; endz = -2; endtr = -2;       // -2 not given, -1 its number expected next
+	seed = -2; playk = -2; endz = -2; endtr = -2; startz = -2;      // -2 not given, -1 its number expected next
 	for (i = 4; i < argc; i = i + 1)
 	{
 		w = argv(i);
@@ -2863,6 +2885,8 @@ void(entity e, float argc) SV_TASOptCommand =
 		else if (playk == -1 && argv(i - 1) == "play" && FS_TASNumber(w) && stof(w) >= 0 && stof(w) < TOPT_ARCN && stof(w) == floor(stof(w))) playk = stof(w);
 		else if (w == "endz" && endz == -2) endz = -1;                          // P1483: a course's end box (a zone index)
 		else if (endz == -1 && argv(i - 1) == "endz" && FS_TASNumber(w) && stof(w) >= 0 && stof(w) < zone_count && stof(w) == floor(stof(w))) endz = stof(w);
+		else if (w == "startz" && startz == -2) startz = -1;                    // P1483: the course's start box (a fall lands there)
+		else if (startz == -1 && argv(i - 1) == "startz" && FS_TASNumber(w) && stof(w) >= 0 && stof(w) < zone_count && stof(w) == floor(stof(w))) startz = stof(w);
 		else if (w == "endtrack" && endtr == -2) endtr = -1;                    // P1483: ...or its track's END boxes
 		else if (endtr == -1 && argv(i - 1) == "endtrack" && FS_TASNumber(w) && stof(w) >= 0 && stof(w) < ZONE_MAXTRACKS && stof(w) == floor(stof(w))) endtr = stof(w);
 		else if (slack == -1 && argv(i - 1) == "slack" && FS_TASNumber(w) && stof(w) > 0 && stof(w) <= 600) slack = stof(w);
@@ -2890,7 +2914,7 @@ void(entity e, float argc) SV_TASOptCommand =
 		else { mode = -1; break; }
 	}
 	if (tube == -1 || look == -1 || pace == -1 || emin == -1 || gens == -1 || kex == -1 || stall == -1 || low == -1 || ride == -1 || leadmin == -1 || (look && !tube)) mode = -1;
-	if (seed == -1 || playk == -1 || endz == -1 || endtr == -1) mode = -1;      // look scores route: it needs a tube
+	if (seed == -1 || playk == -1 || endz == -1 || endtr == -1 || startz == -1) mode = -1;      // look scores route: it needs a tube
 	if (mode > 0 && (mode & 128) && (!e.topt_tgton || kn > TOPT_KMAX - ((mode & 256) ? 3 : 2)))
 	{
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: aim steers to the tas target (set one) and takes up to %.0f knots\n", TOPT_KMAX - ((mode & 256) ? 3 : 2)));
@@ -2999,12 +3023,12 @@ void(entity e, float argc) SV_TASOptCommand =
 	}
 	e.topt_bestr2 = -1; e.topt_bests = 0.5;
 	e.topt_mo = e.origin; e.topt_mv = e.velocity; e.topt_kwiden = 0;
-	e.topt_endz = (endz >= 0) ? endz : -1; e.topt_endtrack = (endtr >= 0) ? endtr : -1;
+	e.topt_endz = (endz >= 0) ? endz : -1; e.topt_endtrack = (endtr >= 0) ? endtr : -1; e.topt_startz = (startz >= 0) ? startz : -1;
 	SV_TASOptSeed(e, max(0, seed));
 	e.topt_playk = (playk >= 0) ? playk + 1 : 0;
 	if (!e.topt_playk) { topt_arcn = 0; topt_arcmo = e.origin; topt_arcmv = e.velocity; topt_arctgt = e.topt_tgt; topt_arckd = e.topt_kd; topt_arcnn = n; topt_arcmode = mode; }
 	e.topt_spriorn = 0;
-	if (topt_priorn == e.topt_kd && topt_priorn > 0)
+	if (topt_priorn == e.topt_kd && topt_priorn > 0 && !fresh)
 	{
 		for (i = 0; i < e.topt_kd; i = i + 1) topt_sprior[i] = topt_prior[i];
 		e.topt_spriorn = e.topt_kd;
