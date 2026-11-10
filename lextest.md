@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1449 Jargon round 3 -- both installs + lobbies 10 Nov ~22:20 local (cs 01d9d44e / qw 91ef42d5, exe b0349be2)
+- Jargon tab: "Where it boards each ramp" -- Try 5 spots (slower): the panel lists each spot's next-ramp speed and the
+  one it keeps.
+- "Strafing in the air: Wider": flights weave instead of flipping side every frame (needs this exe).
+- Ramp 9 to 10: an overshoot should be followed by "comes in wider (lead 0.5 or more)" and a board.
+- The thinking panel's lines are readable (no tiny stepped-down line); the Edit/Restart help lines are crisp.
+
 ## P1449 Jargon -- both installs 10 Nov ~20:30 local (cs 50851dd8 / qw 1e15ff34, main 8cf14308)
 - Open the TAS panel: it opens on Jargon. Turn on a run's line in the leaderboard first and it is listed as a guide
   run; the route fills in by itself (ramp faces and numbered handles in the world).
