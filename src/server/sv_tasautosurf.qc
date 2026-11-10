@@ -617,6 +617,7 @@ string(entity e, float i) SV_TASAutoEmin =
 	f = e.as_emin;
 	if (e.as_polish && e.as_try < e.as_tries - 1) f = max(f, 0.99);      // polish: the last try takes the usual minimum
 	if (as_wk[i] == 5) f = min(f, TAS_AIRMIN);
+	if (as_wk[i] == 3 && e.as_ctrack >= 0) f = 0;   // P1478: a course's end counts at any speed (the score still wants more)
 	if (f <= 0 && as_need[i] <= 0) return "";
 	for (k = 0; k < as_nrows - 1 && as_rows[k*7] < as_wt[i] - 0.0001; k = k + 1) ;
 	v2 = as_rows[k*7+4] * as_rows[k*7+4] + as_rows[k*7+5] * as_rows[k*7+5] + as_rows[k*7+6] * as_rows[k*7+6];

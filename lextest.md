@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P1478 Jargon courses + Continue -- (delivery line added at install)
+- Open Jargon on a map with stages or bonuses (surf_tensor2, surf_shape): a "Course" row lists Main, each stage and each
+  bonus. Pick Stage 2: the guide runs listed are stage-2 runs (and full runs marked "(full run)"); pick Bonus 1 on
+  surf_shape: only bonus runs.
+- "Surf <course> from its start": it should start in that course's box, do the guide's prestrafe, surf the ramps and
+  end with "finished <course> in <time>".
+- Press Stop half way, then "Continue <course> from stretch N": the saved run replays (a few seconds) and it goes on.
+  Close the game in between and Continue still works next time (data/tasproj/<map>/jg_*.tasp + .jargon).
+- surf_tensor2 Main says "the first 64 points of a longer course (surf it stage by stage)".
+
 ## P1449 Jargon round 3 -- both installs + lobbies 10 Nov ~22:20 local (cs 01d9d44e / qw 91ef42d5, exe b0349be2)
 - Jargon tab: "Where it boards each ramp" -- Try 5 spots (slower): the panel lists each spot's next-ramp speed and the
   one it keeps.
