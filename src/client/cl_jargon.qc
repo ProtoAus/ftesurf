@@ -42,6 +42,19 @@ float() TASJargon_Airs =
 	return n;
 };
 
+// a path safe to put in a console line (it goes through localcmd): letters, digits, _ . / - only (review)
+float(string p) TASJargon_Safe =
+{
+	local float i, c;
+	if (p == "" || strstrofs(p, "..") >= 0) return FALSE;
+	for (i = 0; i < strlen(p); i = i + 1)
+	{
+		c = str2chr(p, i);
+		if (!((c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95 || c == 46 || c == 47 || c == 45)) return FALSE;
+	}
+	return TRUE;
+};
+
 // the demo lines on in the leaderboard (cl_scores.qc board lines) whose file is here, then this map's KSF replays
 void() TASJargon_Guides =
 {
@@ -58,8 +71,9 @@ void() TASJargon_Guides =
 				p = sb_ln_path[i];
 				if (p == "")
 				if (substring(sb_ln_key[i], 0, 2) == "l:") p = substring(sb_ln_key[i], 2, -1);
-				if (p == "" || substring(p, strlen(p) - 4, 4) != ".rec") continue;
-				l = ln_owner[LN_BOARDSLOT(i)];
+				if (p == "" || substring(p, strlen(p) - 4, 4) != ".rec" || !TASJargon_Safe(p)) continue;
+				l = sb_ln_name[i];                      // the row's player (an online or local board row)
+				if (l == "") l = ln_owner[LN_BOARDSLOT(i)];
 				if (l == "") l = TASJargon_Base(p);
 				jg_gp[jg_gn] = strzone(p); jg_gl[jg_gn] = strzone(l); jg_gn = jg_gn + 1;
 			}
@@ -74,7 +88,7 @@ void() TASJargon_Guides =
 		{
 			p = search_getfilename(h, i);
 			l = TASJargon_Base(p);
-			if (strstrofs(strtolower(l), pre) != 0) continue;
+			if (strstrofs(strtolower(l), pre) != 0 || !TASJargon_Safe(p)) continue;
 			jg_gp[jg_gn] = strzone(p); jg_gl[jg_gn] = strzone(strcat("KSF ", substring(l, strlen(pre), -1))); jg_gn = jg_gn + 1;
 		}
 		search_end(h);
@@ -91,11 +105,11 @@ void() TASJargon_RequestPlan =
 };
 
 void() TASJargon_PlanEvent =
-{
-	local float i, n, k, t, x, y, z;
-	n = readbyte();
-	jg_n = min(n, JG_MAX);
-	for (i = 0; i < n; i = i + 1)
+{	// a chunk: the plan's size, the first point here, how many follow
+	local float i, n, s, c, k, t, x, y, z;
+	n = readbyte(); s = readbyte(); c = readbyte();
+	if (s == 0) { jg_n = min(n, JG_MAX); jg_hover = jg_drag = -1; }
+	for (i = s; i < s + c; i = i + 1)
 	{
 		k = readbyte(); t = readfloat();
 		x = readfloat(); y = readfloat(); z = readfloat();
@@ -103,7 +117,7 @@ void() TASJargon_PlanEvent =
 		x = readshort() / 30000; y = readshort() / 30000; z = readshort() / 30000;
 		if (i < JG_MAX) jg_nn[i] = [x, y, z];
 	}
-	jg_at = cltime; jg_hover = jg_drag = -1;
+	jg_at = cltime;
 };
 
 vector(float i) TASJargon_Col =

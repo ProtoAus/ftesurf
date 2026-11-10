@@ -5,7 +5,7 @@
   `tas_viz_style 1` (default) draws them as the demo line does (cl_lines.qc's anti-aliased strip, a constant pixel
   width, over the world); 0 the depth-tested world ribbons, whose width is in units (Lex: low quality, odd widths).
   tas_viz_lines (shown at once, 16..2048), tas_viz_fade (seconds), the server's tas_viz_rate (sent a second), widths from
-  gl_2dline_width, tas_viz_cam 1 an overhead camera on the stretch being searched (Lex, 10 Nov: for a video).
+  gl_2dline_width, tas_viz_cam 1 a third-person view of the stretch being searched (Lex, 10 Nov: for a video).
 */
 #define TOV_LINES 2048     // the most tas_viz_lines keeps
 #define TOV_PTS   128      // sv_tasoptimize.qc samples up to TOPT_VIZN (128) a path
@@ -18,6 +18,8 @@ var float autocvar_tas_viz_lines = 64;
 var float autocvar_tas_viz_fade = 3;
 var float autocvar_tas_viz_cam = 0;
 vector tov_start;
+float tov_lastev, tov_lastline;   // the last line event; the last candidate line (the camera and the 2D pass follow them)
+var float autocvar_tas_viz_nearkeep = 0, autocvar_tas_viz_nearset = 0;   // gl_mindist before the camera raised it, and what it wrote
 vector tov_camo, tov_cama;  // tas_viz_cam's view this frame
 float tov_camf;             // ...the frame it was set (cltime)
 vector tov_best[TOV_PTS];
@@ -41,6 +43,8 @@ void() TASOptViz_Event =
 	local float kind, n, i, slot;
 	local vector p, p0;
 	kind = readbyte(); n = readbyte(); p0 = '0 0 0';
+	tov_lastev = cltime;
+	if (kind == 1 || kind == 2 || kind == 3) tov_lastline = cltime;
 	if (cvar("developer") && kind != 1 && kind != 2 && kind != 3) print(sprintf("tas_viz: event %g, %g points\n", kind, n));
 	if (kind == 0)
 	{	// a new search: its start, and its target when one is set
@@ -298,12 +302,14 @@ void() TASOptViz_Draw2D =
 {
 	local float i, n, age, w, fade;
 	if (!autocvar_tas_viz || autocvar_tas_viz_style != 1) return;
+	fade = max(0.1, autocvar_tas_viz_fade);
+	if (tov_bestn < 2 || cltime - tov_bestt >= (tov_final ? 20 : 60))
+	if (cltime - tov_lastline > fade) return;       // nothing to draw: not Line_ViewFrame's ~40 cvar reads a frame (review)
 	Line_ViewFrame();
 	if (cvar("developer") && floor(cltime) != floor(cltime - frametime))
 		print(sprintf("tas_viz 2d: eye %v fwd %v cam %g; start %v -> %v; target -> %v; best %g\n", ln_eye, ln_fwd, tov_camf == cltime,
 			tov_start, project(tov_start + TOV_LIFT), project(tov_tgt), tov_bestn));
 	w = max(1, cvar("gl_2dline_width"));        // Lex: the engine's 2D line width
-	fade = max(0.1, autocvar_tas_viz_fade);
 	Line_Width(w);
 	for (i = 0; i < bound(16, autocvar_tas_viz_lines, TOV_LINES) && tov_pt; i = i + 1)
 	{
@@ -321,62 +327,80 @@ void() TASOptViz_Draw2D =
 	}
 };
 
-// tas_viz_cam (Lex, 10 Nov): while a stretch is searched, the view 45 degrees up behind its start looking at the best line's
-// middle, swaying slowly; once its line plays, 1 a chase view behind the body, 2 a 45-degree follow, the body drawn either
-// way (the local player has no world model in first person). The camera passes through the world: nothing clips it,
-// and the near plane (gl_mindist, not archived) is pushed to 55% of the way to what it looks at for that render, so the
-// walls between are cut away; the engine keeps the last good PVS cluster when the view is in solid or the void (P138).
+// tas_viz_cam 1 (Lex, 10 Nov): while a stretch is searched, a third-person view 45 degrees up behind its start looking at
+// the best line's middle, swaying slowly, with the body standing where it waits; while the line plays, first person
+// again (Lex: "switch it back to first person when the player rides the line"). The camera passes through the world:
+// nothing clips it, and the near plane (gl_mindist, not archived) goes to 60% of the way to the body for that
+// render, so the walls between are cut away. It never sits in solid or past the map (the view there drew white void,
+// rig tjg3), and it moves toward the body until the body's place is in its PVS: the engine culls entities by the
+// view's PVS, and from behind a wall the body never drew (rig tjg4-6).
 float tov_mindist;          // gl_mindist before the camera's render (0: not changed this frame)
 entity tov_body;
+float() TASOptViz_CamOn =
+{
+	if (!autocvar_tas_viz_cam || !tov_tgton || cltime - tov_tgtt > 120) return FALSE;
+	if (cltime - tov_lastev > 3) return FALSE;      // stopped, TAS off: no lines for 3 s, the view is the player's (review)
+	return !tov_final;          // the played line arrived: it rides, first person
+};
 void() TASOptViz_Cam =
 {
-	local vector f, h, cam, me, feet;
+	local vector f, h, cam, o;
 	local float d, r, y;
 	tov_mindist = 0;
-	if (!autocvar_tas_viz_cam || !tov_tgton || cltime - tov_tgtt > 120) return;
-	me = getproperty(VF_ORIGIN);
-	feet = (pmove_org != '0 0 0') ? pmove_org : me - '0 0 64';
-	if (tov_final && cltime - tov_bestt < 20)
-	{	// riding the played line
-		h = normalize([pmove_vel_x, pmove_vel_y, 0]);
-		if (vlen(h) < 0.5) h = normalize([tov_tgt_x - feet_x, tov_tgt_y - feet_y, 0]);
-		f = feet + '0 0 36';
-		cam = (autocvar_tas_viz_cam == 2) ? f - h * 300 + '0 0 300' : f - h * 260 + '0 0 90';
-		if (!tov_body)
-		{
-			tov_body = spawn();
-			setmodel(tov_body, "models/player.iqm");
-			tov_body.solid = SOLID_NOT;
-		}
-		setorigin(tov_body, feet);
-		tov_body.angles = [0, vectoyaw(h), 0];
-		Av_Dress(tov_body);
-		addentity(tov_body);
+	if (autocvar_tas_viz_nearset > 0)
+	{	// a frame raised it and never put it back (a QC error between here and AfterScene): put it back now (review)
+		if (fabs(cvar("gl_mindist") - autocvar_tas_viz_nearset) < 0.01) cvar_set("gl_mindist", ftos(autocvar_tas_viz_nearkeep));
+		cvar_set("tas_viz_nearset", "0");
 	}
-	else
-	{
-		d = vlen(tov_tgt - tov_start);
-		y = vectoyaw(tov_tgt - tov_start) + 12 * sin(cltime * 0.35);          // the slow sway
-		makevectors([0, y, 0]);
-		h = v_forward;
-		f = (tov_bestn >= 2) ? tov_best[floor(tov_bestn * 0.5)] + TOV_LIFT : tov_start + TOV_LIFT;
-		r = bound(500, 0.45 * d, 3000);
-		cam = tov_start + TOV_LIFT - h * r * 0.7071 + '0 0 1' * r * 0.7071;
-	}
+	if (!TASOptViz_CamOn()) return;
+	d = vlen(tov_tgt - tov_start);
+	y = vectoyaw(tov_tgt - tov_start) + 12 * sin(cltime * 0.35);          // the slow sway
+	makevectors([0, y, 0]);
+	h = v_forward;
+	f = (tov_bestn >= 2) ? tov_best[floor(tov_bestn * 0.5)] + TOV_LIFT : tov_start + TOV_LIFT;
+	r = bound(400, 0.3 * d, 1800);          // 0.45 d out to 3000 u: the body a speck (rig tjg9)
+	o = tov_start + TOV_LIFT;
+	cam = o - h * r * 0.7071 + '0 0 1' * r * 0.7071;
+	for (r = 0; r < 20 && (pointcontents(cam) == CONTENT_SOLID || pointcontents(cam) == CONTENT_SKY); r = r + 1)
+		cam = cam + (f - cam) * 0.15;
+	if (tov_body)
+		for (r = 0; r < 12 && !checkpvs(cam, tov_body); r = r + 1)
+			cam = cam + (o - cam) * 0.2;
 	h = vectoangles(f - cam);
 	h_x = 0 - h_x;                                          // vectoangles' pitch is up-positive, a view's down-positive
 	setproperty(VF_ORIGIN, cam);
 	setproperty(VF_ANGLES, h);
 	tov_camo = cam; tov_cama = h; tov_camf = cltime;
 	tov_mindist = max(0.01, cvar("gl_mindist"));
-	cvar_set("gl_mindist", ftos(max(tov_mindist, 0.55 * vlen(f - cam))));
+	r = max(tov_mindist, 0.6 * vlen(o - cam));
+	cvar_set("tas_viz_nearkeep", ftos(tov_mindist)); cvar_set("tas_viz_nearset", ftos(r));
+	cvar_set("gl_mindist", ftos(r));     // short of the body: 55% of the way to the line's middle (4200 u) cut the body away (tjg7)
 	if (cvar("developer") && floor(cltime) != floor(cltime - frametime))
-		print(sprintf("tas_viz cam: at %v angles %v looking at %v (final %g, near %g)\n", cam, h, f, tov_final, cvar("gl_mindist")));
+		print(sprintf("tas_viz cam: at %v angles %v looking at %v (near %g, body in pvs %g)\n", cam, h, f, cvar("gl_mindist"),
+			tov_body ? checkpvs(cam, tov_body) : -1));
+};
+
+// the body where it waits while the stretch is searched: added where the ghost's stand-in is (cl_main.qc beside
+// Ghost_Frame, before the engine's entities) and dressed as it is
+void() TASOptViz_Body =
+{
+	local vector feet, h;
+	if (!TASOptViz_CamOn()) return;
+	feet = (pmove_org != '0 0 0') ? pmove_org : tov_start;
+	h = tov_tgt - feet;
+	if (!tov_body) { tov_body = spawn(); tov_body.solid = SOLID_NOT; }
+	setmodel(tov_body, Ghost_Model());
+	setorigin(tov_body, feet);
+	tov_body.angles = [0, vectoyaw(h), 0];
+	tov_body.alpha = 1;
+	tov_body.colormod = '1 1 1';
+	Av_GhostDress(tov_body);
+	addentity(tov_body);
 };
 
 // after the main renderscene: the near plane back for every other view this frame
 void() TASOptViz_AfterScene =
 {
-	if (tov_mindist > 0) cvar_set("gl_mindist", ftos(tov_mindist));
+	if (tov_mindist > 0) { cvar_set("gl_mindist", ftos(tov_mindist)); cvar_set("tas_viz_nearset", "0"); }
 	tov_mindist = 0;
 };

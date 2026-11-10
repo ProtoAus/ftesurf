@@ -788,7 +788,8 @@ void(entity e) SV_TASAutoFrame =
 				return;
 			}
 		}
-		if (e.as_backs < e.as_backmax && e.as_i > 0 && e.topt_earlycut && !e.as_route && as_wk[e.as_i - 1] == 1 && as_lowx[e.as_i - 1] < 8)
+		if (e.as_backs < e.as_backmax && e.as_i > 0 && e.topt_earlycut && !e.as_route)
+		if (as_wk[e.as_i - 1] == 1 && as_lowx[e.as_i - 1] < 8)     // nested: && reads both sides, as_wk[-1] on stretch 1 (review)
 		{	// it left farsh's path within 40 ticks (TOPT_EARLYCUT): the board before handed over the wrong place, so that board again
 			// nearer farsh's point and with no speed bar -- the bar made a retry board lower still (surf_null ramp 9 for 10,
 			// 280-333 u under; Lex: the top keeps the height that flight needs)
@@ -862,11 +863,13 @@ void(entity e, float argc) SV_TASAutoCommand =
 		SV_TASAutoNote(e, e.as_on ? 1 : 0, e.as_startpause ? "startpause on" : "startpause off");
 		return;
 	}
+	if ((argc == 7 && argv(2) == "move") || (argc == 3 && argv(2) == "reset"))
+	if (Lobby_Active()) { sprint(e, PRINT_HIGH, "tas autosurf: a local practice tool; not on lobby servers\n"); return; }
 	if (argc == 7 && argv(2) == "move")
 	{	// a guide run's point moved in the editor: its demo time, where it is now
 		for (i = 3; i < 7; i = i + 1) if (!FS_TASNumber(argv(i)) || fabs(stof(argv(i))) > 65536) i = 100;
 		if (i >= 100) { sprint(e, PRINT_HIGH, "tas autosurf move <demo time> <x y z>\n"); return; }
-		for (n = 0; n < jg_ovn && fabs(jg_ovt[n] - stof(argv(3))) >= 0.01; n = n + 1) ;
+		for (n = 0; n < jg_ovn; n = n + 1) if (fabs(jg_ovt[n] - stof(argv(3))) < 0.01) break;     // && reads jg_ovt[64] (review)
 		if (n >= TAS_ASMAX) { sprint(e, PRINT_HIGH, "tas autosurf: too many moved points\n"); return; }
 		jg_ovt[n] = stof(argv(3)); jg_ovo[n*3] = stof(argv(4)); jg_ovo[n*3+1] = stof(argv(5)); jg_ovo[n*3+2] = stof(argv(6));
 		if (n == jg_ovn) jg_ovn = jg_ovn + 1;
@@ -981,16 +984,19 @@ void(entity e, float argc) SV_TASAutoCommand =
 			jg_ovpath = strzone(path);
 		}
 		SV_TASAutoPlan(e, i);
-		WriteByte(MSG_MULTICAST, SVC_CGAMEPACKET); WriteByte(MSG_MULTICAST, TAS_EV_JPLAN);
-		WriteByte(MSG_MULTICAST, as_n);
-		for (n = 0; n < as_n; n = n + 1)
-		{
-			WriteByte(MSG_MULTICAST, as_wk[n]); WriteFloat(MSG_MULTICAST, as_wt[n]);
-			WriteFloat(MSG_MULTICAST, as_wo[n*3]); WriteFloat(MSG_MULTICAST, as_wo[n*3+1]); WriteFloat(MSG_MULTICAST, as_wo[n*3+2]);
-			WriteShort(MSG_MULTICAST, rint(as_wn[n*3] * 30000)); WriteShort(MSG_MULTICAST, rint(as_wn[n*3+1] * 30000));
-			WriteShort(MSG_MULTICAST, rint(as_wn[n*3+2] * 30000));
+		for (s = 0; s == 0 || s < as_n; s = s + 40)
+		{	// chunks of 40 points (23 bytes each): one message past ~52 overflowed a UDP client's backbuffer (review)
+			WriteByte(MSG_MULTICAST, SVC_CGAMEPACKET); WriteByte(MSG_MULTICAST, TAS_EV_JPLAN);
+			WriteByte(MSG_MULTICAST, as_n); WriteByte(MSG_MULTICAST, s); WriteByte(MSG_MULTICAST, min(40, as_n - s));
+			for (n = s; n < min(as_n, s + 40); n = n + 1)
+			{
+				WriteByte(MSG_MULTICAST, as_wk[n]); WriteFloat(MSG_MULTICAST, as_wt[n]);
+				WriteFloat(MSG_MULTICAST, as_wo[n*3]); WriteFloat(MSG_MULTICAST, as_wo[n*3+1]); WriteFloat(MSG_MULTICAST, as_wo[n*3+2]);
+				WriteShort(MSG_MULTICAST, rint(as_wn[n*3] * 30000)); WriteShort(MSG_MULTICAST, rint(as_wn[n*3+1] * 30000));
+				WriteShort(MSG_MULTICAST, rint(as_wn[n*3+2] * 30000));
+			}
+			msg_entity = e; multicast(e.origin, MULTICAST_ONE_R);
 		}
-		msg_entity = e; multicast(e.origin, MULTICAST_ONE_R);
 		SV_TASAutoNote(e, 0, sprintf("route: %.0f points from the guide run", as_n));
 		strunzone(path);
 		return;

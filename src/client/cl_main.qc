@@ -2016,6 +2016,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	  braces.
 	*/
 	Ghost_Frame();
+	TASOptViz_Body();               // P1449: tas_viz_cam's follow views show the body (cl_tasoptviz.qc)
 
 	// Patch 457: your own trail, which nothing else draws -- lobby_av_self 0
 	// means your avatar is never networked back to you.  Straight after

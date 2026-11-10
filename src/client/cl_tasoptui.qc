@@ -400,6 +400,8 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	local string label, go;
 	TASJargon_Guides();
 	running = (taso_state == 1);
+	// the route fills itself in: the picked run's plan as soon as the tab is open or the pick changes (Lex, 10 Nov)
+	if (!running && jg_gn && jg_planned != jg_gp[jg_pick]) TASJargon_RequestPlan();
 	half = (width - 6) / 2; chip = [half, row, 0];
 	third = (width - 12) / 3; chip3 = [third, row, 0];
 	sui_text(at, [hint, hint], "Jargon finds a fast line through the map, ramp by ramp, guided by a run you pick.", SUI_THEME_DIM, 1, 0);
@@ -473,10 +475,9 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	if (Profile_Chip("jg_e1", at + [third + 6, 0, 0], chip3, "Normal", hint, taso_effort == 1)) taso_effort = 1;
 	if (Profile_Chip("jg_e2", at + [2 * (third + 6), 0, 0], chip3, "Thorough", hint, taso_effort == 2)) taso_effort = 2;
 	at_y = at_y + row + hint * 0.6;
-	sui_text(at, [hint, hint], "Camera while it works", SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.5;
-	if (Profile_Chip("jg_c0", at, chip3, "Mine", hint, !autocvar_tas_viz_cam)) cvar_set("tas_viz_cam", "0");
-	if (Profile_Chip("jg_c1", at + [third + 6, 0, 0], chip3, "Overview", hint, autocvar_tas_viz_cam == 1)) cvar_set("tas_viz_cam", "1");
-	if (Profile_Chip("jg_c2", at + [2 * (third + 6), 0, 0], chip3, "Follow", hint, autocvar_tas_viz_cam == 2)) cvar_set("tas_viz_cam", "2");
+	sui_text(at, [hint, hint], "Camera while it thinks (it rides in first person)", SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.5;
+	if (Profile_Chip("jg_c0", at, chip, "Mine", hint, !autocvar_tas_viz_cam)) cvar_set("tas_viz_cam", "0");
+	if (Profile_Chip("jg_c1", at + [half + 6, 0, 0], chip, "Overview, third person", hint, autocvar_tas_viz_cam != 0)) cvar_set("tas_viz_cam", "1");
 	at_y = at_y + row + hint * 0.6;
 	if (Profile_Chip("jg_viz", at, chip, cvar("tas_viz") ? "Search lines: on" : "Search lines: off", hint, cvar("tas_viz")))
 		cvar_set("tas_viz", cvar("tas_viz") ? "0" : "1");
