@@ -14,6 +14,9 @@ float taso_demon, taso_pick;
 #define TASO_STRETCHES 64
 float taso_rb[TASO_STRETCHES], taso_rf[TASO_STRETCHES];   // each reached stretch: speed at farsh's board height, and his (0: none)
 var float taso_lastk = -1;          // the stretch last reached (the line under the strip)
+var float taso_sel = -1;            // the stretch picked under the strip to redo the run from
+// the guide run's name for the panel's lines (Lex: farsh's name was baked into Jargon)
+string() TASOptUI_Guide = { return (jg_pick < jg_gn) ? jg_gl[jg_pick] : "the guide"; };
 
 // P1449 search panel (TAS_EV_SEARCH, sv_tasoptimize.qc SV_TASOptStatsSend): what a curve search is doing, over the
 // game, for fun and for seeing how it works (Lex, 10 Nov). tas_searchpanel 0 hides it; it shows while searches
@@ -91,7 +94,7 @@ void(vector scr) TASSearch_Draw =
 	f0 = ui_font_cur;
 	Font_Set(ui_font_ui);
 	tsz = Font_Px(bound(11, scr_y / 72, 20)); row = rint(tsz * 1.5); w = rint(tsz * 30);
-	h = row * 17.2;
+	h = row * 18.6;
 	at = [16, floor(scr_y * 0.2), 0];
 	sui_roundbox(at - [8, 8, 0], [w + 16, h + 16, 0], 8, SUI_THEME_PANEL, 0.88);
 	y = at_y;
@@ -111,22 +114,23 @@ void(vector scr) TASSearch_Draw =
 	drawfill([at_x, y, 0], [w, tsz * 0.5, 0], SUI_THEME_WELL, 0.9, 0);
 	drawfill([at_x, y, 0], [w * bound(0, max(0, tsp_gen) / cap, 1), tsz * 0.5, 0], SUI_THEME_ACCENT, 0.95, 0);
 	y = y + tsz * 0.8;
-	if (tsp_gen < 0) s = sprintf("first guesses: %g tried", tsp_evals);
-	else s = sprintf("generation %g of %g at most", tsp_gen, cap);
-	if (tsp_gen >= 0 && (tsp_flags & 1) && tsp_gen < tsp_cemin)
-		s = strcat(s, sprintf("; may end early from generation %g", tsp_cemin));
-	else if (tsp_gen >= 0 && (tsp_flags & 1))
-		s = strcat(s, sprintf("; ends after %g without a gain (%g so far)", tsp_cestall, tsp_kstall));
-	else if (tsp_gen >= 0)
-		s = strcat(s, "; ends early only once a line makes it");
+	if (tsp_gen < 0) s = sprintf("First guesses: %g tried", tsp_evals);
+	else s = sprintf("Generation %g of %g at most", tsp_gen, cap);
 	if (tsp_phase == 2)
-		s = (tsp_gen >= cap) ? sprintf("stopped: used all %g generations", cap)
-			: sprintf("stopped: %g generations without a gain after %g", tsp_cestall, tsp_gen);
-	TASSearch_Line([at_x, y, 0], s, tsz * 0.85, SUI_THEME_MUTED, w); y = y + row * 0.9;
+		s = (tsp_gen >= cap) ? sprintf("Stopped: used all %g generations", cap)
+			: sprintf("Stopped: %g generations without a gain", tsp_cestall);
+	TASSearch_Line([at_x, y, 0], s, tsz * 0.85, SUI_THEME_MUTED, w); y = y + row * 0.8;
+	s = "";
+	if (tsp_phase != 2 && tsp_gen >= 0 && (tsp_flags & 1) && tsp_gen < tsp_cemin) s = sprintf("May end early from generation %g", tsp_cemin);
+	else if (tsp_phase != 2 && tsp_gen >= 0 && (tsp_flags & 1)) s = sprintf("Ends after %g without a gain (%g so far)", tsp_cestall, tsp_kstall);
+	else if (tsp_phase != 2 && tsp_gen >= 0) s = "Ends early only once a line makes it";
+	TASSearch_Line([at_x, y, 0], s, tsz * 0.85, SUI_THEME_MUTED, w); y = y + row * 0.8;
 	// how wide it still looks: it narrows on the best lines, 4 of 20 stay wide, and it re-widens when stuck
-	s = sprintf("Searching %g%% as wide as it started; 4 of 20 lines a generation stay wide", tsp_width);
-	if (tsp_widen) s = strcat(s, sprintf("; re-widened %g time%s when stuck", tsp_widen, (tsp_widen == 1) ? "" : "s"));
-	if (tsp_mem) s = strcat(s, "; began from its best line here last time");
+	s = sprintf("Searching %g%% as wide as it started", tsp_width);
+	if (tsp_mem) s = strcat(s, ", from its best line here");
+	TASSearch_Line([at_x, y, 0], s, tsz * 0.85, SUI_THEME_MUTED, w); y = y + row * 0.8;
+	s = "4 of 20 lines a generation stay wide";
+	if (tsp_widen) s = strcat(s, sprintf("; re-widened %g time%s", tsp_widen, (tsp_widen == 1) ? "" : "s"));
 	TASSearch_Line([at_x, y, 0], s, tsz * 0.85, SUI_THEME_MUTED, w); y = y + row;
 	// where in the chain
 	if (taso_state == 1 && taso_n > 0)
@@ -147,7 +151,7 @@ void(vector scr) TASSearch_Draw =
 	if (tsp_flags & 1)
 	{
 		s = sprintf("Best line makes it at %g u/s", tsp_speed);
-		if (tsp_ref > 0) s = strcat(s, sprintf(" (farsh %g, %s%g)", tsp_ref, (tsp_speed >= tsp_ref) ? "+" : "", tsp_speed - tsp_ref));
+		if (tsp_ref > 0) s = strcat(s, sprintf(" (%s %g, %s%g)", TASOptUI_Guide(), tsp_ref, (tsp_speed >= tsp_ref) ? "+" : "", tsp_speed - tsp_ref));
 		col = (tsp_ref > 0 && tsp_speed < tsp_ref * 0.98) ? SUI_THEME_WARN : SUI_THEME_GOOD;
 	}
 	else if (tsp_flags & 64) { s = "Best line boards, then falls off the ramp"; col = SUI_THEME_WARN; }
@@ -157,8 +161,8 @@ void(vector scr) TASSearch_Draw =
 	if (tsp_flags & 1)
 	{
 		if (tsp_bal || tsp_bup)
-			s = sprintf("Boards %g u %s and %g u %s farsh's point", fabs(tsp_bal), (tsp_bal >= 0) ? "past" : "before", fabs(tsp_bup), (tsp_bup >= 0) ? "above" : "below");
-		else s = "Boards at farsh's point";
+			s = sprintf("Boards %g u %s and %g u %s the guide's point", fabs(tsp_bal), (tsp_bal >= 0) ? "past" : "before", fabs(tsp_bup), (tsp_bup >= 0) ? "above" : "below");
+		else s = "Boards at the guide's point";
 		TASSearch_Line([at_x, y, 0], s, tsz * 0.9, SUI_THEME_DIM, w);
 	}
 	y = y + row;
@@ -166,14 +170,14 @@ void(vector scr) TASSearch_Draw =
 	TASSearch_Line([at_x, y, 0], s, tsz * 0.85, SUI_THEME_MUTED, w); y = y + row * 1.15;
 	// why candidates fail: each its own share (one line can do several)
 	TASSearch_Line([at_x, y, 0], "What the lines tried ran into (one line can hit several):", tsz * 0.85, SUI_THEME_TEXT, w); y = y + row;
-	TASSearch_Reason([at_x, y, 0], w, tsz, "Strayed off farsh's path (cut there)", tsp_tube, tsp_evals, SUI_THEME_INFO); y = y + row * 0.85;
+	TASSearch_Reason([at_x, y, 0], w, tsz, "Strayed off the guide's path (cut there)", tsp_tube, tsp_evals, SUI_THEME_INFO); y = y + row * 0.85;
 	TASSearch_Reason([at_x, y, 0], w, tsz, "Brushed a wall (costs it speed)", tsp_wall, tsp_evals, SUI_THEME_BAD); y = y + row * 0.85;
 	TASSearch_Reason([at_x, y, 0], w, tsz, "Made it, too slowly to count", tsp_weak, tsp_evals, SUI_THEME_WARN); y = y + row * 0.85;
 	TASSearch_Reason([at_x, y, 0], w, tsz, "Made it only by an edge bug", tsp_edge, tsp_evals, SUI_THEME_ACCENT); y = y + row * 0.85;
 	TASSearch_Reason([at_x, y, 0], w, tsz, "Boarded, then fell off the ramp", tsp_brief, tsp_evals, SUI_THEME_WARN); y = y + row * 0.85;
 	TASSearch_Reason([at_x, y, 0], w, tsz, "Hit a trigger (cut there)", tsp_cut, tsp_evals, SUI_THEME_MUTED); y = y + row * 1.05;
 	// the best line's speed, generation by generation
-	TASSearch_Line([at_x, y, 0], (tsp_ref > 0) ? "Best speed by generation (line: farsh)" : "Best speed by generation", tsz * 0.8, SUI_THEME_MUTED, w);
+	TASSearch_Line([at_x, y, 0], (tsp_ref > 0) ? "Best speed by generation (line: the guide)" : "Best speed by generation", tsz * 0.8, SUI_THEME_MUTED, w);
 	y = y + tsz * 1.1;
 	if (tsp_histn >= 2)
 	{
@@ -242,7 +246,18 @@ void() TASAuto_Event =
 	}
 };
 
-// One box a stretch: mint at or above farsh's speed there (within 2%), butter within 10%, rose below (a reach
+// a stretch's colour: mint at or above the guide's speed there (within 2%), butter within 10%, rose below, dim to come
+vector(float k) TASOptUI_StretchCol =
+{
+	if (taso_rf[k] > 0)
+	{
+		if (taso_rb[k] / taso_rf[k] >= 0.98) return SUI_THEME_GOOD;
+		return (taso_rb[k] / taso_rf[k] >= 0.9) ? SUI_THEME_WARN : SUI_THEME_BAD;
+	}
+	if (taso_rf[k] < 0) return SUI_THEME_GOOD;           // a route point reached
+	return SUI_THEME_CHIP;
+};
+// One box a stretch: mint at or above the guide's speed there (within 2%), butter within 10%, rose below (a reach
 // the minimum would let through), dim to come; the current stretch outlined.
 void(vector at, float width, float h) TASOptUI_Strip =
 {
@@ -387,6 +402,8 @@ void() TASOptUI_Target =
 // P1449: Jargon's panel, three steps (Lex, 10 Nov: "too many options ... more human"): a guide run, its route (drawn and
 // edited in the world, cl_jargon.qc), then surf it -- the old tube/look/tries/backs knots are one Effort choice.
 var float taso_effort = 1;      // 0 quick, 1 normal, 2 thorough
+var float autocvar_tas_jargon_wide = 0;     // P1476: flights weave wider (Lex: no flip a tick) -- needs an engine with it
+var float autocvar_tas_jargon_spots = 0;    // each board tries 5 spots on its ramp, judged on the next (`spots`)
 string() TASOptUI_Effort =
 {
 	if (taso_effort == 0) return " tries 1 rideknots low";
@@ -438,18 +455,15 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	at_y = at_y + tsz * 1.6;
 	if (Profile_Chip("jg_show", at, chip, (jg_n && jg_planned == jg_gp[jg_pick]) ? "Show route again" : "Show route", hint, FALSE))
 		TASJargon_RequestPlan();
-	if (Profile_Chip("jg_edit", at + [half + 6, 0, 0], chip, jg_edit ? "Editing in the world (done)" : "Edit in the world", hint, jg_edit))
-	{
-		jg_edit = !jg_edit;
-		if (jg_edit && !jg_n) TASJargon_RequestPlan();
-	}
+	if (Profile_Chip("jg_edit", at + [half + 6, 0, 0], chip, "Edit in the world", hint, FALSE)) TASJargon_EditStart();
 	at_y = at_y + row + 3;
 	if (Profile_Chip("jg_air", at, chip, "Add air point here", hint, FALSE)) { localcmd("tas route here\n"); jg_replan = cltime + 0.4; }
 	if (Profile_Chip("jg_reset", at + [half + 6, 0, 0], chip, "Undo my moves", hint, FALSE)) { localcmd("tas autosurf reset\n"); jg_replan = cltime + 0.3; }
 	at_y = at_y + row + 3;
-	sui_text(at, [hint * 0.92, hint * 0.92], jg_edit ? "Fly round in noclip (V). Drag a handle with the left mouse; right click removes an air point."
-		: "Air points: fly to a spot in noclip and add one; the bot then aims through it.", SUI_THEME_MUTED, 1, 0);
-	at_y = at_y + hint * 2.2;
+	sui_text(at, [hint, hint], "Edit closes this panel: fly with your movement keys and drag the handles.", SUI_THEME_MUTED, 1, 0);
+	at_y = at_y + hint * 1.4;
+	sui_text(at, [hint, hint], "Esc brings this panel back.", SUI_THEME_MUTED, 1, 0);
+	at_y = at_y + hint * 2;
 
 	// 3: surf it
 	sui_text(at, [tsz, tsz], "3   Surf", SUI_THEME_TEXT, 1, 0); at_y = at_y + tsz * 1.6;
@@ -460,20 +474,29 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	}
 	else if (jg_gn)
 	{
-		go = strcat(TASOptUI_Effort(), TASJargon_Airs() ? " air" : "");
-		if (Profile_Chip("jg_gostart", at, chip, "From the start zone", tsz, FALSE))
+		go = strcat(TASOptUI_Effort(), TASJargon_Airs() ? " air" : "", autocvar_tas_jargon_wide ? " wide" : "", autocvar_tas_jargon_spots ? " spots" : "");
+		if (Profile_Chip("jg_gostart", at, chip, "Restart from the start zone", tsz, FALSE))
 			localcmd(sprintf("tas autosurf %s%s start\n", jg_gp[jg_pick], go));
 		if (Profile_Chip("jg_gohere", at + [half + 6, 0, 0], chip, "From here", tsz, FALSE))
 			localcmd(sprintf("tas autosurf %s%s\n", jg_gp[jg_pick], go));
 		at_y = at_y + row + 3;
-		sui_text(at, [hint * 0.92, hint * 0.92], "Start zone: it does the start, prestrafe and jump itself. Here: pause on the run's route first.",
-			SUI_THEME_MUTED, 1, 0);
+		sui_text(at, [hint, hint], "Restart: the start, prestrafe and jump are done for you.", SUI_THEME_MUTED, 1, 0);
+		at_y = at_y + hint * 1.4;
+		sui_text(at, [hint, hint], "Here: from where you are paused on the route.", SUI_THEME_MUTED, 1, 0);
 		at_y = at_y + hint * 1.9;
 	}
 	sui_text(at, [hint, hint], "Effort", SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.5;
 	if (Profile_Chip("jg_e0", at, chip3, "Quick", hint, taso_effort == 0)) taso_effort = 0;
 	if (Profile_Chip("jg_e1", at + [third + 6, 0, 0], chip3, "Normal", hint, taso_effort == 1)) taso_effort = 1;
 	if (Profile_Chip("jg_e2", at + [2 * (third + 6), 0, 0], chip3, "Thorough", hint, taso_effort == 2)) taso_effort = 2;
+	at_y = at_y + row + hint * 0.6;
+	sui_text(at, [hint, hint], "Strafing in the air", SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.5;
+	if (Profile_Chip("jg_w0", at, chip, "Tight (most accurate)", hint, !autocvar_tas_jargon_wide)) cvar_set("tas_jargon_wide", "0");
+	if (Profile_Chip("jg_w1", at + [half + 6, 0, 0], chip, "Wider (looks human)", hint, autocvar_tas_jargon_wide)) cvar_set("tas_jargon_wide", "1");
+	at_y = at_y + row + hint * 0.6;
+	sui_text(at, [hint, hint], "Where it boards each ramp", SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.5;
+	if (Profile_Chip("jg_spot0", at, chip, "The guide's spot", hint, !autocvar_tas_jargon_spots)) cvar_set("tas_jargon_spots", "0");
+	if (Profile_Chip("jg_spot1", at + [half + 6, 0, 0], chip, "Try 5 spots (slower)", hint, autocvar_tas_jargon_spots)) cvar_set("tas_jargon_spots", "1");
 	at_y = at_y + row + hint * 0.6;
 	sui_text(at, [hint, hint], "Camera while it thinks (it rides in first person)", SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.5;
 	if (Profile_Chip("jg_c0", at, chip, "Mine", hint, !autocvar_tas_viz_cam)) cvar_set("tas_viz_cam", "0");
@@ -485,8 +508,23 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 		cvar_set("tas_searchpanel", autocvar_tas_searchpanel ? "0" : "1");
 	at_y = at_y + row + hint;
 	if (taso_n > 0)
-	{	// the run so far, a box a ramp or bhop
-		TASOptUI_Strip(at, width, row * 0.6); at_y = at_y + row * 0.6 + hint * 0.5;
+	{	// the run so far: a numbered button a stretch, its colour bar how it went; one picked, the run redone from there
+		sui_text(at, [hint, hint], "Stretches -- pick one to redo the run from there", SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.5;
+		third = (width - 3 * (min(taso_n, 16) - 1)) / min(taso_n, 16);
+		for (i = 0; i < taso_n && i < TASO_STRETCHES; i = i + 1)
+		{
+			chip3 = at + [(i - 16 * floor(i / 16)) * (third + 3), floor(i / 16) * (row + 7), 0];
+			sui_roundbox(chip3 + [1, row + 1, 0], [third - 2, 3, 0], 1, TASOptUI_StretchCol(i), 1);
+			if (Profile_Chip(sprintf("jg_s%g", i), chip3, [third, row, 0], ftos(i + 1), hint, taso_sel == i || (running && i == taso_i)))
+				taso_sel = (taso_sel == i) ? -1 : i;
+		}
+		at_y = at_y + ceil(min(taso_n, TASO_STRETCHES) / 16) * (row + 7) + hint * 0.4;
+		if (taso_sel >= 0 && !running)
+		{
+			if (Profile_Chip("jg_redo", at, [width, row, 0], sprintf("Redo the run from stretch %g", taso_sel + 1), hint, FALSE))
+				localcmd(sprintf("tas autosurf redo %g\n", taso_sel + 1));
+			at_y = at_y + row + 3;
+		}
 		if (taso_lastk >= 0)      // nested: && does not short-circuit here, and taso_rf[-1] is out of range
 		{
 			if (taso_rf[taso_lastk] < 0) label = sprintf("Point %g: %g u/s", taso_lastk + 1, taso_rb[taso_lastk]);
