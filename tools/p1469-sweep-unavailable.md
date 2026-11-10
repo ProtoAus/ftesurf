@@ -31,15 +31,19 @@ Existing `python -B surfd/test_simcheck.py`, in an isolated fixture:
   parse, compare and store through the wrapper; busy-timeout restoration and
   unchanged verdicts are checked.
 - Original production source completed with exactly the predicted returned-note
-  assertion failure; subject **all79 checks pass on Windows**. The suite also
-  covers normal cron-summary reporting and comparisons without a write lock.
+  assertion failure; subject **all79 checks pass on Windows and all79 on
+  NanoPi Linux/Python3.11**. Linux ran the standard Git archive of inspected
+  source `10df58b127e2a948475c8632d6d971d3e4923aa3` at03:11:58 UTC10Nov2026,
+  archive SHA256 `6889fccf493b5032a74405df185e8cab702947c8d0740528abcec49bf20bd44f`.
+  The suite also covers normal cron-summary reporting and comparisons without
+  a write lock.
 - The first incomplete new control exposed Python3.10's authorizer API behavior;
   it is retained as a failed control, not counted as the completed baseline.
 
 ## Delivery status and limits
 
-Implemented and Windows-verified. Linux verification and publication provenance
-will be recorded before claiming those states. **Not live yet.** Do not modify
+Implemented and Windows/Linux-verified; the tested source is published with this
+record. **Not live yet.** Do not modify
 an accepted immutable runtime or bypass its source/namespace/admission checks
 for this small reporting change. A later qualified backend generation must keep
 CURRENT-data preservation and a conservative rollback path. The existing healthy

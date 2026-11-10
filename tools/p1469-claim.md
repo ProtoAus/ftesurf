@@ -10,5 +10,6 @@ scheduling, detector, native pin/tag or QC Build change. Operator reporting only
 Implemented/verified locally: original completes with the one predicted failing
 note assertion; subject passes all79 checks, including actual SQLite owner refusal,
 unchanged verdicts, intentional-disable silence and actual same-connection pair
-collection after refusal clears. Linux verification and commit/delivery provenance
-follow. Not deployed, no formal anti-cheat or whole-resource-bound credit.
+collection after refusal clears. NanoPi Linux/Python3.11 also passes all79 checks.
+See [source and delivery limits](p1469-sweep-unavailable.md). Not deployed; no formal
+anti-cheat or whole-resource-bound credit.
