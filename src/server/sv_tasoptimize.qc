@@ -2144,8 +2144,10 @@ void(entity e, float v) SV_TASOptArcKeep =
 	{
 		if (vlen(o - [topt_arco[k*3], topt_arco[k*3+1], topt_arco[k*3+2]]) < 96)
 		if (fabs(SV_TASOptYawDiff(vectoyaw([topt_out[b+3], topt_out[b+4], 0]), topt_arch[k])) < 10)
-		if (near < 0 || vlen(o - [topt_arco[k*3], topt_arco[k*3+1], topt_arco[k*3+2]]) < vlen(o - [topt_arco[near*3], topt_arco[near*3+1], topt_arco[near*3+2]]))
-			near = k;
+		{	// nested: || reads both sides, topt_arco[-3] while near was -1 (server crash, bench p10)
+			if (near < 0) near = k;
+			else if (vlen(o - [topt_arco[k*3], topt_arco[k*3+1], topt_arco[k*3+2]]) < vlen(o - [topt_arco[near*3], topt_arco[near*3+1], topt_arco[near*3+2]])) near = k;
+		}
 		if (worst < 0) worst = k;
 		else if (topt_arcv[k] < topt_arcv[worst]) worst = k;
 	}

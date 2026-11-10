@@ -1341,7 +1341,8 @@ float(entity e, float track, float leg, float commit) SV_TASAutoNotes =
 	}
 	fclose(f);
 	if (commit) return TRUE;
-	as_cnx = nx; as_cnxt = (nx >= 1 && nx <= TAS_ASMAX) ? as_cwt[max(0, nx - 1)] : 0;
+	as_cnx = nx; as_cnxt = 0;
+	if (nx >= 1 && nx <= TAS_ASMAX) as_cnxt = as_cwt[nx - 1];     // nx is kept even when its line failed the check
 	return (!bad && ok == 2 && g != "" && nx >= 1 && ns == nx && nso == nx && nw == nof && nwn == nof);
 };
 
