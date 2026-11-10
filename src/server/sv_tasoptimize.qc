@@ -88,6 +88,8 @@ float(entity e, string what) SV_TASToolGate;
 void(entity e) SV_TASAutoFrame;
 .float topt_candk, topt_candd;  // P1449: the last scored candidate's reach tick and closest distance
 .float topt_candw, topt_reachw; // P1449: its wall ticks before the reach (or the scored miss), and the played best's
+.float topt_roofn;              // the played line's ticks under a sloped roof (the dev print)
+.float topt_candwl;             // the energy those wall and roof ticks took (u/s), scored TOPT_WALLLOSS times over
 .float topt_candg;              // P1449: its ground ticks before them (board targets only: a hop's landing is its point)
 .float topt_reachk, topt_reachd, topt_reachv;   // P1449: the played best's prediction, the same three
 #define TOPT_REACH 100000       // P1449: a reached target scores this + speed/energy at the reach tick
@@ -1218,8 +1220,23 @@ float(entity e, float ran) SV_TASOptLimit =
 // a flight that scored nothing for it (9 Nov); cutting there instead left board 2 unreachable (10 Nov).
 // A wall or ceiling clipped on tick i: in flight (kind 4), or anywhere when the engine reports it (P1466: a ride
 // rubbing a side wall said nothing before, and Lex saw the bot rub walls and lose speed, 10 Nov).
+// A contact the engine counts as a ramp (|nz| 0.1-0.7, fabs for downward-wound displacements, pm_source.c) can be a
+// sloped roof over the body: the underside of the next ramp at a changeover (Lex, 10 Nov: Jargon hits the roof right
+// at the changeover to ramp 9, where every chain lost the most energy and no wall was ever reported). Facing down and
+// met by a trace from the body against its normal (the surface is on the normal's side): a roof, scored as a wall.
+float(float i) SV_TASOptRoofAt =
+{
+	local vector o, n;
+	if (topt_out[i*13+8] < 1 || topt_out[i*13+8] > 3) return FALSE;
+	n = [topt_out[i*13+9], topt_out[i*13+10], topt_out[i*13+11]];
+	if (n_z >= 0) return FALSE;
+	o = [topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]];
+	traceline(o, o - n * 80, MOVE_NOMONSTERS, world);
+	return (trace_fraction < 1 && !trace_startsolid && trace_plane_normal * n > 0.9);
+};
 float(float i) SV_TASOptWallAt =
 {
+	if (SV_TASOptRoofAt(i)) return TRUE;
 	if (topt_out[i*13+8] == 4)
 	if (!topt_out[i*13+6])
 		return TRUE;
@@ -1239,6 +1256,24 @@ float(float i, float ran) SV_TASOptEdgeAt =
 	if (topt_out[i*13+8] >= 1 && topt_out[i*13+8] <= 3) return FALSE;
 	if (topt_out[i*13+32]) return FALSE;                // still on the ground two ticks on: a landing
 	return topt_out[i*13+31] <= vz1;                    // an edge clipped again two ticks on leaves the same vz
+};
+// Lex, 10 Nov: Jargon hits the roof and loses speed at the changeover to ramp 9 -- the played lines reaching it touched a
+// wall or the roof 1-11 ticks before the board, and one roof tick in flight took 589 u/s (troof1); a flat TOPT_WALLPEN a
+// tick scored that like a graze. The energy each wall tick took (the drop in speed-and-height over the tick before it).
+#define TOPT_WALLLOSS 2
+float(entity e, float n) SV_TASOptWallLoss =
+{
+	local float i, l, ep, en, z0, g;
+	l = 0; z0 = e.origin_z; g = 2 * cvar("sv_gravity");
+	ep = sqrt(max(0, e.velocity * e.velocity));
+	for (i = 0; i < n; i = i + 1)
+	{
+		en = sqrt(max(0, topt_out[i*13+3] * topt_out[i*13+3] + topt_out[i*13+4] * topt_out[i*13+4] + topt_out[i*13+5] * topt_out[i*13+5]
+			+ g * (topt_out[i*13+2] - z0)));
+		if (SV_TASOptWallAt(i)) l = l + max(0, ep - en);
+		ep = en;
+	}
+	return l;
 };
 float(float n) SV_TASOptWallTicks =
 {
@@ -1377,6 +1412,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		best = best + 2 * max(0, e.topt_tgt_z - topt_out[bk*13+2]);      // a hop's miss under its platform: you cannot land from there
 	e.topt_candk = bk + 1; e.topt_candd = best;
 	e.topt_candw = SV_TASOptWallTicks(bk + 1);
+	e.topt_candwl = e.topt_candw ? SV_TASOptWallLoss(e, bk + 1) : 0;
 	if (e.topt_candw) e.topt_wallhit = e.topt_wallhit + 1;
 	e.topt_candg = 0;
 	if (e.topt_tgtn != '0 0 0' && e.topt_tgtn_z < 0.99)
@@ -1392,7 +1428,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		// retried a stretch it had made)
 		i = bk * 13;
 		e.topt_cande = SV_TASOptStateScore(e, [topt_out[i], topt_out[i+1], topt_out[i+2]], [topt_out[i+3], topt_out[i+4], topt_out[i+5]]);
-		d = e.topt_cande - TOPT_WALLPEN * e.topt_candw - TOPT_GROUNDPEN * e.topt_candg;
+		d = e.topt_cande - TOPT_WALLPEN * e.topt_candw - TOPT_WALLLOSS * e.topt_candwl - TOPT_GROUNDPEN * e.topt_candg;
 		if (!e.topt_edgeok)
 			for (eg = 1; eg <= bk; eg = eg + 1)          // its own counter: i is the reach's offset below (review)
 				if (SV_TASOptEdgeAt(eg, ran))
@@ -1457,7 +1493,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 	if (best >= TOPT_NEAR) return -1;
 	i = bk * 13;
 	d = TOPT_NEAR - best + SV_TASOptStateScore(e, [topt_out[i], topt_out[i+1], topt_out[i+2]], [topt_out[i+3], topt_out[i+4], topt_out[i+5]])
-		- TOPT_WALLPEN * e.topt_candw - TOPT_GROUNDPEN * e.topt_candg;
+		- TOPT_WALLPEN * e.topt_candw - TOPT_WALLLOSS * e.topt_candwl - TOPT_GROUNDPEN * e.topt_candg;
 	return (ran < e.topt_n || e.topt_rollcut == 1 || tx >= 0) ? d * 0.5 : d;
 };
 
@@ -1566,7 +1602,7 @@ void(entity e) SV_TASOptGolden =
 // One candidate measured: v at H + n. Chooses what runs next.
 void(entity e, float v) SV_TASOptResult =
 {
-	local float step, p, lo, hi, best;
+	local float step, p, lo, hi, best, ri;
 	e.topt_evals = e.topt_evals + 1;
 	if (e.topt_phase == 3)
 	{
@@ -1599,6 +1635,9 @@ void(entity e, float v) SV_TASOptResult =
 		if (e.topt_tgtuse && e.topt_reachw)
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: the played line touches a wall on %.0f ticks before %s\n", e.topt_reachw,
 				(e.topt_reachv >= TOPT_REACH) ? "the reach" : "its closest tick"));
+		e.topt_roofn = 0;
+		for (ri = 0; ri < min(e.topt_n, e.topt_reachk); ri = ri + 1) e.topt_roofn = e.topt_roofn + SV_TASOptRoofAt(ri);
+		if (e.topt_roofn) sprint(e, PRINT_HIGH, sprintf("tas optimize: the played line scrapes a sloped roof (the engine counts it a ramp) on %.0f ticks\n", e.topt_roofn));
 		if (e.topt_tgtuse)
 		{	// P1449: the search scored the reach, the line above the end of the tape
 			if (e.topt_reachv >= TOPT_REACH)
