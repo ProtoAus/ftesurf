@@ -32,6 +32,10 @@
 // up the face or more than 100 u below it, half that more than 100 u before it (optimize `low`; Lex, 10 Nov: where
 // farsh boards -- ramp 11's tip, ramp 10's top for the height its flight needs)
 .float as_low;
+// `apex`: a flight of 1 s or more from a ride to the next board is two stretches, split at farsh's peak -- the launch for
+// its energy there, then the flight alone with every knot in the air; a bad board retries from the peak (Lex, 10 Nov:
+// a perfectly fine launch, then a bad airtime to the board)
+.float as_apex;
 .float as_backhead, as_backfail;   // the head at the last rewind request, and requests since it last moved
 .float as_failat, as_failn;            // the stretch that last failed its tries, and how many times in a row
 .float as_failmax;              // the furthest stretch that failed its tries this chain (the stop names it: review 9)
@@ -60,12 +64,13 @@ float as_n;                     // waypoints
 // A backtrack's stretch must beat the reach that led to the failure (speed at farsh's board height, +0.25%): the
 // full run re-took ramp 5 at 2810-2838 eleven times and failed ramp 6 from each (rigs/tnullfull4, 10 Nov)
 float as_rbs[TAS_ASMAX], as_need[TAS_ASMAX];
-float as_lowx[TAS_ASMAX];
-float as_rfs[TAS_ASMAX];        // farsh's energy at each stretch's board (as_rf when it was reached)       // a board stretch's `low` weight in 0.25s, doubled by each backtrack its handover caused (0: as_low)
+float as_lowx[TAS_ASMAX];       // a board stretch's `low` weight in 0.25s, doubled by each backtrack its handover caused (0: as_low)
+float as_rfs[TAS_ASMAX];        // farsh's energy at each stretch's board (as_rf when it was reached)
 float as_wt[TAS_ASMAX];         // the demo's time there
 float as_wo[TAS_ASMAX * 3];     // its origin
 float as_wn[TAS_ASMAX * 3];     // the face to board ('0 0 1' a hop: a jump there; '0 0 0' any contact)
-float as_wk[TAS_ASMAX];         // 1 board, 2 hop, 3 finish
+float as_wk[TAS_ASMAX];         // 1 board, 2 hop, 3 finish, 4 a flight's peak (`apex`)
+float as_wr[TAS_ASMAX];         // a peak's radius
 float as_wl[TAS_ASMAX];         // a board's ride: the demo time of its last sample off free fall (0: none known)
 float as_ws[TAS_ASMAX];         // the head tick its stretch started at
 float as_wp[TAS_ASMAX];         // the demo time its stretch started from
@@ -165,9 +170,17 @@ vector(entity e, float b) SV_TASAutoFace =
 // The route from the sample nearest the body: each ride's board (samples off free fall for 0.3 s or
 // more, entered falling), each platform hop between rides (a landing whose next samples rise), and with
 // `finish` the demo's last sample. Returns the start sample, or -1 when the body is not on the route.
+string(float k) SV_TASAutoKind =
+{
+	if (k == 1) return "board";
+	if (k == 2) return "hop";
+	if (k == 4) return "peak";
+	return "finish";
+};
+
 float(entity e) SV_TASAutoPlan =
 {
-	local float i, s, d, best, st, lastleave, gdt, j;
+	local float i, s, d, best, st, lastleave, gdt, j, pk;
 	local vector n;
 	best = 1000000; s = -1;
 	for (i = 0; i < as_nrows; i = i + 1)
@@ -189,11 +202,23 @@ float(entity e) SV_TASAutoPlan =
 			if (as_rows[i*7-7] - as_rows[st*7] >= 0.3 - 0.0001 && as_rows[st*7+6] >= -100 && st > s + 2) n = SV_TASAutoFace(e, st);
 			if (as_rows[i*7-7] - as_rows[st*7] >= 0.3 - 0.0001 && (as_rows[st*7+6] < -100 || n != '0 0 0'))
 			{
+				pk = as_n;
 				if (e.as_hop && !e.as_join)
 					for (j = max(lastleave, s) + 1; j < st - 3; j = j + 1)
 						if (as_rows[j*7-1] < -100 && as_rows[j*7+6] > -1 && fabs(as_rows[j*7+3] - as_rows[j*7-4]) < 40)
 						if (as_rows[j*7+6] > 150 || as_rows[j*7+13] > 150 || as_rows[j*7+20] > 150)
 							SV_TASAutoAdd(2, j, '0 0 1');
+				if (e.as_apex && as_n == pk && st > s + 2 && lastleave > s && as_rows[st*7] - as_rows[lastleave*7] >= 1 - 0.0001)
+					for (j = lastleave + 1; j < st; j = j + 1)
+						if (as_rows[j*7-1] > 0 && as_rows[j*7+6] <= 0)
+						{	// the peak: rising to falling, clear of the ride and the board
+							if (as_rows[j*7] - as_rows[lastleave*7] >= 0.4 - 0.0001 && as_rows[st*7] - as_rows[j*7] >= 0.4 - 0.0001)
+							{
+								SV_TASAutoAdd(4, j, '0 0 0');
+								as_wr[as_n - 1] = min(500, 0.5 * vlen(SV_TASAutoRowO(j) - SV_TASAutoRowO(lastleave)));
+							}
+							j = st;
+						}
 				if (st > s + 2)
 				{
 					j = as_n;
@@ -209,7 +234,7 @@ float(entity e) SV_TASAutoPlan =
 	if (cvar("developer"))
 		for (i = 0; i < as_n; i = i + 1)
 			sprint(e, PRINT_HIGH, sprintf("tas autosurf: stretch %.0f: %s at demo t=%.3f %v, face %v\n", i + 1,
-				(as_wk[i] == 1) ? "board" : ((as_wk[i] == 2) ? "hop" : "finish"), as_wt[i],
+				SV_TASAutoKind(as_wk[i]), as_wt[i],
 				[as_wo[i*3], as_wo[i*3+1], as_wo[i*3+2]], [as_wn[i*3], as_wn[i*3+1], as_wn[i*3+2]]));
 	return s;
 };
@@ -422,7 +447,7 @@ void(entity e) SV_TASAutoLink =
 	SV_TASDemoRowsCommand(e, argc);
 	if (e.topt_dn < 16) { SV_TASAutoStop(e, "the demo's rows for this stretch did not load"); return; }   // not the last stretch's (review)
 	h = min(h, e.topt_dn);
-	r = (as_wk[i] == 2) ? 50 : ((as_wk[i] == 3) ? 400 : 800);
+	r = (as_wk[i] == 2) ? 50 : ((as_wk[i] == 3) ? 400 : ((as_wk[i] == 4) ? as_wr[i] : 800));
 	}
 	if (n == '0 0 0') argc = tokenize(sprintf("tas target %.1f %.1f %.1f %.0f", o_x, o_y, o_z, r));
 	else argc = tokenize(sprintf("tas target %.1f %.1f %.1f %.0f %.4f %.4f %.4f", o_x, o_y, o_z, r, n_x, n_y, n_z));
@@ -458,7 +483,7 @@ void(entity e) SV_TASAutoLink =
 	if (e.as_route) SV_TASAutoNote(e, 1, sprintf("point %.0f of %.0f (%s), try %.0f", i + 1, as_n,
 		(as_wk[i] == 1) ? "ramp" : ((as_wk[i] == 2) ? "bhop" : "point"), e.as_try + 1));
 	else SV_TASAutoNote(e, 1, sprintf("stretch %.0f of %.0f (%s at demo t=%.2f), try %.0f%s", i + 1, as_n,
-		(as_wk[i] == 1) ? "board" : ((as_wk[i] == 2) ? "hop" : "finish"), as_wt[i], e.as_try + 1,
+		SV_TASAutoKind(as_wk[i]), as_wt[i], e.as_try + 1,
 		(as_need[i] > 0) ? sprintf(", needs %.0f u/s", as_need[i]) : ""));
 };
 
@@ -762,7 +787,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 	if (path != "route" && !SV_TASDemoPathOK(path)) { sprint(e, PRINT_HIGH, "tas autosurf: a .rec under data/ or cfg/ksfreplays/ (or route)\n"); return; }
 	if (SV_TASOptBusy(e)) return;
 	st = 0; flip = 0; arm = 0; e.as_szone = 0; e.as_sg = 900; e.as_sy = 0; e.as_sside = -1;
-	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = -1; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1; e.as_emin = 0.95; e.as_join = 0; e.as_rideknots = 0; e.as_polish = 0; e.as_low = 0;
+	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = -1; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1; e.as_emin = 0.95; e.as_join = 0; e.as_rideknots = 0; e.as_polish = 0; e.as_low = 0; e.as_apex = 0;
 	for (i = 3; i < argc; i = i + 1)
 	{
 		w = argv(i); n = FS_TASNumber(argv(i + 1)) ? stof(argv(i + 1)) : -1;    // not a number: refused below, not 0 (review)
@@ -777,6 +802,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		else if (w == "rideknots") e.as_rideknots = 1;
 		else if (w == "polish") e.as_polish = 1;
 		else if (w == "low") e.as_low = 1;
+		else if (w == "apex") e.as_apex = 1;
 		else if (w == "start") st = 1;
 		else if (w == "zone" && n >= 0 && n < 64 && n == floor(n)) { e.as_szone = n; i = i + 1; }
 		else if (w == "sg" && n >= 6 && n <= 2000 && n == floor(n)) { e.as_sg = n; i = i + 1; }   // the most ground ticks before the jump
