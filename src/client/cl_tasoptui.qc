@@ -181,7 +181,8 @@ void() TASAuto_Event =
 			{
 				tov_rp[i] = tov_rp[i + 1]; tov_rnorm[i] = tov_rnorm[i + 1]; tov_rk[i] = tov_rk[i + 1];
 			}
-			tov_rn = rk;
+			tov_rn = min(tov_rn - 1, max(0, rk));
+			rte_drag = -1;          // the indices moved under a drag (review)
 		}
 		else tov_rn = min(tov_rn, max(0, rk));
 		strunzone(taso_note);                      // the status line: the count, not the coordinates
