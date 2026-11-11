@@ -1693,7 +1693,8 @@ void(entity e) SV_TASAutoFrame =
 					vlen([e.velocity_x, e.velocity_y, 0]), vlen([as_rows[s*7+4], as_rows[s*7+5], 0]),
 					(e.as_smeth == 1) ? "steering instead of the guide's prestrafe" : "with the guide's prestrafe"));
 				SV_TASLegalStart(e, e.as_szone);
-				if (!e.taslg_on) { SV_TASAutoStop(e, "the start could not be redone (no legal start in the box)"); return; }
+				if (!e.taslg_on || e.taslg_zone != e.as_szone || e.run_t_state != TS_ARMED)
+					{ SV_TASAutoStop(e, "the start could not be redone (no legal start in the box)"); return; }
 				e.as_ri = (e.as_smeth == 1) ? -1 : SV_TASAutoRest(e);
 				e.as_smeth = 0; e.as_stage = 10; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0;
 				return;
@@ -2210,9 +2211,16 @@ void(entity e, float argc) SV_TASAutoCommand =
 		return;
 	}
 	if (st)
-	{
+	{	// A finished stage hands its run on into the next (stage 1's end is a split), so that stage's start was refused
+		// as a restart and the still-on legal session hid it: surf_tensor2 stage 2 after stage 1 left the box walking,
+		// 51 u/s, and bhopped to ramp 1 (Lex, bench safe2). A course start is fresh: end the old run, as `!r` does.
+		if (e.run_t_state == TS_RUNNING) SV_TimerVoid(e, "Jargon: a fresh start of the course");
 		SV_TASLegalStart(e, e.as_szone);
-		if (!e.taslg_on) { strunzone(path); return; }
+		if (!e.taslg_on || e.taslg_zone != e.as_szone || e.run_t_state != TS_ARMED)
+		{
+			sprint(e, PRINT_HIGH, "tas autosurf: no legal start in the course's box (the line before says why)\n");
+			strunzone(path); return;
+		}
 		if (e.as_file != "") strunzone(e.as_file);
 		e.as_file = path;
 		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_smeth = 0; e.as_sredo = 0;
