@@ -1,5 +1,9 @@
 # lextest.md — things waiting on a human
 
+## P1511 ambiguous-plane sorting -- owner check PENDING; delivery in tools/p1511-plane-side.md
+- After the native client update, take one normal surf_fairy run with water, glass and sprites enabled. They should draw in the same order without new flicker or missing surfaces; report the spot/time if not. One exact-pixel paused view and real replay smoke pass, not owner confirmation of every frame.
+- Native FPS gain has NOT been measured: the normal quiet gate remained occupied. Please say whether the heavy spots feel unchanged, smoother or worse; do not turn subjective feel into a measured 0.1% percentage. P1507's separate bounded sprite A/B is recorded in its own report.
+
 ## P1512 ordinary save-load view preview -- owner check PENDING
 - After reconnecting to the updated lobby, try the normal load binding and plain console `sl_load` several times with prediction enabled. Does the view stay at the saved spot until the load reply, without the old early snap? A queued load may wait without a new preview; it must still load normally.
 - This fixes a demonstrated render-preview ACK issue, not a proven cause of Mark's body/jitter/crash report. His exact bind, map, complete prediction-error text and retest on the displayed P1512 version are still pending. Keep the P1508 standalone/fail-restart comparison below; no human pass is recorded.

@@ -25,6 +25,9 @@
 ### P1513 Configurable replay-journal upload budgets
 - Operators can configure a run-length budget for replay journals; servers without this setting keep their existing upload behavior.
 
+### P1511 Less work sorting intersecting transparent surfaces
+- Transparent-surface ordering stops checking a pair once neither side can be proved, keeping the same drawing order and visual effects.
+
 ### P1510 Safer background work during maintenance
 - Background replay analysis stays accounted for during service maintenance instead of appearing finished while work is still running.
 
