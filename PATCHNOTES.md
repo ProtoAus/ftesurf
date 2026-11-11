@@ -21,6 +21,18 @@
 
 ## next
 
+### P1483 Jargon finishes more reliably, and repeats what works
+- Jargon aims a course's last stretch at actually entering the end. A line that gets near the end but would fall short
+  is played as close as it gets, and the finish is tried again with a longer search instead of being given up after
+  one go. On surf_tensor2 stage 2 it finished in both test runs, once faster than the replay it learned from.
+- The same start and settings now search the same way, so a good result can be repeated; pressing Start again after
+  "stuck", or Continue, tries new lines.
+- A new Start no longer replaces a saved run that got further.
+- New effort options: "Best of 4 lines" in the panel (each ramp's few best boards are tried against the next ramp
+  before one is kept), and `turns` for the console (a waypoint halfway through each big air turn).
+- Fixed: a server crash in Jargon's search; Jargon stopping a whole run when "trying harder" after backtracks; route
+  editor points that moved on screen but changed nothing (planned points are no longer draggable).
+
 ### P1502 Selected public map imports
 - Public map imports can update a selected set while preserving unrelated map entries and earlier map revisions.
 

@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P1483 Jargon search -- 12 lobbies + both installs 11 Nov (DELIVERY PENDING: hashes below when live)
+- surf_tensor2, Jargon, Course: Stage 2, "Surf Stage 2 from its start" with a stage-2 replay: it should end "finished
+  stage 2 in 0:12.x" (bench: 0:12.825 and 0:12.330 against the replay's 12.570), sometimes after trying the finish
+  again.
+- Run the same course twice with the same settings: the first stretches print the same speeds both times. Press Start
+  again after a "stuck": the speeds differ (new searches).
+- Stop a course half way (it autosaves), then Start it again and stop earlier: Continue still offers the further
+  stretch.
+- Route editor (Jargon's Edit): ramps, bhops and your own air points are handles; dim blue planned points are not.
+
 ## P1497/P1499 sky-test back-off, mouse-pad trail -- 12 lobbies + both installs (cs 4e593c7e) 11 Nov; owner check PENDING
 - Maps with light shafts or sprites near the sky (surf_eternity's spotlight shafts, or surf_fairy with
   `vbsp_sprites 1`): a shaft or sprite should still vanish behind the skybox wall. It may now show through for a

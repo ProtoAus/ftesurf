@@ -16,12 +16,26 @@
 - P1497 trade: hold 128 is ~30% staler in the in-view verdict census than 16 (two sessions; run spread 16-104).
   A smarter re-test (one that knows how near the occluding edge is) would get the saving without the staleness.
 
-## Jargon courses -- leftovers of P1478 (11 Nov)
+## Jargon -- leftovers of P1478 and P1483 (11 Nov)
 
-- Site: SV_TASAutoLink board stretches (sv_tasautosurf.qc). surf_shape bonus 1 (KSF x, ksfmoves 0): stretch 1 boards ramp 1 350-375 u from the guide's point (board radius 800) and every stretch-2 candidate is cut within 3 ticks (a trigger), so the chain backtracks between them until its budget and both effort steps run out (rigs shape2/shape3). Falsifier: the same one-click start reaches stretch 3.
-- Site: the end of a course that is a trigger_teleport into the next box (surf_tensor2 stage 2). The optimizer scores a rollout cut by that teleport as a miss, so the finish target is a 400 u reach and the predicted coast does the rest; when the coast meets another teleport the last stretch is retried. A rollout cut by the course's own end teleport could count as the reach. Falsifier: a stage-2 one-click run ends "finished stage 2" without a "would fall into a teleport" retry.
-- Site: TAS_ASMAX (64 points a route). surf_tensor2's main course has more; the panel says so and stages work. Falsifier: a 64+ ramp main course finishes from one Start.
-- Site: the curve search is not deterministic from one state (stretch 1 from the same replayed start: 1130, 1130, 1092 u/s in rigs t2chain2-4). Falsifier: two searches from one paused state print the same best.
+- Site: the stretch after surf_tensor2 stage 5's 7.61 board (an S of hard air strafes, ~4 degrees a tick at 1480 u/s,
+  8.05-11.21 s of the stotty guide). Every line flies on, 3677 u past the 11.21 board, try after try (bench p16, both
+  runs; 3 of 7). Not walls: tools/bspnear.py finds nothing within 24 u of the guide during the turns. Tested and
+  falsified: the turn command's 120 clamp (raised to 240, stage 5 got less far, 2 of 7 in both runs -- reverted);
+  turn points (opt-in `turns`: with them the run stopped one board earlier). Leads not tried: more knots where the
+  guide's heading changes fast (curve 12 over 3.15 s is a knot every ~17 ticks, the S's first swing lasts ~40).
+  Falsifier: stage 5 passes stretch 4 from one Start.
+- Site: SV_TASAutoLink board stretches. surf_shape bonus 1 (KSF x): stretch 1 boards ramp 1 off the guide's point and
+  every stretch-2 line falls into a trigger within ~14 ticks of the board (bench p16: stuck at stretch 2 in all four
+  runs, both effort steps spent). Falsifier: the same one-click start reaches stretch 3.
+- Site: TAS_ASMAX (64 points a route). surf_tensor2's main course has more; the panel says so and stages work.
+  Falsifier: a 64+ ramp main course finishes from one Start.
+- Site: `turns` (opt-in turn points, P1483). On stage 5 the board after the first turn point arrived where the next ramp
+  could not be made, even with heading scored (`airdir`). Falsifier: a course that finishes with `turns` and not without.
+
+Resolved by P1483 (drop from the P1478 list): the end teleport now scores as the reach (stage 2 finished in both bench
+runs, 0:12.825 and 0:12.330, the guide 12.570); the search is deterministic from one state with a seed (stage 2 run 0
+gave 0:12.825 and 5 backtracks on two builds).
 
 ## Timer zones built from map triggers -- leftovers of P1461 (10 Nov)
 
