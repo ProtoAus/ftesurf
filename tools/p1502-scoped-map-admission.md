@@ -66,6 +66,18 @@ were added and fully checked, leaving549 existing aliases untouched; representat
 engine-compatible public GETs match exact added bytes. No all-gallery completion
 or exact-original-primary claim is made for missing upstream images.
 
+An independent existing-public gzip drain closed all499 qualifying current map
+aliases (8,812,627,024 raw bytes represented):71 existing exact-tuple skips plus
+428 new exact-tuple skips, zero errors and zero new gzip uploads. None met the
+installed minimum-saving gate; raw fallback remains available. This is NOT a
+scoped download-speed improvement.90 pins were outside that drain:70 missing
+main-ledger aliases,17 not verified and3 on a different pinned build. Their
+resolution is separate; no raw/new staged map was admitted by the gzip operation.
+A representative existing, out-of-scope public gzip companion returned HTTP200
+and exact compressed/decompressed hashes, not a native-client/every-download
+claim. Main-ledger asset rows remained unchanged during this completed drain;
+all owned processes exited and both gzip locks were free at postflight.
+
 Canonical admission has NOT run. The serving backend's fixed-route immutable
 generation and exact privileged namespace/source policy do not authorize this
 new scoped input/profile. Promotion requires a reviewed source/dependency closure,
