@@ -9237,6 +9237,16 @@ See `tools/OFFRAMP_CONTACT.md`; private diagnostic builds NEVER ship.
 
 ## Rewind (Patch 477)
 
+**P1512 ordinary-load preview ACK ownership (11 Nov 2026 UTC).** `Trail_Request`
+is admission, not proof of actual send: it may defer or reject. Bind a preview's
+ACK and count its command only at the actual sender, after context cleanup that
+can conditionally send holdoff/resync. Plain console `sl_load` is not the modern
+WarpOp/key path. Do not claim LoadContext universally clears preview/counters;
+that is conditional re-entry. The actual FIFO has8 slots. Existing plain-load
+CPU control71/0 versus actual prepatch56/9 (8 labels), plus normal100/0 and
+rewind36/0, is production-function logic proof, not network/framebuffer/body or
+Mark acceptance. See tools/p1512-save-preview.md; human checks stay in lextest.md.
+
 P1372 controlled warm-save finding (7 Nov): a positive saved clock does NOT prove
 recording reattached. Frozen P1366 ACTED on STREAM, kept its positive clock, then
 reported recording0 after load; the complete selected-row metadata subject kept
