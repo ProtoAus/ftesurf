@@ -2,10 +2,11 @@
 
 ## Scope and status
 
-Implemented and independently reviewed. Both native builds and the acting CPU
-controls pass. Native promotion is still PENDING; compilation, code review and
-physics parity are not a live rollout or confirmation of the reported failures.
-No QC Build number or release-package decision is made here.
+Implemented, independently reviewed and deployed on 11 November 2026 UTC to
+both Windows installs and all twelve lobbies. Both native builds and the acting
+CPU controls pass; destination hashes and live lobby actors/plugins are verified.
+Human confirmation of the reported save/load failures remains pending. No QC
+Build number or release-package decision is made here.
 
 This repairs a demonstrated server packet-delivery defect. It is a plausible
 lead for the reported prediction errors and `msg overflowed` warnings, not proof
@@ -90,8 +91,47 @@ canonical Git blobs.
 
 ## Delivery
 
-PENDING. Ship only the qualified native images/plugins; preserve the current
-QW/CS/menu programs, configs, player data and backend generation. Publication,
-fresh preservation/actor checks, exact destination/previous-image hashes and
-live behavior must be recorded separately. Existing deployment/preflight
-failures remain failures; they are not regraded by a corrected caller.
+### Windows — deployed 11 November, 18:12:04–18:12:08 UTC
+
+- All ten default native destinations across both installs match the frozen
+  qualified images. Each new `.prev` matches its actual pre-promotion current
+  bytes. All twenty current/prior-previous preimages were individually read
+  back from their retained archive and size/SHA256-verified before any target write.
+- Executable stamps and DLL metadata contents identify the clean main build
+  shown above. All 16,430 entries in the bounded protected inventory are equal
+  before/after, including protected programs, configs and player-data inventory.
+- No QCC, progs, config, player-data or nondefault native-extra promotion; no game
+  was killed, paused or launched. This is native delivery, not a new release.
+
+### Pi — deployed 11 November, 19:03:35–19:09:55 UTC
+
+- Only the minimal ARM dedicated/HL2 pair was swapped. Both destinations match
+  the qualified hashes above; both `.prev` files match actual prior current
+  bytes. Original native UID/GID are retained without Root or ownership changes.
+- Complete preimages of four native current/prior-previous files, nine recorder
+  parts and 207 resume members were independently verified off-box before
+  staging. Every member's bytes/size/hash and archived metadata were checked;
+  exact source nanoseconds/identity metadata remain in the hashed inventories.
+- A real live recording initially refused preparation. Its extra open/changing
+  part was not ignored or copied as a closed file. After scoped coordination,
+  actual empty/closed checks again matched the complete original preimages and
+  actor births; no evidence was redated or preservation requirement waived.
+- All twelve lobbies restarted, none skipped. Each live dedicated image matches
+  the qualified hash, with the actual new HL2 inode mapped. Independent readback
+  at 19:13:21 UTC reconfirmed every new actor and plugin, both destinations and
+  both previous-image hashes. The rollout changed or lost none of the 58,271
+  preexisting protected inventory entries; four new files were reported.
+- Current progs/configs and backend generation/files remain unchanged. The
+  rollout's sweep lock was released. No player-data restore, forced empty-room
+  assumption, source-tree rebuild or automatic verifier downgrade was used.
+
+The inherited-group restoration guard was corrected only after the actual
+owned-setgid-parent capability was demonstrated; original UID/GID checks,
+created-stage checks and identity-owned rollback remain enforced. Earlier
+caller/reader/preflight refusals remain historical failures, not regraded passes.
+
+The actual server packet-delivery fix is now available for the reported case.
+Rejoining and retrying the same location with `cl_sl_leadin 0` was requested as
+the small human check. Its result, rendered camera behavior and rare-crash
+coverage remain pending in `lextest.md`; live deployment alone does not prove
+Mark's exact cause or a measured end-to-end latency/performance improvement.
