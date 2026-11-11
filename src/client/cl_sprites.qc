@@ -263,6 +263,7 @@ float  spr_skyburst;                    // tests left at 4x after a jump
 float  spr_skycarry;                    // P1422: the fraction of a ray left from the last frame
 float  spr_glowext;                     // P1422: the largest glow's half-diagonal at GLOW_OVERLAYDIST
 vector *spr_skyat;                      // P1242: the eye each sprite then beam was last traced from
+float *spr_skythr;                      // P1497: how far the eye may move before it is traced again
 float  spr_skysolidgen, spr_skysolidseen; // P1242: bumped by cl_portal.qc when a door's collision changes
 float  spr_skyhid;                      // skipped last frame (vbsp_sprite_debug)
 
@@ -2978,6 +2979,10 @@ float(vector eye, vector p, float st) Sprite_SkyTest =
 // is traced again only once the eye is 16 units from where it was last traced; with fewer sprites
 // than vbsp_sprite_skyrays every one was traced every frame (surf_garden, 17: ~0.45 ms a frame).
 // Rays still cap the traces a frame, and at most 256 are looked at a frame.
+// P1497: that distance doubles each time a trace confirms the verdict, up to vbsp_sprite_skyhold units and
+// 1/32 of the way to the sprite (within 512 units it stays 16); a changed verdict resets it; skyhold 16 is
+// the old rule. surf_fairy at Lex's settings re-traced 38 far beams ~3,600 times a second with not one change;
+// hold 128 took its CSQC from 1.32 to 1.10 ms a frame, with in-view verdicts no staler than 16 within noise.
 // P1422: vbsp_sprite_skyrays is rays per 60th of a second, never more a frame than before (a per-frame count
 // traced 14,000 a second at 220 fps: surf_fairy 222 fps, 338 with the test off), and a sprite out of view or
 // past vbsp_sprite_dist spends none -- it draws nothing whatever its verdict (Sprite_ConeTan's cone, margin 1.25;
@@ -2987,11 +2992,13 @@ float(vector eye, vector p, float st) Sprite_SkyTest =
 // call per visit cost ~4% on surf_fairy.
 void(vector eye) Sprite_SkyTick =
 {
-	local float i, k, n, rays, look, st, tanx, maxdist, slope, glowcos, zc, burst;
+	local float i, k, n, rays, look, st, nst, tanx, maxdist, slope, glowcos, zc, burst, hold;
 	local vector d, fwd;
+	local float k2;
 
 	n = spr_n + beam_n;
 	burst = FALSE;
+	hold = max(16, cvar("vbsp_sprite_skyhold"));	// P1497
 	if (vlen(eye - spr_skyeye) > 256)
 		spr_skyburst = n;
 	spr_skyeye = eye;
@@ -3011,6 +3018,8 @@ void(vector eye) Sprite_SkyTick =
 	}
 	if (!spr_skyat)
 		spr_skyat = memalloc(sizeof(vector) * (SPR_MAX + BEAM_MAX));
+	if (!spr_skythr)
+		spr_skythr = memalloc(sizeof(float) * (SPR_MAX + BEAM_MAX));
 	// A portal door opened, closed or was rebuilt: the traces can end elsewhere with the eye still.
 	// Every one is due again (its verdict kept until it is traced) and the burst settles them.
 	if (spr_skysolidseen != spr_skysolidgen)
@@ -3037,7 +3046,8 @@ void(vector eye) Sprite_SkyTick =
 		if (st != SKY_UNTESTED)
 		{
 			d = eye - spr_skyat[i];
-			if (d * d < 256)
+			k2 = min(spr_skythr[i], hold);
+			if (d * d < k2 * k2)
 				continue;
 		}
 		// P1422: an untested sprite is drawn, so every one gets a first verdict wherever it is
@@ -3073,9 +3083,19 @@ void(vector eye) Sprite_SkyTick =
 		spr_skyat[i] = eye;
 		rays = rays - 1;
 		if (i < spr_n)
-			spr_sky[i] = Sprite_SkyTest(eye, spr_org[i], st);
+		{
+			d = spr_org[i];
+			spr_sky[i] = nst = Sprite_SkyTest(eye, d, st);
+		}
 		else
-			beam_sky[i - spr_n] = Sprite_SkyTest(eye, beam_org[i - spr_n], st);
+		{
+			d = beam_org[i - spr_n];
+			beam_sky[i - spr_n] = nst = Sprite_SkyTest(eye, d, st);
+		}
+		if (nst == st)	// P1497
+			spr_skythr[i] = min(spr_skythr[i] * 2, hold, max(16, vlen(d - eye) / 32));
+		else
+			spr_skythr[i] = 16;
 	}
 };
 
@@ -3103,12 +3123,12 @@ string(vector eye, vector fwd) Sprite_SkyAxisCensus =
 			continue;
 		if (st == SKY_BEHIND)
 			behind = behind + 1;
-		if (st == SKY_UNTESTED || !spr_skyat)
+		if (st == SKY_UNTESTED || !spr_skyat || !spr_skythr)
 			stale = stale + 1;
 		else
 		{
 			d = eye - spr_skyat[i];
-			if (d * d >= 256)
+			if (d * d >= spr_skythr[i] * spr_skythr[i])
 				stale = stale + 1;
 		}
 		if ((Sprite_SkyTest(eye, spr_org[i], st) == SKY_BEHIND) != (st == SKY_BEHIND))

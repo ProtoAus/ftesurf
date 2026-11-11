@@ -564,6 +564,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	// P1422: per 60th of a second, at most that many a frame.
 	registercvar("vbsp_sprite_skyrays", "64", CVAR_ARCHIVE);
 	registercvar("vbsp_sprite_skycull", "1");	// P1422: 0 = sky-test sprites out of view too (before P1422)
+	registercvar("vbsp_sprite_skyhold", "128");	// P1497: units a confirmed sky verdict may wait (16 = before P1497)
 	// One-frame dump of the material table and the cull result; clears itself,
 	// same idiom as zone_debug.
 	registercvar("vbsp_sprite_debug", "0");
