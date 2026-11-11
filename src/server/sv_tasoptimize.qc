@@ -29,6 +29,7 @@
 #define TOPT_FITER 12           // P1449 follow: rollouts to the fixed point (each fixes at least a tick)
 #define TOPT_KMAX  16           // P1449 curve: knots at most (a flight's side switches come every 20-30 ticks)
 #define TOPT_KDEF  8            // ...by default
+#define TOPT_QHARD 240          // `hardq`: a demo row's own command may reach this (anubis stage 2's maze: 173 at 870 u/s)
 #define TOPT_QMAX  120          // P1449 curve: the turn command's range (see SV_TASOptFollow); farsh's rides
                                 // reach ~80 (braking turns), the follow optimum on ramp 0 ~130
 #define TOPT_CEPOP 20           // P1449 curve: samples a generation
@@ -58,6 +59,7 @@
 .float topt_stage;              // 1 go back to the head and stage the tape, 2 the tape is running
 .float topt_endz, topt_endtrack;    // P1483: a course's end (a zone box, or -1; the track whose END boxes, or -1): a reach there
 .float topt_airdir;             // P1483 `airdir`: an air point is a place and a way (the demo's heading there)
+.float topt_hardq;              // `hardq`: past QMAX only where the demo itself went (its own strength, up to QHARD)
 .float topt_endsafe;            // `endsafe`: any way into the course's end, the nearest, and no time preference (Jargon `safe`)
 #define TOPT_SAFER 300          // ...a line this near one of them is near the end
 float topt_een;
@@ -185,7 +187,8 @@ float(entity e, float i) SV_TASOptFaceDot =
 	return SV_TASOptFaceUp(i) * t;
 };
 .float topt_dn;
-float topt_dpos[TOPT_HMAX * 3]; // the rows' origins (each after its tick), for `tube`
+float topt_dpos[TOPT_HMAX * 3];
+float topt_dqr[TOPT_HMAX];      // the demo's own command per row, clamped at QHARD only (topt_dq: at QMAX) // the rows' origins (each after its tick), for `tube`
 .float topt_tube, topt_tubeout; // P1449 `tube R`: candidates stay within R of that path; how many left it
 .float topt_tubeex;             // `slack S`: past a ride's exit (or an airborne start) the tube allows S more, narrowing
 .float topt_trigcut;            // the played miss ended on a trigger within TOPT_EARLYCUT ticks (the tick, or 0)
@@ -748,7 +751,13 @@ void(entity e) SV_TASOptDemoRows =
 		a = TOPT_QMAX;
 		if (e.topt_catch > 0 && j >= e.topt_tgtj - e.topt_catch && j <= e.topt_tgtj + 5) a = 2 * TOPT_QMAX;     // the catch (`catch N`)
 		if (e.topt_flick > 0 && j >= e.topt_flick - 12 && j <= e.topt_flick + 6) a = 2 * TOPT_QMAX;            // the launch (`flick R`)
-		topt_rows[i*7+4] = (topt_dq[j] == 0) ? 0 : ((topt_dq[j] > 0) ? 1 : -1) * bound(0, fabs(topt_dq[j]) + off, a);
+		if (e.topt_hardq && fabs(topt_dqr[j]) > TOPT_QMAX)
+		{	// Lex: on tech maps you turn faster than optimal and lose speed for it (anubis stage 2's zig-zag turns 8-11 deg
+			// a tick at 650-1000 u/s: commands of ~170, clamped at 120 neither copied nor found). Its own strength here.
+			a = max(a, fabs(topt_dqr[j]));
+			topt_rows[i*7+4] = ((topt_dqr[j] > 0) ? 1 : -1) * bound(0, fabs(topt_dqr[j]) + off, a);
+		}
+		else topt_rows[i*7+4] = (topt_dq[j] == 0) ? 0 : ((topt_dq[j] > 0) ? 1 : -1) * bound(0, fabs(topt_dq[j]) + off, a);
 		topt_rows[i*7+5] = 0;
 		// this row aims: only where the demo holds a side key (before the engine's aim takes over, airk < 3,
 		// FOLLOW strafes a 0 command at side 0 as 450 left -- review)
@@ -2013,7 +2022,7 @@ float(float m) SV_TASDemoMove =
 void(entity e, float argc) SV_TASDemoRowsCommand =
 {
 	local string path, line;
-	local float fh, from, n, c, kb, blank, yaw, pvx, pvy, sd, x, wy, lines;
+	local float fh, from, n, c, kb, blank, yaw, pvx, pvy, sd, x, wy, lines, ksfseen, kk;
 	path = argv(2); from = stof(argv(3));
 	if (argc != 4 || !SV_TASDemoPathOK(path) || !FS_TASNumber(argv(3)))
 	{
@@ -2025,14 +2034,14 @@ void(entity e, float argc) SV_TASDemoRowsCommand =
 	if (SV_TASOptBusy(e)) return;
 	fh = fopen(path, FILE_READ);
 	if (fh < 0) { sprint(e, PRINT_HIGH, sprintf("tas demorows: cannot open %s\n", path)); return; }
-	n = 0; kb = 0; blank = 0; pvx = pvy = 0; lines = 0;
+	n = 0; kb = 0; blank = 0; pvx = pvy = 0; lines = 0; ksfseen = 0;
 	while (n < TOPT_HMAX && blank < 64 && lines < TAS_DEMOLINES)
 	{
 		line = fgets(fh); lines = lines + 1;
 		if (line == "") { blank = blank + 1; continue; }
 		blank = 0;
 		c = tokenize(line);
-		if (argv(0) == "ksfbuttons" && c >= 3) { kb = stof(argv(2)); continue; }
+		if (argv(0) == "ksfbuttons" && c >= 3) { kb = stof(argv(2)); ksfseen = 1; continue; }
 		if (c < 14 || !FS_TASNumber(argv(0))) continue;
 		if (stof(argv(0)) < from - 0.0001) { pvx = stof(argv(4)); pvy = stof(argv(5)); continue; }
 		yaw = stof(argv(8));
@@ -2042,6 +2051,7 @@ void(entity e, float argc) SV_TASDemoRowsCommand =
 		wy = (yaw + ((sd < 0) ? 90 : -90)) / DEG_PER_RAD;        // Source: negative sidemove is left
 		x = pvx * cos(wy) + pvy * sin(wy);
 		topt_dq[n] = (sd == 0) ? 0 : bound(-TOPT_QMAX, ((sd < 0) ? 1 : -1) * (30 - x), TOPT_QMAX);
+		topt_dqr[n] = (sd == 0) ? 0 : bound(-TOPT_QHARD, ((sd < 0) ? 1 : -1) * (30 - x), TOPT_QHARD);
 		pvx = stof(argv(4)); pvy = stof(argv(5));
 		topt_dpos[n*3] = stof(argv(1)); topt_dpos[n*3+1] = stof(argv(2)); topt_dpos[n*3+2] = stof(argv(3));
 		topt_dlen[n] = n ? topt_dlen[n-1] + vlen([topt_dpos[n*3] - topt_dpos[n*3-3], topt_dpos[n*3+1] - topt_dpos[n*3-2], topt_dpos[n*3+2] - topt_dpos[n*3-1]]) : 0;
@@ -2050,6 +2060,12 @@ void(entity e, float argc) SV_TASDemoRowsCommand =
 		topt_drow[n*5+2] = bound(-89, stof(argv(7)), 89);
 		topt_drow[n*5+3] = yaw - 360 * floor((yaw + 180) / 360);
 		topt_drow[n*5+4] = ((kb & 2) ? 1 : 0) | ((kb & 4) ? 2 : 0);
+		if (!ksfseen && cvar("tas_jargon_rowkeys"))
+		{	// an FTESurf recording (Jargon's own finish, a player's run) has no ksfbuttons lines: its <keys> column holds the
+			// jump and duck it asked for (SV_RecKeys) -- Lex: crouching keeps the legs off surfaces
+			kk = stof(argv(10));
+			topt_drow[n*5+4] = ((kk & FSI_JUMP) ? 1 : 0) | ((kk & FSI_DUCK) ? 2 : 0);
+		}
 		n = n + 1;
 	}
 	fclose(fh);
@@ -2937,12 +2953,12 @@ void(entity e) SV_TASOptReset =
 // tas optimize <ticks> <left|right> [board] [flick [k]] [time] [energy] [fast]
 void(entity e, float argc) SV_TASOptCommand =
 {
-	local float n, dir, i, mode, fk, searches, obj, fast, energy, fixp, kn, tube, hop, look, pace, emin, gens, kex, stall, low, edgeok, ride, wide, leadmin, fresh, slack, airdir, lookw, catch, flick, endsafe;
+	local float n, dir, i, mode, fk, searches, obj, fast, energy, fixp, kn, tube, hop, look, pace, emin, gens, kex, stall, low, edgeok, ride, wide, leadmin, fresh, slack, airdir, lookw, catch, flick, endsafe, hardq;
 	local float seed, playk, endz, endtr, k, startz, startz2;
 	local string w;
 	n = stof(argv(2));
 	dir = !strcmp(argv(3), "left") ? 1 : (!strcmp(argv(3), "right") ? -1 : 0);
-	mode = 0; fk = 0; obj = 0; fast = 0; energy = 0; fixp = 0; kn = 0; tube = 0; hop = 0; look = 0; pace = 0; emin = 0; gens = 0; kex = 0; stall = 0; low = 0; edgeok = 0; ride = 0; wide = 0; leadmin = 0; fresh = 0; slack = 0; airdir = 0; lookw = -2; catch = -2; flick = -2; endsafe = 0;
+	mode = 0; fk = 0; obj = 0; fast = 0; energy = 0; fixp = 0; kn = 0; tube = 0; hop = 0; look = 0; pace = 0; emin = 0; gens = 0; kex = 0; stall = 0; low = 0; edgeok = 0; ride = 0; wide = 0; leadmin = 0; fresh = 0; slack = 0; airdir = 0; lookw = -2; catch = -2; flick = -2; endsafe = 0; hardq = 0;
 	seed = -2; playk = -2; endz = -2; endtr = -2; startz = -2; startz2 = -2;      // -2 not given, -1 its number expected next
 	for (i = 4; i < argc; i = i + 1)
 	{
@@ -2972,6 +2988,7 @@ void(entity e, float argc) SV_TASOptCommand =
 		else if (w == "flick" && flick == -2) flick = -1;                       // Lex: a launch's height comes from the angle it leaves at
 		else if (flick == -1 && argv(i - 1) == "flick" && FS_TASNumber(w) && stof(w) >= 1 && stof(w) <= TOPT_HMAX && stof(w) == floor(stof(w))) flick = stof(w);
 		else if (w == "endsafe" && !endsafe) endsafe = 1;                       // Lex: finish first, the time after
+		else if (w == "hardq" && !hardq) hardq = 1;                       // Lex: finish first, the time after
 		else if (w == "airdir" && !airdir) airdir = 1;                           // P1483: off the demo's heading at an air point costs
 		else if (w == "fresh" && !fresh) fresh = 1;                             // no remembered line among the first candidates
 		else if (w == "slack" && !slack) slack = -1;                            // the tube's slack past a ride's exit
@@ -3072,7 +3089,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_mode = mode; e.topt_fk = fk; e.topt_srch = 0; e.topt_besty = 0; e.topt_bestf = 0; e.topt_bestp = 12;
 	e.topt_pfoff = fixp; e.topt_pfon = 0;
 	e.topt_kn = kn; e.topt_kgen = -1; e.topt_kidx = 0; e.topt_wok = e.topt_bok = 0; e.topt_vizt = 0;   // vizt before the clear below
-	e.topt_efol = 0; e.topt_tube = tube; e.topt_tubeex = (slack > 0) ? slack : 0; e.topt_tubeout = e.topt_wallhit = 0; e.topt_hop = hop; e.topt_look = look; e.topt_pace = pace; e.topt_emin = emin; e.topt_weakn = 0; e.topt_cegen = gens ? gens : TOPT_CEGEN; e.topt_cestall = stall ? stall : TOPT_CESTALL; e.topt_low = low; e.topt_edgeok = edgeok; e.topt_edgen = 0; e.topt_earlycut = 0; e.topt_lowneed = 0; e.topt_airdir = airdir; e.topt_lookw = (lookw > 0) ? lookw : 0; e.topt_catch = (catch > 0) ? catch : 0; e.topt_flick = (flick > 0) ? flick : 0; e.topt_endsafe = 0;
+	e.topt_efol = 0; e.topt_tube = tube; e.topt_tubeex = (slack > 0) ? slack : 0; e.topt_tubeout = e.topt_wallhit = 0; e.topt_hop = hop; e.topt_look = look; e.topt_pace = pace; e.topt_emin = emin; e.topt_weakn = 0; e.topt_cegen = gens ? gens : TOPT_CEGEN; e.topt_cestall = stall ? stall : TOPT_CESTALL; e.topt_low = low; e.topt_edgeok = edgeok; e.topt_edgen = 0; e.topt_earlycut = 0; e.topt_lowneed = 0; e.topt_airdir = airdir; e.topt_lookw = (lookw > 0) ? lookw : 0; e.topt_catch = (catch > 0) ? catch : 0; e.topt_flick = (flick > 0) ? flick : 0; e.topt_endsafe = 0; e.topt_hardq = hardq;
 	e.topt_rideT = ride; e.topt_briefn = 0; e.topt_leadmin = leadmin; e.topt_over = 0;
 	e.topt_tgtj = 0;
 	if (tube)
