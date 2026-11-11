@@ -76,7 +76,6 @@ float as_rmin;                  // the nearest-row search starts here (a full-ru
 .float as_ctrack, as_cleg;      // the chain's course: track (0 main, k bonus k), leg (0 the whole track, k stage k); -1 none
 .float as_saved;                // the furthest stretch autosaved for Continue (-1 none)
 .float as_esc;                  // P1478: effort steps a stuck course chain has taken by itself (2 at most)
-.float as_coastf;              // coasts predicted into a wrong teleport this chain (a reach resets as_try: rig t2chain10 looped)
 .float as_fintry;               // P1483: the try the last stretch reached on: a failed coast goes on from it (each visit its tries)
 .float as_cseed;               // P1483: Continues of this course this session (a Continue after "stuck" searched exactly as before: review F)
 float as_visit[TAS_ASMAX];      // P1483: searches of each stretch this chain (in the seed)
@@ -1254,7 +1253,7 @@ void(entity e) SV_TASAutoBacks =
 {
 	local float k;
 	if (e.as_backmax < 0) e.as_backmax = max(6, 2 * as_n);
-	e.as_finrec = e.run_t_finrec; e.as_coastf = 0; e.as_bmph = 0; as_prpi = -1;
+	e.as_finrec = e.run_t_finrec; e.as_bmph = 0; as_prpi = -1;
 	for (k = 0; k < TAS_ASMAX; k = k + 1) as_visit[k] = 0;
 	SV_TASAutoPriorLoad(e);
 	for (k = 0; k < TAS_ASMAX; k = k + 1) as_bmd[k] = 0;
@@ -1387,6 +1386,7 @@ void(entity e, float track, float leg) SV_TASAutoContinue =
 	}
 	e.as_backmax = -1;
 	SV_TASAutoBacks(e);
+	e.as_beam = 0; e.as_turns = 0;      // a save without opts3 (P1478's) had neither (review J)
 	SV_TASAutoNotes(e, track, leg, 1);
 	as_n = e.as_cof;
 	if (as_cov)
@@ -1700,7 +1700,7 @@ void(entity e) SV_TASAutoFrame =
 		{	// the coast would fall into a teleport that is not the end: the last stretch failed, tried again or backtracked
 			SV_TASAutoNote(e, 1, sprintf("stretch %.0f: from where it ends, the run would fall into a teleport, not the end: again", as_n));
 			e.as_i = as_n - 1; e.as_tprev = as_wp[as_n - 1];    // the reach had moved it to its own end (rig t2chain9: no rows left)
-			e.as_coastf = e.as_coastf + 1; e.as_try = e.as_fintry;     // that try failed: the next searches longer, the last backtracks (bench p14)
+			e.as_try = e.as_fintry;     // that try failed: the next searches longer, the last backtracks (bench p14)
 			e.topt_outcome = 1; e.topt_lowneed = e.topt_earlycut = e.topt_trigcut = 0; e.topt_over = e.topt_briefn = 0;
 			e.as_stage = 2;
 			return;
@@ -1907,7 +1907,7 @@ void(entity e) SV_TASAutoFrame =
 		{	// P1478 (Lex: a lot of automation): a stuck course chain tries harder by itself before it stops -- more tries and
 			// ride knots, then polish and boarding spots -- again from two stretches before the furthest failure, its bars,
 			// leads and remembered failures cleared there (surf_shape bonus 1 at Quick: stretch 1 had nothing to back up to)
-			e.as_esc = e.as_esc + 1; e.as_coastf = 0; e.as_bmph = 0;
+			e.as_esc = e.as_esc + 1; e.as_bmph = 0;
 			for (i = 0; i < as_n; i = i + 1) as_bmd[i] = 0;
 			e.as_tries = max(e.as_tries, 2 + e.as_esc); e.as_rideknots = 1; e.as_low = 1;
 			if (e.as_esc >= 2) { e.as_polish = 1; e.as_spots = 1; }
