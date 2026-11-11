@@ -149,5 +149,14 @@ all9original part files and207resume files unchanged, all12new actor epochs,
 strict13declared actor FD closure, and native/plugin/menu/config/backend
 preservation. This is the explicitly scoped recorder/resume actor check, not a
 general system file-writer audit. No backend generation or native binary swap.
-Real cold downloaded-client/frame-hook acceptance is still pending here and is
-not inferred from server hashes or restart counts. No release or QCBuild bump.
+Real cold-client acceptance subsequently passed on the deployed endpoint. Only
+owned local CS/matching cache files were parked and exactly restored. The client
+actually downloaded `csprogsvers/dfb59cb7.dat`, **5,317,642 bytes**, SHA25644b32...
+(the complete frozen hash above), then logged CSQC loaded and positive execution
+of `CSQC_WorldLoaded`, `CSQC_Ent_Update`, `CSQC_Input_Frame` and `CSQC_UpdateView`.
+This is wire/VM evidence, not merely server advertisement or process start. The
+spectator-intent client sent no movement/start/warp/RCON commands and disconnected;
+its session is not independently claimed to cause zero remote metadata writes.
+Owned fixture/cache restoration was byte-verified. Numerical FPS and owner visual
+acceptance are not inferred from this functional tandem check. No release or
+QCBuild bump.
