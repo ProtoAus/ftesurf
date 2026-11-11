@@ -1602,7 +1602,9 @@ void(entity e) SV_TASAutoFrame =
 			{	// landed and still: the guide's own prestrafe, from where it stood -- walked there first when that is on this
 				// floor (surf_shape's bonus-1 box places the body 13 u from the guide's exit, ~280 u from its standstill)
 				rd = vlen([e.origin_x - as_rows[e.as_ri*7+1], e.origin_y - as_rows[e.as_ri*7+2], 0]);
-				if (rd <= 64 && fabs(e.origin_z - as_rows[e.as_ri*7+3]) <= 18)
+				// startfix: within the walk's own 16 u, not 64 -- surf_anubis stage 1's box places the body 50 u from the
+				// guide's standstill, and its prestrafe replayed from there left the box at 76 u/s against his 283
+				if (rd <= (cvar("tas_jargon_startfix") ? 16 : 64) && fabs(e.origin_z - as_rows[e.as_ri*7+3]) <= 18)
 				{
 					e.as_stage = 13; e.as_ri = e.as_ri + 1;
 					e.as_smeth = 1; SV_TASAutoNote(e, 1, sprintf("start: the guide's own prestrafe from where it stood (%.0f u from here)", rd));
