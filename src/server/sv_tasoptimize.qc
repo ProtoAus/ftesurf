@@ -1439,8 +1439,8 @@ float(entity e, entity t) SV_TASOptEndTele =
 
 float(entity e, float ran) SV_TASOptTargetScore =
 {
-	local float i, d, best, bk, hit, lim, tx, dh, eg, hj, endhit, held;
-	best = 1000000; bk = -1; hit = FALSE; e.topt_candeg = 0; e.topt_candbr = 0; endhit = FALSE; held = FALSE;
+	local float i, d, best, bk, hit, lim, tx, dh, eg, hj, endhit, held, dmin;
+	best = 1000000; bk = -1; hit = FALSE; e.topt_candeg = 0; e.topt_candbr = 0; endhit = FALSE; held = FALSE; dmin = 1000000;
 	lim = (e.topt_rollcut == 1) ? ran - 1 : ran;        // the tick QC acts on is not one the prediction holds
 	tx = SV_TASOptLimit(e, lim);
 	if (tx >= 0) lim = tx;                              // a wall touched or the tube left: a cut there
@@ -1449,8 +1449,8 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		if (e.topt_endz >= 0 || e.topt_endtrack >= 0)
 		if (SV_TASOptInEnd(e, (i > 0) ? [topt_out[i*13-13], topt_out[i*13-12], topt_out[i*13-11]] : e.origin, [topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]]))
 			{ best = 0; bk = i; hit = TRUE; endhit = TRUE; break; }
-		if (held) continue;     // a reach held: only an end hit after it counts
 		d = vlen([topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]] - e.topt_tgt);
+		if (held) { dmin = min(dmin, d); continue; }     // a reach held: only an end hit after it counts
 		if (d <= e.topt_tgtr || (e.topt_tgtn_z >= 0.99 && fabs(topt_out[i*13+2] - e.topt_tgt_z) <= TOPT_HOPZ &&
 		    vlen([topt_out[i*13] - e.topt_tgt_x, topt_out[i*13+1] - e.topt_tgt_y, 0]) <= TOPT_HOPR))
 		if (e.topt_tgtn == '0 0 0' ||
@@ -1459,7 +1459,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		{
 			best = d; bk = i; hit = TRUE;
 			if (e.topt_endz < 0 && e.topt_endtrack < 0) break;
-			held = TRUE;
+			held = TRUE; dmin = d;
 		}
 		if (!held) if (d < best) { best = d; bk = i; }
 	}
@@ -1498,6 +1498,10 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		d = e.topt_cande - TOPT_WALLPEN * e.topt_candw - TOPT_WALLLOSS * e.topt_candwl - TOPT_GROUNDPEN * e.topt_candg;
 		if (endhit)     // P1483: the course is over: above every other reach, sooner all that counts (a tick 50, energy a hundredth)
 			return SV_TASOptBand(TOPT_REACH, 30000 + 50 * (TOPT_HMAX - bk - 1) + 0.01 * e.topt_cande);
+		if (held)       // near the end, not in it: nearer the end's first guide row is better, energy a tiebreak (scored on
+		                // energy, every 400 u line tied and none was pulled in: t2s2's finish coasted into the fail teleport,
+		                // bench p13; an end-only reach had finished it in 0:12.420)
+			return SV_TASOptBand(TOPT_REACH, 20000 - 10 * min(1500, dmin) + 0.01 * e.topt_cande);
 		if (!e.topt_edgeok)
 			for (eg = 1; eg <= bk; eg = eg + 1)          // its own counter: i is the reach's offset below (review)
 				if (SV_TASOptEdgeAt(eg, ran))
