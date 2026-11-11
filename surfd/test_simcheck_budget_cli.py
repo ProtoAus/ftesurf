@@ -101,6 +101,68 @@ print('WRAPPER_ACTED')
             self.assertIn('sweep: nothing to verify', result.stdout)
             self.assertNotIn('sims ', result.stdout)
 
+    def test_peer_window_uses_remaining_pair_allowance(self):
+        with tempfile.TemporaryDirectory() as home:
+            env = dict(os.environ, SURFD_HOME=home,
+                       SURFD_DB=str(Path(home)/'test.db'), SURFD_ENV=str(Path(home)/'empty.env'),
+                       SURFD_RUNS=str(Path(home)/'runs'), SURFD_GAME=home,
+                       SURFD_TOOLS=str(HERE.parent/'tools'), SURFD_VERIFIER=str(Path(home)/'noengine'))
+            Path(env['SURFD_ENV']).write_text('SURFD_KEY=synthetic\n')
+            program = r'''
+from pathlib import Path
+import surfd, sweep, simcheck
+conn = surfd.connect()
+folder = Path(surfd.RUNS_DIR)/'synthetic'/'main'
+folder.mkdir(parents=True)
+record = ['FTESURF-REC 9','map synthetic','track 0','leg 0','tickrate 100','begin']
+record += ['in %d %d 0 %d 0 0 0 0 0 4' % (j,j,100+j%7) for j in range(80)]
+record += ['end 80']
+for i in range(1,202):
+    leaf = '0000800_synthetic-%08x_run.rec' % i
+    (folder/leaf).write_text('\n'.join(record)+'\n')
+    conn.execute("INSERT INTO replays (map,map_dir,track,leg,leaf,tier,style,player,name,ticks,tickrate,millis,flags,node,submitted,kind) VALUES ('synthetic','synthetic',0,0,?,'ranked','normal','synthetic','synthetic',80,100,800,0,'1',1,'run')", (leaf,))
+conn.commit()
+conn.execute('PRAGMA busy_timeout=617')
+queries = []
+conn.set_trace_callback(lambda sql: queries.append(sql) if sql.startswith('SELECT p.* FROM replays') else None)
+# Without the shared remainder, the old 200-peer prefetch spends this SQL
+# allowance before its first comparison; the real reader is never substituted.
+stored, notable, note = sweep.similarity_step(conn, limit=1, max_pairs=1,
+    max_sql_steps=20000, max_seconds=60, max_lock_ms=5)
+assert (stored,notable) == (1,1), (stored,notable,note)
+assert 'pair limit reached' in note and 'SQL read limit reached' not in note, note
+row = conn.execute('SELECT a_id,b_id,verdict,compared,match,source_capture FROM sims').fetchone()
+assert tuple(row)[:5] == (1,2,'compared',80,1.0), tuple(row)
+assert row['source_capture'] and queries and all(q.endswith('LIMIT 1') for q in queries)
+assert not conn.in_transaction and conn.execute('PRAGMA busy_timeout').fetchone()[0] == 617
+assert conn.execute('SELECT COUNT(*) FROM replays').fetchone()[0] == 201
+# Later healthy passes still advance, rather than repeatedly selecting the pair
+# already measured. Windows are bounded; this is not exhaustive/fair coverage.
+for _ in range(3):
+    result = sweep.similarity_step(conn, limit=1, max_pairs=1, max_seconds=60)
+    assert result[:2] == (1,1), result
+assert conn.execute('SELECT COUNT(*) FROM sims').fetchone()[0] == 4
+assert conn.execute('SELECT MAX(MAX(a_id,b_id)) FROM sims').fetchone()[0] >= 4
+# Generic direct callers retain their existing window, including late-overlap
+# lookahead. An exhausted budget still admits/stores nothing.
+queries.clear()
+source = conn.execute('SELECT * FROM replays WHERE id=1').fetchone()
+assert simcheck.compare_run(surfd, conn, source, budget=simcheck._PairBudget(0,60),
+                           tools_dir=sweep.TOOLS) == (0,0,0)
+queries.clear()
+result = simcheck.compare_run(surfd, conn, source, limit_peers=2, tools_dir=sweep.TOOLS)
+assert result == (2,0,2), result
+assert queries and all(q.endswith('LIMIT 2') for q in queries)
+assert not conn.in_transaction and conn.execute('PRAGMA busy_timeout').fetchone()[0] == 617
+assert conn.execute('SELECT COUNT(*) FROM sims WHERE verdict=? AND compared=80 AND match=1', ('compared',)).fetchone()[0] == 6
+print('REMAINING_PEER_WINDOW_ACTED')
+conn.close()
+'''
+            result = subprocess.run([sys.executable, '-B', '-c', program], cwd=HERE, env=env,
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+            self.assertIn('REMAINING_PEER_WINDOW_ACTED', result.stdout)
+
     def test_cli_rejects_invalid_elapsed_budget(self):
         with tempfile.TemporaryDirectory() as home:
             for value in ('-1','nan','inf','-inf'):

@@ -935,7 +935,10 @@ def _similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
             # holds a write transaction. A crash/BaseException keeps the marker.
             _source_admit(conn, row["id"])
             admitted = True
+            # Bound this collector's prefetch by its remaining pair allowance;
+            # generic direct callers keep their explicit/default peer window.
             s, k, n = _compare_run(surfd, conn, row, now=now, tools_dir=tools_dir,
+                                  limit_peers=min(MAX_PAIRS, budget.remaining),
                                   diagnostics=diagnostics, budget=budget,
                                   read_budget=read_budget, reader=rs)
             result = (s, k, n)

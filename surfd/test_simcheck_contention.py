@@ -69,7 +69,8 @@ class Contention(unittest.TestCase):
         self.sf.replay_file = resolve
         original_compare = sc._compare_run
         def one_peer(*args, **kw):
-            return original_compare(*args, limit_peers=1, **kw)
+            kw['limit_peers'] = min(1, kw.get('limit_peers', 200))
+            return original_compare(*args, **kw)
         with mock.patch.object(sc, '_compare_run', side_effect=one_peer):
             result = sc.similarity_step(self.conn, self.sf, tools_dir=str(fixture.ROOT/'tools'))
         self.assertEqual(result[:2], (1, 1))
