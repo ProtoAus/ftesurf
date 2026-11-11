@@ -17,6 +17,11 @@
 - kz_bhop_avantura local play: jump A → B → A; the first landing back on A should not inherit its old count. Repeated landings on the same limited block still count. Public-lobby per-player tracking was already separate and unchanged; report if resets persist online.
 - Checkpoint position/movement report remains UNRESOLVED: please provide the first affected crossing/video, with or without the saveloc gesture. Actual callback inspected writes stats/receipt, not player body; no speculative teleport changes made.
 
+## P1490 see-through sort memo -- both installs (exe 9df6d9e7) 11 Nov 05:53Z; owner check PENDING
+- Surf surf_fairy, or any map where water and glass are seen together: see-through surfaces should look exactly as
+  before. If one flickers between two looks, or sits in front of something it should be behind for a moment after
+  you move, tell me the map and where; `r_blendsort_retry 1` turns the memo off to compare. Engine only, no QC.
+
 ## P1489 map loads behind the loading screen -- 12 lobbies + both installs (cs 876a1202) 11 Nov 04:40Z; owner check PENDING
 - Join a map (or wait for a lobby map change): the first second after you spawn should be smooth now. Check that
   glows, decals, overlays (screen tints), dust/steam emitters and portals still show as before, on the first map

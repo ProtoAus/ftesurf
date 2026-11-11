@@ -36,6 +36,9 @@
 - The two glass doors in bhop_bunnyrace now slide open when triggered and close after their authored wait, instead of only changing an internal state.
 - Fixed local bhop platforms such as kz_bhop_avantura retaining an old landing count after jumping onto another block.
 
+### P1490 Steadier frames where see-through surfaces overlap
+- Where water, glass and other see-through surfaces overlap in a way no draw order can get exactly right, the game no longer retries the full order check every frame, only every fourth. Frames at surf_fairy's worst spot take about a tenth less time.
+
 ### P1489 No freeze right after you spawn on a map
 - Light glows, sprites, emitters, decals, overlays and portals now load behind the loading screen instead of in the first frames after you spawn, which could freeze for a moment (about 130 ms on surf_fairy).
 
@@ -49,7 +52,8 @@
 - Input-recording identity counters publish without racing the physics worker. Never-measured values stay unknown, and the last recording's measurements remain available after it closes; settings callbacks still run outside the recording update's lock.
 
 ### P1485 Threaded recording updates keep their callback order
-- Ordinary recording updates no longer overlap the physics producer. Relative mouse updates stay grouped across empty paste polls, while actual key/paste callbacks retain their original position and ownership. Already-marked synthetic input does not acquire a lock for every call.
+- Ordinary recording updates no longer overlap the physics producer. Relative mouse updates stay grouped across empty paste polls, while actual key/paste callbacks retain their original position and ownership.
+- Already-marked synthetic input does not acquire a lock for every call.
 
 ### P1484 Recordings finish without disturbing a newer recording
 - A finishing recording keeps its own bytes and result through callbacks, so its cleanup cannot discard a newer recording. Aborted closes release their buffers without publishing an unfinished result.
