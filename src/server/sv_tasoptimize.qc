@@ -1130,7 +1130,7 @@ float(entity e, float ran) SV_TASOptLowNeed =
 
 void(entity e, float r, float y, float f) SV_TASOptPredict =
 {
-	local float ran, i, ran2, cut, ok, p;
+	local float ran, i, ran2, cut, ok, p, lk;
 	local vector v;
 	e.topt_pn = -2;
 	e.topt_pfon = 0;
@@ -1199,6 +1199,17 @@ void(entity e, float r, float y, float f) SV_TASOptPredict =
 			if (!e.topt_trigcut && e.topt_reachv < TOPT_WEAK && e.topt_rollcut == 1 && cut < 0 && ran <= 4 * TOPT_EARLYCUT && e.topt_startz >= 0)
 			if (max(SV_TASOptTeleTo(e, e.topt_cutent, e.topt_startz), SV_TASOptTeleTo(e, e.topt_cutent, e.topt_startz2)) >= 0) e.topt_trigcut = ran;
 			e.topt_lowneed = (e.topt_reachv < TOPT_WEAK && e.topt_tgtn_z >= 0.99) ? SV_TASOptLowNeed(e, ran) : 0;
+			// the played line's own launch and end, said: surf_tensor2 stage 5's stretch-4 lines all stop ~68 ticks in,
+			// and nothing showed how they left ramp 3 (humans: vz 971-1141 up, peak z 9201-9293) or what ended them
+			for (lk = 1; lk + 4 < ran; lk = lk + 1)
+				if (topt_out[lk*13-5] == 1) if (!topt_out[lk*13+8]) if (!topt_out[lk*13+21]) if (!topt_out[lk*13+34]) if (!topt_out[lk*13+47]) break;
+			if (lk + 4 < ran)
+				sprint(e, PRINT_HIGH, sprintf("tas optimize: the played line leaves its ramp on tick %.0f: %.0f u/s, vz %.0f, z %.0f, heading %.1f\n",
+					lk, vlen([topt_out[lk*13+3], topt_out[lk*13+4], 0]), topt_out[lk*13+5], topt_out[lk*13+2],
+					vectoyaw([topt_out[lk*13+3], topt_out[lk*13+4], 0])));
+			if (e.topt_rollcut == 1 && e.topt_cutent)
+				sprint(e, PRINT_HIGH, sprintf("tas optimize: the played line ends in %s%s on tick %.0f, z %.0f\n", e.topt_cutent.classname,
+					(e.topt_cutent.targetname != "") ? strcat(" ", e.topt_cutent.targetname) : "", ran, topt_out[max(0, ran - 1)*13+2]));
 			e.topt_over = 0;
 			if (e.topt_reachv < TOPT_REACH && e.topt_reachk >= 1 && e.topt_reachk <= ran)
 			if ((e.topt_tgtn_x || e.topt_tgtn_y) && e.topt_tgtn_z < 0.99)
