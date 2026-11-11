@@ -21,6 +21,9 @@
 
 ## next
 
+### P1504 Steadier frames on maps with many light glows
+- Light glows now stay within their per-frame time budget, so the slowest frames on glow-heavy maps like surf_fairy are a little shorter.
+
 ### P1501 No stutter when props first come into view
 - On Source maps, props (trees, statues, decorations) now finish loading behind the loading screen, so their shaders are ready before you move: no stutter the first time you see them after an update (surf_fairy, bhop_orgrimmar).
 

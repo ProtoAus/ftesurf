@@ -1,5 +1,9 @@
 # lextest.md — things waiting on a human
 
+## P1504 glare budget -- 12 lobbies + both installs (cs 267e9b9b) 11 Nov 12:51Z; owner check PENDING
+- surf_fairy with glows on: glows should fade in and out as before (perhaps a frame later behind a corner in the
+  heaviest spots). `vbsp_sprite_tracems 0` turns the budget off to compare.
+
 ## P1501 props load behind the loading screen -- both installs (exe 32a64a94, plugin 70b9810f) 11 Nov 09:04Z; owner check PENDING
 - First play of surf_fairy (or any prop-heavy Source map) after this update: the loading screen may take a moment
   longer, then the first seconds should have no stutter where props come into view (your dump had a 52.83 ms

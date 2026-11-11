@@ -1,4 +1,5 @@
 # The engine build this QuakeC requires.
+# Patch 1504 (QC cl_sprites.qc): the light-glow glare asks P1488's trace budget every 16 visits and before a glow's four corner rays (before: once per traced glow, so culled glows' QC and the corners ran 0.5-0.8 ms past it); over budget the visit is undone and the glow is first next frame, a frame's first glow always finishes (review: else the sweep could stall -- not reproduced, closed by construction). surf_fairy glare clock (players' default glows), two alternating pairs: frames ending past 1.2 ms 2.0% -> 0.9-1.1%, worst 1.9 -> 1.6-1.8 ms. Two reviews. QC only, no pin/tag change: 12 lobbies + both installs cs 267e9b9b, qw ffc0f7e9 (P1505's compiler on unchanged server source), main 265292b2; tasrevd codes.txt appended.
 # Patch 1505 (compiler): defensive identifier token and diagnostic extents;
 # accepted identifier syntax and gameplay/evidence behavior unchanged.
 # Patch 1503 (compiler): defensive numeric token extents; accepted syntax and

@@ -5,6 +5,22 @@
 - bhop_bunnyrace checkpoint position/movement (11 Nov): no reproduced checkpoint-body root. Actual checkpoint callback writes stats/receipt, not body; authored teleports nearby already preserve velocity by default. Falsifier: exact first crossing/video on the known build, body position/velocity immediately before/after, with saveloc idle vs held/repeated at high ping. Distinguish checkpoint callback from nearby authored teleport and save/reset prediction; do not remove teleports or invent a velocity fix.
 - kz_bhop_avantura online platform resets (11 Nov): P1492 corrects retained previous-block lifecycle in non-lobby mode only; the lobby's per-player branch was already different and unchanged. Falsifier: same exact BSP and A-air-B-air-A route under lobby and local settings, including LandingLimit1 vs repeated A and ordinary ground. Keep any remaining online reset report separate from the verified local counter fix.
 
+## Survey 5 stutter maps after P1504 (11 Nov; survey 5 = 39 of 60 maps on the live builds, artifacts/survey5)
+
+- surf_bossfight (warm 0.1% 196): its slow spot (replay ~1.8 s, the brickhouse start) is GPU-bound -- "Transparent
+  & effects" 4.6 ms of a 6.2 ms frame; r_drawentities 3 (no alias models) -> 0.12 ms. ~300 blended batches of window
+  props (windowtall1.mdl {pi_window.vmt: $translucent AND $alphatest, Source also draws it translucent;
+  poorwindowsman*.mdl blinds_04_bossfight.vmt $translucent). Content cost at fullfx + MSAA 4, not an engine fault.
+  Levers: the vertexlit program's per-fragment cost on blended models; MSAA's share untested (vid_restart).
+- surf_fairy (warm 0.1% 129, r_blendsort 2): the sort fails often in motion; P1490's memo matches only the exact
+  face set. Loosening it is NOT safe: of the sorts a memo rejected only on face set, many then SUCCEEDED (e.g. 271 ok
+  vs 11 fail in one 2 s window) -- a looser key would draw sortable frames unsorted. Failing sorts cost ~0.3-0.4 ms
+  vs ~0.03 ms a success. Diag: engine branch diag-blendmotion (BLENDSTATS, r_blendstats 1), artifacts/blendq.py.
+  Its CSQC (players' default sprites/glows) is ~1.8 ms a frame avg, half of it Sprite_Draw (glare 0.40, sky 0.20).
+- surf_joutsenlaulu (warm 0.1% 209): a broad tail (render ~3 ms, CSQC ~1.8); its two 6-7 ms spikes named trivial QC
+  (Scores_LinesOn 1.6 ms, Font_Px 2 ms) in consecutive frames -- system stalls, not code.
+- Diag recipe: the engine diag with per-builtin r_spikes 2 (cherry-pick f0b9ba03c) + LOWS2_EXTRA="r_spikes 2".
+
 ## First-play leftovers after P1501 (11 Nov)
 
 - surf_fairy's FIRST frame after spawn is ~2 s in both builds: input/net ~1.2 s (largest bucket "network") and
