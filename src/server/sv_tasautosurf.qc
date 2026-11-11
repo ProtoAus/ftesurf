@@ -59,6 +59,7 @@
 // air strafing toward the demo's exit point) or at the exit, the chain takes over (Lex, 10 Nov).
 .float as_arm, as_nolegal, as_lastground;
 .float as_sn2;                  // ticks steered since the run started (the start clears the box's triggers first)
+.float as_sback;                // start back-offs at an unaligned exit (2 at most)
 .float as_sph;                  // the start's ground phase: 0 speed (a left circle), 1 onto the line, 2 around again
 .float as_sdrop;                // ticks of the spawn's drop (as_sn2 is the out-of-box phase's own: review 2)
 .float as_ri;                   // P1478: the guide's row the start replays next (stage 13), -1 when it steers instead
@@ -1605,7 +1606,13 @@ void(entity e) SV_TASAutoFrame =
 				sprint(e, PRINT_HIGH, strcat(sprintf("tas autosurf: start %.0f ph %.0f at %v %.0f u/s, ", e.as_sn, ph, e.origin, t),
 					sprintf("%.0f u short of the exit, %.0f u off the line, %.0f deg off it, side %.0f\n", along, lat, herr, e.as_sair)));
 			if (ph == 0 && t >= 283) ph = 1;
-			if ((ph >= 1 && ph != 4 && fabs(lat) < 100 && fabs(herr) < 10 && along >= 130 && along <= 220) || along < 60 || e.as_sn >= e.as_sg)
+			if (along < 60 && (fabs(lat) > 150 || fabs(herr) > 30) && e.as_sback < 2 && e.as_sn < e.as_sg)
+			{	// at the exit unaligned: the forced jump left surf_tensor2 stage 6 366 u and -59 deg off the guide's line and
+				// every stretch-1 line off its path (bench f1); back off and line up again, twice at most
+				e.as_sback = e.as_sback + 1; ph = 4;
+				SV_TASAutoNote(e, 1, sprintf("start: at the exit %.0f u and %.0f deg off the guide's line: backing off to line up again", lat, herr));
+			}
+			else if ((ph >= 1 && ph != 4 && fabs(lat) < 100 && fabs(herr) < 10 && along >= 130 && along <= 220) || along < 60 || e.as_sn >= e.as_sg)
 			{
 				SV_TASAutoStep(e, 400, e.as_sair, 1, 1, e.v_angle_y);         // the start's one jump
 				SV_TASAutoNote(e, 1, sprintf("start: jumped at %.0f u/s, %.0f u short of the demo's exit, %.0f u and %.0f deg off its line", t, along, lat, herr));
@@ -2178,7 +2185,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		if (!e.taslg_on) { strunzone(path); return; }
 		if (e.as_file != "") strunzone(e.as_file);
 		e.as_file = path;
-		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0;
+		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0;
 		e.as_ctrack = nct; e.as_cleg = ncl; e.as_saved = -1; e.as_esc = 0; e.as_keepsaid = 0; e.as_cseed = 0;
 		SV_TASAutoRunSalt();
 		e.as_ri = (e.as_ctrack >= 0) ? SV_TASAutoRest(e) : -1;      // a `zone` start steers as before
