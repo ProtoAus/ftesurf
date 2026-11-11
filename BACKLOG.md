@@ -5,6 +5,19 @@
 - bhop_bunnyrace checkpoint position/movement (11 Nov): no reproduced checkpoint-body root. Actual checkpoint callback writes stats/receipt, not body; authored teleports nearby already preserve velocity by default. Falsifier: exact first crossing/video on the known build, body position/velocity immediately before/after, with saveloc idle vs held/repeated at high ping. Distinguish checkpoint callback from nearby authored teleport and save/reset prediction; do not remove teleports or invent a velocity fix.
 - kz_bhop_avantura online platform resets (11 Nov): P1492 corrects retained previous-block lifecycle in non-lobby mode only; the lobby's per-player branch was already different and unchanged. Falsifier: same exact BSP and A-air-B-air-A route under lobby and local settings, including LandingLimit1 vs repeated A and ordinary ground. Keep any remaining online reset report separate from the verified local counter fix.
 
+## First-play leftovers after P1501 (11 Nov)
+
+- surf_fairy's FIRST frame after spawn is ~2 s in both builds: input/net ~1.2 s (largest bucket "network") and
+  "hl2 props" ~0.6 s (P1364's prop light solve, hl2_lt_prewarm 3000 ms). It is the frame right after the loading
+  screen; moving it behind the screen would make the first seconds clean. orgrimmar's is 135-145 ms.
+- The sun glare's material (Sun_LoadForMap, default sprites/light_glow02_add_noz) registers on first sight, so its
+  program's base permutation compiles mid-run once per map with an env_sun (surf_tendies, ~15 s in). A per-map list
+  of late-registered polygon shaders, re-registered through PR_R_PolygonShader at the next activation, would close
+  it for every CSQC material; shaderforname registers with the skin generator, not the polygon one.
+- HUD UI shaders (sui_*, hc_*, gfx/ui/roundmask) register after activation but reuse existing programs: 0 compiles.
+- Diag build with LATECOMPILE/LATESHADER logging: engine branch diag-latecompile (local), lows2 artifacts
+  latecompile.py (warm list + launch cfg swap) and spawn2.py (load time, post-spawn frames).
+
 ## Game-code (CSQC) baseline -- after P1497/P1499 (11 Nov)
 
 - Unprofiled in-motion r_budget A/B (artifacts/abq.py in the lows2 root: one session, a board replay restarted per

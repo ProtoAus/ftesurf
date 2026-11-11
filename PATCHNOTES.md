@@ -21,6 +21,9 @@
 
 ## next
 
+### P1501 No stutter when props first come into view
+- On Source maps, props (trees, statues, decorations) now finish loading behind the loading screen, so their shaders are ready before you move: no stutter the first time you see them after an update (surf_fairy, bhop_orgrimmar).
+
 ### P1483 Jargon finishes more reliably, and repeats what works
 - Jargon aims a course's last stretch at actually entering the end. A line that gets near the end but would fall short
   is played as close as it gets, and the finish is tried again with a longer search instead of being given up after

@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1501 props load behind the loading screen -- both installs (exe 32a64a94, plugin 70b9810f) 11 Nov 09:04Z; owner check PENDING
+- First play of surf_fairy (or any prop-heavy Source map) after this update: the loading screen may take a moment
+  longer, then the first seconds should have no stutter where props come into view (your dump had a 52.83 ms
+  frame with a shader compile). Props should look exactly as before; `hl2_lt_prewarm 0` restores lazy prop loading.
+
 ## P1483 Jargon search -- 12 lobbies + both installs 11 Nov (DELIVERY PENDING: hashes below when live)
 - surf_tensor2, Jargon, Course: Stage 2, "Surf Stage 2 from its start" with a stage-2 replay: it should end "finished
   stage 2 in 0:12.x" (bench: 0:12.825 and 0:12.330 against the replay's 12.570), sometimes after trying the finish
