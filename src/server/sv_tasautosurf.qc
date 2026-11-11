@@ -1200,7 +1200,10 @@ void(entity e) SV_TASAutoLink =
 		if (fz != e.as_szone && e.as_szone >= 0 && e.as_szone < zone_count) ps = strcat(ps, sprintf(" startz2 %.0f", e.as_szone));
 	}
 	if (as_wk[i] == 5 && SV_TASAutoRule(1024)) ps = strcat(ps, " airdir");
-	if (as_wk[i] == 1 && e.as_catch) ps = strcat(ps, " catch 25");     // the last 25 rows before a board     // an air point's way too (tas_jargon_off 1024: place only)
+	if (as_wk[i] == 1 && e.as_catch) ps = strcat(ps, " catch 25");     // the last 25 rows before a board
+	if (e.as_catch && i >= 1)       // and the launch off the ramp before (Lex: the height is the angle it leaves at, not speed)
+	if (as_wk[i - 1] == 1 && as_wl[i - 1] > e.as_tprev + PM_TICK)
+		ps = strcat(ps, sprintf(" flick %.0f", min(TOPT_HMAX, rint((as_wl[i - 1] - e.as_tprev) / PM_TICK))));     // an air point's way too (tas_jargon_off 1024: place only)
 	if (cvar("tas_jargon_lookw") >= 0.0001 && cvar("tas_jargon_lookw") <= 1) ps = strcat(ps, sprintf(" lookw %.4f", cvar("tas_jargon_lookw")));     // P1483: bench (1e-05 would read as no number: review K)
 	if (as_wk[i] == 3 && e.as_ctrack >= 0)
 	{	// P1483: the course's end box, or its track's END boxes: a reach there (or into the teleport to it) is the finish
