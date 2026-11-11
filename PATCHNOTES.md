@@ -21,6 +21,9 @@
 
 ## next
 
+### P1508 Keep queued updates when packets fill
+- Servers keep queued stats and entity updates pending when an update packet fills or is discarded, rather than silently losing them.
+
 ### P1507 Less sprite work on busy maps
 - Sprites and light glows skip unnecessary per-frame checks on maps like surf_fairy, keeping their original appearance and drawing order.
 

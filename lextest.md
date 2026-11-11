@@ -1,5 +1,9 @@
 # lextest.md — things waiting on a human
 
+## P1508 queued snapshot delivery -- rollout/runtime status in tools/p1508-snapshot-delivery.md; owner check PENDING
+- After the reported lobby runs P1508, use the same map, saved location and bound command: load once in place, then fail/restart/load five times. Does the view still shake, load the wrong place, freeze or return to a blank menu? Send the exact client version, bind and error/short clip if it recurs. Do not delete saves or reset configs for this check.
+- Native packet controls and physics/compatibility checks do not prove Mark's exact cause, a rare full-game exit fixed, or real high-ping camera acceptance. Earlier requested lead-in comparison remains pending unless actually reported by the owner.
+
 ## P1507 stable sprite draw lists -- owner check PENDING, rollout recorded in tools/p1507-sprite-drawlists.md
 - On surf_fairy with sprites and light glows enabled, lights should look and fade exactly as before. A quick normal run is enough; please report any missing, flickering or reordered lights. Automated slot-order tests and agent-inspected screenshots are not owner confirmation.
 
