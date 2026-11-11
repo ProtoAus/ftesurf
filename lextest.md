@@ -1,7 +1,7 @@
 # lextest.md — things waiting on a human
 
 ## P1512 ordinary save-load view preview -- owner check PENDING
-- After reconnecting to the updated lobby, try the normal load binding and plain console `sl_load` several times with prediction enabled. Does the view stay at the saved spot until the load reply, without the old early snap? A queued load may wait without a new preview; it must still load normally.
+- Start a fresh standalone map/session, or reconnect to the updated lobby, then try the normal load binding and plain console `sl_load` several times with prediction enabled. Does the view stay at the saved spot until the load reply, without the old early snap? A queued load may wait without a new preview; it must still load normally.
 - This fixes a demonstrated render-preview ACK issue, not a proven cause of Mark's body/jitter/crash report. His exact bind, map, complete prediction-error text and retest after this P1512 QC rollout are still pending. The HUD displays the local game/menu release version, not this QC patch number; do not use it as proof that P1512 CSQC loaded. Keep the P1508 standalone/fail-restart comparison below; no human pass is recorded.
 
 ## P1508 queued snapshot delivery -- rollout/runtime status in tools/p1508-snapshot-delivery.md; owner check PENDING
