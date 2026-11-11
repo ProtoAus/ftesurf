@@ -1865,6 +1865,187 @@ def case_plan_and_install():
           sha(read(os.path.join(site, "surf_a.json"))), sha(ztext(MOM["surf_a"]["zones"]).encode()))
 
 
+def case_scoped_admission():
+    mom = {"bhop_scope": M("scope-old"), "surf_scope_other": M("other-old")}
+    w, maps, state = setup(mom, {"surf_scope_ksf": Z("surf_scope_ksf", "ksf-old")})
+    tracks = os.path.join(state, "tracks.tsv")
+    tick(maps, state, "--go", "--tracks", tracks)
+    old_cat = json.load(io.open(os.path.join(state, "catalogue.json"), encoding="utf-8"))
+    old_dl = read(os.path.join(state, "mapdl.txt")).decode().splitlines()
+    old_tracks = [ln for ln in read(tracks).splitlines(keepends=True)
+                  if ln.startswith(b"surf_scope_other\t")]
+    selected_old = read(os.path.join(maps, "bhop_scope.bsp"))
+    other_bsp = read(os.path.join(maps, "surf_scope_other.bsp"))
+    other_zones = read(os.path.join(zdir_of(maps), "surf_scope_other.json"))
+    ksf_bsp = read(os.path.join(maps, "surf_scope_ksf.bsp"))
+    stage = os.path.join(state, "stage"); os.makedirs(stage)
+    source = os.path.join(stage, "scope.bsp")
+    scope_path = os.path.join(state, "scope.json")
+
+    def pin():
+        fixture = w.mom["bhop_scope"]
+        with open(source, "wb") as fh:
+            fh.write(fixture["bsp"])
+        row = {"name": "bhop_scope", "id": w.ids["bhop_scope"], "status": 0,
+               "sha1": sha(fixture["bsp"]), "zone_sha1": sha(ztext(fixture["zones"]).encode()),
+               "source_file": source}
+        with io.open(scope_path, "w", encoding="utf-8") as fh:
+            json.dump({"maps": [row]}, fh)
+        return row
+
+    def public_snapshot():
+        return [read(p) for p in (os.path.join(maps, "bhop_scope.bsp"),
+                                  os.path.join(zdir_of(maps), "bhop_scope.json"),
+                                  os.path.join(state, "catalogue.json"),
+                                  os.path.join(state, "mapdl.txt"), tracks)]
+
+    w.mom["bhop_scope"] = M("scope-new", tier=2)
+    w.mom["surf_scope_other"] = M("other-new", tier=4)
+    w.ksf["surf_scope_ksf"] = Z("surf_scope_ksf", "ksf-new")
+    w.ksf["surf_scope_unselected"] = Z("surf_scope_unselected", "not-selected")
+    pin(); w.asked = []
+    original_approvals = W.approvals
+    def no_purges(*args):
+        raise AssertionError("scoped admission must not run approval purges")
+    W.approvals = no_purges
+    try:
+        result = tick(maps, state, "--go", "--updates", "--variants", "20",
+                      "--tracks", tracks, "--scope", scope_path)
+    finally:
+        W.approvals = original_approvals
+    check("scope acts: staged selected BSP replaces through the existing transaction", result, 0)
+    check("scope reuses verified staged bytes without a CDN/KSF body request", w.files(), [])
+    check("scope copied the selected current body", read(os.path.join(maps, "bhop_scope.bsp")), w.mom["bhop_scope"]["bsp"])
+    archived = [read(os.path.join(d, f)) for d, _, fs in os.walk(os.path.join(maps, ".old")) for f in fs]
+    check("scope retains the selected predecessor", selected_old in archived, True)
+    check("scope leaves unselected Momentum/KSF bodies and zones unchanged",
+          [read(os.path.join(maps, "surf_scope_other.bsp")),
+           read(os.path.join(zdir_of(maps), "surf_scope_other.json")),
+           read(os.path.join(maps, "surf_scope_ksf.bsp")),
+           os.path.exists(os.path.join(maps, "surf_scope_unselected.bsp"))],
+          [other_bsp, other_zones, ksf_bsp, False])
+    cat = json.load(io.open(os.path.join(state, "catalogue.json"), encoding="utf-8"))
+    check("scope preserves unselected catalogue semantics", {k:v for k,v in cat["maps"].items() if k != "bhop_scope"},
+          {k:v for k,v in old_cat["maps"].items() if k != "bhop_scope"})
+    unselected = lambda lines: [ln for ln in lines if ln.startswith("dl ") and ln.split()[1] != "bhop_scope"]
+    check("scope preserves unselected download rows verbatim", unselected(read(os.path.join(state,"mapdl.txt")).decode().splitlines()), unselected(old_dl))
+    check("scope preserves unselected track rows verbatim", [ln for ln in read(tracks).splitlines(keepends=True) if ln.startswith(b"surf_scope_other\t")], old_tracks)
+    check("private staged source paths never enter public metadata", any(source.encode() in b for b in public_snapshot()[2:]), False)
+
+    for field, value in (("status",1), ("status",4), ("status","3"), ("id",999999),
+                         ("sha1","0"*40), ("zone_sha1","0"*40),
+                         ("name","bhop_not_listed"), ("source_file",os.path.join(stage,"missing.bsp"))):
+        row = pin(); row[field] = value
+        with io.open(scope_path,"w",encoding="utf-8") as fh: json.dump({"maps":[row]},fh)
+        before = public_snapshot(); w.asked=[]
+        result=tick(maps,state,"--go","--updates","--tracks",tracks,"--scope",scope_path)
+        check("scope fails closed on %s=%r"%(field,value), (result,public_snapshot()==before,w.files()), (1,True,[]))
+
+    pin()
+    with open(source,"wb") as fh: fh.write(b"VBSPwrong pinned bytes")
+    before=public_snapshot(); w.asked=[]
+    check("bad specified staged source refuses without network fallback",
+          (tick(maps,state,"--go","--updates","--tracks",tracks,"--scope",scope_path),public_snapshot()==before,w.files()), (1,True,[]))
+
+    w.mom["bhop_scope"]=M("scope-next",tier=3);pin();before=public_snapshot();w.asked=[]
+    original_copy=W.scoped_copy
+    def mutate(src,part,expected,signature):
+        with open(src,"ab") as fh:fh.write(b"mutated after validation")
+        return original_copy(src,part,expected,signature)
+    W.scoped_copy=mutate
+    try:
+        result=tick(maps,state,"--go","--updates","--tracks",tracks,"--scope",scope_path)
+    finally:W.scoped_copy=original_copy
+    check("mutated staged source refuses before promotion, without fallback", (result,public_snapshot()==before,w.files()), (1,True,[]))
+    pin();before=public_snapshot();minimum=W.MOM_MIN;W.MOM_MIN=150
+    try:result=tick(maps,state,"--go","--updates","--tracks",tracks,"--scope",scope_path)
+    finally:W.MOM_MIN=minimum
+    check("scope does not bypass a failed full source census", (result,public_snapshot()==before), (1,True))
+
+    # A new file must check its own current public identity BEFORE body publication.
+    native="ahop_scope_native";w.mom[native]=dict(M("scope-native"),gamemode=3);w.ids[native]=999
+    with open(source,"wb") as fh:fh.write(w.mom[native]["bsp"])
+    row=dict(name=native,id=999,status=3,sha1=sha(w.mom[native]["bsp"]),
+             zone_sha1=sha(ztext(w.mom[native]["zones"]).encode()),source_file=source)
+    with io.open(scope_path,"w",encoding="utf-8") as fh:json.dump({"maps":[row]},fh)
+    original_opener=W.opener
+    for status in (1,4,None,"0",3):
+        def own_status(url):
+            if url.startswith(W.MOM_API+"/maps/999?"):
+                w.asked.append(url);doc=w.row(native);doc["status"]=status
+                doc["currentVersion"]["zones"]=w.mom[native]["zones"]
+                return Resp(json.dumps(doc).encode())
+            return w(url)
+        W.opener=own_status;before=public_snapshot();w.asked=[]
+        try:result=tick(maps,state,"--go","--updates","--tracks",tracks,"--scope",scope_path)
+        finally:W.opener=original_opener
+        path=os.path.join(maps,native+".bsp")
+        if status==3:
+            check("public native3 scoped identity acts after its own API proof",
+                  (result,sha(read(path)),w.files()),(0,row["sha1"],[]))
+        else:
+            check("new scoped body refuses current API status %r BEFORE publication"%status,
+                  (result,os.path.exists(path),public_snapshot()==before,w.files()),(1,False,True,[]))
+
+    if os.name!="nt":
+        pin();os.chmod(source,0o666);before=public_snapshot();w.asked=[]
+        try:result=tick(maps,state,"--go","--updates","--tracks",tracks,"--scope",scope_path)
+        finally:os.chmod(source,0o600)
+        check("a group/world writable stage candidate is not operator-owned admission",
+              (result,public_snapshot()==before,w.files()),(1,True,[]))
+
+
+def case_scoped_input_guards():
+    for arm in ("parent-path", "download-grammar"):
+        w,maps,state=setup({"surf_scope":M("old"), "surf_scope_other":M("other")},
+                           {"surf_scope_ksf":Z("surf_scope_ksf","ksf-old")})
+        tick(maps,state,"--go")
+        fixture=w.mom["surf_scope"]
+        row={"name":"surf_scope", "id":w.ids["surf_scope"], "status":0,
+             "sha1":sha(fixture["bsp"]), "zone_sha1":sha(ztext(fixture["zones"]).encode())}
+        scope_path=os.path.join(state,"guard-scope.json")
+        dl_path=os.path.join(state,"mapdl.txt")
+        cat_path=os.path.join(state,"catalogue.json")
+        if arm == "parent-path":
+            w.mom["surf_scope"]=M("new")
+            fixture=w.mom["surf_scope"]
+            body=fixture["bsp"]
+            outside=os.path.join(os.path.dirname(state),"scope-outside.bsp")
+            with open(outside,"wb") as fh: fh.write(body)
+            row.update(sha1=sha(body), zone_sha1=sha(ztext(fixture["zones"]).encode()),
+                       source_file=os.path.join(state,"..","scope-outside.bsp"))
+            with io.open(scope_path,"w",encoding="utf-8") as fh: json.dump({"maps":[row]},fh)
+            before=tuple(read(p) for p in (dl_path,cat_path,os.path.join(maps,"surf_scope.bsp")))
+            code=tick(maps,state,"--go","--updates","--scope",scope_path)
+            after=tuple(read(p) for p in (dl_path,cat_path,os.path.join(maps,"surf_scope.bsp")))
+            check("scope parent traversal refuses before publication",(code,after==before),(1,True))
+            staged=os.path.join(state,"valid-source.bsp")
+            with open(staged,"wb") as fh: fh.write(body)
+            row["source_file"]=staged
+            with io.open(scope_path,"w",encoding="utf-8") as fh: json.dump({"maps":[row]},fh)
+            code=tick(maps,state,"--go","--updates","--scope",scope_path)
+            check("normalized contained source still acts",(code,read(os.path.join(maps,"surf_scope.bsp"))),(0,body))
+        else:
+            os.rename(os.path.join(maps,"surf_scope.bsp"),os.path.join(maps,"Surf_Scope.bsp"))
+            text=read(dl_path).decode()
+            other=next(line for line in text.splitlines()
+                       if len(line.split())>=2 and line.split()[1]=="surf_scope_other")
+            held="\t".join(other.split())
+            with io.open(dl_path,"w",encoding="utf-8") as fh:
+                fh.write(text.replace("dl surf_scope ","dl Surf_Scope ").replace(other,held))
+            with io.open(scope_path,"w",encoding="utf-8") as fh: json.dump({"maps":[row]},fh)
+            code=tick(maps,state,"--go","--scope",scope_path)
+            try:
+                listed=W.mapmanifest.read_list(dl_path)
+                names=sorted(row["map"] for row in listed)
+            except ValueError:
+                names=[]
+            check("scope merge accepts mixed case and tab grammar",(code,names),
+                  (0,["surf_scope","surf_scope_ksf","surf_scope_other"]))
+            check("scope merge preserves unselected row byte for byte",held in read(dl_path).decode().splitlines(),True)
+        shutil.rmtree(os.path.dirname(maps))
+
+
 def case_bad_files():
     mom = {"surf_bad": M("bad", zones=False), "surf_gone": M("gone", zones=False),
            "surf_cut": M("cut", zones=False), "surf_ok": M("ok", zones=False),
@@ -4088,7 +4269,8 @@ def case_mapscan():
 
 
 def main():
-    for case in (case_plan_and_install, case_bad_files, case_native_modes, case_native_beta_sidecars,
+    for case in (case_plan_and_install, case_scoped_admission, case_scoped_input_guards,
+                 case_bad_files, case_native_modes, case_native_beta_sidecars,
                  case_page_scan, case_limits_on_a_reply,
                  case_turns_with_the_crawl, case_given_zones, case_map_list, case_kept_build,
                  case_unhashed_zones,

@@ -21,6 +21,9 @@
 
 ## next
 
+### P1502 Selected public map imports
+- Public map imports can update a selected set while preserving unrelated map entries and earlier map revisions.
+
 ### P1499 Cheaper mouse-pad trail
 - The mouse-pad display draws its trail with less work and looks exactly the same.
 

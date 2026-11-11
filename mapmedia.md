@@ -40,6 +40,34 @@ the map's own current API reply. These files contain only projected public map
 fields, not private caches or account data. Promote the reader before emitting
 new sidecars: older readers safely ignore five-field identities.
 
+### Scoped canonical admission
+
+`mapwatch.py --scope /private/admission-scope.json` is a bounded admission, not
+a replacement source census. Both complete source lists and their existing
+floors must succeed first. The private JSON object has a nonempty `maps` list;
+each entry pins lowercase `name`, positive `id`, exact public integer `status`
+(0/3), lowercase `sha1` and `zone_sha1`. Duplicate names/IDs and any source
+identity conflict refuse before publication. Existing catalogue/mapdl baselines
+are required so unselected records can be preserved.
+
+An optional absolute `source_file` reuses verified bytes. It must be an
+operator-owned regular file below the private scope file's directory, or the
+matching existing canonical body. Symlinks, writable-by-others candidates,
+wrong magic/hash, oversized or mutated sources fail closed without network
+fallback. The source is retained; its copy passes the same byte budget,
+quiet/liveness/history, zone compatibility, predecessor archive and atomic
+publication gates. Its own current API identity must still be public and match
+the pinned build/zones before a new scoped body is published.
+
+Scoped mode changes only selected body/zone candidates and merges selected
+catalogue/download/track rows into the existing unselected records. It does not
+perform approval/board purges, KSF variants, donor ports or global leftover
+cleanup. No source path enters public metadata. Ordinary unscoped behavior is
+unchanged. This option does not authorize bypassing the current-generation
+entrypoint, installing uncommitted source, or racing a dependency capture:
+coordinate the exact canonical promotion interval and qualify the clean source
+through the normal generation transaction first.
+
 The October 16 audit contains 1,124 maps, zero without an available image, and
 1,124 preserved XL originals. One deleted primary thumbnail was recovered from
 another screenshot of that same map; its original CDN identity is retained.
