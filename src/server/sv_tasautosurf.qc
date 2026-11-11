@@ -1166,6 +1166,9 @@ void(entity e) SV_TASAutoLink =
 	SV_TASDemoRowsCommand(e, argc);
 	if (e.topt_dn < 16) { SV_TASAutoStop(e, "the demo's rows for this stretch did not load"); return; }   // not the last stretch's (review)
 	r = (as_wk[i] == 2) ? 50 : ((as_wk[i] == 3) ? 400 : ((as_wk[i] == 4 || as_wk[i] == 5) ? as_wr[i] : 800));
+	// opt-in (tas_jargon_near): "boarding nearer the guide's point" (rule 32) also tightens the board radius, 800 -> 400 -> 200;
+	// its low weight alone left boarding before or above the point free (surf_shape bonus 1 boards 350 u off, stretch 2 falls)
+	if (as_wk[i] == 1 && as_lowx[i] >= 2 && cvar("tas_jargon_near")) r = max(200, 1600 / as_lowx[i]);
 	h = min(h, e.topt_dn);
 	}
 	if (n == '0 0 0') argc = tokenize(sprintf("tas target %.1f %.1f %.1f %.0f", o_x, o_y, o_z, r));
