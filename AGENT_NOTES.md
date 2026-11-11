@@ -10532,6 +10532,20 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+- **P1510 contained worker leases (11 Nov 2026).** Python's default
+  `Popen(close_fds=True)` also drops deliberately inheritable admission/candidate
+  leases. A waiting parent is not sufficient lifetime ownership: an actual ARM
+  P1509 comparison stayed blocked while an exclusive drain probe succeeded after
+  that parent released its own descriptor. Preserve already-inheritable leases
+  through this POSIX prlimit/exec seam; ordinary CLOEXEC handles remain private.
+  Fixed17/17 includes exact child lease inode/inheritability, child-only lock
+  contention, private-FD exclusion and successful drain after exit. This is not
+  parent-death recovery: a lost parent may leave a lease holder, so closure must
+  fail closed rather than claim bounded orphan cleanup. Source publication,
+  independent review and guarded-generation/live acceptance remain distinct.
+  See `tools/p1510-simcheck-lease.md`; never rerun a healthy activation to turn
+  the isolated fixture into a production-qualification claim.
+
 - **Retained ops paths and caller scope (11 Nov, playerfix).** The successful
   private recorder/boundary observers were retained PRIVATE ops dependencies,
   not `tools/pi-recorder-parts.py`/`pi-boundary.py` in the public checkout. A Git
