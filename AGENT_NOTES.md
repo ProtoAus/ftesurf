@@ -6998,6 +6998,23 @@ must require42checks and exact8baseline labels, and catch unnumbered warnings.
 
 ## Anti-cheat and run evidence
 
+**P1491 selected-peer work must follow the owned pass's remaining allowance
+(11 Nov 2026).** A one-pair collector still selected up to200 peers. With201 valid
+synthetic recordings and the actual sweep/reader, 20000 selected-read instructions
+were spent before the first comparison; the collector-only window cap admits one
+real80-move comparison matching the normal positive. Keep this at the owned
+collector callsite: a broader private comparison cap broke the existing direct
+late-stored-pair lookahead positive. Direct callers' explicit/default windows
+remain unchanged. The smaller collector window may offer less same-pass lookahead
+under that race; never invent an admission, skip, observation or cursor advance.
+This is not exhaustive coverage, full allowance use, or a hard whole-pass RSS,
+bytes, I/O, UDF, write or preemption bound. Run the existing suite on ARM as well:
+Windows lacks some Python SQLite error-code attributes and skipped the typed
+contention fixture whose one-peer wrapper initially duplicated the new explicit
+window keyword. Preserve its cap with `min(1, incoming_window)` before delegation,
+not a relaxed assertion. See `tools/p1491-simcheck-peer-window.md` for controls and
+retained unsuccessful initial arms. Source qualification is not live delivery.
+
 P1486 identity publication (10Nov2026): INCommands still read seven unsigned
 worker-written scalars before P1485's first Frame guard. Ready before EACH desired
 expression; capture unsigned by value, compare old int casts, release ONLY owned
