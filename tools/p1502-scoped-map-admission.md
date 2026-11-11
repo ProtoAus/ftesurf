@@ -127,6 +127,25 @@ staged merge proof does not install them. Fresh complete source/status readings,
 actual current-DATA/operational fallback, preimages/writer/quiet preservation and
 privileged-profile qualification remain separate execution gates.
 
+### Prerequisite backend promoted — 11 Nov 2026 UTC
+
+The ordinary guarded P1491 prerequisite became active at13:49:02UTC; independent
+readback at13:56:58UTC confirms the primary85-file runtime, seven canonical
+entries plus launcher, all four scheduled routes and the importer target it.
+The existing six reader files are unchanged. The original44 tables, both existing
+optional queues, every preexisting row digest and all eight identity digests were
+preserved at CLOSED qualification against the same CURRENT database inode.
+Health200/`ok=true`, CLOSED inventory/playstats503, fresh namespace/invocation
+qualification and subsequent OPEN405 controls acted. Prior current and unused
+fallback remain CLOSED; no old-DB restore or audit credit is claimed. This was
+an ordinary backend swap, not another lobby restart or a movement/visual change.
+
+That removes the upstream prerequisite only. Our scoped-import profile still
+needs its separate exact privileged approval and later guarded qualification.
+The73 new BSPs/589zone inputs and typed sidecars remain UNADMITTED; the canonical
+48 selected identity faults have not been rewritten. No completed-map-import or
+fresh-full-Beta claim follows from the prerequisite's successful promotion.
+
 Canonical admission has NOT run. The serving backend's fixed-route immutable
 generation and exact privileged namespace/source policy do not authorize this
 new scoped input/profile. Promotion requires a reviewed source/dependency closure,

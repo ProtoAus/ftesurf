@@ -48,6 +48,23 @@ be hex; use base0. No password/full reply/player inventory printed or committed.
 Private preimages/actors/receipts remain private under the owned task counterpart;
 no maintenance gate or temporary live fixture left active.
 
+## Backend prerequisite — separately promoted13:49UTC
+
+At2026-11-11T13:49:02UTC the existing guarded paired85 operator completed the
+P1491 primary promotion. Independent13:56:58UTC readback confirms active primary,
+canonical seven+launcher, four scheduled routes and importer. All six current
+reader files stayed exact. CLOSED qualification preserved the same CURRENT DB
+inode, all44original tables plus both existing optional queues, all preexisting
+row digests and eight identity digests; no historical DB restore or audit credit.
+Health200, CLOSED503 and OPEN405 controls acted with the new namespace/invocation.
+Old current and unused fallback remain CLOSED. No lobby/client/native/QC swap was
+part of this backend operation, and no owned maintenance gate remains active.
+
+This removes a prerequisite for P1502, not its separate profile approval or actual
+map admission. The73 newly acquired BSPs/589zone inputs and typed sidecars remain
+staged/unadmitted. Exact source/status/fallback/reader/current-data/preservation
+checks still apply at their real boundary. See p1502-scoped-map-admission.md.
+
 ## Still explicit
 
 - Actual HUD pixels, real300ms transport/UpdateView, real player door passage and
