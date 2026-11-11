@@ -22,6 +22,44 @@
 ===========================================================================
 */
 
+// P1489: the lump walkers' map name. While CSQC_WorldLoaded runs, the world that just loaded names itself; on a
+// first connect serverkey("map") is still "" there (P948), so these loaders returned and their per-frame safety
+// nets loaded everything in the first frames after spawn (surf_fairy: 77 + 51 ms on the PC). Outside WorldLoaded
+// the safety nets keep serverkey("map"), as before.
+float  cl_worldloading;                 // CSQC_WorldLoaded is running the lump loaders
+string cl_worldmapname;                 // ...the loaded world's short name then, "" otherwise
+string() CL_LumpMapName =
+{
+	if (cl_worldloading && cl_worldmapname != "")
+		return cl_worldmapname;
+	return serverkey("map");
+};
+// P1489: the loaded world's short name, from mapname (maps/<name>.bsp in native CSQC)
+string() CL_WorldShortName =
+{
+	local string w;
+	local float n;
+	w = mapname;
+	if (!strcmp(substring(w, 0, 5), "maps/"))
+		w = substring(w, 5, -1);
+	n = strlen(w);
+	if (n >= 4)
+	if (!strcmp(strtolower(substring(w, n - 4, 4)), ".bsp"))
+		w = substring(w, 0, n - 4);
+	return w;
+};
+// P1489: serverkey("map") names the world that is loaded -- not "" (first connect) and not the previous map's
+// (a map change, P948). The lazy reload latches wait for it: before it, the world's loaders ran in WorldLoaded.
+float() CL_MapKeyCurrent =
+{
+	local string k;
+	k = serverkey("map");
+	if (k == "")
+		return FALSE;
+	return !strcasecmp(k, CL_WorldShortName());
+};
+
+
 /*
   adddecal_static -- clip once at spawn, cache the clipped geometry with its
   lightmap, re-render each frame as a vertex copy.
@@ -353,7 +391,7 @@ void() Decal_LoadForMap =
 	local vector ovsrange, ovtrange;
 	local float  wantoverlays, shearmax;
 
-	map = serverkey("map");
+	map = CL_LumpMapName();	// P1489
 	if (map == "")
 		return;
 

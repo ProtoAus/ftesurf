@@ -561,7 +561,7 @@ void() Portal_LoadForMap =
 	FS_PortalRegisterCvars();
 	sigcount = sigwin = siglod = 0;
 	sigfirst = sigwfirst = siglfirst = "";
-	vbsp_lpd_map = serverkey("map");
+	vbsp_lpd_map = CL_LumpMapName();	// P1489
 	if (vbsp_lpd_map == "")
 		return;
 
@@ -895,6 +895,8 @@ void() Portal_Poll =
 
 	if (map != vbsp_lpd_map)
 	{
+		if (!CL_MapKeyCurrent())	// P1489: a stale key is not a new map; WorldLoaded loaded this world's
+			return;
 		Portal_LoadForMap();
 		vbsp_lpd_tries = 40;
 		vbsp_lpd_skip  = 30;

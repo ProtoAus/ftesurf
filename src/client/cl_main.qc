@@ -183,6 +183,10 @@ void() CSQC_WorldLoaded =
 	Share_WorldLoaded();            // Patch 777: the server's links went with it
 	PTrail_Reset();                 // ...and no trail line spans the load
 
+	// P1489: the lump loaders below name the map by the world that just loaded (CL_LumpMapName), so they run
+	// here, behind the loading screen, not in the first frames after spawn when serverkey("map") arrives.
+	cl_worldmapname = CL_WorldShortName();
+	cl_worldloading = TRUE;
 	Portal_LoadFromWorld();
 	Prox_LoadFromWorld();           // Patch 810: the PlayerProximity fades, after the portals
 	MilkSky_WorldLoaded();          // Patch 467: r_skybox is not archived
@@ -205,6 +209,9 @@ void() CSQC_WorldLoaded =
 	// here for the same reason -- func_dustmotes alone is 4999 instances across
 	// 464 maps and had never drawn anything.  cl_emit.qc.
 	Emit_LoadFromWorld();
+	Decal_LoadForMap();		// P1489: infodecals, overlays and the sky camera, from the same lump
+	cl_worldloading = FALSE;	// P1489
+	cl_worldmapname = "";
 	Winter_Load();                 // P1302: bounded map setup only
 	Weather_Load();                // P1309: opt-in, cached geometry/roof/audio only
 	Inv_SantaLoad();               // P1304: warm model/entity, never equip-time disk I/O
@@ -1920,7 +1927,10 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// (Sky_LoadForMap used to be here.  Build 27 moved the whole rule into the
 	//  engine as r_skybox_default -- see the essay at the top of this file.)
 	if (serverkey("map") != vbsp_decal_map)
-		Decal_LoadForMap();
+	{
+		if (CL_MapKeyCurrent())	// P1489: not on a stale or empty key
+			Decal_LoadForMap();
+	}
 	else if (cvar("vbsp_decals") != vbsp_decal_want || cvar("vbsp_overlays") != vbsp_overlay_want)
 		Decal_LoadForMap();     // Patch 894: live, without a map reload
 

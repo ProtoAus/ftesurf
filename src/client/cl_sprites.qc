@@ -1662,7 +1662,7 @@ void() Sprite_LoadForMap =
 	local entity net;
 	local float  glowh, glowv, gmin, gmax, gouter, gproxy, wantglow;
 
-	map = serverkey("map");
+	map = CL_LumpMapName();	// P1489
 	if (map == "")
 		return;
 
@@ -3148,7 +3148,10 @@ void() Sprite_Draw =
 	local float  skyon, skyhid;     // P1218
 
 	if (serverkey("map") != vbsp_spr_map)
-		Sprite_LoadForMap();
+	{
+		if (CL_MapKeyCurrent())	// P1489: a stale or empty key is not a new map
+			Sprite_LoadForMap();
+	}
 	else if (cvar("vbsp_sprites") != spr_want_spr || cvar("vbsp_spotlights") != spr_want_beam ||
 	         cvar("vbsp_lightglow") != spr_want_glow || cvar("vbsp_lasers") != spr_want_las ||
 	         cvar("vbsp_fish") != spr_want_fish)

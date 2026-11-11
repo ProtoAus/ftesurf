@@ -3659,7 +3659,7 @@ void() Emit_LoadForMap =
 
 	// NOT written to vbsp_em_map here.  The latch is taken at the end of the
 	// walk, and only if the entity lump actually opened -- see the note there.
-	mname = serverkey("map");
+	mname = CL_LumpMapName();	// P1489
 	pchild = cvar("vbsp_emit_psys_children");
 
 	em_ratemax = cvar("vbsp_emit_ratemax");
@@ -4670,6 +4670,7 @@ void() Emit_Frame =
 	  arriving on a map WITH emitters from one without any.
 	*/
 	if (serverkey("map") != vbsp_em_map)
+	if (CL_MapKeyCurrent())	// P1489: not on a stale or empty key; WorldLoaded loaded this world's emitters
 	{
 		Emit_LoadForMap();
 		return;
