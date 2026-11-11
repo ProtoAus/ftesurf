@@ -264,6 +264,7 @@ string(float k) SV_TASAutoKind =
 #define TAS_SPOTS 5
 float as_swo[TAS_SPOTS * 3], as_swv[TAS_SPOTS], as_sws[TAS_SPOTS], as_swe[TAS_SPOTS];  // spots: place, on the face, score, energy
 float as_swd[TAS_ASMAX];        // a swept board's kept spot + 1 (0: not swept)
+float as_spotq[TAS_ASMAX];      // tas_jargon_spotback: sweep this board's spots now (the stretch after it failed)
 float as_swp[TAS_ASMAX * 3];    // its place
 float as_optsave[27];
 .float as_free;                 // `free`: no hand cap on how hard it may turn; energy decides (opt-in experiment)
@@ -1134,7 +1135,7 @@ void(entity e) SV_TASAutoLink =
 		return;
 	}
 	o = [as_wo[i*3], as_wo[i*3+1], as_wo[i*3+2]]; n = [as_wn[i*3], as_wn[i*3+1], as_wn[i*3+2]];
-	if (e.as_spots && !e.as_beam && !e.as_route && !e.as_swph && !as_swd[i] && as_wk[i] == 1 && i + 1 < as_n && (n_x || n_y) && !SV_TASAutoIsMoved(i))
+	if ((e.as_spots || as_spotq[i]) && !e.as_beam && !e.as_route && !e.as_swph && !as_swd[i] && as_wk[i] == 1 && i + 1 < as_n && (n_x || n_y) && !SV_TASAutoIsMoved(i))
 	{
 		SV_TASAutoSpots(e, i);
 		r = 0;
@@ -1277,7 +1278,7 @@ void(entity e) SV_TASAutoBacks =
 	for (k = 0; k < TAS_ASMAX; k = k + 1) as_visit[k] = 0;
 	SV_TASAutoPriorLoad(e);
 	for (k = 0; k < TAS_ASMAX; k = k + 1) as_bmd[k] = 0;
-	for (k = 0; k < TAS_ASMAX; k = k + 1) { as_rbs[k] = as_need[k] = as_lowx[k] = as_rfs[k] = as_ws[k] = as_leadmin[k] = as_swd[k] = as_fsm[k] = as_hb[k] = as_fresh[k] = as_slack[k] = as_lost[k] = as_back[k] = as_up[k] = 0; as_fsl[k] = -1; }
+	for (k = 0; k < TAS_ASMAX; k = k + 1) { as_rbs[k] = as_need[k] = as_lowx[k] = as_rfs[k] = as_ws[k] = as_leadmin[k] = as_swd[k] = as_fsm[k] = as_hb[k] = as_fresh[k] = as_slack[k] = as_lost[k] = as_back[k] = as_up[k] = as_spotq[k] = 0; as_fsl[k] = -1; }
 	e.as_failmax = -1; e.as_swph = 0; e.as_redo = 0;
 };
 
@@ -1945,6 +1946,10 @@ void(entity e) SV_TASAutoFrame =
 			// platforms failed the last ramp three times; from farsh's own state the last three stretches took 20 s)
 			if (!e.as_route && as_rfs[e.as_i] * 0.995 > as_rbs[e.as_i] && as_rbs[e.as_i] > 0 && SV_TASAutoRule(128))
 				as_need[e.as_i] = max(as_need[e.as_i], min(as_rfs[e.as_i] * 0.995, as_rbs[e.as_i] * 1.02));
+			// Lex, surf_tensor2 stage 5 ramp 3: board it far left for the ramp room the wiggle round the roof needs. Where the
+			// stretch after a board fails, that board's other places are tried now, each judged on that stretch -- the
+			// sweep otherwise waits for effort step 2, which stage 5 never reached in 25 min (19 backtracks at step 1)
+			if (e.as_i == e.as_failat - 1 && as_wk[e.as_i] == 1 && cvar("tas_jargon_spotback")) as_spotq[e.as_i] = 1;
 			e.as_tprev = as_wp[e.as_i]; e.as_goal = as_ws[e.as_i]; e.as_stage = 3;
 			SV_TASAutoNote(e, 1, sprintf("stretch %.0f failed its tries: backtrack %.0f to stretch %.0f", e.as_failat + 1, e.as_backs, e.as_i + 1));
 			return;
@@ -1960,7 +1965,7 @@ void(entity e) SV_TASAutoFrame =
 			t = min(max(0, e.as_failmax - 2), e.as_i);     // never ahead of the head: backtracks may have taken it before there (bench launch1)
 			for (i = t; i < as_n; i = i + 1)
 			{
-				as_need[i] = 0; as_fsl[i] = -1; as_swd[i] = 0; as_leadmin[i] = 0; as_hb[i] = 0; as_fresh[i] = 1; as_slack[i] = 0;
+				as_need[i] = 0; as_fsl[i] = -1; as_swd[i] = 0; as_spotq[i] = 0; as_leadmin[i] = 0; as_hb[i] = 0; as_fresh[i] = 1; as_slack[i] = 0;
 				as_lost[i] = 0; as_back[i] = as_up[i] = 0; as_lowx[i] = 0;
 				if (i > t) as_ws[i] = 0;
 			}
@@ -2081,7 +2086,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		SV_TASAutoPriorLoad(e);     // stretches after n may have moved: priors re-slotted, or a keep erased a moved ramp's (review I)
 		for (i = n; i < as_n; i = i + 1)
 		{	// from here on a new attempt: no bars, no "failed from this state", no later stretch's start tick
-			as_need[i] = 0; as_fsl[i] = -1; as_swd[i] = 0; as_leadmin[i] = 0; as_hb[i] = 0; as_fresh[i] = 0; as_slack[i] = 0; as_lost[i] = 0; as_back[i] = as_up[i] = 0; as_bmd[i] = 0;
+			as_need[i] = 0; as_fsl[i] = -1; as_swd[i] = 0; as_spotq[i] = 0; as_leadmin[i] = 0; as_hb[i] = 0; as_fresh[i] = 0; as_slack[i] = 0; as_lost[i] = 0; as_back[i] = as_up[i] = 0; as_bmd[i] = 0;
 			if (i > n) as_ws[i] = 0;
 		}
 		if (e.as_backmax < 0) e.as_backmax = max(6, 2 * as_n);
