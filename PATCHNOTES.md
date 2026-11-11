@@ -22,7 +22,7 @@
 ## next
 
 ### P1488 Steadier frames on maps full of light glows
-- Light glows and sky checks now spend at most about 1 ms a frame testing what they can see, so maps with hundreds of glows no longer stutter: surf_fairy's slowest frames are about 45% faster, surf_jumble's about 38%.
+- Light glows and sky checks spend at most about 1 ms a frame testing what they can see, so maps with hundreds of glows stutter far less (surf_fairy's slowest frames about 45% faster, surf_jumble's 38%).
 
 ### Replays
 - Ladder climbs and descents are no longer mistaken for standing still by replay idle skipping.
