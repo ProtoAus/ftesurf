@@ -1,5 +1,35 @@
 # ROADMAP.md — maps, demos, run lines and rewind
 
+## Optional GoldSrc/HL2 movement profiles — requested 11 Nov 2026, UNBUILT
+
+Lex wants a NEW selectable GoldSrc HL1 profile, including duckrolls and the
+frame-dependent quirks,100/250/1000physics rates, optionally chosen for maps;
+then separately selectable HL2 before/after the accelerated-backhop change.
+The existing CS:S/Momentum mover/default must remain untouched. Native Momentum
+`bhop-hl1` map classification/import P1496 is NOT a GoldSrc movement implementation.
+
+Feasible as separate shared engine movement profiles, not cvar tweaks or just
+changing render FPS. First pin the actual reference: stock HL1 versus AG/OpenAG,
+exact HL2 builds on either side of the behavior change, and whether rate means
+fixed simulation updates independent of display FPS or the original FPS coupling.
+Owner decisions remain pending; do not silently choose or claim exact parity.
+Use compatible licensed reference/oracle behavior; do not copy non-GPL HL1 SDK
+code into the GPL engine or assume AG code licensing. An installed executable's
+presence, a video or correct map hulls alone is not a behavioral oracle.
+
+Acceptance: dedicated server and client prediction use the same profile, hulls,
+command timing/quantization, crouch/unduck transitions, friction/air acceleration
+and speed-cap ordering. Compare recorded identical input against pinned reference
+at each chosen rate, including duckroll/edge/stair/water/ladder and forward/backward
+hop falsifiers. Keep existing mover/regression corpus unchanged. Define recorded
+profile/rate identity and verifier compatibility before producing ranked evidence;
+never pool different profiles' times or infer a new mode from a filename.
+
+Owner's existing AG map archive is useful for native-hull fixtures once its exact
+R2 target/access is known. Current archive access was unauthorized/unresolved;
+no guessed bucket, credential rotation or full archive download. This blocks that
+fixture/reference step only, not ordinary bhop library or current bug delivery.
+
 ## Input latency experiments -- asked 10 Nov 2026
 
 Lex asked whether NVIDIA Reflex 2's frame warp could be tried here, whether RawInput2 (Momentum's
