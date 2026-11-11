@@ -1,5 +1,9 @@
 # lextest.md — things waiting on a human
 
+P1492–P1495 are deployed to both Windows installs and all12lobbies (11 Nov;
+tools/playerfix-20261111-delivery.md). The following visual/feel checks remain
+PENDING: rollout/hash/control-flow proof does not turn them into human passes.
+
 ## P1495 remembered knife / black skin — owner check PENDING
 - With a linked saved enabled combo, change map: equip should return only after setup is ready. Drop, then change map: stay unarmed until choosing a knife again. A newer gun/Drop must win even if a delayed setup/content reply arrives. Opt-out is local per install; combo remains cloud-linked.
 - Give the same knife/finish/hands/sleeve before and after a map change; please report the exact affected combo for the black case. No shader/renderer/lightmap change or actual visual/performance pass: existing shared rate-limited lighting stays unchanged. Do not claim all combinations render identically or the reported black skin fixed.

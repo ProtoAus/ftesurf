@@ -10488,6 +10488,19 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+- **Retained ops paths and caller scope (11 Nov, playerfix).** The successful
+  private recorder/boundary observers were retained PRIVATE ops dependencies,
+  not `tools/pi-recorder-parts.py`/`pi-boundary.py` in the public checkout. A Git
+  diff of two nonexistent paths returns empty: NOT proof of unchanged source.
+  Locate the actual last-working owned inputs and hash-bind verified copies.
+  The existing Pi block uses `$remote` for its parsed hash table; an outer caller
+  using that name lost its postflight path AFTER a successful swap/restart.
+  Namespace caller variables (`$FleetTaskPath`), preserve the original failure,
+  then run only read-only postflight; NEVER redeploy to repair an observer.
+  Full serverinfo can encode BOTH CSQC checksum and size as hex: parse base0.
+  Playerfix217payload/metadata rows and all on/off-box members verified exact;
+  public aggregate delivery receipt: tools/playerfix-20261111-delivery.md.
+
 - **Private JSON modes and kernel read-only mounts are separate (10 Nov 2026).**
   A staged controller manifest at0400 failed the unchanged CLI's private-JSON0600
   predicate before either candidate could start. Correct only the owned unused
