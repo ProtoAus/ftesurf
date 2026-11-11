@@ -192,16 +192,22 @@ class Rows(object):
         self.nrows = nrows
 
 
+class MalformedSamples(ValueError):
+    """The sample stream cannot support an honest timing measurement."""
+
+
 def parse(path):
-    """Read a .rec into a Rows.  A segment breaks wherever dt is not the tick,
-    so no statistic ever straddles a pause, a resume or a stage restart -- a
-    discontinuity looks like an instantaneous landing otherwise."""
+    """Read sample rows, refusing invalid numbers rather than omitting evidence.
+
+    Split at non-increasing times or gaps above 1.5 nominal ticks. This is a
+    sampling heuristic, not proof that each row represents one mover tick.
+    """
     header = {}
     body = False
     tick = 0.015
     out = []
     with open(path, "r", errors="replace") as fh:
-        for line in fh:
+        for lineno, line in enumerate(fh, 1):
             if not body:
                 if line.startswith("begin"):
                     body = True
@@ -210,42 +216,46 @@ def parse(path):
                     try:
                         tick = float(line.split()[1])
                     except (ValueError, IndexError):
-                        pass
+                        raise MalformedSamples("%s:%d: invalid tickrate" % (path, lineno))
+                    if not math.isfinite(tick) or tick <= 0:
+                        raise MalformedSamples("%s:%d: invalid tickrate" % (path, lineno))
                     continue
                 if " " in line:
                     k, v = line.split(" ", 1)
                     header[k] = v.strip()
                 continue
-            c = line[:1]
-            if not (c.isdigit() or c == "-"):
-                continue
             f = line.split()
-            if len(f) < 14:
+            if not f:
                 continue
+            token = f[0]
+            if not (token[0].isdigit() or token[0] in "-+."
+                    or token.lower() in ("nan", "inf", "infinity")):
+                continue                # named input/event/trailer records
             try:
-                row = [0.0] * NCOL
-                row[T] = float(f[0])
-                row[X] = float(f[1])
-                row[Y] = float(f[2])
-                row[Z] = float(f[3])
-                row[VX] = float(f[4])
-                row[VY] = float(f[5])
-                row[VZ] = float(f[6])
-                row[SIDE] = float(f[12])
-                row[FL] = int(float(f[9]))
-                row[KEYS] = int(float(f[10]))
-                out.append(tuple(row))
-            except (ValueError, IndexError):
-                continue
+                if len(f) < 14:
+                    raise ValueError("short sample")
+                values = [float(v) for v in f[:14]]
+                if not all(math.isfinite(v) for v in values):
+                    raise ValueError("nonfinite sample")
+                if not values[9].is_integer() or not values[10].is_integer():
+                    raise ValueError("fractional flag mask")
+            except ValueError:
+                raise MalformedSamples("%s:%d: invalid sample" % (path, lineno))
+            row = [0.0] * NCOL
+            row[T], row[X], row[Y], row[Z] = values[:4]
+            row[VX], row[VY], row[VZ] = values[4:7]
+            row[SIDE] = values[12]
+            row[FL], row[KEYS] = int(values[9]), int(values[10])
+            out.append(tuple(row))
     segs = []
     cur = []
     prev = None
     for r in out:
         if prev is not None and tick > 0:
             dt = r[T] - prev[T]
-            # half a tick of slack: the column is %.4f, so a 0.015 tick prints
-            # exactly, but a stage restart or a pause shows up as a large jump.
-            if dt > tick * 1.5 or dt < -tick * 0.5:
+            # Preserve the existing upper-gap slack, but a repeated or even
+            # slightly backwards clock cannot define a timing opportunity.
+            if dt > tick * 1.5 or dt <= 0:
                 if len(cur) > 1:
                     segs.append(cur)
                 cur = []
@@ -1040,7 +1050,11 @@ def main():
     k.set_defaults(fn=cmd_control)
 
     a = ap.parse_args()
-    return a.fn(a)
+    try:
+        return a.fn(a)
+    except (MalformedSamples, OSError) as exc:
+        print("assist: cannot measure: %s" % exc, file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

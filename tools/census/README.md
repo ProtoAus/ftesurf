@@ -226,3 +226,21 @@ cannot accuse.
 Run `control` before believing any zero in the output: it rewrites a real run into
 an assist-shaped one and asserts each statistic reaches 1.0000 (and the periodic
 chain reaches cv 0), so a low count reads as coverage and not as a broken statistic.
+
+Timing-census safety controls:
+
+```sh
+python tools/census/test_assist.py
+```
+
+Repeated/backwards timestamps and gaps above 1.5 nominal ticks split sample
+segments; transitions across them are not opportunities. This remains a sampling
+heuristic, not proof that each sample represents one mover tick. Negative
+pre-start times and intervening named input/event records remain supported.
+An explicit invalid/nonpositive tickrate, malformed numeric sample, nonfinite
+sample value or fractional flag mask aborts the command with `cannot measure`
+and exit 2, rather than silently omitting evidence or publishing a partial batch
+as a complete census. A legacy header without tickrate retains the 0.015 default.
+This is not a full recording-grammar validator: use `tools/reccheck.py` for that.
+These controls protect measurement integrity only; they do not calibrate a
+threshold, establish detection of a real assist, or change ranking/enforcement.
