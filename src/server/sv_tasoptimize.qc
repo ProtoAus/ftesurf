@@ -29,6 +29,8 @@
 #define TOPT_FITER 12           // P1449 follow: rollouts to the fixed point (each fixes at least a tick)
 #define TOPT_KMAX  16           // P1449 curve: knots at most (a flight's side switches come every 20-30 ticks)
 #define TOPT_KDEF  8            // ...by default
+#define TOPT_BOARDDIR 8          // `boarddir`: a board's score lost per degree off the demo's arrival heading past the tolerance
+#define TOPT_BOARDTOL 8          // ...degrees free (the envelopes: humans arrive within ~10 degrees of one heading per ramp)
 #define TOPT_QHARD 240          // `hardq`: a demo row's own command may reach this (anubis stage 2's maze: 173 at 870 u/s)
 #define TOPT_QMAX  120          // P1449 curve: the turn command's range (see SV_TASOptFollow); farsh's rides
                                 // reach ~80 (braking turns), the follow optimum on ramp 0 ~130
@@ -59,6 +61,7 @@
 .float topt_stage;              // 1 go back to the head and stage the tape, 2 the tape is running
 .float topt_endz, topt_endtrack;    // P1483: a course's end (a zone box, or -1; the track whose END boxes, or -1): a reach there
 .float topt_airdir;             // P1483 `airdir`: an air point is a place and a way (the demo's heading there)
+.float topt_boarddir;           // `boarddir`: a board is judged by its arrival heading too (Lex: fly into the ramp parallel)
 .float topt_hardq;              // `hardq`: past QMAX only where the demo itself went (its own strength, up to QHARD)
 .float topt_endsafe;            // `endsafe`: any way into the course's end, the nearest, and no time preference (Jargon `safe`)
 #define TOPT_SAFER 300          // ...a line this near one of them is near the end
@@ -1605,6 +1608,14 @@ float(entity e, float ran) SV_TASOptTargetScore =
 			// far along ramp 6, way too low on 7; ramp 10's top corner; ramp 11 near the tip and far back, room to convert
 			// the energy for the bhop) -- the old above/before terms pushed boards down the face
 			d = d - e.topt_low * (max(0, e.topt_bal) + max(0, -e.topt_bup - 50));
+			if (e.topt_boarddir && e.topt_tube > 0 && e.topt_tgtj >= 1 && e.topt_tgtj + 1 < e.topt_dn)
+			{	// Lex on hades2 bonus 4: humans read their speed, turn out wide and in, and meet the ramp parallel -- the bot
+				// aimed at the point, came in head-on and overshot. Off the demo's own arrival heading costs, past a tolerance
+				dh = vectoyaw([topt_dpos[e.topt_tgtj*3+3] - topt_dpos[e.topt_tgtj*3-3], topt_dpos[e.topt_tgtj*3+4] - topt_dpos[e.topt_tgtj*3-2], 0])
+					- vectoyaw([topt_out[i+3], topt_out[i+4], 0]);
+				dh = fabs(dh - 360 * floor((dh + 180) / 360));
+				d = d - TOPT_BOARDDIR * max(0, dh - TOPT_BOARDTOL);
+			}
 		}
 		if (e.topt_tgtn_z >= 0.99 && e.topt_tube > 0 && e.topt_tgtj + 4 < e.topt_dn)
 		{	// a hop keeps its horizontal velocity for the next flight: off the demo's heading after its own
@@ -2953,12 +2964,12 @@ void(entity e) SV_TASOptReset =
 // tas optimize <ticks> <left|right> [board] [flick [k]] [time] [energy] [fast]
 void(entity e, float argc) SV_TASOptCommand =
 {
-	local float n, dir, i, mode, fk, searches, obj, fast, energy, fixp, kn, tube, hop, look, pace, emin, gens, kex, stall, low, edgeok, ride, wide, leadmin, fresh, slack, airdir, lookw, catch, flick, endsafe, hardq;
+	local float n, dir, i, mode, fk, searches, obj, fast, energy, fixp, kn, tube, hop, look, pace, emin, gens, kex, stall, low, edgeok, ride, wide, leadmin, fresh, slack, airdir, lookw, catch, flick, endsafe, hardq, boarddir;
 	local float seed, playk, endz, endtr, k, startz, startz2;
 	local string w;
 	n = stof(argv(2));
 	dir = !strcmp(argv(3), "left") ? 1 : (!strcmp(argv(3), "right") ? -1 : 0);
-	mode = 0; fk = 0; obj = 0; fast = 0; energy = 0; fixp = 0; kn = 0; tube = 0; hop = 0; look = 0; pace = 0; emin = 0; gens = 0; kex = 0; stall = 0; low = 0; edgeok = 0; ride = 0; wide = 0; leadmin = 0; fresh = 0; slack = 0; airdir = 0; lookw = -2; catch = -2; flick = -2; endsafe = 0; hardq = 0;
+	mode = 0; fk = 0; obj = 0; fast = 0; energy = 0; fixp = 0; kn = 0; tube = 0; hop = 0; look = 0; pace = 0; emin = 0; gens = 0; kex = 0; stall = 0; low = 0; edgeok = 0; ride = 0; wide = 0; leadmin = 0; fresh = 0; slack = 0; airdir = 0; lookw = -2; catch = -2; flick = -2; endsafe = 0; hardq = 0; boarddir = 0;
 	seed = -2; playk = -2; endz = -2; endtr = -2; startz = -2; startz2 = -2;      // -2 not given, -1 its number expected next
 	for (i = 4; i < argc; i = i + 1)
 	{
@@ -2988,7 +2999,8 @@ void(entity e, float argc) SV_TASOptCommand =
 		else if (w == "flick" && flick == -2) flick = -1;                       // Lex: a launch's height comes from the angle it leaves at
 		else if (flick == -1 && argv(i - 1) == "flick" && FS_TASNumber(w) && stof(w) >= 1 && stof(w) <= TOPT_HMAX && stof(w) == floor(stof(w))) flick = stof(w);
 		else if (w == "endsafe" && !endsafe) endsafe = 1;                       // Lex: finish first, the time after
-		else if (w == "hardq" && !hardq) hardq = 1;                       // Lex: finish first, the time after
+		else if (w == "hardq" && !hardq) hardq = 1;
+		else if (w == "boarddir" && !boarddir) boarddir = 1;                       // Lex: finish first, the time after
 		else if (w == "airdir" && !airdir) airdir = 1;                           // P1483: off the demo's heading at an air point costs
 		else if (w == "fresh" && !fresh) fresh = 1;                             // no remembered line among the first candidates
 		else if (w == "slack" && !slack) slack = -1;                            // the tube's slack past a ride's exit
@@ -3089,7 +3101,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_mode = mode; e.topt_fk = fk; e.topt_srch = 0; e.topt_besty = 0; e.topt_bestf = 0; e.topt_bestp = 12;
 	e.topt_pfoff = fixp; e.topt_pfon = 0;
 	e.topt_kn = kn; e.topt_kgen = -1; e.topt_kidx = 0; e.topt_wok = e.topt_bok = 0; e.topt_vizt = 0;   // vizt before the clear below
-	e.topt_efol = 0; e.topt_tube = tube; e.topt_tubeex = (slack > 0) ? slack : 0; e.topt_tubeout = e.topt_wallhit = 0; e.topt_hop = hop; e.topt_look = look; e.topt_pace = pace; e.topt_emin = emin; e.topt_weakn = 0; e.topt_cegen = gens ? gens : TOPT_CEGEN; e.topt_cestall = stall ? stall : TOPT_CESTALL; e.topt_low = low; e.topt_edgeok = edgeok; e.topt_edgen = 0; e.topt_earlycut = 0; e.topt_lowneed = 0; e.topt_airdir = airdir; e.topt_lookw = (lookw > 0) ? lookw : 0; e.topt_catch = (catch > 0) ? catch : 0; e.topt_flick = (flick > 0) ? flick : 0; e.topt_endsafe = 0; e.topt_hardq = hardq;
+	e.topt_efol = 0; e.topt_tube = tube; e.topt_tubeex = (slack > 0) ? slack : 0; e.topt_tubeout = e.topt_wallhit = 0; e.topt_hop = hop; e.topt_look = look; e.topt_pace = pace; e.topt_emin = emin; e.topt_weakn = 0; e.topt_cegen = gens ? gens : TOPT_CEGEN; e.topt_cestall = stall ? stall : TOPT_CESTALL; e.topt_low = low; e.topt_edgeok = edgeok; e.topt_edgen = 0; e.topt_earlycut = 0; e.topt_lowneed = 0; e.topt_airdir = airdir; e.topt_lookw = (lookw > 0) ? lookw : 0; e.topt_catch = (catch > 0) ? catch : 0; e.topt_flick = (flick > 0) ? flick : 0; e.topt_endsafe = 0; e.topt_hardq = hardq; e.topt_boarddir = boarddir;
 	e.topt_rideT = ride; e.topt_briefn = 0; e.topt_leadmin = leadmin; e.topt_over = 0;
 	e.topt_tgtj = 0;
 	if (tube)

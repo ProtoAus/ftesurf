@@ -265,7 +265,8 @@ string(float k) SV_TASAutoKind =
 float as_swo[TAS_SPOTS * 3], as_swv[TAS_SPOTS], as_sws[TAS_SPOTS], as_swe[TAS_SPOTS];  // spots: place, on the face, score, energy
 float as_swd[TAS_ASMAX];        // a swept board's kept spot + 1 (0: not swept)
 float as_swp[TAS_ASMAX * 3];    // its place
-float as_optsave[25];
+float as_optsave[26];
+.float as_parallel;             // `parallel`: boards judged by their arrival heading too (opt-in experiment)
 .float as_tight;                // `tight`: the guide's own hard turns may be copied past the usual clamp (tech sections)
 .float as_safe;                 // `safe`: a course's finish aims at its nearest way in, any finish alike (Lex: finish first)
 .float as_catch;                // `catch`: board stretches widen the strafe before the board (opt-in experiment)
@@ -276,7 +277,7 @@ void(entity e) SV_TASAutoOptSave =
 	as_optsave[4] = e.as_hop; as_optsave[5] = e.as_finish; as_optsave[6] = e.as_pace; as_optsave[7] = e.as_emin;
 	as_optsave[8] = e.as_join; as_optsave[9] = e.as_rideknots; as_optsave[10] = e.as_polish; as_optsave[11] = e.as_low;
 	as_optsave[12] = e.as_apex; as_optsave[13] = e.as_air; as_optsave[14] = e.as_wide; as_optsave[15] = e.as_szone;
-	as_optsave[16] = e.as_sg; as_optsave[17] = e.as_sy; as_optsave[18] = e.as_sside; as_optsave[19] = e.as_spots; as_optsave[20] = e.as_beam; as_optsave[21] = e.as_turns; as_optsave[22] = e.as_catch; as_optsave[23] = e.as_safe; as_optsave[24] = e.as_tight;
+	as_optsave[16] = e.as_sg; as_optsave[17] = e.as_sy; as_optsave[18] = e.as_sside; as_optsave[19] = e.as_spots; as_optsave[20] = e.as_beam; as_optsave[21] = e.as_turns; as_optsave[22] = e.as_catch; as_optsave[23] = e.as_safe; as_optsave[24] = e.as_tight; as_optsave[25] = e.as_parallel;
 };
 void(entity e) SV_TASAutoOptRestore =
 {
@@ -284,7 +285,7 @@ void(entity e) SV_TASAutoOptRestore =
 	e.as_hop = as_optsave[4]; e.as_finish = as_optsave[5]; e.as_pace = as_optsave[6]; e.as_emin = as_optsave[7];
 	e.as_join = as_optsave[8]; e.as_rideknots = as_optsave[9]; e.as_polish = as_optsave[10]; e.as_low = as_optsave[11];
 	e.as_apex = as_optsave[12]; e.as_air = as_optsave[13]; e.as_wide = as_optsave[14]; e.as_szone = as_optsave[15];
-	e.as_sg = as_optsave[16]; e.as_sy = as_optsave[17]; e.as_sside = as_optsave[18]; e.as_spots = as_optsave[19]; e.as_beam = as_optsave[20]; e.as_turns = as_optsave[21]; e.as_catch = as_optsave[22]; e.as_safe = as_optsave[23]; e.as_tight = as_optsave[24];
+	e.as_sg = as_optsave[16]; e.as_sy = as_optsave[17]; e.as_sside = as_optsave[18]; e.as_spots = as_optsave[19]; e.as_beam = as_optsave[20]; e.as_turns = as_optsave[21]; e.as_catch = as_optsave[22]; e.as_safe = as_optsave[23]; e.as_tight = as_optsave[24]; e.as_parallel = as_optsave[25];
 };
 
 void(entity e, float s) SV_TASAutoAir =
@@ -1206,7 +1207,8 @@ void(entity e) SV_TASAutoLink =
 	if (as_wk[i] == 5 && SV_TASAutoRule(1024)) ps = strcat(ps, " airdir");     // an air point's way too (tas_jargon_off 1024: place only)
 	if (as_wk[i] == 3 && e.as_ctrack >= 0 && e.as_safe) ps = strcat(ps, " endsafe");
 	if (as_wk[i] == 1 && e.as_catch) ps = strcat(ps, " catch 25");
-	if (e.as_tight) ps = strcat(ps, " hardq");     // the last 25 rows before a board
+	if (e.as_tight) ps = strcat(ps, " hardq");
+	if (as_wk[i] == 1 && e.as_parallel) ps = strcat(ps, " boarddir");     // the last 25 rows before a board
 	if (e.as_catch && i >= 1)       // and the launch off the ramp before (Lex: the height is the angle it leaves at, not speed)
 	if (as_wk[i - 1] == 1 && as_wl[i - 1] > e.as_tprev + PM_TICK)
 		ps = strcat(ps, sprintf(" flick %.0f", min(TOPT_HMAX, rint((as_wl[i - 1] - e.as_tprev) / PM_TICK))));
@@ -2102,7 +2104,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 	if (SV_TASOptBusy(e)) return;
 	SV_TASAutoOptSave(e);
 	st = 0; flip = 0; arm = 0; pl = 0; ct = -1; cl = 0; zg = 0; e.as_szone = 0; e.as_sg = 900; e.as_sy = 0; e.as_sside = -1;
-	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = -1; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1; e.as_emin = 0.95; e.as_join = 0; e.as_rideknots = 0; e.as_polish = 0; e.as_low = 0; e.as_apex = 0; e.as_air = 0; e.as_wide = 0; e.as_spots = 0; e.as_beam = 0; e.as_turns = 0; e.as_catch = 0; e.as_safe = 0; e.as_tight = 0;
+	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = -1; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1; e.as_emin = 0.95; e.as_join = 0; e.as_rideknots = 0; e.as_polish = 0; e.as_low = 0; e.as_apex = 0; e.as_air = 0; e.as_wide = 0; e.as_spots = 0; e.as_beam = 0; e.as_turns = 0; e.as_catch = 0; e.as_safe = 0; e.as_tight = 0; e.as_parallel = 0;
 	for (i = 3; i < argc; i = i + 1)
 	{
 		w = argv(i); n = FS_TASNumber(argv(i + 1)) ? stof(argv(i + 1)) : -1;    // not a number: refused below, not 0 (review)
@@ -2126,6 +2128,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		else if (w == "catch") e.as_catch = 1;
 		else if (w == "safe") e.as_safe = 1;
 		else if (w == "tight") e.as_tight = 1;
+		else if (w == "parallel") e.as_parallel = 1;
 		else if (w == "start") st = 1;
 		else if (w == "plan") pl = 1;
 		else if (w == "zone" && n >= 0 && n < 64 && n == floor(n)) { e.as_szone = n; zg = 1; i = i + 1; }
