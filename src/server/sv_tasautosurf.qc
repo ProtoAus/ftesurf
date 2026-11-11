@@ -60,6 +60,7 @@
 .float as_arm, as_nolegal, as_lastground;
 .float as_sn2;                  // ticks steered since the run started (the start clears the box's triggers first)
 .float as_sback;
+.float as_sbl;                  // a back-off counted this approach (cleared once back past 450 u)
 .float as_smeth, as_sredo;      // the start's way (1 the guide's prestrafe replayed, else steering), and whether it was redone                // start back-offs at an unaligned exit (2 at most)
 .float as_sph;                  // the start's ground phase: 0 speed (a left circle), 1 onto the line, 2 around again
 .float as_sdrop;                // ticks of the spawn's drop (as_sn2 is the out-of-box phase's own: review 2)
@@ -1615,13 +1616,14 @@ void(entity e) SV_TASAutoFrame =
 				sprint(e, PRINT_HIGH, strcat(sprintf("tas autosurf: start %.0f ph %.0f at %v %.0f u/s, ", e.as_sn, ph, e.origin, t),
 					sprintf("%.0f u short of the exit, %.0f u off the line, %.0f deg off it, side %.0f\n", along, lat, herr, e.as_sair)));
 			if (ph == 0 && t >= 283) ph = 1;
-			if (along < 60 && (fabs(lat) > 150 || fabs(herr) > 30) && e.as_sn < e.as_sg && (e.as_sph == 4 || e.as_sback < 2) && cvar("tas_jargon_startfix"))
+			if (along < 60 && (fabs(lat) > 150 || fabs(herr) > 30) && e.as_sn < e.as_sg && (e.as_sbl || e.as_sback < 2) && cvar("tas_jargon_startfix"))
 			{	// at the exit unaligned: the forced jump left surf_tensor2 stage 6 366 u and -59 deg off the guide's line and
 				// every stretch-1 line off its path (bench f1); back off and line up again, twice at most -- counted once an
 				// approach, and no jump while backing off (a count a step spent both in 6 ticks: review L)
-				if (e.as_sph != 4)
-				{
-					e.as_sback = e.as_sback + 1;
+				if (!e.as_sbl)
+				{	// not as_sph != 4: the older too-close rule enters 4 first, and then neither the note nor the count came
+					// (stage 6, bench start2: 380 ticks backing off, silent and uncounted)
+					e.as_sbl = 1; e.as_sback = e.as_sback + 1;
 					SV_TASAutoNote(e, 1, sprintf("start: at the exit %.0f u and %.0f deg off the guide's line: backing off to line up again", lat, herr));
 				}
 				ph = 4;
@@ -1634,7 +1636,7 @@ void(entity e) SV_TASAutoFrame =
 				return;
 			}
 			if (ph >= 1 && ph <= 3 && along < 130) ph = 4;
-			if (ph == 4 && along > 450) ph = 1;
+			if (ph == 4 && along > 450) { ph = 1; e.as_sbl = 0; }
 			if (ph == 0) d = -1;
 			else if (ph == 4)
 			{	// back toward the box's back: a point 520 u short of the exit on the line
@@ -1697,7 +1699,7 @@ void(entity e) SV_TASAutoFrame =
 				if (!e.taslg_on || e.taslg_zone != e.as_szone || e.run_t_state != TS_ARMED)
 					{ SV_TASAutoStop(e, "the start could not be redone (no legal start in the box)"); return; }
 				e.as_ri = (e.as_smeth == 1) ? -1 : SV_TASAutoRest(e);
-				e.as_smeth = 0; e.as_stage = 10; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0;
+				e.as_smeth = 0; e.as_stage = 10; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_sbl = 0;
 				return;
 			}
 			e.as_stage = 1; e.as_i = 0; e.as_try = 0; e.as_backs = 0; e.as_tprev = as_rows[s*7]; e.as_failat = -1;
@@ -2228,7 +2230,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		}
 		if (e.as_file != "") strunzone(e.as_file);
 		e.as_file = path;
-		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_smeth = 0; e.as_sredo = 0;
+		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_sbl = 0; e.as_smeth = 0; e.as_sredo = 0;
 		e.as_ctrack = nct; e.as_cleg = ncl; e.as_saved = -1; e.as_esc = 0; e.as_keepsaid = 0; e.as_cseed = 0;
 		SV_TASAutoRunSalt();
 		e.as_ri = (e.as_ctrack >= 0) ? SV_TASAutoRest(e) : -1;      // a `zone` start steers as before
