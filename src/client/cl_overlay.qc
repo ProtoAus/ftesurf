@@ -152,11 +152,11 @@ void() Ov_LoadForMap =
 	local float tm[OV_N];
 	local entity net;
 
-	if (ov_n && ov_loadmap == serverkey("map"))
+	if (ov_n && ov_loadmap == CL_LumpMapName())	// P1489
 		return;                 // a cvar toggle re-ran the load: keep what is showing
 	if (ov_loadmap != "")
 		strunzone(ov_loadmap);
-	ov_loadmap = strzone(serverkey("map"));
+	ov_loadmap = strzone(CL_LumpMapName());
 	for (i = 0; i < ov_n * OV_N; i = i + 1)
 		if (ov_name[i] != "")
 		{

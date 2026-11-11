@@ -34,17 +34,25 @@ string() CL_LumpMapName =
 		return cl_worldmapname;
 	return serverkey("map");
 };
-// P1489: the loaded world's short name, from mapname (maps/<name>.bsp in native CSQC)
+// P1489: the loaded world's short name, from mapname (maps/<name>.bsp in native CSQC), cut as the engine cuts
+// svs.name (sv_init.c): a ".gz" or ".xz" off, then ".bsp" case-sensitively
 string() CL_WorldShortName =
 {
-	local string w;
+	local string w, t;
 	local float n;
 	w = mapname;
 	if (!strcmp(substring(w, 0, 5), "maps/"))
 		w = substring(w, 5, -1);
 	n = strlen(w);
+	if (n >= 3)
+	{
+		t = substring(w, n - 3, 3);
+		if (!strcmp(t, ".gz") || !strcmp(t, ".xz"))
+			w = substring(w, 0, n - 3);
+	}
+	n = strlen(w);
 	if (n >= 4)
-	if (!strcmp(strtolower(substring(w, n - 4, 4)), ".bsp"))
+	if (!strcmp(substring(w, n - 4, 4), ".bsp"))
 		w = substring(w, 0, n - 4);
 	return w;
 };

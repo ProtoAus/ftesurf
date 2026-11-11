@@ -165,11 +165,11 @@ void() Sh_LoadForMap =
 	local float i, sf, gibs, vel, vari, life, delay, gangv, sim, skin, scl, grav, ramt, rmode;
 
 	Sh_Alloc();
-	if (sh_n && sh_loadmap == serverkey("map"))
+	if (sh_n && sh_loadmap == CL_LumpMapName())	// P1489
 		return;                 // a cvar toggle re-ran the load: keep the shooters and their gibs
 	if (sh_loadmap != "")
 		strunzone(sh_loadmap);
-	sh_loadmap = strzone(serverkey("map"));
+	sh_loadmap = strzone(CL_LumpMapName());
 	for (i = 0; i < GIB_MAX; i = i + 1)
 	{
 		gib_die[i] = 0;

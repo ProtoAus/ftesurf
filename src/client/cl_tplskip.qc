@@ -19,7 +19,7 @@ void(float force) Tpl_ClLoad =
 	local string tok, key, cn, names, wild, knames, kwild, nm, keep;
 	local float sf, p0, pn, opened;
 
-	if (!force && tpl_cl_map != "" && tpl_cl_map == serverkey("map"))
+	if (!force && tpl_cl_map != "" && tpl_cl_map == CL_LumpMapName())	// P1489
 		return;
 	names = knames = "\n";
 	wild = kwild = "";
@@ -70,7 +70,7 @@ void(float force) Tpl_ClLoad =
 	if (tpl_cl_knames != "") strunzone(tpl_cl_knames);
 	if (tpl_cl_kwild != "") strunzone(tpl_cl_kwild);
 	// Not latched when the lump was unreadable (Patch 335: it can be at CSQC_WorldLoaded): the next walk asks again.
-	tpl_cl_map = opened ? strzone(serverkey("map")) : "";
+	tpl_cl_map = opened ? strzone(CL_LumpMapName()) : "";
 	tpl_cl_names = strzone(names);
 	tpl_cl_wild = (wild != "") ? strzone(wild) : "";
 	tpl_cl_knames = strzone(knames);
