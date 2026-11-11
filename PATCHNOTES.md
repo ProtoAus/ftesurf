@@ -22,6 +22,9 @@
 ## next
 - Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
+### P1513 Configurable replay-journal upload budgets
+- Operators can configure a run-length budget for replay journals; servers without this setting keep their existing upload behavior.
+
 ### P1510 Safer background work during maintenance
 - Background replay analysis stays accounted for during service maintenance instead of appearing finished while work is still running.
 

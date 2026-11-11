@@ -8007,7 +8007,7 @@ social.register(app, types.SimpleNamespace(
     story_who=story_who))
 
 hidupload.register(app, types.SimpleNamespace(
-    log=log, clock=lambda: time.time(), rate_ok=rate_ok, rate_key=rate_key,
+    setting=setting, log=log, clock=lambda: time.time(), rate_ok=rate_ok, rate_key=rate_key,
     fail=lambda message, code: fail(code, message), evidence=lambda: EVIDENCE_DIR),
     tools=setting("SURFD_TOOLS") or os.path.join(
         setting("SURFD_GAME") or "/srv/nvme/ftesurf-server/game", "tools"))

@@ -402,7 +402,8 @@ GET /health
     `PUBLIC_HOST`, so it adds no new trust surface: with trust unconfigured,
     behaviour is unchanged. Safe because nothing proxies to 8084 — verify that
     before putting surfd behind nginx, or every request becomes "trusted".
-  * Request body capped at 16 KiB.
+  * Normal request bodies capped at 16 KiB; the signed `/api/hid` journal route
+    alone allows its 1024-byte header plus at most 64 MiB.
   * Strings stripped of control characters and truncated to 64 -- except the
     map name, which is **refused** when it is too long rather than trimmed.
     It is the board key, and trimming an identifier to fit merges two
@@ -414,6 +415,29 @@ GET /health
     150 players on every leg to reach it.
   * A board page returns at most 200 rows (default 50). An over-large `limit`
     is clamped rather than refused.
+
+### Optional journal run-length allowance
+
+`SURFD_HID_BASE_BYTES` (integer0..67108864) and
+`SURFD_HID_BYTES_PER_TICK` (integer1..67108864) must BOTH be explicitly configured
+to enable a run-length allowance. They use the normal setting loader:
+environment first, then `surfd.env`. Neither present keeps legacy64MiB behavior;
+partial, empty or noncanonical/out-of-range policy fails startup rather than
+silently ignoring an operator's cap. Policy is captured at route registration.
+
+After upload signature and receipt/run/nonce/hash/size authentication, body bytes
+must fit `min(67108864, base + positive_signed_counted_ticks * bytes_per_tick)`.
+Excess returns413 before body consumption or temporary creation; unavailable
+signed clock returns503, not a player fault. Existing evidence is never removed
+or replaced. Absolute/rate/signature/hash/no-replace controls remain unchanged.
+
+No production coefficient/floor is recommended or activated. Counted ticks are
+NOT wall time and may exclude viewing/parked intervals: explicitly choose policy
+for that overhead before enabling it. This does not bound proxy-buffered bytes,
+aggregate storage or retention. No new recording fields, consent, verdict,
+score, reread or native/QC change. `python surfd/test_hidupload.py -v` exercises
+actual application settings as well as boundary/header-only/preservation controls;
+see `tools/p1513-hid-run-budget.md`.
 
 ## Admin panel (/admin)
 

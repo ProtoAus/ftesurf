@@ -6156,6 +6156,16 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
 
 ## Run and test
 
+- **P1513 uploader settings/Flask fixtures (11 Nov 2026).** Optional run-length
+  admission uses the existing app `setting()` loader, not only `os.environ`:
+  real `surfd.env` and OS-precedence arms must ACT on the actual application.
+  Both coefficients are explicit; counted signed ticks are not wall/parked time,
+  so absent policy must preserve legacy behavior rather than invent a default.
+  In Flask2.2 a fabricated `Flask(__name__ + '.budget')` fixture import name fails
+  before the route acts when `__main__` is not a package; `Flask(__name__)` works
+  on both supported generations. Keep that original ARM infrastructure failure;
+  the corrected actual Windows17/17 and ARM17/17 are not its regrading.
+
 ### Replay benchmark acceptance (P1507 continuation, 11 Nov 2026)
 
 Replay IDs are global: a successful `replay online <id>` open can be a different
