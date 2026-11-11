@@ -2318,6 +2318,7 @@ void() Sprite_Glare =
 	// BUILD 59: the view cull.
 	local float  visits, docull, tanx, maxdist, slope, glowcos, zc;
 	local float  tn, tcapped;               // P1488: rays at the last clock check; the time budget stopped the loop
+	local float  tv;                        // P1504: visits at the last clock check
 	local vector fwd;
 	// BUILD 60: the adaptive rays, and the measured sweep.
 	local float  adapt, docorners, had, m, wrapped;
@@ -2573,12 +2574,16 @@ void() Sprite_Glare =
 	spr_gforce = 0;
 	spr_grays = 0;
 	tn = 0;
+	tv = 0;
 	tcapped = FALSE;
 	while (n < budget && visits < vmax && spr_n > 0)
 	{
-		if (n > tn)
+		// P1504: and every 16 visits -- the culled glows between traced ones cost no rays but their QC still ran
+		// the loop 0.5-0.8 ms past the budget on surf_fairy (players' default glows)
+		if (n > tn || visits >= tv + 16)
 		{	// P1488: asked once per traced glow, before the cursor moves, so the next glow is first next frame
 			tn = n;
+			tv = visits;
 			if (Sprite_TraceOver(1))
 			{
 				tcapped = TRUE;
@@ -2803,6 +2808,17 @@ void() Sprite_Glare =
 		*/
 		if (docorners)
 		{
+			// P1504: four more rays (~180 us each on surf_fairy), so the budget is asked again: one check a glow let a
+			// frame trace ~0.9 ms past it. Over, the glow keeps its last answer and is first next frame.
+			if (Sprite_TraceOver(1))
+			{
+				spr_gnext = i;
+				if (i == spr_n - 1)
+					wrapped = FALSE;    // its sweep did not finish
+				tcapped = TRUE;
+				spr_tcapg = spr_tcapg + 1;
+				break;
+			}
 			off = back * 0.70710678;    // GlowProxySize * sqrt(2)/2
 
 			n = n + 4;
