@@ -59,7 +59,8 @@
 // air strafing toward the demo's exit point) or at the exit, the chain takes over (Lex, 10 Nov).
 .float as_arm, as_nolegal, as_lastground;
 .float as_sn2;                  // ticks steered since the run started (the start clears the box's triggers first)
-.float as_sback;                // start back-offs at an unaligned exit (2 at most)
+.float as_sback;
+.float as_smeth, as_sredo;      // the start's way (1 the guide's prestrafe replayed, else steering), and whether it was redone                // start back-offs at an unaligned exit (2 at most)
 .float as_sph;                  // the start's ground phase: 0 speed (a left circle), 1 onto the line, 2 around again
 .float as_sdrop;                // ticks of the spawn's drop (as_sn2 is the out-of-box phase's own: review 2)
 .float as_ri;                   // P1478: the guide's row the start replays next (stage 13), -1 when it steers instead
@@ -1527,7 +1528,7 @@ void(entity e) SV_TASAutoFrame =
 			if (rd <= 16 && t < 1)
 			{
 				e.as_stage = 13; e.as_ri = e.as_ri + 1; e.as_sn = 0;
-				SV_TASAutoNote(e, 1, sprintf("start: the guide's own prestrafe from where it stood (%.0f u from here)", rd));
+				e.as_smeth = 1; SV_TASAutoNote(e, 1, sprintf("start: the guide's own prestrafe from where it stood (%.0f u from here)", rd));
 				return;
 			}
 			if (e.as_sn >= 900)
@@ -1585,7 +1586,7 @@ void(entity e) SV_TASAutoFrame =
 				if (rd <= 64 && fabs(e.origin_z - as_rows[e.as_ri*7+3]) <= 18)
 				{
 					e.as_stage = 13; e.as_ri = e.as_ri + 1;
-					SV_TASAutoNote(e, 1, sprintf("start: the guide's own prestrafe from where it stood (%.0f u from here)", rd));
+					e.as_smeth = 1; SV_TASAutoNote(e, 1, sprintf("start: the guide's own prestrafe from where it stood (%.0f u from here)", rd));
 					return;
 				}
 				if (rd <= 1500 && fabs(e.origin_z - as_rows[e.as_ri*7+3]) <= 18)
@@ -1606,7 +1607,7 @@ void(entity e) SV_TASAutoFrame =
 				sprint(e, PRINT_HIGH, strcat(sprintf("tas autosurf: start %.0f ph %.0f at %v %.0f u/s, ", e.as_sn, ph, e.origin, t),
 					sprintf("%.0f u short of the exit, %.0f u off the line, %.0f deg off it, side %.0f\n", along, lat, herr, e.as_sair)));
 			if (ph == 0 && t >= 283) ph = 1;
-			if (along < 60 && (fabs(lat) > 150 || fabs(herr) > 30) && e.as_sn < e.as_sg && (e.as_sph == 4 || e.as_sback < 2))
+			if (along < 60 && (fabs(lat) > 150 || fabs(herr) > 30) && e.as_sn < e.as_sg && (e.as_sph == 4 || e.as_sback < 2) && cvar("tas_jargon_startfix"))
 			{	// at the exit unaligned: the forced jump left surf_tensor2 stage 6 366 u and -59 deg off the guide's line and
 				// every stretch-1 line off its path (bench f1); back off and line up again, twice at most -- counted once an
 				// approach, and no jump while backing off (a count a step spent both in 6 ticks: review L)
@@ -1676,6 +1677,20 @@ void(entity e) SV_TASAutoFrame =
 		{
 			s = SV_TASAutoPlan(e, -1);
 			if (s < 0 || as_n < 1) { SV_TASAutoStop(e, "out of the start box off the demo's route (not within 400 u)"); return; }
+			if (!e.as_sredo && e.as_ctrack >= 0 && cvar("tas_jargon_startfix") && vlen([e.velocity_x, e.velocity_y, 0]) < 0.6 * vlen([as_rows[s*7+4], as_rows[s*7+5], 0]))
+			if (e.as_smeth == 1 || SV_TASAutoRest(e) >= 0)
+			{	// out of the box far slower than the guide there: the other way, once (surf_anubis stage 1 left at 76 u/s
+				// from the guide's replayed prestrafe and every stretch-1 line moved away from the ramp, bench f1)
+				e.as_sredo = 1;
+				SV_TASAutoNote(e, 1, sprintf("start: out of the box at %.0f u/s, the guide %.0f there: starting again, %s",
+					vlen([e.velocity_x, e.velocity_y, 0]), vlen([as_rows[s*7+4], as_rows[s*7+5], 0]),
+					(e.as_smeth == 1) ? "steering instead of the guide's prestrafe" : "with the guide's prestrafe"));
+				SV_TASLegalStart(e, e.as_szone);
+				if (!e.taslg_on) { SV_TASAutoStop(e, "the start could not be redone (no legal start in the box)"); return; }
+				e.as_ri = (e.as_smeth == 1) ? -1 : SV_TASAutoRest(e);
+				e.as_smeth = 0; e.as_stage = 10; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0;
+				return;
+			}
 			e.as_stage = 1; e.as_i = 0; e.as_try = 0; e.as_backs = 0; e.as_tprev = as_rows[s*7]; e.as_failat = -1;
 			SV_TASAutoBacks(e);
 			sprint(e, PRINT_HIGH, sprintf("tas autosurf: out of the start box at %.0f u/s (tick %.0f); %.0f stretches ahead\n",
@@ -2190,7 +2205,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		if (!e.taslg_on) { strunzone(path); return; }
 		if (e.as_file != "") strunzone(e.as_file);
 		e.as_file = path;
-		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0;
+		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_smeth = 0; e.as_sredo = 0;
 		e.as_ctrack = nct; e.as_cleg = ncl; e.as_saved = -1; e.as_esc = 0; e.as_keepsaid = 0; e.as_cseed = 0;
 		SV_TASAutoRunSalt();
 		e.as_ri = (e.as_ctrack >= 0) ? SV_TASAutoRest(e) : -1;      // a `zone` start steers as before
