@@ -77,6 +77,7 @@ float as_rmin;                  // the nearest-row search starts here (a full-ru
 .float as_saved;                // the furthest stretch autosaved for Continue (-1 none)
 .float as_esc;                  // P1478: effort steps a stuck course chain has taken by itself (2 at most)
 .float as_coastf;              // coasts predicted into a wrong teleport this chain (a reach resets as_try: rig t2chain10 looped)
+.float as_fintry;               // P1483: the try the last stretch reached on: a failed coast goes on from it (each visit its tries)
 .float as_cseed;               // P1483: Continues of this course this session (a Continue after "stuck" searched exactly as before: review F)
 float as_visit[TAS_ASMAX];      // P1483: searches of each stretch this chain (in the seed)
 // a set tas_jargon_seed reproduces a chain exactly (the benchmark); unset, each new chain searches anew
@@ -1694,7 +1695,7 @@ void(entity e) SV_TASAutoFrame =
 		{	// the coast would fall into a teleport that is not the end: the last stretch failed, tried again or backtracked
 			SV_TASAutoNote(e, 1, sprintf("stretch %.0f: from where it ends, the run would fall into a teleport, not the end: again", as_n));
 			e.as_i = as_n - 1; e.as_tprev = as_wp[as_n - 1];    // the reach had moved it to its own end (rig t2chain9: no rows left)
-			e.as_coastf = e.as_coastf + 1; e.as_try = min(e.as_tries, e.as_coastf) - 1;     // counted, so the tries run out
+			e.as_coastf = e.as_coastf + 1; e.as_try = e.as_fintry;     // that try failed: the next searches longer, the last backtracks (bench p14)
 			e.topt_outcome = 1; e.topt_lowneed = e.topt_earlycut = e.topt_trigcut = 0; e.topt_over = e.topt_briefn = 0;
 			e.as_stage = 2;
 			return;
@@ -1734,6 +1735,7 @@ void(entity e) SV_TASAutoFrame =
 			SV_TASAutoPriorPend(e, e.as_i);
 			SV_TASAutoNote(e, 1, sprintf("stretch %.0f reached: %.0f u/s at the guide's board height, the guide %.0f", e.as_i + 1, as_rb, as_rf));
 			}
+			if (e.as_i == as_n - 1) e.as_fintry = e.as_try;
 			e.as_tprev = t; e.as_i = e.as_i + 1; e.as_try = 0;
 			SV_TASAutoSave(e, e.as_i);
 			if (e.as_i >= as_n && e.as_ctrack >= 0 && e.as_finish)
