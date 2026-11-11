@@ -1,5 +1,8 @@
 # lextest.md — things waiting on a human
 
+## P1507 stable sprite draw lists -- owner check PENDING, rollout recorded in tools/p1507-sprite-drawlists.md
+- On surf_fairy with sprites and light glows enabled, lights should look and fade exactly as before. A quick normal run is enough; please report any missing, flickering or reordered lights. Automated slot-order tests and agent-inspected screenshots are not owner confirmation.
+
 ## P1504 glare budget -- 12 lobbies + both installs (cs 267e9b9b) 11 Nov 12:51Z; owner check PENDING
 - surf_fairy with glows on: glows should fade in and out as before (perhaps a frame later behind a corner in the
   heaviest spots). `vbsp_sprite_tracems 0` turns the budget off to compare.

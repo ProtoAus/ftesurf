@@ -167,6 +167,10 @@ float  spr_mat[SPR_MAX];                // index into the table above
 float  spr_kind[SPR_MAX];
 float  spr_add[SPR_MAX];                // SPRA_*, and every value but NONE is truthy
 float  spr_n;
+// Stable material-major draw lists; the extra head is the env_lightglow pass.
+float *spr_drawhead;
+float *spr_drawnext;
+float  spr_drawdirty;
 /*
   BUILD 58.  How many sprites the Source dimming was applied to, and it is a
   GLOBAL holding LAST frame's count rather than a local, because the census that
@@ -972,6 +976,7 @@ void(vector org, vector ang, float kind, float mat, float scale,
 	}
 
 	spr_n = spr_n + 1;
+	spr_drawdirty = TRUE;
 };
 
 /*
@@ -1075,6 +1080,7 @@ void(vector org, vector ang, float hw, float hh, vector col, float alpha,
 	spr_up[i] = '0 0 0';
 
 	spr_n = spr_n + 1;
+	spr_drawdirty = TRUE;
 	vbsp_glow_n = vbsp_glow_n + 1;
 };
 
@@ -1686,6 +1692,7 @@ void() Sprite_LoadForMap =
 	*/
 	Sprite_LoadOccluders();
 	spr_n = beam_n = beam_spot_n = 0;
+	spr_drawdirty = TRUE;
 	spr_glowext = 0;
 	if (spr_under)
 		for (mat = 0; mat < SPR_MAX; mat = mat + 1)
@@ -3169,9 +3176,34 @@ string(vector eye, vector fwd) Sprite_SkyAxisCensus =
 	               n, behind, stale, wrong, Sprite_ConeTan(1.25, fwd), cvar("vbsp_sprite_skycull"));
 };
 
+// Reverse insertion preserves ascending slot order within every original pass.
+// Rebuild after loads/adds, including a template reusing a slot with a new material.
+void() Sprite_DrawLists =
+{
+	local float i, m;
+
+	if (!spr_drawhead)
+	{
+		spr_drawhead = memalloc(sizeof(float) * (SPRMAT_MAX + 1));
+		spr_drawnext = memalloc(sizeof(float) * SPR_MAX);
+	}
+	for (m = 0; m <= SPRMAT_MAX; m = m + 1)
+		spr_drawhead[m] = -1;
+	for (i = spr_n - 1; i >= 0; i = i - 1)
+	{
+		if (spr_kind[i] == SPRK_GLOW)
+			m = SPRMAT_MAX;
+		else
+			m = spr_mat[i];
+		spr_drawnext[i] = spr_drawhead[m];
+		spr_drawhead[m] = i;
+	}
+	spr_drawdirty = FALSE;
+};
+
 void() Sprite_Draw =
 {
-	local float  i, m, maxdist, drawn, dbg, mo;
+	local float  i, m, maxdist, drawn, dbg, mo, orientmode;
 	local vector eye, fwd, vright, vpright, vpup, r, u, dd;
 	local vector a, b, c, d, side, mid;
 	local float  flags, glare, useglare, useglare_on, underon, ub;
@@ -3230,6 +3262,8 @@ void() Sprite_Draw =
 	if (!spr_n && !beam_n && !fx_n && !xp_live && !wt_n && !sh_busy && !gib_live)
 		return;
 
+	if (spr_drawdirty || !spr_drawhead)
+		Sprite_DrawLists();
 	eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
 	fwd = v_forward;
@@ -3380,27 +3414,23 @@ void() Sprite_Draw =
 	// already printed it, so what it printed is last frame's finished total.
 	spr_dim_n = 0;
 	spr_under_n = 0;
+	orientmode = cvar("vbsp_sprite_orient");
 
 	for (m = 0; m < sprmat_n; m = m + 1)
 	{
 		if (sprmat_w[m] <= 0)
 			continue;
 
-		/*
-		  BUILD 55: once per material, not per sprite -- the loop is already
-		  material-major, so the cvar lookup costs at most 34 hash probes a frame
-		  on the library's worst map and buys a live A/B with no reload.
-		  2 (or anything else) = what the material said.
-		*/
+		// One live orientation snapshot for every batch; 2/other = material.
 		mo = sprmat_orient[m];
-		if (cvar("vbsp_sprite_orient") == 0)
+		if (orientmode == 0)
 			mo = SPRO_UPRIGHT;
-		else if (cvar("vbsp_sprite_orient") == 1)
+		else if (orientmode == 1)
 			mo = SPRO_PARALLEL;
 
-		for (i = 0; i < spr_n; i = i + 1)
+		for (i = spr_drawhead[m]; i >= 0; i = spr_drawnext[i])
 		{
-			if (spr_mat[i] != m || spr_hide[i])
+			if (spr_hide[i])
 				continue;
 			if (skyon && spr_sky[i] == SKY_BEHIND)
 			{
@@ -3593,10 +3623,8 @@ void() Sprite_Draw =
 	  this line.
 	===========================================================================
 	*/
-	for (i = 0; i < spr_n; i = i + 1)
+	for (i = spr_drawhead[SPRMAT_MAX]; i >= 0; i = spr_drawnext[i])
 	{
-		if (spr_kind[i] != SPRK_GLOW)
-			continue;
 		if (skyon && spr_sky[i] == SKY_BEHIND)
 		{
 			skyhid = skyhid + 1;

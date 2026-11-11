@@ -21,6 +21,9 @@
 
 ## next
 
+### P1507 Less sprite work on busy maps
+- Sprites and light glows skip unnecessary per-frame checks on maps like surf_fairy, keeping their original appearance and drawing order.
+
 ### P1504 Steadier frames on maps with many light glows
 - Light glows now stay within their per-frame time budget, so the slowest frames on glow-heavy maps like surf_fairy are a little shorter.
 

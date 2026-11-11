@@ -6156,6 +6156,17 @@ Commands, both-platform controls, findings and remaining gates: tools/p707sitepa
 
 ## Run and test
 
+### Replay benchmark acceptance (P1507 continuation, 11 Nov 2026)
+
+Replay IDs are global: a successful `replay online <id>` open can be a different
+map, then stop at the next frame. Require live `replay status` map/path and clock
+advancement, not an `opened` substring or dump markers alone. `replay seek` uses
+seconds; `waitms` uses milliseconds. conbridge `send --wait` returns a marker
+match, NOT the intervening QC output; read the actual client log after that
+barrier (or use the log command). The failed wrong-map/static-spawn diagnostic
+and marker-parser refusal are retained in tools/p1507-sprite-drawlists.md;
+neither was accepted as replay performance evidence.
+
 - **SQLite refusal controls on Python3.10 (10 Nov 2026).** Initialize only the
   fixture's empty collector schema before refusing owner setup. Do not assume
   `conn.set_authorizer(None)` removes a test authorizer on3.10: the subsequent
