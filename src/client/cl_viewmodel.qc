@@ -2,6 +2,9 @@
    context. Never write watched values into the observer's preferences. */
 #define VM_FOVPROPERTY 227
 float() WP_LocalZoom;
+void() WP_RestoreKnife;
+void(float saved_enabled) WP_AccountKnifeReady;
+float wp_restoreknife;
 float vm_active, vm_target, vm_serial, vm_capfov, vm_fovwarned;
 float *vm_values;
 string vm_watchraw, vm_own, vm_sent, vm_notice;
@@ -148,7 +151,7 @@ void(string action) VM_ProfileAction =
 float() VM_ConsoleCommand =
 {
 	local string command, action, data, who, current;
-	local float generation, revision;
+	local float generation, revision, saved_enabled;
 	command = argv(0);
 	if (!strcmp(command, "viewmodel_setup"))
 	{
@@ -195,6 +198,7 @@ float() VM_ConsoleCommand =
 	if (!strcmp(action, "load") || !strcmp(action, "none"))
 	{
 		if (!vm_loading) return TRUE;
+		saved_enabled = FALSE;
 		current = VM_OwnSetup();
 		if (!strcmp(action, "load"))
 		{
@@ -208,6 +212,8 @@ float() VM_ConsoleCommand =
 			if (!vm_loadkeep && !strcmp(current, vm_before))
 			{
 				VM_ApplyOwn(data);
+				// Migrate a saved enabled row, never initialized local defaults.
+				saved_enabled = (revision > 0 && VM_Get(data, VM_ENABLED));
 				current = VM_OwnSetup();
 				vm_unsaved = FALSE;
 				VM_RememberOwn(current);
@@ -220,6 +226,8 @@ float() VM_ConsoleCommand =
 		else VM_Notice("No account setup yet; saving your current setup.");
 		vm_loading = FALSE;
 		localcmd(sprintf("cmd vm_profile ack %.0f \"%s\"\n", generation, current));
+		// Ordered after the ACK: never equip the pre-restore default combo.
+		WP_AccountKnifeReady(saved_enabled);
 		return TRUE;
 	}
 	if (!strcmp(action, "saved"))
@@ -245,6 +253,7 @@ void() VM_Frame =
 	target = -1;
 	vm_active = FALSE;
 	VM_PollOwn();
+	WP_RestoreKnife();
 	if (vm_capfov) setproperty(VM_FOVPROPERTY, 0);
 	st = getstatf(STAT_FS_SPEC);
 	if (!rec_gh_on && !rec_wt_on && !rec_wt_open && !rw_on && cvar("cl_spec_viewweapon"))

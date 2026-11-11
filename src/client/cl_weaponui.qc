@@ -286,7 +286,10 @@ void(vector scr) WPU_Draw =
 		if (i == 2) text = "Web";
 		if (i == 3) text = "Marble";
 		if (Profile_Chip(sprintf("wpu_finish%g", i), at + [i * (width + 6) / 4, 0, 0], [(width - 18) / 4, row, 0], text, tsz, style == i))
+		{
 			cvar_set("cl_knife_finish", ftos(i));
+			WP_EquipKnife();
+		}
 	}
 	at_y = at_y + tsz * 2.5;
 	WPU_Slider("wpu_seed", "Pattern seed", at, width, floor(cvar("cl_knife_seed")), '0 1000 1000', WPU_Seed, tsz);
@@ -301,7 +304,7 @@ void(vector scr) WPU_Draw =
 	at_y = at_y + tsz * 2.7;
 	if (Profile_Chip("wpu_inspect", at, [(width - 12) / 3, row, 0], "Inspect", tsz, FALSE)) WP_Inspect();
 	if (Profile_Chip("wpu_random", at + [(width + 6) / 3, 0, 0], [(width - 12) / 3, row, 0], "Random seed", tsz, FALSE)) WPU_Seed(floor(random() * 1001));
-	if (Profile_Chip("wpu_drop", at + [(width + 6) * 2 / 3, 0, 0], [(width - 12) / 3, row, 0], "Drop", tsz, FALSE)) localcmd("cmd weapon_drop\n");
+	if (Profile_Chip("wpu_drop", at + [(width + 6) * 2 / 3, 0, 0], [(width - 12) / 3, row, 0], "Drop", tsz, FALSE)) WP_Drop();
 	at_y = at_y + tsz * 2.7;
 	if (Profile_Chip("wpu_mount", at, [width, row, 0], "Mount installed CS:GO Legacy", tsz, FALSE)) WP_MountKnifeContent(-1);
 	sui_tooltip_for("wpu_mount", "Session-only installed assets; also requested automatically when selecting a Legacy knife. No download.", sc);
@@ -334,7 +337,7 @@ void(vector scr) WPU_Draw =
 			text = WPU_OptionLabel(option);
 			if (WPU_ChoiceChip(sprintf("wpu_option%g_%g", wpu_drop, start + i), pop + [4, 4 + row * i, 0], [box_x - 8, row, 0], text, tsz, selected == option))
 			{
-				if (option == -1) cvar_set("cl_knife_arms", "0");
+				if (option == -1) { cvar_set("cl_knife_arms", "0"); WP_EquipKnife(); }
 				else WP_ChooseKnife(option);
 				wpu_drop = 0;
 				break;

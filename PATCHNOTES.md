@@ -21,6 +21,10 @@
 
 ## next
 
+### P1495 Remember the equipped knife
+- Your linked knife setup can equip again on a new map after it has loaded. Drop keeps it off until you choose a knife again.
+- Late setup/content replies no longer override a newer Drop or weapon choice; a newly mounted missing model can retry loading.
+
 ### P1494 Ordered save loads and resets
 - A reset during a held saveloc load now stays in command order, preventing an older delayed load from taking over again.
 - Clearing that hold also clears its local camera preview; recovery from a lost reset cannot release a newer rewind countdown.

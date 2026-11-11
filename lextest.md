@@ -1,5 +1,9 @@
 # lextest.md — things waiting on a human
 
+## P1495 remembered knife / black skin — owner check PENDING
+- With a linked saved enabled combo, change map: equip should return only after setup is ready. Drop, then change map: stay unarmed until choosing a knife again. A newer gun/Drop must win even if a delayed setup/content reply arrives. Opt-out is local per install; combo remains cloud-linked.
+- Give the same knife/finish/hands/sleeve before and after a map change; please report the exact affected combo for the black case. No shader/renderer/lightmap change or actual visual/performance pass: existing shared rate-limited lighting stays unchanged. Do not claim all combinations render identically or the reported black skin fixed.
+
 ## P1494 repeated reset/saveloc camera — owner check PENDING
 - At the reported high ping, hold a saveloc load, press reset/restart, release, then make a fresh load/release. The final accepted action should win without the old view/hold returning. Also check a rewind-go countdown survives after a reset. Please send the video and exact bound command if the camera still fights.
 - Production QC control-flow tests cover normal100/0 and rewind36/0 with causal red controls; command/stat services are explicit doubles. No actual300ms socket/UpdateView/camera-feel acceptance yet: shared graphics benchmark interval was unavailable. This does not claim all checkpoint movement reports fixed.

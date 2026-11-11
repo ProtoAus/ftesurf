@@ -24,6 +24,53 @@ float wp_vmserial, wp_wasmirror, wp_ownzoom, wp_restorezoom;
 void() WP_Inspect;
 float() WP_LocalZoom = { return wp_zoom; };
 
+// Local equip intent is separate from cloud cosmetics and draw visibility.
+// -1 migrates only a saved, enabled account setup; 0 is an explicit Drop.
+float wp_restoreat, wp_explicitchoice, wp_modelmissing;
+int wp_choiceepoch;
+void() WP_CancelKnifeChoice =
+{
+	wp_choiceepoch += 1i;
+	wp_explicitchoice = TRUE;
+	wp_restoreknife = FALSE;
+};
+
+void() WP_EquipKnife =
+{
+	WP_CancelKnifeChoice();
+	cvar_set("cl_knife_equipped", "1");
+	wp_restoreknife = TRUE;
+};
+
+void(float saved_enabled) WP_AccountKnifeReady =
+{
+	// A late profile reply cannot supersede this map's explicit weapon choice.
+	if (wp_explicitchoice) return;
+	if (cvar("cl_knife_equipped") < 0 && saved_enabled)
+		cvar_set("cl_knife_equipped", "1");
+	wp_restoreknife = (cvar("cl_knife_equipped") == 1);
+};
+
+void() WP_Drop =
+{
+	WP_CancelKnifeChoice();
+	cvar_set("cl_knife_equipped", "0");
+	wp_restoreknife = FALSE;
+	localcmd("cmd weapon_drop\n");
+};
+
+void() WP_RestoreKnife =
+{
+	if (!wp_restoreknife || cvar("cl_knife_equipped") != 1) return;
+	if (strcmp(serverkey("*vmsetup"), "1")) return;
+	if (!LT_StatsAreMine() || getstatf(STAT_HEALTH) <= 0) return;
+	// A server-selected weapon proves the request acted. Do not replace a gun.
+	if (getstatf(STAT_VM_WEAPON)) { wp_restoreknife = FALSE; return; }
+	if (time < wp_restoreat) return;
+	localcmd("cmd weapon knife\n");
+	wp_restoreat = time + 1;
+};
+
 void() WP_Register =
 {
 	KCAT_Register();
@@ -34,6 +81,7 @@ void() WP_Register =
 	registercvar("cl_weapon_sfx", "1", CVAR_ARCHIVE);
 	registercvar("cl_weapon_muzzleflash", "1", CVAR_ARCHIVE);
 	registercvar("cl_knife_model", "0", CVAR_ARCHIVE);
+	registercvar("cl_knife_equipped", "-1", CVAR_ARCHIVE);
 	registercommand("butterfly"); registercommand("m9"); registercommand("knife_css"); registercommand("inspect");
 	registercommand("knife_mount_done");
 	// Existing independent projection, not a scale hack or a change to world FOV.
@@ -617,6 +665,7 @@ void() WP_Frame =
 		wp_kick = wp_kickvel = wp_burstleft = 0;
 		wp_sequence = seq;
 		wp_ready = FALSE;
+		wp_modelmissing = FALSE;
 		if (strcmp(wp_model, "")) strunzone(wp_model);
 		wp_model = strzone(mdl);
 		if (w == FS_WEAPON_KNIFE && KCAT_Knife() > 0)
@@ -624,8 +673,9 @@ void() WP_Frame =
 			file = fopen(wp_model, FILE_READ);
 			if (file < 0)
 			{
-				if (VM_IsMirroring()) WP_MountKnifeContent(-1);
-				else WP_MountKnifeContent(KCAT_Knife());
+				// Content readiness is not a new explicit cosmetic/equip choice.
+				wp_modelmissing = TRUE;
+				WP_MountKnifeContent(-1);
 				return;
 			}
 			fclose(file);
@@ -753,6 +803,23 @@ void() WP_Inspect =
 	}
 };
 
+void() WP_RetryMountedKnife =
+{
+	local float file;
+	if (!wp_modelmissing || wp_ready || wp_weapon != FS_WEAPON_KNIFE) return;
+	if (VM_Weapon() != FS_WEAPON_KNIFE) return;
+	if (!VM_IsMirroring())
+		if (cvar("cl_knife_equipped") == 0) return;
+	if (!strcmp(wp_model, "") || strcmp(wp_model, WP_Model(FS_WEAPON_KNIFE))) return;
+	// Only the current missing file becoming available may reopen the load cache.
+	file = fopen(wp_model, FILE_READ);
+	if (file < 0) return;
+	fclose(file);
+	strunzone(wp_model);
+	wp_model = "";
+	wp_modelmissing = FALSE;
+};
+
 void(float kind) WP_MountKnifeContent =
 {
 	// The native action accepts no path and never changes saved mounts.
@@ -760,7 +827,7 @@ void(float kind) WP_MountKnifeContent =
 	{
 		// The first synchronous native mount is already ahead in this queue.
 		// Preserve later choices/order instead of silently swallowing a click.
-		localcmd(sprintf("knife_mount_done %g\n", kind));
+		localcmd(sprintf("knife_mount_done %g %i\n", kind, wp_choiceepoch));
 		return;
 	}
 	wp_mountnext = time + 5;
@@ -770,7 +837,7 @@ void(float kind) WP_MountKnifeContent =
 		return;
 	}
 	print("Knife workshop: requesting installed Legacy assets...\n");
-	localcmd(sprintf("fs_knife_mount\nknife_mount_done %g\n", kind));
+	localcmd(sprintf("fs_knife_mount\nknife_mount_done %g %i\n", kind, wp_choiceepoch));
 };
 
 void(float kind) WP_ChooseKnifeReady =
@@ -808,6 +875,7 @@ void(float kind) WP_ChooseKnifeReady =
 		if (frame < 0) { print("Knife workshop: model is unsupported by this client; selection unchanged\n"); return; }
 	}
 	KCAT_ApplyChoice(kind);
+	WP_EquipKnife();
 	if (kind >= (float)KCAT_ARMS) return;
 	// Retry a previously missing model after an explicit operator mount.
 	if (strcmp(wp_model, "")) strunzone(wp_model);
@@ -817,12 +885,19 @@ void(float kind) WP_ChooseKnifeReady =
 	localcmd("cmd weapon knife\n");
 };
 
+void(float kind, int epoch) WP_CompleteKnifeChoice =
+{
+	if (epoch != wp_choiceepoch) return;
+	WP_ChooseKnifeReady(kind);
+};
+
 void(float kind) WP_ChooseKnife =
 {
 	if (!KCAT_Valid(kind)) { print("Knife workshop: invalid catalog choice\n"); return; }
 	// Use the same command queue for warm and cold choices. A later CSS/hand
 	// choice must not be overwritten by an earlier queued mount completion.
-	if (KCAT_Available(kind)) localcmd(sprintf("knife_mount_done %g\n", kind));
+	WP_CancelKnifeChoice();
+	if (KCAT_Available(kind)) localcmd(sprintf("knife_mount_done %g %i\n", kind, wp_choiceepoch));
 	else WP_MountKnifeContent(kind);
 };
 
@@ -836,9 +911,14 @@ float() WP_Command =
 	cmd = argv(0);
 	if (!strcmp(cmd, "knife_mount_done"))
 	{
-		if (stof(argv(1)) >= 0) WP_ChooseKnifeReady(stof(argv(1)));
+		if (stof(argv(1)) >= 0)
+		{
+			if (!strcmp(argv(2), "") || strcmp(argv(3), "")) return TRUE;
+			WP_CompleteKnifeChoice(stof(argv(1)), stoi(argv(2)));
+		}
 		else
 		{
+			WP_RetryMountedKnife();
 			f = fopen("models/weapons/v_knife_butterfly.mdl", FILE_READ);
 			if (f >= 0) { fclose(f); print("Knife workshop: installed Legacy assets ready for this session.\n"); }
 			else print("Knife workshop: Legacy content unavailable; install it and use the updated client.\n");
@@ -849,7 +929,7 @@ float() WP_Command =
 	if (!strcmp(cmd, "butterfly")) { WP_ChooseKnife(1); return TRUE; }
 	if (!strcmp(cmd, "m9")) { WP_ChooseKnife(2); return TRUE; }
 	if (!strcmp(cmd, "knife_css")) { WP_ChooseKnife(0); return TRUE; }
-	if (!strcmp(cmd, "drop")) { localcmd("cmd weapon_drop\n"); return TRUE; }
+	if (!strcmp(cmd, "drop")) { WP_Drop(); return TRUE; }
 	if (!strcmp(cmd, "weapon_info"))
 	{
 		if (!strcmp(argv(1), "refresh")) wp_weapon = 0;
@@ -921,6 +1001,9 @@ float() WP_Command =
 		print("surf_weapon knife|usp|scout|glock (or give weapon_glock / give scout)\n");
 		return TRUE;
 	}
+	WP_CancelKnifeChoice();
+	if (w == FS_WEAPON_KNIFE) WP_EquipKnife();
+	wp_restoreknife = FALSE;
 	cvar_set("cl_viewweapon", "1");
 	localcmd(sprintf("cmd weapon %g\n", w));
 	return TRUE;

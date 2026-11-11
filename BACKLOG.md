@@ -1,5 +1,7 @@
 # BACKLOG.md
 
+- Knife skin black after map change (11 Nov, cl_weapon/cl_viewmodel material/model lifetime): equip intent/cold missing-model retry P1495 is verified only by source-bound helpers; no black-render root reproduced. Need exact knife+finish+hands+sleeve and small owner before/after-map observation or coordinated quiet graphics interval. Falsifier: same combo/material selection and shared light cache across map change, actual pixels/state and representative material families; do not add per-frame lightmap work or infer a visual/performance pass from compile success.
+
 - bhop_bunnyrace checkpoint position/movement (11 Nov): no reproduced checkpoint-body root. Actual checkpoint callback writes stats/receipt, not body; authored teleports nearby already preserve velocity by default. Falsifier: exact first crossing/video on the known build, body position/velocity immediately before/after, with saveloc idle vs held/repeated at high ping. Distinguish checkpoint callback from nearby authored teleport and save/reset prediction; do not remove teleports or invent a velocity fix.
 - kz_bhop_avantura online platform resets (11 Nov): P1492 corrects retained previous-block lifecycle in non-lobby mode only; the lobby's per-player branch was already different and unchanged. Falsifier: same exact BSP and A-air-B-air-A route under lobby and local settings, including LandingLimit1 vs repeated A and ordinary ground. Keep any remaining online reset report separate from the verified local counter fix.
 
