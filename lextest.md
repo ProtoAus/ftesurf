@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1497/P1499 sky-test back-off, mouse-pad trail -- 12 lobbies + both installs (cs 4e593c7e) 11 Nov; owner check PENDING
+- Maps with light shafts or sprites near the sky (surf_eternity's spotlight shafts, or surf_fairy with
+  `vbsp_sprites 1`): a shaft or sprite should still vanish behind the skybox wall. It may now show through for a
+  moment (well under a tenth of a second) when you fly past the sky's edge; `vbsp_sprite_skyhold 16` is the old
+  behaviour to compare. The mouse pad (bottom right) should look exactly as before.
+
 P1492–P1495 are deployed to both Windows installs and all12lobbies (11 Nov;
 tools/playerfix-20261111-delivery.md). The following visual/feel checks remain
 PENDING: rollout/hash/control-flow proof does not turn them into human passes.

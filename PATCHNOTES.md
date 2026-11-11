@@ -21,6 +21,12 @@
 
 ## next
 
+### P1499 Cheaper mouse-pad trail
+- The mouse-pad display draws its trail with less work and looks exactly the same.
+
+### P1497 Steadier frames on maps with many sprites and light shafts
+- The check that hides sprites and light shafts behind the sky re-checks the ones that have not changed less often, so maps full of them spend less time on it (surf_fairy about 0.25 ms less a frame). `vbsp_sprite_skyhold 16` checks as often as before.
+
 ### P1496 Public bhop library imports
 - Map acquisition recognizes Momentum's native HL1-bhop category even when the filename does not begin with bhop_. This does not switch the current movement model.
 - New map and screenshot publication excludes private or unqualified testing entries, including retained offline catalogues.

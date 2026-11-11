@@ -5,6 +5,17 @@
 - bhop_bunnyrace checkpoint position/movement (11 Nov): no reproduced checkpoint-body root. Actual checkpoint callback writes stats/receipt, not body; authored teleports nearby already preserve velocity by default. Falsifier: exact first crossing/video on the known build, body position/velocity immediately before/after, with saveloc idle vs held/repeated at high ping. Distinguish checkpoint callback from nearby authored teleport and save/reset prediction; do not remove teleports or invent a velocity fix.
 - kz_bhop_avantura online platform resets (11 Nov): P1492 corrects retained previous-block lifecycle in non-lobby mode only; the lobby's per-player branch was already different and unchanged. Falsifier: same exact BSP and A-air-B-air-A route under lobby and local settings, including LandingLimit1 vs repeated A and ordinary ground. Keep any remaining online reset report separate from the verified local counter fix.
 
+## Game-code (CSQC) baseline -- after P1497/P1499 (11 Nov)
+
+- Unprofiled in-motion r_budget A/B (artifacts/abq.py in the lows2 root: one session, a board replay restarted per
+  variant, the 10-20 s window): surf_fairy at Lex's settings CSQC 1.37 ms of a 3.9 ms frame before; sky test 0.34,
+  mouse pad 0.15. profile_csqc (rank only, it inflates small calls) puts the replay viewer (MPad, Watch_*, Line_*)
+  at 0.4-0.5 ms -- replays only, but the survey measures replays, so its CSQC share overstates live play.
+- Left: HUD_Draw ~0.13 ms, _sui_round_draw ~0.08 (rounded panels), Fx_Draw ~0.10 on fairy (real arc work),
+  CSQC_PredictPlayerMove ~0.06 (live). No single item over 0.15 ms after these two.
+- P1497 trade: hold 128 is ~30% staler in the in-view verdict census than 16 (two sessions; run spread 16-104).
+  A smarter re-test (one that knows how near the occluding edge is) would get the saving without the staleness.
+
 ## Jargon courses -- leftovers of P1478 (11 Nov)
 
 - Site: SV_TASAutoLink board stretches (sv_tasautosurf.qc). surf_shape bonus 1 (KSF x, ksfmoves 0): stretch 1 boards ramp 1 350-375 u from the guide's point (board radius 800) and every stretch-2 candidate is cut within 3 ticks (a trigger), so the chain backtracks between them until its budget and both effort steps run out (rigs shape2/shape3). Falsifier: the same one-click start reaches stretch 3.
