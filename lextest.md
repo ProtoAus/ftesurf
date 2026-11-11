@@ -5,7 +5,7 @@
   longer, then the first seconds should have no stutter where props come into view (your dump had a 52.83 ms
   frame with a shader compile). Props should look exactly as before; `hl2_lt_prewarm 0` restores lazy prop loading.
 
-## P1483 Jargon search -- 12 lobbies + both installs 11 Nov (DELIVERY PENDING: hashes below when live)
+## P1483 Jargon search -- 12 lobbies + both installs 11 Nov ~20:05 local (cs 9b89f51e / qw dc411980, main 46264909)
 - surf_tensor2, Jargon, Course: Stage 2, "Surf Stage 2 from its start" with a stage-2 replay: it should end "finished
   stage 2 in 0:12.x" (bench: 0:12.825 and 0:12.330 against the replay's 12.570), sometimes after trying the finish
   again.

@@ -302,6 +302,10 @@ falls within ~14 ticks of it). NOT walls: an earlier note said wall rides; tools
 of the guide during those turns (Lex corrected it).
 
 Reviews D-K (two or three lenses each, then one per fix): every finding fixed or recorded; K on the last commits.
+Delivered 11 Nov ~20:05 local from main 46264909 (compiler b4741193, P1500's; 0 warnings): the 12 lobbies (build.ps1 -Pi from
+a clean worktree; one player on lobby 3 warned) and both installs, cs 9b89f51e / qw dc411980 (.prev 4e593c7e / 8379334d,
+.pre1483 the same pair; csprogsvers 6b36ad); tasrevd codes.txt 118 -> 119 (.pre1483). Deploy smoke on that build: stage 2
+finished 0:12.825 with 5 backtracks, the same as the reviewed branch.
 
 ## Next
 
