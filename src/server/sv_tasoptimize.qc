@@ -62,8 +62,8 @@
 #define TOPT_SAFER 300          // ...a line this near one of them is near the end
 float topt_een;
 vector topt_eemin[8], topt_eemax[8];
-.float topt_catch;
-.float topt_flick;              // `flick R`: the demo's launch row (from the stretch start): rows R-12..R+6 get the catch's room too              // `catch N`: the N demo rows before a board get 3x the correction range and a doubled command clamp
+.float topt_catch;              // `catch N`: the N demo rows before a board get 3x the correction range and a doubled command clamp
+.float topt_flick;              // `flick R`: the demo's launch row (from the stretch start): rows R-12..R+6 get the catch's room too
 .float topt_lookw;              // P1483 `lookw W`: the lookahead's weight for this search (0: TOPT_LOOKW)
 .float topt_startz, topt_startz2;             // P1483: the course's start box: a teleport landing there is a fall (`startz`, -1 none)
 .entity topt_cutent;            // P1483: the volume a rollout was cut at (topt_rollcut 1)
@@ -1231,7 +1231,7 @@ float(entity e, float ran) SV_TASOptLimit =
 {
 	local float tube;
 	e.topt_limwhy = 0;
-	if (e.topt_endsafe) return -1;      // the platform may lie off the guide's path (the portal's)
+	if (e.topt_endsafe) { e.topt_tubebk = -1; e.topt_tubebest = 1000000; return -1; }      // the platform may lie off the guide's path (the portal's)
 	tube = (e.topt_tube > 0 && e.topt_dn >= 1) ? SV_TASOptTubeIn(e, ran) : -1;
 	if (tube >= 0) { e.topt_limwhy = 1; return tube; }
 	return -1;
@@ -1465,6 +1465,7 @@ float(vector p) SV_TASOptEndNear =
 	{
 		mn = topt_eemin[k]; mx = topt_eemax[k];
 		q_x = bound(mn_x, p_x, mx_x); q_y = bound(mn_y, p_y, mx_y); q_z = bound(mn_z, p_z, mx_z);
+		if (p_z < mn_z) q_z = mn_z + 2 * (mn_z - p_z);     // under it counts triple: no reaching a platform from below (review L)
 		b = min(b, vlen(p - q));
 	}
 	return b;
@@ -1557,7 +1558,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		e.topt_cande = SV_TASOptStateScore(e, [topt_out[i], topt_out[i+1], topt_out[i+2]], [topt_out[i+3], topt_out[i+4], topt_out[i+5]]);
 		d = e.topt_cande - TOPT_WALLPEN * e.topt_candw - TOPT_WALLLOSS * e.topt_candwl - TOPT_GROUNDPEN * e.topt_candg;
 		if (endhit)     // P1483: the course is over: above every other reach, sooner all that counts (a tick 50, energy a hundredth)
-			return SV_TASOptBand(TOPT_REACH, 30000 + (e.topt_endsafe ? 0 : 50 * (TOPT_HMAX - bk - 1)) + 0.01 * e.topt_cande);     // safe: any finish alike
+			return SV_TASOptBand(TOPT_REACH, 30000 + (e.topt_endsafe ? 1 : 50) * (TOPT_HMAX - bk - 1) + 0.01 * e.topt_cande);     // safe: sooner a tiebreak only (review L)
 		if (!e.topt_edgeok)
 			for (eg = 1; eg <= bk; eg = eg + 1)          // its own counter: i is the reach's offset below (review)
 				if (SV_TASOptEdgeAt(eg, ran))
@@ -1639,6 +1640,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 	i = bk * 13;
 	d = TOPT_NEAR - best + SV_TASOptStateScore(e, [topt_out[i], topt_out[i+1], topt_out[i+2]], [topt_out[i+3], topt_out[i+4], topt_out[i+5]])
 		- TOPT_WALLPEN * e.topt_candw - TOPT_WALLLOSS * e.topt_candwl - TOPT_GROUNDPEN * e.topt_candg;
+	if (e.topt_endsafe) return d;       // safe: no tube to cut wanderers, so a near miss that fell keeps its credit (review L)
 	return (ran < e.topt_n || e.topt_rollcut == 1 || tx >= 0) ? d * 0.5 : d;
 };
 
@@ -2319,7 +2321,8 @@ void(entity e) SV_TASOptCurveNext =
 		}
 		u = (j >= e.topt_kn) ? TOPT_AIMR : ((e.topt_mode & 64) ? (e.topt_efol ? TOPT_DQOFF : TOPT_DOFF) : TOPT_QMAX);
 		if (e.topt_catch > 0 && j < e.topt_kn && (e.topt_mode & 64))
-		if (SV_TASOptKnotTick(e, j) >= e.topt_tgtj - e.topt_catch) u = 3 * u;     // the catch's knots
+		if (SV_TASOptKnotTick(e, j) >= e.topt_tgtj - e.topt_catch)
+		if (SV_TASOptKnotTick(e, j) <= e.topt_tgtj + 5) u = 3 * u;     // the catch's knots (bounded: review L)
 		if (e.topt_flick > 0 && j < e.topt_kn && (e.topt_mode & 64))
 		if (fabs(SV_TASOptKnotTick(e, j) - e.topt_flick) <= 12) u = 3 * u;        // the launch's knots
 		c = (e.topt_kidx >= TOPT_CEPOP - TOPT_CEWIDE) ? max(topt_ksig[j], SV_TASOptSig0(e, j)) : topt_ksig[j];   // the wide few
@@ -3119,7 +3122,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_bestr2 = -1; e.topt_bests = 0.5;
 	e.topt_mo = e.origin; e.topt_mv = e.velocity; e.topt_kwiden = 0;
 	e.topt_endz = (endz >= 0) ? endz : -1; e.topt_endtrack = (endtr >= 0) ? endtr : -1; e.topt_startz = (startz >= 0) ? startz : -1; e.topt_startz2 = (startz2 >= 0) ? startz2 : -1;
-	if (endsafe && (e.topt_endz >= 0 || e.topt_endtrack >= 0)) { e.topt_endsafe = 1; SV_TASOptEndWays(e); }
+	if (endsafe && (e.topt_endz >= 0 || e.topt_endtrack >= 0)) { e.topt_endsafe = 1; SV_TASOptSimStart(e); SV_TASOptEndWays(e); }
 	SV_TASOptSeed(e, max(0, seed), seed >= 0);
 	e.topt_playk = (playk >= 0) ? playk + 1 : 0;
 	if (!e.topt_playk) { topt_arcn = 0; topt_arcmo = e.origin; topt_arcmv = e.velocity; topt_arctgt = e.topt_tgt; topt_arckd = e.topt_kd; topt_arcnn = n; topt_arcmode = mode; }

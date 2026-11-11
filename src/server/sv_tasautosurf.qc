@@ -1170,7 +1170,7 @@ void(entity e) SV_TASAutoLink =
 	r = (as_wk[i] == 2) ? 50 : ((as_wk[i] == 3) ? 400 : ((as_wk[i] == 4 || as_wk[i] == 5) ? as_wr[i] : 800));
 	// opt-in (tas_jargon_near): "boarding nearer the guide's point" (rule 32) also tightens the board radius, 800 -> 400 -> 200;
 	// its low weight alone left boarding before or above the point free (surf_shape bonus 1 boards 350 u off, stretch 2 falls)
-	if (as_wk[i] == 1 && as_lowx[i] >= 2 && cvar("tas_jargon_near")) r = max(200, 1600 / as_lowx[i]);
+	if (as_wk[i] == 1 && as_lowx[i] >= 2 && cvar("tas_jargon_near")) r = max(200, 1200 / as_lowx[i]);     // 600, 300, 200
 	h = min(h, e.topt_dn);
 	}
 	if (n == '0 0 0') argc = tokenize(sprintf("tas target %.1f %.1f %.1f %.0f", o_x, o_y, o_z, r));
@@ -1201,12 +1201,12 @@ void(entity e) SV_TASAutoLink =
 		if (fz >= 0 && fz < zone_count) ps = strcat(ps, sprintf(" startz %.0f", fz));
 		if (fz != e.as_szone && e.as_szone >= 0 && e.as_szone < zone_count) ps = strcat(ps, sprintf(" startz2 %.0f", e.as_szone));
 	}
-	if (as_wk[i] == 5 && SV_TASAutoRule(1024)) ps = strcat(ps, " airdir");
+	if (as_wk[i] == 5 && SV_TASAutoRule(1024)) ps = strcat(ps, " airdir");     // an air point's way too (tas_jargon_off 1024: place only)
 	if (as_wk[i] == 3 && e.as_ctrack >= 0 && e.as_safe) ps = strcat(ps, " endsafe");
 	if (as_wk[i] == 1 && e.as_catch) ps = strcat(ps, " catch 25");     // the last 25 rows before a board
 	if (e.as_catch && i >= 1)       // and the launch off the ramp before (Lex: the height is the angle it leaves at, not speed)
 	if (as_wk[i - 1] == 1 && as_wl[i - 1] > e.as_tprev + PM_TICK)
-		ps = strcat(ps, sprintf(" flick %.0f", min(TOPT_HMAX, rint((as_wl[i - 1] - e.as_tprev) / PM_TICK))));     // an air point's way too (tas_jargon_off 1024: place only)
+		ps = strcat(ps, sprintf(" flick %.0f", min(TOPT_HMAX, rint((as_wl[i - 1] - e.as_tprev) / PM_TICK))));
 	if (cvar("tas_jargon_lookw") >= 0.0001 && cvar("tas_jargon_lookw") <= 1) ps = strcat(ps, sprintf(" lookw %.4f", cvar("tas_jargon_lookw")));     // P1483: bench (1e-05 would read as no number: review K)
 	if (as_wk[i] == 3 && e.as_ctrack >= 0)
 	{	// P1483: the course's end box, or its track's END boxes: a reach there (or into the teleport to it) is the finish
@@ -1606,11 +1606,16 @@ void(entity e) SV_TASAutoFrame =
 				sprint(e, PRINT_HIGH, strcat(sprintf("tas autosurf: start %.0f ph %.0f at %v %.0f u/s, ", e.as_sn, ph, e.origin, t),
 					sprintf("%.0f u short of the exit, %.0f u off the line, %.0f deg off it, side %.0f\n", along, lat, herr, e.as_sair)));
 			if (ph == 0 && t >= 283) ph = 1;
-			if (along < 60 && (fabs(lat) > 150 || fabs(herr) > 30) && e.as_sback < 2 && e.as_sn < e.as_sg)
+			if (along < 60 && (fabs(lat) > 150 || fabs(herr) > 30) && e.as_sn < e.as_sg && (e.as_sph == 4 || e.as_sback < 2))
 			{	// at the exit unaligned: the forced jump left surf_tensor2 stage 6 366 u and -59 deg off the guide's line and
-				// every stretch-1 line off its path (bench f1); back off and line up again, twice at most
-				e.as_sback = e.as_sback + 1; ph = 4;
-				SV_TASAutoNote(e, 1, sprintf("start: at the exit %.0f u and %.0f deg off the guide's line: backing off to line up again", lat, herr));
+				// every stretch-1 line off its path (bench f1); back off and line up again, twice at most -- counted once an
+				// approach, and no jump while backing off (a count a step spent both in 6 ticks: review L)
+				if (e.as_sph != 4)
+				{
+					e.as_sback = e.as_sback + 1;
+					SV_TASAutoNote(e, 1, sprintf("start: at the exit %.0f u and %.0f deg off the guide's line: backing off to line up again", lat, herr));
+				}
+				ph = 4;
 			}
 			else if ((ph >= 1 && ph != 4 && fabs(lat) < 100 && fabs(herr) < 10 && along >= 130 && along <= 220) || along < 60 || e.as_sn >= e.as_sg)
 			{
