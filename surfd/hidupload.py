@@ -25,7 +25,31 @@ HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 HEX128 = re.compile(r"[0-9a-f]{128}\Z")
 
 
+def _run_budget(setting):
+    """No guessed policy: both explicit integer settings, or legacy admission."""
+    values = [setting(name) for name in ("SURFD_HID_BASE_BYTES", "SURFD_HID_BYTES_PER_TICK")]
+    if values == [None, None]:
+        return None
+    if any(not isinstance(value, str) or not re.fullmatch(r"0|[1-9][0-9]{0,7}", value)
+           for value in values):
+        raise ValueError("invalid journal run budget configuration")
+    base, rate = map(int, values)
+    if base > MAX_JOURNAL or not 0 < rate <= MAX_JOURNAL:
+        raise ValueError("invalid journal run budget configuration")
+    return base, rate
+
+
+def _run_byte_limit(budget, ticks):
+    if budget is None:
+        return MAX_JOURNAL
+    # Same positive integral signed finish clock; never infer wall/parked time.
+    if not isinstance(ticks, str) or not re.fullmatch(r"[1-9][0-9]{0,10}", ticks):
+        return None
+    return min(MAX_JOURNAL, budget[0] + int(ticks) * budget[1])
+
+
 def register(app, env, tools=None):
+    run_budget = _run_budget(getattr(env, "setting", os.environ.get))
     # Flask <3.1 has no per-request max_content_length setter. A scoped
     # request subclass also keeps the existing 16 KiB ceiling on other APIs.
     base_request = app.request_class
@@ -100,6 +124,11 @@ def register(app, env, tools=None):
                     or rcptcheck.signed_get(receipt, "nonce") != nonce
                     or rcptcheck.signed_get(receipt, "hid") != "%s %s 1" % (digest, length)):
                 return env.fail("journal does not match its receipt", 403)
+            allowance = _run_byte_limit(run_budget, rcptcheck.signed_get(receipt, "ticks"))
+            if allowance is None:
+                return env.fail("journal run budget unavailable", 503)
+            if size > allowance:
+                return env.fail("journal exceeds configured run budget", 413)
             fd, temp = tempfile.mkstemp(prefix=".hid-", suffix=".part", dir=directory)
             remaining = size
             measured = hashlib.sha256()
