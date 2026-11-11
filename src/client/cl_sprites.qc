@@ -264,6 +264,7 @@ float  spr_skycarry;                    // P1422: the fraction of a ray left fro
 float  spr_glowext;                     // P1422: the largest glow's half-diagonal at GLOW_OVERLAYDIST
 vector *spr_skyat;                      // P1242: the eye each sprite then beam was last traced from
 float *spr_skythr;                      // P1497: how far the eye may move before it is traced again
+// both: sprite i at i, beam j at SPR_MAX + j (P1497 review: beams at spr_n + j read a neighbour's when spr_n grew)
 float  spr_skysolidgen, spr_skysolidseen; // P1242: bumped by cl_portal.qc when a door's collision changes
 float  spr_skyhid;                      // skipped last frame (vbsp_sprite_debug)
 
@@ -2994,11 +2995,11 @@ void(vector eye) Sprite_SkyTick =
 {
 	local float i, k, n, rays, look, st, nst, tanx, maxdist, slope, glowcos, zc, burst, hold;
 	local vector d, fwd;
-	local float k2;
+	local float k2, slot;
 
 	n = spr_n + beam_n;
 	burst = FALSE;
-	hold = max(16, cvar("vbsp_sprite_skyhold"));	// P1497
+	hold = bound(16, cvar("vbsp_sprite_skyhold"), 256);	// P1497; under the 256-unit jump, so a jump retests all
 	if (vlen(eye - spr_skyeye) > 256)
 		spr_skyburst = n;
 	spr_skyeye = eye;
@@ -3026,7 +3027,7 @@ void(vector eye) Sprite_SkyTick =
 	{
 		spr_skysolidseen = spr_skysolidgen;
 		for (k = 0; k < n; k = k + 1)
-			spr_skyat[k] = '1000000 1000000 1000000';   // far from any eye
+			spr_skyat[(k < spr_n) ? k : SPR_MAX + k - spr_n] = '1000000 1000000 1000000';   // far from any eye
 		spr_skyburst = n;
 		rays = rays * 4;
 	}
@@ -3037,6 +3038,7 @@ void(vector eye) Sprite_SkyTick =
 			spr_skynext = 0;
 		i = spr_skynext;
 		spr_skynext = spr_skynext + 1;
+		slot = (i < spr_n) ? i : SPR_MAX + i - spr_n;
 		if (i < spr_n)
 			st = spr_sky[i];
 		else
@@ -3045,8 +3047,8 @@ void(vector eye) Sprite_SkyTick =
 			continue;
 		if (st != SKY_UNTESTED)
 		{
-			d = eye - spr_skyat[i];
-			k2 = min(spr_skythr[i], hold);
+			d = eye - spr_skyat[slot];
+			k2 = min(spr_skythr[slot], hold);
 			if (d * d < k2 * k2)
 				continue;
 		}
@@ -3080,7 +3082,7 @@ void(vector eye) Sprite_SkyTick =
 			spr_tcaps = spr_tcaps + 1;
 			break;
 		}
-		spr_skyat[i] = eye;
+		spr_skyat[slot] = eye;
 		rays = rays - 1;
 		if (i < spr_n)
 		{
@@ -3093,18 +3095,18 @@ void(vector eye) Sprite_SkyTick =
 			beam_sky[i - spr_n] = nst = Sprite_SkyTest(eye, d, st);
 		}
 		if (nst == st)	// P1497
-			spr_skythr[i] = min(spr_skythr[i] * 2, hold, max(16, vlen(d - eye) / 32));
+			spr_skythr[slot] = min(spr_skythr[slot] * 2, hold, max(16, vlen(d - eye) / 32));
 		else
-			spr_skythr[i] = 16;
+			spr_skythr[slot] = 16;
 	}
 };
 
 // P1422 vbsp_sprite_debug: the sprites within 30 degrees of the view axis (on screen whatever the view test says):
-// how many are hidden behind the sky, how many verdicts were traced 16+ units from this eye (or never), and how many
+// how many are hidden behind the sky, how many verdicts were traced past their hold from this eye (or never), and how many
 // a fresh trace contradicts on drawn-or-hidden. Settled, the last must be 0 with the cull on and off.
 string(vector eye, vector fwd) Sprite_SkyAxisCensus =
 {
-	local float i, n, behind, stale, wrong, st;
+	local float i, n, behind, stale, wrong, st, hd;
 	local vector d;
 	n = 0;
 	behind = 0;
@@ -3128,7 +3130,8 @@ string(vector eye, vector fwd) Sprite_SkyAxisCensus =
 		else
 		{
 			d = eye - spr_skyat[i];
-			if (d * d >= spr_skythr[i] * spr_skythr[i])
+			hd = min(spr_skythr[i], bound(16, cvar("vbsp_sprite_skyhold"), 256));
+			if (d * d >= hd * hd)
 				stale = stale + 1;
 		}
 		if ((Sprite_SkyTest(eye, spr_org[i], st) == SKY_BEHIND) != (st == SKY_BEHIND))
