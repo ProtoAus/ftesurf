@@ -584,6 +584,7 @@ void() Rewind_Answer =
 		}
 		return;
 	}
+	WarpOp_HoldAdopt(); // the accepted go owns its hold/countdown (or TAS pause)
 	if (rw_tas)
 	{
 		// Server completed pin/load/native-restore/re-pause in one command.

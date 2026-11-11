@@ -63,6 +63,8 @@ vector wop_x_holdvel;             // actual held row, which can differ from a re
 string wop_x_src, wop_x_cur;
 vector wop_x_org[4], wop_x_ang[4], wop_x_vel[4]; // +2,-2,+3,-3 from the same C snapshot
 float  wop_relat;
+// A reset cancels local camera ownership, not the obligation to free an old hold.
+float  wop_resetq, wop_resetseq, wop_resetat, wop_resetheld;
 
 // Patch 759: STAT_FS_WOPLEGS parsed -- stage N at N - 1, bonus N at WOP_STAGES + N - 1.
 #define WOP_LEGS 46
@@ -259,6 +261,7 @@ float(float op, vector org, vector vel, vector ang, float duck) WarpOp_Queue =
 #define WOPP_BLINDLOAD 3            // a blind load: its row's speed is not known here
 #define WOPP_HOLDROW   4            // a pending load/step not known to be rate-refused
 #define WOPP_STEP      5            // P1384: a pending step (a load leaves the cursor where it is)
+#define WOPP_RESET     6            // an ordered reset will release the preceding hold
 
 // An unanswered op of the kind asked about.
 float(float what) WarpOp_Pending =
@@ -273,6 +276,8 @@ float(float what) WarpOp_Pending =
 			continue;
 		op = wop_op[i];
 		if (what == WOPP_MOVE && op != WOP_RELEASE)
+			return TRUE;
+		if (what == WOPP_RESET && (op == WOP_RESET || op == WOP_SPAWN || op >= WOP_STAGE1))
 			return TRUE;
 		if (what == WOPP_LIST && (op == WOP_LOAD || (op >= WOP_NEXT && op <= WOP_LAST)))
 			return TRUE;
@@ -472,8 +477,8 @@ float(float op) WarpOp_ResetTry =
 
 	if (!WarpOp_Able())
 		return FALSE;
-	wop_why = "a save hold or trail request is busy";
-	if (rec_sl_holding || Trail_RequestBusy())
+	wop_why = "a trail request is busy";
+	if (Trail_RequestBusy())
 		return FALSE;
 	SaveLoc_Resync();
 	wop_why = "a save command is in flight";
@@ -504,7 +509,7 @@ float(float op) WarpOp_ResetTry =
 	ang_z = (ang_z == WOPD_ANG);
 	// Patch 759: any op still unanswered can move the leg or restore the run state
 	// `!r`'s published destination was read from: sent in order, unpredicted.
-	blind = (op == WOP_RESET && WarpOp_Pending(WOPP_MOVE));
+	blind = (rec_sl_holding || (op == WOP_RESET && WarpOp_Pending(WOPP_MOVE)));
 	if (blind)
 		ang_z = 0;
 	wop_why = "the op queue is full";
@@ -512,6 +517,16 @@ float(float op) WarpOp_ResetTry =
 		return FALSE;
 	if (blind)
 		wop_blind[wop_slot] = WOPB_BLIND;
+	// Keep an earlier load and this reset on the same ordered usercmd stream.
+	// A reliable fallback can run before that load, putting the hold back again.
+	if (rec_sl_holding || getstatf(STAT_FS_HOLD) || wop_resetq || wop_relseq)
+	{
+		wop_resetq = wop_q[wop_slot];
+		wop_resetseq = -1;
+		wop_resetat = 0;
+	}
+	SaveLoc_ResetHold();
+	wop_relseq = wop_relat = 0; // the reset now owns the old hold's release obligation
 	return TRUE;
 };
 
@@ -526,6 +541,12 @@ float(float op) WarpOp_Reset =
 };
 
 // The load key's sl_load + sl_hold.  Same gates as SaveLoc_PredictLoad's camera.
+// The new owner, not an earlier reset, now decides when its hold is released.
+void() WarpOp_HoldAdopt =
+{
+	wop_resetq = wop_resetseq = wop_resetat = 0;
+};
+
 float() WarpOp_Load =
 {
 	local float relpending, blind, charged;
@@ -533,11 +554,13 @@ float() WarpOp_Load =
 	// A release still in flight is ordered before this load (both ride commands);
 	// otherwise a hold the server still reports is not ours to stack on.
 	relpending = (wop_relseq != 0);
+	WarpOp_HoldAdopt(); // a newer load owns any subsequent hold
 	wop_relseq = 0;                     // a new hold: the last release's backstop is moot
 	wop_loadpred = FALSE;
 	if (!WarpOp_Able() || Trail_RequestBusy())
 		return FALSE;
-	if (getstatf(STAT_FS_HOLD) && !relpending)
+	// A pending reset also releases the old hold, before this load's command.
+	if (getstatf(STAT_FS_HOLD) && !relpending && !WarpOp_Pending(WOPP_RESET))
 		return FALSE;
 	SaveLoc_Resync();
 	if (rec_sl_sent != getstatf(STAT_FS_SLACK))
@@ -674,6 +697,7 @@ void() WarpOp_PracticeReturnCancel =
 		for (i = 0; i < WOP_RING; i = i + 1)
 			wop_seq[i] = 0;
 	wop_qn = wop_loadseq = wop_loadackat = wop_relseq = wop_relat = 0;
+	wop_resetq = wop_resetseq = wop_resetat = 0;
 	wop_rellast = wop_loadlast = 0;
 	wop_heldmode = 0;
 	wop_loadvel = '0 0 0';
@@ -687,6 +711,47 @@ void() WarpOp_PracticeReturnCancel =
 	rec_sl_leadans = rec_sl_leadhad = 0;    // P1384
 	rec_sl_holdack = rec_sl_holdackat = 0;
 	Trail_RequestReset();          // do not dispatch an old deferred save/load
+};
+
+// WOP ACK means dispatched, not reset success; a lost/nondecoded reset has no ACK.
+// Wait past its command and let the coherent hold snapshot and numeric stat settle.
+void() WarpOp_ResetReleaseFrame =
+{
+	local float held;
+	if (!wop_resetq || wop_resetseq < 0)
+		return;
+	// A go may create a newer hold before its split load event arrives. Keep
+	// recovery on refusal, but never release while that handoff is unresolved.
+	if (Rewind_Waiting())
+	{
+		wop_resetat = 0;
+		return;
+	}
+	if (servercommandframe <= wop_resetseq)
+	{
+		wop_resetat = 0;
+		return;
+	}
+	held = getstatf(STAT_FS_HOLD) ? 1 : 0;
+	if (wop_x_ok)
+	if (held != wop_x_held)
+	{
+		wop_resetat = 0;
+		return;
+	}
+	if (!wop_resetat || held != wop_resetheld || cltime < wop_resetat)
+	{
+		wop_resetat = cltime;
+		wop_resetheld = held;
+		return;
+	}
+	if (cltime - wop_resetat <= 0.3)
+		return;
+	// Free stats without this reset's ACK can still precede an older load.
+	// A delayed holdoff is safe now; a newer load cancels this obligation.
+	if (held || WarpOp_Ack() < wop_resetseq)
+		SaveLoc_Cmd("sl_holdoff");
+	wop_resetq = wop_resetseq = wop_resetat = 0;
 };
 
 /*
@@ -725,6 +790,13 @@ void() WarpOp_Frame =
 				break;
 			{
 				op = wop_op[j];
+				if (wop_resetq && wop_q[j] == wop_resetq)
+				{
+					// The reliable expiry fallback may also refuse. Older input must
+					// finish before a holdoff can safely follow that fallback.
+					wop_resetseq = clientcommandframe;
+					wop_resetat = 0;
+				}
 				wop_seq[j] = 0;
 				PE_Expect("a reset sent unpredicted");     // P1238
 				if (op == WOP_RESET)
@@ -751,6 +823,7 @@ void() WarpOp_Frame =
 			}
 		}
 
+	WarpOp_ResetReleaseFrame();
 	if (wop_relseq <= 0 || servercommandframe < wop_relseq)
 		return;
 	if (!getstatf(STAT_FS_HOLD))
@@ -825,6 +898,8 @@ void() WarpOp_InputFrame =
 	if (best < 0)
 		return;
 	wop_seq[best] = clientcommandframe;
+	if (wop_resetq && wop_q[best] == wop_resetq)
+		wop_resetseq = clientcommandframe;
 	input_impulse = wop_op[best];
 	a = wop_ang[best];
 	if (a_z)

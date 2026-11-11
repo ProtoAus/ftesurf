@@ -408,6 +408,7 @@ void() SaveLoc_Camera =
 };
 
 float rec_sl_wophold;             // Patch 753: this hold's load rode a usercmd (cl_warpop.qc)
+void() WarpOp_HoldAdopt;
 float() WarpOp_Load;
 float() WarpOp_Release;
 float() WarpOp_LoadRefused;
@@ -452,6 +453,21 @@ void(string c, float rep) SaveLoc_Step =
 	}
 	if (!WarpOp_Step(op, rep))
 		SaveLoc_Cmd(c);
+};
+
+// An admitted warp reset releases the server hold itself, after earlier ops.
+// Cancel only local presentation/ownership; sending holdoff here could overtake it.
+void() SaveLoc_ResetHold =
+{
+	SaveLead_Clear();
+	if (rec_sl_holdkey)
+	{
+		rec_sl_refkey = rec_sl_holdkey;
+		rec_sl_refseen = cltime;
+	}
+	rec_sl_holding = rec_sl_holdkey = rec_sl_holdrep = rec_sl_holdseen = 0;
+	rec_sl_holdang_ok = rec_sl_wophold = rec_sl_pv_on = rec_sl_upwait = rec_sl_pred = 0;
+	rec_sl_leadans = rec_sl_leadhad = rec_sl_holdack = rec_sl_holdackat = 0;
 };
 
 void() SaveLoc_Release =
@@ -961,6 +977,12 @@ float() SaveLoc_Console =
 		k = stof(argv(1));
 		if (k <= 32 || k >= 127)
 			k = 0;
+		if (k && rec_sl_refkey == k)
+		if (cltime - rec_sl_refseen <= SL_HOLD_DEADMAN)
+		{
+			rec_sl_refseen = cltime;
+			return TRUE;
+		}
 		if (SaveLoc_RunLocked())
 			SaveLoc_Refuse(k);
 		else
@@ -975,6 +997,8 @@ float() SaveLoc_Console =
 		k = stof(argv(1));
 		if (k > 32 && k < 127)
 		{
+			if (rec_sl_refkey == k)
+				rec_sl_refkey = 0;
 			if (rec_sl_holding && rec_sl_holdkey == k)
 				SaveLoc_KeyUp();
 			return TRUE;

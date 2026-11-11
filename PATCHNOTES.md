@@ -21,6 +21,10 @@
 
 ## next
 
+### P1494 Ordered save loads and resets
+- A reset during a held saveloc load now stays in command order, preventing an older delayed load from taking over again.
+- Clearing that hold also clears its local camera preview; recovery from a lost reset cannot release a newer rewind countdown.
+
 ### P1493 Local game version in map info
 - The map-info title now shows your local game version beside World of Surf.
 

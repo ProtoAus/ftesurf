@@ -1,5 +1,9 @@
 # lextest.md — things waiting on a human
 
+## P1494 repeated reset/saveloc camera — owner check PENDING
+- At the reported high ping, hold a saveloc load, press reset/restart, release, then make a fresh load/release. The final accepted action should win without the old view/hold returning. Also check a rewind-go countdown survives after a reset. Please send the video and exact bound command if the camera still fights.
+- Production QC control-flow tests cover normal100/0 and rewind36/0 with causal red controls; command/stat services are explicit doubles. No actual300ms socket/UpdateView/camera-feel acceptance yet: shared graphics benchmark interval was unavailable. This does not claim all checkpoint movement reports fixed.
+
 ## P1493 map-info game version — owner check PENDING
 - In-game map info should read `World of Surf 0.1.xx`, matching this install's release metadata. Without release metadata, a current local development menu supplies its compiled version plus `(dev)`; an old unversioned development menu shows `unknown`, never the lobby's version. Check the longer title remains comfortably right-aligned.
 - Three VMs zero warnings; native menu producer/fallback metadata checked. No rendered HUD acceptance yet: peer graphics benchmarks held the shared interval. This is display metadata, not engine/QC integrity proof.
