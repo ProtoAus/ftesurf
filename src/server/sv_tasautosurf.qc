@@ -1912,7 +1912,7 @@ void(entity e) SV_TASAutoFrame =
 			for (i = 0; i < as_n; i = i + 1) as_bmd[i] = 0;
 			e.as_tries = max(e.as_tries, 2 + e.as_esc); e.as_rideknots = 1; e.as_low = 1;
 			if (e.as_esc >= 2) { e.as_polish = 1; e.as_spots = 1; }
-			t = max(0, e.as_failmax - 2);
+			t = min(max(0, e.as_failmax - 2), e.as_i);     // never ahead of the head: backtracks may have taken it before there (bench launch1)
 			for (i = t; i < as_n; i = i + 1)
 			{
 				as_need[i] = 0; as_fsl[i] = -1; as_swd[i] = 0; as_leadmin[i] = 0; as_hb[i] = 0; as_fresh[i] = 1; as_slack[i] = 0;
