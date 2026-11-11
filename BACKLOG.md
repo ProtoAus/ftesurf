@@ -216,8 +216,12 @@
   garden, het, kitsune, monolith, nova, quarantine, tensor2.
 - swap/present 5-15 ms stalls and WM_PAINT's 3.7-5.1 ms dispatch lead most maps' slowest frames on the windowed rig;
   handling WM_PAINT ourselves changed nothing (outside the engine). Waiting on Lex's fullscreen dump (lextest).
-- csqc 5-9 ms frames on fairy and jumble with tiny QC self time: the cost is in builtins QC calls. Needs per-builtin
-  attribution (r_spikes 2 shows QC self only).
+- DONE P1488: fairy/jumble's csqc 5-9 ms frames were glare + sky-test tracelines (66-98 a frame at ~100 us on fairy;
+  found with a diag build that times each builtin under r_spikes 2, engine branch diag-builtins in the lows2 root).
+  A shared per-frame trace time budget: fairy 0.1% 86 -> 125, jumble 183 -> 252.
+- RE-MEASURED on a quiet machine (11 Nov ~10:00 local): pantheon and colony show NO present stalls in their slowest
+  frames and 0.1% 200-239 (survey 3 had 112-115). The survey's present/WM_PAINT stalls were machine contention (other
+  sessions' work beside it), not the engine; r_renderscale 0.5 moved them little. Re-survey only on a quiet machine.
 - First-play opaque-draw hitches with no late compile/upload: tendies 44-147 ms (setpos -1021 10388 3962, repeats
   across launches), orgrimmar 40-48, original 44, citypop 39. Driver first use. Probe ready but not run: a release-build
   GL debug callback that counts the known spam and stamps frames over 20 ms (lows2 scratchpad gldebug2.py, branch

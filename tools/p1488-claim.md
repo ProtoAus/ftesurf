@@ -7,3 +7,7 @@ Fix for every map: engine gettime(2) = seconds into the frame (0.1 ms steps); QC
 one per-frame trace time budget (vbsp_sprite_tracems), leftovers carried, old engines uncapped. Revives P1456's
 reviewed cap (origin/p1456-glarefade) with a usable clock. Engine pr_bgcmd.c; QC cl_sprites.qc, cl_main.qc.
 Root C:\FTESurf-worktrees\lows2-20261107-opus.
+
+DELIVERED 11 Nov 00:03Z (ftesurf-18): both installs client exe 79c0cd4c (tag patch-1488 = c0e6fa279); QC on the 12
+lobbies and both installs cs e8700c05 / qw fdce20d0 (main 39db6240). Old-engine check: the 0.1.44 release exe with
+this csprogs prints no budget line (cap off) and plays without errors. Record ENGINE_PATCHES.md "Patch 1488".

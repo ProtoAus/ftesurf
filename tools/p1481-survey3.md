@@ -71,3 +71,15 @@ fixes. Server exes and the hl2 plugin unchanged. An interim install at 20:05Z of
 patch-1476 base) replaced pi.dev's installed patch-1484 build (006d65ac) for 13 minutes, because the live hash was not
 re-checked right before installing; the combined build restored it and `.prev` is 006d65ac again. Records:
 `artifacts/delivery-p1482/`, `artifacts/delivery-p1484-1482/`.
+
+## Addendum, 11 Nov ~10:00-11:00 local: quiet machine, and P1488
+
+- With the peer's benchmark paused, surf_pantheon and surf_colony had no swap/present stalls among their slowest
+  frames and warm 0.1% lows of 200-239 (survey: 112-115); r_renderscale 0.5 changed little (+10-20). The survey's
+  present and WM_PAINT stalls were contention from other work on the machine. Its ranking of the CSQC-heavy maps held.
+- surf_fairy / surf_jumble: a diagnostic build that times each CSQC builtin under r_spikes 2 (engine branch
+  diag-builtins) put their slowest frames in traceline -- 66-98 calls a frame at ~100 us on fairy, 60-78 at ~40 us on
+  jumble -- from Sprite_Glare and Sprite_SkyTick. Halving both ray budgets: fairy 0.1% 82 -> 110.
+- P1488 (delivered): engine gettime(2) (seconds into the frame, 0.1 ms steps) and a shared per-frame trace time budget
+  in QC, vbsp_sprite_tracems 1. surf_fairy warm, two alternating rounds at 0 / 1.5 / 1 ms: 0.1% 86 / 114 / 125,
+  1% 105 / 137 / 148, avg 296 / 310 / 324, stutters ~830 / ~100 / ~40. surf_jumble 0 / 1: 0.1% 183 / 252.

@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1488 glow trace budget -- both installs (exe 79c0cd4c) + 12 lobbies (cs e8700c05) 11 Nov 00:03Z; owner check PENDING
+- Surf surf_fairy or surf_jumble: it should feel smoother than before. Watch the light glows (the flares round lamps):
+  they may fade in or out a moment later than before when you come round a corner -- that is the trade for the
+  budget. If a glow looks wrong (stays lit behind a wall, or flickers), tell me the map and where; `vbsp_sprite_tracems
+  0` turns the budget off to compare.
+
 ## P1487 replay ladder idle skip — both Windows installs + 12 lobbies10Nov23:01Z; owner check PENDING
 - In a replay with a ladder climb, enable idle skipping (`hud_watch_skipidle 1`): the climb should remain visible, while a genuine long stationary pause still skips. Check a descent too if the run contains one. Report map/demo and rough timestamp if any climb still disappears.
 - Production CSQC control/subject scans at 66.7/100 Hz retain both real stationary spans and remove only the two vertical-travel spans from the idle table (4 -> 2). The headless renderer does not run the replay frame hook; this is not rendered playback or owner confirmation.
