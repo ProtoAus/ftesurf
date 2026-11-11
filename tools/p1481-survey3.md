@@ -83,3 +83,21 @@ re-checked right before installing; the combined build restored it and `.prev` i
 - P1488 (delivered): engine gettime(2) (seconds into the frame, 0.1 ms steps) and a shared per-frame trace time budget
   in QC, vbsp_sprite_tracems 1. surf_fairy warm, two alternating rounds at 0 / 1.5 / 1 ms: 0.1% 86 / 114 / 125,
   1% 105 / 137 / 148, avg 296 / 310 / 324, stutters ~830 / ~100 / ~40. surf_jumble 0 / 1: 0.1% 183 / 252.
+
+## Quiet re-ranking on the installed build (11 Nov ~11:20 local; exe 79c0cd4c, cs e8700c05)
+
+Warm pass, avg / 1% / 0.1%: surf_fairy 326 / 149 / 126, surf_mesa_revo 419 / 264 / 218, surf_pantheon 464 / 267 /
+218, surf_andromeda 594 / 304 / 235, surf_jumble 434 / 278 / 253, surf_lovetunnel 583 / 363 / 287, surf_nuclear
+637 / 364 / 308 (colony, tendies, demise not re-run). fairy is still the worst: its slowest frames (~8 ms) sit at one
+place ~30 s into the replay, transparent draws 3.0-3.5 ms + csqc 2.2 + one water view -- r_blendsort 2's cost there
+(P1457/P1463/P1465's ground); next: a paused-view probe at that spot.
+
+## First-play hitches (surf_tendies probe, GL debug output on)
+
+Every pass-1 hitch (29-70 ms) came with new STATIC_DRAW vertex/index buffer pairs created mid-play, 3-4 pairs a hitch
+~5 ms apart: models finishing their load and building their mesh VBOs on the main thread at first sight
+(com_mesh.c Mod_GenerateMeshVBO and the skin/vector work around it). A second launch minutes later had none (pass-1
+0.1% 321, worst 5.2 ms) and built no model in play -- so it depends on whether the activation warm-up got to those
+models (r_mapready_budget 6 s, cold vs warm file cache). Next: print r_mapready_info after a cold first load, and
+load what the warm-up misses off the main thread or before play. Diagnostic branches (not shipped): diag-builtins
+(r_spikes 2 per-builtin time), diag-firstplay (gl_debugperf filtered, r_spikes 3 slow-frame stamps, meshvbo names).

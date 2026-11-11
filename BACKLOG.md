@@ -222,10 +222,11 @@
 - RE-MEASURED on a quiet machine (11 Nov ~10:00 local): pantheon and colony show NO present stalls in their slowest
   frames and 0.1% 200-239 (survey 3 had 112-115). The survey's present/WM_PAINT stalls were machine contention (other
   sessions' work beside it), not the engine; r_renderscale 0.5 moved them little. Re-survey only on a quiet machine.
-- First-play opaque-draw hitches with no late compile/upload: tendies 44-147 ms (setpos -1021 10388 3962, repeats
-  across launches), orgrimmar 40-48, original 44, citypop 39. Driver first use. Probe ready but not run: a release-build
-  GL debug callback that counts the known spam and stamps frames over 20 ms (lows2 scratchpad gldebug2.py, branch
-  p1481-gcwritewatch); the first probe's 60-line cap was eaten by the spam below.
+- First-play hitches (tendies 44-147 ms, orgrimmar 40-48, original 44, citypop 39): models finishing their load
+  mid-play and building mesh VBOs on the main thread, 3-4 a hitch ~5 ms apart (GL debug probe, 11 Nov). Not every
+  launch (a warm second launch had none): whatever r_mapready's warm-up did not reach. tools/p1481-survey3.md.
+- surf_fairy after P1488 (0.1% 126, still the worst): its slowest frames are r_blendsort 2 transparent draws 3-3.5 ms
+  at one spot ~30 s into the board replay; next a paused-view probe there.
 - GL_LazyBind (gl_backend.c ~800) glEnable/glDisable's a TMU's texture target on the compatibility path, including
   GL_TEXTURE_2D_ARRAY / CUBE_MAP_ARRAY, which are not enable caps: GL_INVALID_ENUM many times a second. Skip the
   enable for those targets.
