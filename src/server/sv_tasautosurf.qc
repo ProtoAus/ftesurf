@@ -147,6 +147,7 @@ float as_wp[TAS_ASMAX];         // the demo time its stretch started from
 float as_sso[TAS_ASMAX * 6], as_fso[TAS_ASMAX * 6], as_fsl[TAS_ASMAX], as_fsm[TAS_ASMAX];
 float *as_rows;                 // the demo's samples: t x y z vx vy vz
 float *as_bin;                  // P1478: each sample's inputs: forward, side, pitch, yaw (columns 11, 12, 7, 8)
+float *as_bdk;                  // each sample's duck (ksfbuttons 4, else the keys column's 32)
 float as_nrows;
 float as_nraw, as_traw0, as_traw1;      // P1478: the guide as read, before a course cut: rows, first and last time (Continue's check)
 
@@ -179,11 +180,12 @@ vector(float i) SV_TASAutoRowO = { return [as_rows[i*7+1], as_rows[i*7+2], as_ro
 // The demo's samples into as_rows; -1 if it cannot be read, -2 if it is another map's.
 float(string path) SV_TASAutoRead =
 {
-	local float fh, c, blank, n, lines;
+	local float fh, c, blank, n, lines, kb, ksfseen;
 	local string line;
-	lines = 0;
+	lines = 0; kb = 0; ksfseen = 0;
 	if (!as_rows) as_rows = (float*)memalloc(TAS_ASROWS * 7 * 4);
 	if (!as_bin) as_bin = (float*)memalloc(TAS_ASROWS * 4 * 4);
+	if (!as_bdk) as_bdk = (float*)memalloc(TAS_ASROWS * 4);
 	if (!as_rows || !as_bin) return -1;
 	fh = fopen(path, FILE_READ);
 	if (fh < 0) return -1;
@@ -197,11 +199,13 @@ float(string path) SV_TASAutoRead =
 		if (argv(0) == "map" && c >= 2 && strcasecmp(argv(1), mapname)) { fclose(fh); return -2; }
 		if (!n && c == 2 && argv(0) == "track" && FS_TASNumber(argv(1))) as_dtrack = stof(argv(1));
 		if (!n && c == 2 && argv(0) == "leg" && FS_TASNumber(argv(1))) as_dleg = stof(argv(1));
+		if (argv(0) == "ksfbuttons" && c >= 3) { kb = stof(argv(2)); ksfseen = 1; continue; }
 		if (c < 7 || !FS_TASNumber(argv(0))) continue;
 		as_rows[n*7] = stof(argv(0));
 		as_rows[n*7+1] = stof(argv(1)); as_rows[n*7+2] = stof(argv(2)); as_rows[n*7+3] = stof(argv(3));
 		as_rows[n*7+4] = stof(argv(4)); as_rows[n*7+5] = stof(argv(5)); as_rows[n*7+6] = stof(argv(6));
 		as_bin[n*4] = as_bin[n*4+1] = as_bin[n*4+2] = as_bin[n*4+3] = 0;
+		as_bdk[n] = ksfseen ? ((kb & 4) ? 1 : 0) : ((c >= 11 && (stof(argv(10)) & 32)) ? 1 : 0);    // duck: CS:S 4, FTESurf keys 32
 		if (c >= 13)
 		{
 			as_bin[n*4] = SV_TASDemoMove(stof(argv(11))); as_bin[n*4+1] = SV_TASDemoMove(stof(argv(12)));
@@ -1566,6 +1570,9 @@ void(entity e) SV_TASAutoFrame =
 			i = e.as_ri;
 			t = (as_rows[i*7+6] - as_rows[i*7-1] > 150 && fabs(as_rows[i*7-1]) < 1) ? 1 : 0;
 			best = as_bin[i*4+3] - 360 * floor((as_bin[i*4+3] + 180) / 360);
+			// tas_jargon_startduck: the guide's crouch too (surf_gigapede bonus 4's human ducks from 0.5 s before the jump to
+			// its board at 0.4 s; this replay carried the jump only, and every stretch-1 line skimmed or overshot)
+			if (as_bdk[i] && cvar("tas_jargon_startduck")) t = t + 2;
 			argc_pl = tokenize(sprintf("tas next manual %.0f %.0f %.4f %.4f %.0f 1", as_bin[i*4], as_bin[i*4+1], as_bin[i*4+2], best, t));
 			SV_TASPlanCommand(e, argc_pl);
 			e.as_ri = e.as_ri + 1;
