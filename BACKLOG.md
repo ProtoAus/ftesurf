@@ -244,6 +244,11 @@
   6.12. The main view's r_blendsort 2 sort fails EVERY frame there (status -2, 66 of 128 faces admitted, ~33k work)
   and no failure certificate is taken (P1465: needs a 3-16-face cycle or a strict crossing for passes 1 and 2), so
   the work repeats on a paused camera. Next: why neither pass yields a certificate there.
+- DONE P1490: no certificate was possible there (pass 1 crosses a barrier only through an unproved pair). The
+  failure's pass-2 cycle is now kept per sort (key + exact face set) and that view re-sorts every r_blendsort_retry
+  (4) frames. Paused spot, Lex's settings: 4.34 -> 3.80 ms (transparent 1.11 -> 0.65). In motion it was within
+  the noise beside a peer: re-measure in the quiet survey. Open: the face-set fingerprint is a plain sum (~2% of
+  swaps collide; matters only for stereo/split-screen views) -- a hash finaliser would close it.
 - GL_LazyBind (gl_backend.c ~800) glEnable/glDisable's a TMU's texture target on the compatibility path, including
   GL_TEXTURE_2D_ARRAY / CUBE_MAP_ARRAY, which are not enable caps: GL_INVALID_ENUM many times a second. Skip the
   enable for those targets.
