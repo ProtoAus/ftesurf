@@ -2608,7 +2608,7 @@ float(string cmd) CSQC_ConsoleCommand =
 			for (tsi = 3; tsi < cmdargc; tsi = tsi + 1)
 				if (argv(tsi) == "tube" || argv(tsi) == "look" || argv(tsi) == "tries" || argv(tsi) == "backs" || argv(tsi) == "nohop" || argv(tsi) == "join" || argv(tsi) == "rideknots" || argv(tsi) == "polish" || argv(tsi) == "low" || argv(tsi) == "apex" || argv(tsi) == "air" || argv(tsi) == "plan" || argv(tsi) == "wide" || argv(tsi) == "spots" || argv(tsi) == "pace" || argv(tsi) == "emin" || argv(tsi) == "start" || argv(tsi) == "zone" ||
 				    argv(tsi) == "sg" || argv(tsi) == "sy" || argv(tsi) == "sright" || argv(tsi) == "sflip" || argv(tsi) == "onjump" || argv(tsi) == "onexit" ||
-				    argv(tsi) == "finish" || argv(tsi) == "course" || argv(tsi) == "beam" || argv(tsi) == "turns" || argv(tsi) == "catch" || argv(tsi) == "safe" || argv(tsi) == "tight" || argv(tsi) == "parallel" || FS_TASNumber(argv(tsi)))
+				    argv(tsi) == "finish" || argv(tsi) == "course" || argv(tsi) == "beam" || argv(tsi) == "turns" || argv(tsi) == "catch" || argv(tsi) == "safe" || argv(tsi) == "tight" || argv(tsi) == "parallel" || argv(tsi) == "free" || FS_TASNumber(argv(tsi)))
 					tsline = strcat(tsline, " ", argv(tsi));
 				else tsline = " !";
 			if (strstrofs(tsline, "!") >= 0)
