@@ -744,11 +744,14 @@ threshold, verdict or ranking policy is introduced.
 
 These are process address-space/CPU/admission controls, not a measured total RSS,
 fairness or full-fleet guarantee. Process startup and kernel-uninterruptible I/O
-or reaping cannot have an unconditional wall deadline. The enclosing admission
-lease must remain held until the worker is reaped, never released around an
-orphan writer. Run `python surfd/test_simcheck_process.py` on Linux for the acted
-comparison, blocked-work/reap and allocation controls; other systems explicitly
-skip the Linux-only arms rather than claiming they passed.
+or reaping cannot have an unconditional wall deadline. The worker preserves the
+guard's explicitly inheritable lifetime leases through exec; normal CLOEXEC
+handles remain private. Its admission lease must remain held until it exits,
+never released around an orphan writer. Parent loss can leave a lease holder;
+closure must fail closed, not claim bounded orphan cleanup. Run
+`python surfd/test_simcheck_process.py` on Linux for the acted comparison,
+child-only lease/after-exit drain, blocked-work/reap and allocation controls;
+other systems explicitly skip the Linux-only arms rather than claiming passes.
 
 `--sims-sql-steps` defaults to 1,000,000 SQLite VM instructions across selected
 collector reads; zero disables collection. Source cursor/pending and peer cursor/

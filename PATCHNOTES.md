@@ -21,6 +21,9 @@
 
 ## next
 
+### P1510 Safer background work during maintenance
+- Background replay analysis stays accounted for during service maintenance instead of appearing finished while work is still running.
+
 ### P1509 Bounded background replay analysis
 - Background replay analysis runs separately with resource limits, allowing normal verification to continue after a timed-out check is stopped. Missing results remain unavailable rather than being treated as clean.
 

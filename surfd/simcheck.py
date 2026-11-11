@@ -903,8 +903,9 @@ def process_step(conn, app, entrypoint, *, tools_dir, limit, max_pairs,
         wait = min(PROCESS_SECONDS, max_seconds + 5.0)
         proc = None
         try:
+            # Guard leases are explicitly inheritable; ordinary FDs stay CLOEXEC.
             proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                    stderr=subprocess.DEVNULL, env=env)
+                                    stderr=subprocess.DEVNULL, env=env, close_fds=False)
             proc.stdin.write(request)
             proc.stdin.close()
             try:

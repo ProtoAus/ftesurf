@@ -15,6 +15,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest import mock
@@ -55,6 +56,25 @@ class ProcessTests(unittest.TestCase):
             "    with open(os.environ['_SIMTEST_MARKER'], 'w') as f: f.write(str(os.getpid()))\n"
             "    if os.environ.get('_SIMTEST_BEHAVIOR') == 'sleep': time.sleep(8)\n"
             "    if os.environ.get('_SIMTEST_BEHAVIOR') == 'memory': b=bytearray(1<<30)\n"
+            "    if os.environ.get('_SIMTEST_BEHAVIOR') == 'lease':\n"
+            "        import json\n"
+            "        from pathlib import Path\n"
+            "        def identity(fd):\n"
+            "            try: st=os.fstat(fd)\n"
+            "            except OSError: return None\n"
+            "            return [st.st_dev, st.st_ino]\n"
+            "        fd=int(os.environ['_SIMTEST_LEASE_FD'])\n"
+            "        witness={'lease': identity(fd),\n"
+            "                 'private': identity(int(os.environ['_SIMTEST_PRIVATE_FD']))}\n"
+            "        witness['inheritable']=os.get_inheritable(fd) if witness['lease'] else False\n"
+            "        ready=Path(os.environ['_SIMTEST_LEASE_READY'])\n"
+            "        ready.with_suffix('.json').write_text(json.dumps(witness))\n"
+            "        ready.touch()\n"
+            "        release=Path(os.environ['_SIMTEST_LEASE_RELEASE'])\n"
+            "        deadline=time.monotonic()+10\n"
+            "        while not release.exists():\n"
+            "            if time.monotonic()>deadline: raise RuntimeError('lease fixture not released')\n"
+            "            time.sleep(.01)\n"
             "    return m.compare_paths(*a, **kw)\n", encoding="utf-8")
 
     @classmethod
@@ -206,6 +226,77 @@ class ProcessTests(unittest.TestCase):
         self.assertEqual([r[0] for r in self.conn.execute("SELECT tier FROM replays")],
                          ["ranked", "ranked"])
         self.assertEqual(self.conn.execute("SELECT count(*) FROM verdicts").fetchone()[0], 0)
+
+    @unittest.skipUnless(LINUX, "actual Linux containment required")
+    def test_worker_retains_explicit_lease_but_not_private_descriptor(self):
+        import fcntl
+
+        lease_path = self.home / "lifetime.lock"
+        private_path = self.home / "private-fd"
+        lease_path.touch()
+        private_path.touch()
+        lease = os.open(lease_path, os.O_RDONLY)
+        private = os.open(private_path, os.O_RDONLY)
+        self.assertFalse(os.get_inheritable(private))
+        expected = [os.fstat(lease).st_dev, os.fstat(lease).st_ino]
+        private_identity = [os.fstat(private).st_dev, os.fstat(private).st_ino]
+        fcntl.flock(lease, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        os.set_inheritable(lease, True)
+        ready = self.home / "lease.ready"
+        release = self.home / "lease.release"
+        lease_open = [True]
+        observations = []
+        errors = []
+
+        def probe():
+            try:
+                deadline = time.monotonic() + 5
+                while not ready.exists():
+                    if time.monotonic() > deadline:
+                        raise RuntimeError("lease comparison never acted")
+                    time.sleep(.01)
+                os.close(lease)
+                lease_open[0] = False
+                with lease_path.open("rb") as independent:
+                    try:
+                        fcntl.flock(independent, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    except BlockingIOError:
+                        observations.append("child still holds lease")
+                    else:
+                        observations.append("premature drain")
+            except Exception as exc:
+                errors.append(repr(exc))
+            finally:
+                release.touch()
+
+        controller = threading.Thread(target=probe)
+        self.sweep.TOOLS = str(self.tools)
+        try:
+            with mock.patch.dict(os.environ, {
+                    "_SIMTEST_BEHAVIOR": "lease", "_SIMTEST_LEASE_FD": str(lease),
+                    "_SIMTEST_PRIVATE_FD": str(private),
+                    "_SIMTEST_LEASE_READY": str(ready),
+                    "_SIMTEST_LEASE_RELEASE": str(release)}):
+                controller.start()
+                result = self.step()
+        finally:
+            release.touch()
+            if controller.ident is not None:
+                controller.join(7)
+            if lease_open[0]:
+                os.close(lease)
+            os.close(private)
+        self.assertFalse(controller.is_alive(), "own lease probe did not stop")
+        self.assertEqual(errors, [])
+        self.assertTrue(self.marker.exists(), "comparison never acted")
+        self.assertEqual(result[0], 1, result)
+        self.assertEqual(observations, ["child still holds lease"])
+        witness = json.loads(ready.with_suffix(".json").read_text())
+        self.assertEqual(witness["lease"], expected)
+        self.assertTrue(witness["inheritable"])
+        self.assertNotEqual(witness["private"], private_identity)
+        with lease_path.open("rb") as independent:
+            fcntl.flock(independent, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
     @unittest.skipUnless(LINUX, "actual Linux containment required")
     def test_missing_prlimit_abstains(self):
