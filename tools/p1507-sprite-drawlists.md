@@ -5,8 +5,11 @@
 Continuation of `tools/lows-handoff-20261112.md`. QC base `f4a0a1a5`, subsequently
 fast-forwarded to `3f3d8671` (two documentation changes only). Native measurement
 control is the installed P1505 client, `git-8692-patch-1505-0-g08c5cc387`,
-SHA256 `5be7f2fa7f6bc258a1eab409342fce40e460c802a35375db0ae605f373fe8c348`;
-HL2 plugin `70b9810f`. This is QC-only: no native code, pin/tag, mover, evidence
+SHA256 `5be0c6a5e571f30258a44f523465c49b103623740cd268f63ed0b48e0effcf1d`;
+HL2 plugin SHA256 `d21e12b22a9afd9d0cab48cf242d54fec14892ec9ad8a00773406456c86ff448`.
+These are the retained A/B input hashes; the first report revision transcribed
+the native/plugin identifiers incorrectly. The raw inputs and measurements did
+not change. This is QC-only: no native code, pin/tag, mover, evidence
 format, sort-certificate or QCBuild change.
 
 ## Problem / change
@@ -84,16 +87,53 @@ transparent-sort/draw cost, nor a promised gain on every map/machine.
   `bridge_lows3_20261112T013638_cl.log`; no timing pass accepted. Fixed the reusable
   seam to read actual client-log status after the marker barrier. Actual status
   plus wrong-map/inactive/non-advancing refusal controls passed; the fairy A/B
-  then exercised that gate eight times. Kitsune attribution is still pending.
+  then exercised that gate eight times. Subsequent correctly mapped Kitsune
+  diagnostics exercised it again, with two passes advancing to about 35.6s.
+  The sampled large frames did not reproduce the earlier large game-code spike;
+  presentation/profiling-overlay costs dominated the largest samples. This is
+  attribution only, not FPS evidence or a causal fix. Coverage stops before the
+  end of the historical survey's 1.5..36.5s window; the remaining interval and the
+  rest of the 151s replay are not cleared.
 - Native read-only review found a possible monotonic plane-side early exit in
   `GLBE_BlendPlaneSide`. Not implemented or measured by P1507. Preserve logical
   sort-work accounting if pursued. No safe immediate pantheon/bossfight change
   established; do not disable effects, alter transparency or broaden P1490 reuse.
-- The last three survey-5 maps were still absent when checked after this A/B;
-  their retained session queue is not treated as completed.
+
+## Survey-5 follow-up
+
+The three queued maps were actually measured, then a validated alternate cached
+Utopia replay filled one older missing result. The four new rows use the P1505
+native/plugin identifiers above and CSQC `44b32b4e`; actual map/clock/reset/advance
+reader gates passed. First/second pass are the retained survey passes, not A/B.
+
+| Map | Replay | First-pass 0.1% FPS | Second-pass 0.1% FPS |
+|---|---:|---:|---:|
+| surf_whiteout | 39189 | 254 | 265 |
+| surf_zae | 39233 | 406 | 387 |
+| surf_zoomathon | 24797 | 352 | 274 |
+| surf_utopia | 6 | 294 | 462 |
+
+`tools/lows-survey5-followup-20261112.tsv` preserves the original 57 rows, adds
+the three continuation rows and the alternate Utopia row: 61 observations over
+60 map names, 59 with numeric second-pass results. This is a mixed native/QC/
+replay cohort for investigation, **not** a uniform current-fleet benchmark or a
+controlled improvement comparison. Historical rows were not retroactively
+requalified with the new reader gate. Original Utopia replay26310's missing row
+is retained; replay6 is explicitly an alternate, not a replacement claim.
+Dragon CSS remains unmeasured: no exact-map cached replay long enough for the
+35-second active window was found; no alias or successful result was invented.
 
 ## Delivery
 
-Source/build verified; commit/push and both-install/lobby deployment pending at
-this document's first commit. Append actual UTC/hash/live verification after
-execution, never infer it from this benchmark or a successful build.
+Source feature commit: `7a81a67a50d0d0309b5e06399d83633ae2657dc8` (published).
+Windows paired-program delivery was independently read back at
+**2026-11-11 15:14:57 UTC** in both `C:/FTESurf` and `C:/FTEQuake`: eight generated
+targets verified, 19,586 captured protected rows unchanged, zero failures.
+Installed CSQC SHA256 starts `44b32b4e`; SSQC starts `de63efd3`. The original
+caller timed out during postflight; its failure was retained and the healthy
+swap was **not** repeated. This was a separate read-only acceptance.
+
+Installed/hashed is not owner visual acceptance: that check remains pending.
+The Pi rollout is still pending its recorder/resume preservation transaction
+at this checkpoint; no lobby deployment or backend generation swap is claimed
+from the Windows result. No release or QCBuild bump was performed.
