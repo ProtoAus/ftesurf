@@ -2366,7 +2366,8 @@ void(entity e) SV_TASOptCurveNext =
 			// near-normal, unit variance, from four uniforms: log (#532) is precache_vwep_model on this server
 			u = SV_TASOptRand() + SV_TASOptRand() + SV_TASOptRand() + SV_TASOptRand();
 			g = (u - 2) * 1.7320508;
-			if (e.topt_freeq && j < e.topt_kn && SV_TASOptRand() < 1 / 7) g = g * 4;     // a heavy tail: now and then a hard turn
+			if (e.topt_freeq && j < e.topt_kn)      // nested: QC evaluates every term, and a draw here shifted every search's
+				if (SV_TASOptRand() < 1 / 7) g = g * 4;     // stream with freeq off (safe on t2s1: 0:10.950 to stuck); a heavy tail
 		}
 		u = (j >= e.topt_kn) ? TOPT_AIMR : ((e.topt_mode & 64) ? (e.topt_efol ? TOPT_DQOFF : TOPT_DOFF) : TOPT_QMAX);
 		if (e.topt_catch > 0 && j < e.topt_kn && (e.topt_mode & 64))
