@@ -20,6 +20,7 @@
 -->
 
 ## next
+- Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
 ### P1513 Configurable replay-journal upload budgets
 - Operators can configure a run-length budget for replay journals; servers without this setting keep their existing upload behavior.

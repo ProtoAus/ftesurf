@@ -5,6 +5,7 @@
 # Windows17/17 and ARM17/17 including actual application config/precedence controls.
 # No native pin/tag/QC Build or evidence-schema/verdict change. Review/rollout pending;
 # tools/p1513-hid-run-budget.md.
+# Patch 1512 (QC): ordinary sl_load preview owns its actual sent ACK; busy queued loads do not borrow a newer preview. Render-only, no body/physics/evidence change; native pin/tag and qcbuild unchanged.
 # Patch 1510 (backend only): the contained comparison worker preserves the guard's
 # explicitly inheritable lifetime leases; ordinary CLOEXEC handles stay private.
 # Actual ARM premature-drain control red, fixed17/17; Windows11pass/6Linuxskips.
