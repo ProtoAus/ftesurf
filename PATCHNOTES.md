@@ -21,6 +21,9 @@
 
 ## next
 
+### P1509 Bounded background replay analysis
+- Background replay analysis runs separately with resource limits, allowing normal verification to continue after a timed-out check is stopped. Missing results remain unavailable rather than being treated as clean.
+
 ### P1508 Keep queued updates when packets fill
 - Servers keep queued stats and entity updates pending when an update packet fills or is discarded, rather than silently losing them.
 

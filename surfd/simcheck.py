@@ -56,6 +56,7 @@ import os
 import re
 import sqlite3
 import stat
+import subprocess
 import sys
 import threading
 import time
@@ -861,6 +862,130 @@ def similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         if _database_busy(exc):
             return 0, 0, _BUSY_NOTE
         return 0, 0, "similarity step failed: %r" % exc
+
+
+# Operational containment for normal cron, installed before Python starts.
+# Address space is not a measured RSS or total-fleet memory guarantee.
+PROCESS_BYTES = 512 << 20
+PROCESS_CPU_SECONDS = 12
+PROCESS_SECONDS = 15.0
+PROCESS_WIRE_BYTES = 1024
+PRLIMIT = "/usr/bin/prlimit"
+
+
+def process_step(conn, app, entrypoint, *, tools_dir, limit, max_pairs,
+                 max_seconds, max_sql_steps, max_lock_ms):
+    """Contain one cron phase; never fall back to unbounded work.
+
+    The caller's admission lease must outlive this call AND its reaped child.
+    Committed rows survive a killed worker; its final counts are then unknown.
+    """
+    if sys.platform != "linux" or not os.access(PRLIMIT, os.X_OK):
+        return 0, 0, "similarity containment unavailable; no unbounded fallback"
+    if conn.in_transaction:
+        return 0, 0, "similarity worker requires an idle connection"
+    try:
+        db = next(row[2] for row in conn.execute("PRAGMA database_list") if row[1] == "main")
+        if (not db or os.path.realpath(db) != os.path.realpath(app.DB_PATH)
+                or not os.path.isfile(db)):
+            return 0, 0, "similarity worker requires the configured on-disk database"
+        request = json.dumps({"version": 1, "db": os.path.realpath(db),
+                              "limits": [limit, max_pairs, max_seconds,
+                                         max_sql_steps, max_lock_ms]}).encode("utf-8")
+        if len(request) > PROCESS_WIRE_BYTES:
+            return 0, 0, "similarity worker request exceeds its wire budget"
+        env = os.environ.copy()
+        env[_ENV_TOOLS] = os.path.abspath(tools_dir)
+        env["_SURFD_SIMILARITY_WORKER"] = "1"
+        command = [PRLIMIT, "--as=%d:%d" % (PROCESS_BYTES, PROCESS_BYTES),
+                   "--cpu=%d:%d" % (PROCESS_CPU_SECONDS, PROCESS_CPU_SECONDS),
+                   "--", sys.executable, entrypoint, "--similarity-worker"]
+        wait = min(PROCESS_SECONDS, max_seconds + 5.0)
+        proc = None
+        try:
+            proc = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                    stderr=subprocess.DEVNULL, env=env)
+            proc.stdin.write(request)
+            proc.stdin.close()
+            try:
+                # Never communicate(): a broken worker cannot grow the parent's
+                # capture buffer. Excess output blocks, then times out.
+                proc.wait(timeout=wait)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()  # keep the lease until our exact child is reaped
+                return 0, 0, "similarity worker timed out; outcome unavailable"
+            os.set_blocking(proc.stdout.fileno(), False)
+            raw = os.read(proc.stdout.fileno(), PROCESS_WIRE_BYTES + 1)
+            if proc.returncode:
+                return 0, 0, "similarity worker exited %d; outcome unavailable" % proc.returncode
+        finally:
+            if proc is not None:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.wait()
+                if proc.stdin is not None:
+                    proc.stdin.close()
+                if proc.stdout is not None:
+                    proc.stdout.close()
+        if len(raw) > PROCESS_WIRE_BYTES:
+            return 0, 0, "similarity worker result exceeds its wire budget"
+        value = json.loads(raw)
+        if (not isinstance(value, dict) or set(value) != {"version", "stored", "notable", "note"}
+                or type(value["version"]) is not int or value["version"] != 1
+                or any(type(value[k]) is not int or not 0 <= value[k] <= max_pairs
+                       for k in ("stored", "notable"))
+                or value["notable"] > value["stored"]
+                or (value["note"] is not None
+                    and (not isinstance(value["note"], str) or len(value["note"]) > 256))):
+            return 0, 0, "similarity worker returned an invalid result"
+        return value["stored"], value["notable"], value["note"]
+    except (OSError, ValueError, TypeError, StopIteration, sqlite3.Error):
+        return 0, 0, "similarity worker unavailable; outcome unmeasured"
+
+
+def process_limits_present():
+    """Actual inherited limits, not an environment assertion about containment."""
+    if sys.platform != "linux":
+        return False
+    try:
+        import resource
+        return all(all(0 < v <= ceiling for v in resource.getrlimit(kind))
+                   for kind, ceiling in ((resource.RLIMIT_AS, PROCESS_BYTES),
+                                         (resource.RLIMIT_CPU, PROCESS_CPU_SECONDS)))
+    except (ImportError, OSError, ValueError):
+        return False
+
+
+def process_worker(app, step):
+    """Private existing-sweep entrypoint; refuse an uncontained direct launch."""
+    try:
+        if not process_limits_present():
+            raise ValueError("worker process limits not installed")
+        raw = sys.stdin.buffer.read(PROCESS_WIRE_BYTES + 1)
+        value = json.loads(raw)
+        if (len(raw) > PROCESS_WIRE_BYTES or not isinstance(value, dict)
+                or set(value) != {"version", "db", "limits"}
+                or type(value["version"]) is not int or value["version"] != 1
+                or not isinstance(value["db"], str)
+                or value["db"] != os.path.realpath(app.DB_PATH)
+                or not isinstance(value["limits"], list) or len(value["limits"]) != 5):
+            raise ValueError("invalid worker request")
+        limit, pairs, seconds, sql_steps, lock_ms = value["limits"]
+        conn = app.connect(existing_only=True, busy_timeout_ms=lock_ms)
+        try:
+            stored, notable, note = step(conn, limit=limit, max_pairs=pairs,
+                                         max_seconds=seconds, max_sql_steps=sql_steps,
+                                         max_lock_ms=lock_ms)
+        finally:
+            conn.close()
+        result = {"version": 1, "stored": stored, "notable": notable,
+                  "note": note[:256] if isinstance(note, str) else note}
+        sys.stdout.write(json.dumps(result))
+        return 0
+    except Exception:
+        # A traceback/raw source/partial metric is not a successful response.
+        return 2
 
 
 def _similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
