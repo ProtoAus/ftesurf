@@ -2999,7 +2999,7 @@ void(vector eye) Sprite_SkyTick =
 
 	n = spr_n + beam_n;
 	burst = FALSE;
-	hold = bound(16, cvar("vbsp_sprite_skyhold"), 256);	// P1497; under the 256-unit jump, so a jump retests all
+	hold = bound(16, cvar("vbsp_sprite_skyhold"), 256);	// P1497; at most the 256-unit jump that starts a burst
 	if (vlen(eye - spr_skyeye) > 256)
 		spr_skyburst = n;
 	spr_skyeye = eye;
