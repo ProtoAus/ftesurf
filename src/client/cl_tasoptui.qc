@@ -150,12 +150,12 @@ void(vector scr) TASSearch_Draw =
 	// the best so far
 	if (tsp_flags & 1)
 	{
-		s = sprintf("Best line makes it at %g u/s", tsp_speed);
+		s = sprintf("Best line makes it with energy %g", tsp_speed);
 		if (tsp_ref > 0) s = strcat(s, sprintf(" (%s %g, %s%g)", TASOptUI_Guide(), tsp_ref, (tsp_speed >= tsp_ref) ? "+" : "", tsp_speed - tsp_ref));
 		col = (tsp_ref > 0 && tsp_speed < tsp_ref * 0.98) ? SUI_THEME_WARN : SUI_THEME_GOOD;
 	}
 	else if (tsp_flags & 64) { s = "Best line boards, then falls off the ramp"; col = SUI_THEME_WARN; }
-	else if (tsp_flags & 2) { s = sprintf("Best line makes it, but too slowly: %g u/s", tsp_speed); col = SUI_THEME_WARN; }
+	else if (tsp_flags & 2) { s = sprintf("Best line makes it, but with too little energy: %g", tsp_speed); col = SUI_THEME_WARN; }
 	else { s = sprintf("Nothing makes it yet: the closest misses by %g u", tsp_closest); col = SUI_THEME_BAD; }
 	TASSearch_Line([at_x, y, 0], s, tsz, col, w); y = y + row;
 	if (tsp_flags & 1)
@@ -171,13 +171,13 @@ void(vector scr) TASSearch_Draw =
 	// why candidates fail: each its own share (one line can do several)
 	TASSearch_Line([at_x, y, 0], "What the lines tried ran into (one line can hit several):", tsz * 0.85, SUI_THEME_TEXT, w); y = y + row;
 	TASSearch_Reason([at_x, y, 0], w, tsz, "Strayed off the guide's path (cut there)", tsp_tube, tsp_evals, SUI_THEME_INFO); y = y + row * 0.85;
-	TASSearch_Reason([at_x, y, 0], w, tsz, "Brushed a wall (costs it speed)", tsp_wall, tsp_evals, SUI_THEME_BAD); y = y + row * 0.85;
-	TASSearch_Reason([at_x, y, 0], w, tsz, "Made it, too slowly to count", tsp_weak, tsp_evals, SUI_THEME_WARN); y = y + row * 0.85;
+	TASSearch_Reason([at_x, y, 0], w, tsz, "Brushed a wall (costs it energy)", tsp_wall, tsp_evals, SUI_THEME_BAD); y = y + row * 0.85;
+	TASSearch_Reason([at_x, y, 0], w, tsz, "Made it, with too little energy to count", tsp_weak, tsp_evals, SUI_THEME_WARN); y = y + row * 0.85;
 	TASSearch_Reason([at_x, y, 0], w, tsz, "Made it only by an edge bug", tsp_edge, tsp_evals, SUI_THEME_ACCENT); y = y + row * 0.85;
 	TASSearch_Reason([at_x, y, 0], w, tsz, "Boarded, then fell off the ramp", tsp_brief, tsp_evals, SUI_THEME_WARN); y = y + row * 0.85;
 	TASSearch_Reason([at_x, y, 0], w, tsz, "Hit a trigger (cut there)", tsp_cut, tsp_evals, SUI_THEME_MUTED); y = y + row * 1.05;
 	// the best line's speed, generation by generation
-	TASSearch_Line([at_x, y, 0], (tsp_ref > 0) ? "Best speed by generation (line: the guide)" : "Best speed by generation", tsz * 0.8, SUI_THEME_MUTED, w);
+	TASSearch_Line([at_x, y, 0], (tsp_ref > 0) ? "Best energy by generation (speed plus height; line: the guide)" : "Best energy by generation (speed plus height)", tsz * 0.8, SUI_THEME_MUTED, w);
 	y = y + tsz * 1.1;
 	if (tsp_histn >= 2)
 	{
@@ -676,8 +676,8 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 		}
 		if (taso_lastk >= 0)      // nested: && does not short-circuit here, and taso_rf[-1] is out of range
 		{
-			if (taso_rf[taso_lastk] < 0) label = sprintf("Point %g: %g u/s", taso_lastk + 1, taso_rb[taso_lastk]);
-			else label = sprintf("Ramp %g: %g u/s, the guide run %g (%s%g)", taso_lastk + 1, taso_rb[taso_lastk], taso_rf[taso_lastk],
+			if (taso_rf[taso_lastk] < 0) label = sprintf("Point %g: energy %g", taso_lastk + 1, taso_rb[taso_lastk]);
+			else label = sprintf("Ramp %g: energy %g, the guide run %g (%s%g)", taso_lastk + 1, taso_rb[taso_lastk], taso_rf[taso_lastk],
 				(taso_rb[taso_lastk] >= taso_rf[taso_lastk]) ? "+" : "", taso_rb[taso_lastk] - taso_rf[taso_lastk]);
 			sui_text(at, [hint, hint], label, SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.6;
 		}

@@ -103,8 +103,10 @@ ENDS = r'tas autosurf: (?:finished[^\n]*|stuck[^\n]*|stopped[^\n]*)'
 
 def grade(text, secs):
     r = {'secs': round(secs), 'finished': None, 'time': None, 'stretch': 0, 'of': 0, 'shares': [], 'backs': 0, 'esc': 0, 'end': ''}
-    for m in re.finditer(r'stretch (\d+) reached: (-?\d+) u/s at the guide\'s board height, the guide (\d+)', text):
-        k, ours, guide = int(m.group(1)), float(m.group(2)), float(m.group(3))
+    # the old wording ("reached: N u/s at the guide's board height, the guide M") and the energy one ("reached with energy N
+    # (the guide M)", P1483 follow-up): both are energy at the guide's board height
+    for m in re.finditer(r'stretch (\d+) reached(?:: (-?\d+) u/s at the guide\'s board height, the guide (\d+)| with energy (-?\d+) \(the guide (\d+)\))', text):
+        k = int(m.group(1)); ours = float(m.group(2) if m.group(2) is not None else m.group(4)); guide = float(m.group(3) if m.group(3) is not None else m.group(5))
         r['stretch'] = max(r['stretch'], k)
         if guide > 0: r['shares'].append((k, round(ours / guide, 4)))
     m = re.search(r'(\d+) stretches ahead', text)

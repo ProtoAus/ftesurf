@@ -974,7 +974,7 @@ void(entity e) SV_TASAutoSpotNext =
 		as_swd[i] = b + 1; as_swp[i*3] = as_swo[b*3]; as_swp[i*3+1] = as_swo[b*3+1]; as_swp[i*3+2] = as_swo[b*3+2];
 		e.as_swph = 0;
 		if (as_sws[b] >= 100000)
-			SV_TASAutoNote(e, 1, sprintf("stretch %.0f: boarding %s kept, the next ramp at %.0f u/s (the guide's spot: %s)", i + 1,
+			SV_TASAutoNote(e, 1, sprintf("stretch %.0f: boarding %s kept, the next ramp with energy %.0f (the guide's spot: %s)", i + 1,
 				(b == 0) ? "on the guide's spot" : SV_TASAutoSpotName(b), as_sws[b] - 100000,
 				(as_sws[0] >= 100000) ? sprintf("%.0f", as_sws[0] - 100000) : "missed it"));
 		else SV_TASAutoNote(e, 1, sprintf("stretch %.0f: no spot made the next ramp; boarding %s kept", i + 1,
@@ -999,10 +999,10 @@ float(entity e) SV_TASAutoSweep =
 		if (e.topt_outcome == 2)
 		{
 			as_sws[k] = 100000 + SV_TASAutoEnergyAt(e, e.as_i);
-			SV_TASAutoNote(e, 1, sprintf("stretch %.0f, boarding %s: %.0f u/s there, the next ramp at %.0f", e.as_swi + 1,
+			SV_TASAutoNote(e, 1, sprintf("stretch %.0f, boarding %s: energy %.0f there, the next ramp with %.0f", e.as_swi + 1,
 				SV_TASAutoSpotName(k), as_swe[k], as_sws[k] - 100000));
 		}
-		else SV_TASAutoNote(e, 1, sprintf("stretch %.0f, boarding %s: %.0f u/s there, then missed the next ramp", e.as_swi + 1,
+		else SV_TASAutoNote(e, 1, sprintf("stretch %.0f, boarding %s: energy %.0f there, then missed the next ramp", e.as_swi + 1,
 			SV_TASAutoSpotName(k), as_swe[k]));
 		SV_TASAutoSpotNext(e);
 		return TRUE;
@@ -1044,7 +1044,7 @@ void(entity e) SV_TASAutoBeamNext =
 		for (k = 1; k < e.as_bmn; k = k + 1) if (as_bms[k] > as_bms[b]) b = k;
 		as_bmd[i] = b + 1; e.as_bmk = b;
 		SV_TASAutoNote(e, 1, sprintf("stretch %.0f: line %.0f of %.0f kept, %s (the search's best: %s)", i + 1, b + 1, e.as_bmn,
-			(as_bms[b] >= 100000) ? sprintf("the next ramp at %.0f u/s", as_bms[b] - 100000) : "none made the next ramp",
+			(as_bms[b] >= 100000) ? sprintf("the next ramp with energy %.0f", as_bms[b] - 100000) : "none made the next ramp",
 			(as_bms[0] >= 100000) ? sprintf("%.0f", as_bms[0] - 100000) : "missed it"));
 	}
 	e.as_bmph = (k < e.as_bmn) ? 1 : 3;
@@ -1304,7 +1304,7 @@ void(entity e) SV_TASAutoLink =
 		(as_wk[i] == 1) ? "ramp" : ((as_wk[i] == 2) ? "bhop" : "point"), e.as_try + 1));
 	else SV_TASAutoNote(e, 1, sprintf("stretch %.0f of %.0f (%s at demo t=%.2f), try %.0f%s", i + 1, as_n,
 		SV_TASAutoKind(as_wk[i]), as_wt[i], e.as_try + 1,
-		(as_need[i] > 0) ? sprintf(", needs %.0f u/s", as_need[i]) : ""));
+		(as_need[i] > 0) ? sprintf(", needs energy %.0f", as_need[i]) : ""));
 };
 
 // A chain's start. backs unset: twice the stretches, at least 6 (the full surf_null run spent 10 on its first five of 17)
@@ -1845,7 +1845,7 @@ void(entity e) SV_TASAutoFrame =
 			as_rbs[e.as_i] = as_rb; as_rfs[e.as_i] = as_rf;
 			if (as_prpi == e.as_i - 1 && e.as_i > 0) SV_TASAutoPriorKeep(e, e.as_i - 1);
 			SV_TASAutoPriorPend(e, e.as_i);
-			SV_TASAutoNote(e, 1, sprintf("stretch %.0f reached: %.0f u/s at the guide's board height, the guide %.0f", e.as_i + 1, as_rb, as_rf));
+			SV_TASAutoNote(e, 1, sprintf("stretch %.0f reached with energy %.0f (the guide %.0f)", e.as_i + 1, as_rb, as_rf));
 			}
 			if (e.as_i == as_n - 1) e.as_fintry = e.as_try;
 			e.as_tprev = t; e.as_i = e.as_i + 1; e.as_try = 0;
@@ -1923,7 +1923,7 @@ void(entity e) SV_TASAutoFrame =
 				for (i = d + 1; i < as_n; i = i + 1) as_need[i] = as_leadmin[i] = as_back[i] = as_up[i] = 0;
 				as_need[d] = max(as_rbs[d] * 1.0025, min(as_rfs[d] * 0.995, as_rbs[d] * 1.03)); as_fresh[d] = 1;
 				e.as_tprev = as_wp[d]; e.as_goal = as_ws[d]; e.as_stage = 3;
-				SV_TASAutoNote(e, 1, sprintf("stretch %.0f could not beat its bar: the energy went at stretch %.0f (%.1f%% of the guide's): backtrack %.0f there, needing %.0f u/s",
+				SV_TASAutoNote(e, 1, sprintf("stretch %.0f could not beat its bar: the energy went at stretch %.0f (%.1f%% of the guide's): backtrack %.0f there, needing energy %.0f",
 					t + 1, d + 1, 100 * as_rbs[d] / as_rfs[d], e.as_backs, as_need[d]));
 				return;
 			}
@@ -1931,7 +1931,7 @@ void(entity e) SV_TASAutoFrame =
 		if (as_need[e.as_i] > 0 && e.as_backs < e.as_backmax)
 		{	// it could not beat its last reach: again without the bar (the next stretch may need another line at the
 			// same speed), a backtrack's worth -- barred stretches cascaded to the first and stopped (review 8)
-			SV_TASAutoNote(e, 1, sprintf("stretch %.0f could not beat %.0f u/s: again without the bar (backtrack %.0f)",
+			SV_TASAutoNote(e, 1, sprintf("stretch %.0f could not reach energy %.0f: again without the bar (backtrack %.0f)",
 				e.as_i + 1, as_need[e.as_i], e.as_backs + 1));
 			as_need[e.as_i] = 0; e.as_backs = e.as_backs + 1; e.as_try = 0;
 			e.as_goal = as_ws[e.as_i]; e.as_stage = 3;
@@ -1948,7 +1948,7 @@ void(entity e) SV_TASAutoFrame =
 				for (i = t + 1; i < as_n; i = i + 1) as_need[i] = as_leadmin[i] = as_back[i] = as_up[i] = 0;
 				as_need[t] = max(as_need[t], as_rbs[t] * min(1.08, e.topt_lowneed)); as_fresh[t] = 1;
 				e.as_tprev = as_wp[t]; e.as_goal = as_ws[t]; e.as_stage = 3;
-				SV_TASAutoNote(e, 1, sprintf("stretch %.0f came in under its platform: backtrack %.0f to stretch %.0f, needing %.0f u/s (it had %.0f)",
+				SV_TASAutoNote(e, 1, sprintf("stretch %.0f came in under its platform: backtrack %.0f to stretch %.0f, needing energy %.0f (it had %.0f)",
 					d + 1, e.as_backs, t + 1, as_need[t], as_rbs[t]));
 				return;
 			}
@@ -1989,7 +1989,7 @@ void(entity e) SV_TASAutoFrame =
 				if (as_rfs[t] > as_need[t]) as_need[t] = min(as_rfs[t], as_rbs[t] * 1.03);  // the guide's, 3% a time at most
 				as_fresh[t] = 1;
 				e.as_tprev = as_wp[t]; e.as_goal = as_ws[t]; e.as_stage = 3;
-				SV_TASAutoNote(e, 1, sprintf("stretch %.0f fell short after the hops: backtrack %.0f to stretch %.0f, needing %.0f u/s (it had %.0f, the guide %.0f)",
+				SV_TASAutoNote(e, 1, sprintf("stretch %.0f fell short after the hops: backtrack %.0f to stretch %.0f, needing energy %.0f (it had %.0f, the guide %.0f)",
 					d + 1, e.as_backs, t + 1, as_need[t], as_rbs[t], as_rfs[t]));
 				return;
 			}
