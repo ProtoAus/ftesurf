@@ -6998,6 +6998,19 @@ must require42checks and exact8baseline labels, and catch unnumbered warnings.
 
 ## Anti-cheat and run evidence
 
+**P1498 compiler-entry bounds and native stamp qualification (11 Nov 2026).**
+Pass the selected entry's extent to both string operations, not the surrounding
+aggregate; preserve the exact supported boundary and existing warning/refusal.
+Source-bound controls can suppress an old unsafe operation before writing while
+still proving that the corrected function acts. Capture required production
+macro declarations too; missing fixture context is not a product failure.
+Use the supported build entrypoint with its original environment: prepending
+MSYS tools in the outer shell can select the wrong Git before native revision
+capture and falsely stamp clean source dirty. Restore Windows Git ordering,
+rebuild the changed revision macros fully, inspect actual `--version`, and do
+not promote the refused candidate. Record installed hashes and actual compiler
+behavior separately from source review. See `tools/p1498-compiler-includes.md`.
+
 **P1491 selected-peer work must follow the owned pass's remaining allowance
 (11 Nov 2026).** A one-pair collector still selected up to200 peers. With201 valid
 synthetic recordings and the actual sweep/reader, 20000 selected-read instructions
