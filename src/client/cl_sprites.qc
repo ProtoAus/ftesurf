@@ -2318,7 +2318,7 @@ void() Sprite_Glare =
 	// BUILD 59: the view cull.
 	local float  visits, docull, tanx, maxdist, slope, glowcos, zc;
 	local float  tn, tcapped;               // P1488: rays at the last clock check; the time budget stopped the loop
-	local float  tv;                        // P1504: visits at the last clock check
+	local float  tv, oldep, forced;          // P1504: visits at the last clock check; a bailed visit's undo
 	local vector fwd;
 	// BUILD 60: the adaptive rays, and the measured sweep.
 	local float  adapt, docorners, had, m, wrapped;
@@ -2782,7 +2782,9 @@ void() Sprite_Glare =
 		*/
 		had = spr_gtraced[i];                   // 0 = this is its first ever answer
 		spr_gtraced[i] = had + 1;               // one visit; never reset, see the decl
+		oldep = spr_gep[i];
 		spr_gep[i] = spr_gepoch;
+		forced = FALSE;
 
 		docorners = (rays > 1);
 		if (docorners && !hits && adapt > 0 && had >= 1 && spr_gvis[i] <= 0)	// P1373: a stale -1 too
@@ -2790,7 +2792,10 @@ void() Sprite_Glare =
 			// due when count == index (mod adapt+1).  `m` is set once per frame.
 			if ((spr_gtraced[i] - floor(spr_gtraced[i] / m) * m)
 			    == (i - floor(i / m) * m))
+			{
 				spr_gforce = spr_gforce + 1;    // owed a re-check: fall through to five
+				forced = TRUE;
+			}
 			else
 			{
 				docorners = FALSE;              // centre blocked, and it was blocked before
@@ -2808,10 +2813,17 @@ void() Sprite_Glare =
 		*/
 		if (docorners)
 		{
-			// P1504: four more rays (~180 us each on surf_fairy), so the budget is asked again: one check a glow let a
-			// frame trace ~0.9 ms past it. Over, the glow keeps its last answer and is first next frame.
-			if (Sprite_TraceOver(1))
+			// P1504: four more rays (~100-180 us each on surf_fairy), so the budget is asked again: one check a glow let
+			// a frame trace ~0.9 ms past it. Over, the visit is undone (its count, epoch and owed re-check) and the glow
+			// is first next frame with its last answer. A frame's first glow always finishes (n > 1; review: without
+			// it a frame the sky test left near the budget rewound the same glow every frame and the sweep stalled).
+			if (n > 1 && Sprite_TraceOver(1))
 			{
+				spr_gtraced[i] = had;
+				spr_gep[i] = oldep;
+				if (forced)
+					spr_gforce = spr_gforce - 1;
+				visits = visits - 1;
 				spr_gnext = i;
 				if (i == spr_n - 1)
 					wrapped = FALSE;    // its sweep did not finish
