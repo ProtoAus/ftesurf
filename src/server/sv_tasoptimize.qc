@@ -29,13 +29,8 @@
 #define TOPT_FITER 12           // P1449 follow: rollouts to the fixed point (each fixes at least a tick)
 #define TOPT_KMAX  16           // P1449 curve: knots at most (a flight's side switches come every 20-30 ticks)
 #define TOPT_KDEF  8            // ...by default
-#define TOPT_QMAX  120          // P1449 curve: the turn command's sampling range (see SV_TASOptFollow); farsh's rides
+#define TOPT_QMAX  120          // P1449 curve: the turn command's range (see SV_TASOptFollow); farsh's rides
                                 // reach ~80 (braking turns), the follow optimum on ramp 0 ~130
-#define TOPT_QCLAMP 240         // P1483: what a command may be -- a demo's own, an offset from it, a seed. Clamped to
-                                // QMAX, a guide's hard air strafe could not be copied or found: surf_tensor2 stage 5
-                                // turns 4.4 degrees a tick at 1800 u/s (138) and every line flew on, 1192 u past the next
-                                // board; 239 of 337 guides need more than 120 somewhere (2.5% of free-fall ticks, the
-                                // median guide's sharpest 189; one tick can add ~585 at airaccel 150)
 #define TOPT_CEPOP 20           // P1449 curve: samples a generation
 #define TOPT_CEEL  5            // ...the best kept
 #define TOPT_CEGEN 30           // ...generations after the seeding grid
@@ -556,7 +551,7 @@ float(entity e, float r, float f) SV_TASOptFollow =
 			q = (k >= e.topt_kn - 1) ? topt_kcur[e.topt_kn - 1] : topt_kcur[k] + (d - k) * (topt_kcur[k + 1] - topt_kcur[k]);
 			if (topt_ride[i]) q = 30 * topt_ride[i];
 			topt_rows[i*7] = 0; topt_rows[i*7+1] = -450 * e.topt_dir; topt_rows[i*7+2] = 0;
-			topt_rows[i*7+3] = SV_TASPWord(e.topt_pitch0); topt_rows[i*7+4] = bound(-TOPT_QCLAMP, q, TOPT_QCLAMP);
+			topt_rows[i*7+3] = SV_TASPWord(e.topt_pitch0); topt_rows[i*7+4] = bound(-TOPT_QMAX, q, TOPT_QMAX);
 			topt_rows[i*7+5] = 0; topt_rows[i*7+6] = TOPT_EFOLLOW + (e.topt_pfoff ? 0 : TOPT_EPITCHV) + ((e.topt_mode & 128) ? TOPT_EAIM : 0) + (e.topt_hop ? 1 : 0)
 				+ (e.topt_ewall ? TOPT_EWALL : 0) + (((e.topt_mode & 128) && e.topt_ewide) ? TOPT_EWIDE : 0);
 		}
@@ -743,7 +738,7 @@ void(entity e) SV_TASOptDemoRows =
 		topt_rows[i*7+3] = SV_TASPWord(topt_drow[j*5+2]);
 		// the correction changes how hard the demo's side is used, never which side (an added constant
 		// flipped its right-hand flight strafes left: Lex, 9 Nov)
-		topt_rows[i*7+4] = (topt_dq[j] == 0) ? 0 : ((topt_dq[j] > 0) ? 1 : -1) * bound(0, fabs(topt_dq[j]) + off, TOPT_QCLAMP);
+		topt_rows[i*7+4] = (topt_dq[j] == 0) ? 0 : ((topt_dq[j] > 0) ? 1 : -1) * bound(0, fabs(topt_dq[j]) + off, TOPT_QMAX);
 		topt_rows[i*7+5] = 0;
 		// this row aims: only where the demo holds a side key (before the engine's aim takes over, airk < 3,
 		// FOLLOW strafes a 0 command at side 0 as 450 left -- review)
@@ -1901,14 +1896,14 @@ void(entity e, float argc) SV_TASSeedCommand =
 	if (argc == 3 && argv(2) == "clear") { e.topt_kseedn = 0; sprint(e, PRINT_HIGH, "tas seed: cleared\n"); return; }
 	if (argc < 5 || argc > 2 + TOPT_KMAX)
 	{
-		sprint(e, PRINT_HIGH, sprintf("tas seed <q1> .. <qk> (3..%.0f knots, each -%.0f..%.0f) | clear\n", TOPT_KMAX, TOPT_QCLAMP, TOPT_QCLAMP));
+		sprint(e, PRINT_HIGH, sprintf("tas seed <q1> .. <qk> (3..%.0f knots, each -%.0f..%.0f) | clear\n", TOPT_KMAX, TOPT_QMAX, TOPT_QMAX));
 		return;
 	}
 	if (!SV_TASToolGate(e, "seed")) return;
 	if (e.topt_on) { sprint(e, PRINT_HIGH, "tas seed: the optimizer is running\n"); return; }
 	for (i = 2; i < argc; i = i + 1)
 		if (!FS_TASNumber(argv(i))) { sprint(e, PRINT_HIGH, "tas seed: numbers only\n"); return; }
-	for (i = 2; i < argc; i = i + 1) topt_kseed[i - 2] = bound(-TOPT_QCLAMP, stof(argv(i)), TOPT_QCLAMP);
+	for (i = 2; i < argc; i = i + 1) topt_kseed[i - 2] = bound(-TOPT_QMAX, stof(argv(i)), TOPT_QMAX);
 	e.topt_kseedn = argc - 2;
 	sprint(e, PRINT_HIGH, sprintf("tas seed: %.0f knots kept for the next `curve %.0f` search\n", e.topt_kseedn, e.topt_kseedn));
 };
@@ -1980,7 +1975,7 @@ void(entity e, float argc) SV_TASDemoRowsCommand =
 		sd = stof(argv(12));
 		wy = (yaw + ((sd < 0) ? 90 : -90)) / DEG_PER_RAD;        // Source: negative sidemove is left
 		x = pvx * cos(wy) + pvy * sin(wy);
-		topt_dq[n] = (sd == 0) ? 0 : bound(-TOPT_QCLAMP, ((sd < 0) ? 1 : -1) * (30 - x), TOPT_QCLAMP);
+		topt_dq[n] = (sd == 0) ? 0 : bound(-TOPT_QMAX, ((sd < 0) ? 1 : -1) * (30 - x), TOPT_QMAX);
 		pvx = stof(argv(4)); pvy = stof(argv(5));
 		topt_dpos[n*3] = stof(argv(1)); topt_dpos[n*3+1] = stof(argv(2)); topt_dpos[n*3+2] = stof(argv(3));
 		topt_dlen[n] = n ? topt_dlen[n-1] + vlen([topt_dpos[n*3] - topt_dpos[n*3-3], topt_dpos[n*3+1] - topt_dpos[n*3-2], topt_dpos[n*3+2] - topt_dpos[n*3-1]]) : 0;
