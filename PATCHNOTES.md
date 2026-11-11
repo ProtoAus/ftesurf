@@ -21,6 +21,9 @@
 
 ## next
 
+### P1489 No freeze right after you spawn on a map
+- Light glows, sprites, emitters, decals, overlays and portals now load behind the loading screen instead of in the first frames after you spawn, which could freeze for a moment (about 130 ms on surf_fairy).
+
 ### P1488 Steadier frames on maps full of light glows
 - Light glows and sky checks spend at most about 1 ms a frame testing what they can see, so maps with hundreds of glows stutter far less (surf_fairy's slowest frames about 45% faster, surf_jumble's 38%).
 

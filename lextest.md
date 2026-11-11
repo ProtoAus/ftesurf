@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1489 map loads behind the loading screen -- 12 lobbies + both installs (cs 876a1202) 11 Nov 04:40Z; owner check PENDING
+- Join a map (or wait for a lobby map change): the first second after you spawn should be smooth now. Check that
+  glows, decals, overlays (screen tints), dust/steam emitters and portals still show as before, on the first map
+  and after a map change. QC only, no new exe.
+
 ## P1488 glow trace budget -- both installs (exe 79c0cd4c) + 12 lobbies (cs e8700c05) 11 Nov 00:03Z; owner check PENDING
 - Surf surf_fairy or surf_jumble: it should feel smoother than before. Watch the light glows (the flares round lamps):
   they may fade in or out a moment later than before when you come round a corner -- that is the trade for the

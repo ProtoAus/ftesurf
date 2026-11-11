@@ -225,8 +225,22 @@
 - First-play hitches (tendies 44-147 ms, orgrimmar 40-48, original 44, citypop 39): models finishing their load
   mid-play and building mesh VBOs on the main thread, 3-4 a hitch ~5 ms apart (GL debug probe, 11 Nov). Not every
   launch (a warm second launch had none): whatever r_mapready's warm-up did not reach. tools/p1481-survey3.md.
+- DONE P1489 (first-play, part 1): the sprite/glow/emitter/decal/overlay/portal loaders ran in the first frames after
+  spawn (serverkey("map") is "" in CSQC_WorldLoaded on a connect); now in WorldLoaded keyed by the loaded world,
+  latches wait for a current key. Fairy's post-spawn frame 547 -> 108 ms profiled (Lex's real: 77 + 51 ms). Left in
+  it: Zone_LoadFromBsp (zones need the server's data; not moved).
+- Lex's own config has vbsp_sprites 0 and vbsp_lightglow 0; the survey's fullfx.cfg turns them on (players' default).
+  Lex's fullscreen fairy dump (11 Nov): avg 380, 0.1% 152, no present stalls.
+- CSQC trace cost (cs_tracebench, engine branch diag-firstplay): a 4096-unit ray from spawn costs fairy 40-56 us,
+  jumble 13-21, nuclear 5-6 -- all in the world BIH (brushes, displacements, prop hulls); entities add < 3 us.
+  Lever: an any-hit traversal for occlusion rays (glare/sky only need "anything in the way"). Lower priority since
+  P1488 bounds the per-frame trace time: it would make glows fresher, not lows better.
 - surf_fairy after P1488 (0.1% 126, still the worst): its slowest frames are r_blendsort 2 transparent draws 3-3.5 ms
-  at one spot ~30 s into the board replay; next a paused-view probe there.
+  at one spot ~30 s into the board replay. Paused probe at replay t=33.2 (A..A, no drift): 7.78 ms; glows off 6.61,
+  sprites off 7.09, r_blendsort 1 5.56 (transparent 1.49 -> 0.31 and 1 ms GPU), hl2_water 0 6.32, Lex's settings
+  6.12. The main view's r_blendsort 2 sort fails EVERY frame there (status -2, 66 of 128 faces admitted, ~33k work)
+  and no failure certificate is taken (P1465: needs a 3-16-face cycle or a strict crossing for passes 1 and 2), so
+  the work repeats on a paused camera. Next: why neither pass yields a certificate there.
 - GL_LazyBind (gl_backend.c ~800) glEnable/glDisable's a TMU's texture target on the compatibility path, including
   GL_TEXTURE_2D_ARRAY / CUBE_MAP_ARRAY, which are not enable caps: GL_INVALID_ENUM many times a second. Skip the
   enable for those targets.

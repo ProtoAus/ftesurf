@@ -101,3 +101,14 @@ Every pass-1 hitch (29-70 ms) came with new STATIC_DRAW vertex/index buffer pair
 models (r_mapready_budget 6 s, cold vs warm file cache). Next: print r_mapready_info after a cold first load, and
 load what the warm-up misses off the main thread or before play. Diagnostic branches (not shipped): diag-builtins
 (r_spikes 2 per-builtin time), diag-firstplay (gl_debugperf filtered, r_spikes 3 slow-frame stamps, meshvbo names).
+
+## P1489 and the next leads (11 Nov afternoon)
+
+- Lex's fullscreen fairy dump: no present stalls; his worst frames were first-play -- 77 + 51 ms csqc right after
+  spawn, a 53 ms frame with a late shader compile. A spawn probe (r_spikes 2 from launch, per-builtin times) named
+  the csqc frames: the sprite/emitter/decal/portal loaders ran in the first frames after spawn because
+  serverkey("map") is "" in CSQC_WorldLoaded on a connect. P1489 (delivered) runs them there, keyed by the loaded
+  world: fairy's post-spawn frame 547 -> 108 ms (profiled); zones remain.
+- Traces: a ray costs fairy 40-56 us in the world BIH (entities < 3 us); see BACKLOG.
+- Fairy's worst spot (replay t=33.2): r_blendsort 2's sort fails every frame with no certificate, ~1.2 ms of
+  transparent + ~1 ms GPU; see BACKLOG.
