@@ -134,6 +134,20 @@ caller timed out during postflight; its failure was retained and the healthy
 swap was **not** repeated. This was a separate read-only acceptance.
 
 Installed/hashed is not owner visual acceptance: that check remains pending.
-The Pi rollout is still pending its recorder/resume preservation transaction
-at this checkpoint; no lobby deployment or backend generation swap is claimed
-from the Windows result. No release or QCBuild bump was performed.
+
+Pi paired-program activation completed at **2026-11-11 23:01:57 UTC** after the
+standard chat warning and actual 10-second countdown. Both qualified progs and
+`.prev` hashes verified; all12lobbies restarted, zero skips. All58,462captured
+protected files remained exact, with zero new files at postflight. Complete
+onbox and independently rehashed offbox progs/recorder/resume preimages preceded
+canonical staging. The fresh capture bound the actually changed P1508 native
+actors/backend launcher rather than reusing old PIDs or redating old evidence.
+The earlier never-activated capture and its qualified rollback archives remain.
+
+Separate read-only full payload/metadata postflight at **23:02:42 UTC** verified
+all9original part files and207resume files unchanged, all12new actor epochs,
+strict13declared actor FD closure, and native/plugin/menu/config/backend
+preservation. This is the explicitly scoped recorder/resume actor check, not a
+general system file-writer audit. No backend generation or native binary swap.
+Real cold downloaded-client/frame-hook acceptance is still pending here and is
+not inferred from server hashes or restart counts. No release or QCBuild bump.
