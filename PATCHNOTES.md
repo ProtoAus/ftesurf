@@ -24,6 +24,10 @@
 ### P1493 Local game version in map info
 - The map-info title now shows your local game version beside World of Surf.
 
+### P1492 Bhop map entities
+- The two glass doors in bhop_bunnyrace now slide open when triggered and close after their authored wait, instead of only changing an internal state.
+- Fixed local bhop platforms such as kz_bhop_avantura retaining an old landing count after jumping onto another block.
+
 ### P1489 No freeze right after you spawn on a map
 - Light glows, sprites, emitters, decals, overlays and portals now load behind the loading screen instead of in the first frames after you spawn, which could freeze for a moment (about 130 ms on surf_fairy).
 

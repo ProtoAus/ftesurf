@@ -4,6 +4,11 @@
 - In-game map info should read `World of Surf 0.1.xx`, matching this install's release metadata. Without release metadata, a current local development menu supplies its compiled version plus `(dev)`; an old unversioned development menu shows `unknown`, never the lobby's version. Check the longer title remains comfortably right-aligned.
 - Three VMs zero warnings; native menu producer/fallback metadata checked. No rendered HUD acceptance yet: peer graphics benchmarks held the shared interval. This is display metadata, not engine/QC integrity proof.
 
+## P1492 bhop doors/platforms — owner check PENDING
+- bhop_bunnyrace: approach the two glass doors; they should visibly slide open, permit passage, and close after three seconds. Native tests prove solid brush motion/point traces, not real-player passage or pushing. Obstruction uses the existing stall-until-clear pusher behavior, not a new Source crush/reverse policy.
+- kz_bhop_avantura local play: jump A → B → A; the first landing back on A should not inherit its old count. Repeated landings on the same limited block still count. Public-lobby per-player tracking was already separate and unchanged; report if resets persist online.
+- Checkpoint position/movement report remains UNRESOLVED: please provide the first affected crossing/video, with or without the saveloc gesture. Actual callback inspected writes stats/receipt, not player body; no speculative teleport changes made.
+
 ## P1489 map loads behind the loading screen -- 12 lobbies + both installs (cs 876a1202) 11 Nov 04:40Z; owner check PENDING
 - Join a map (or wait for a lobby map change): the first second after you spawn should be smooth now. Check that
   glows, decals, overlays (screen tints), dust/steam emitters and portals still show as before, on the first map

@@ -12933,6 +12933,39 @@ void(entity t, void() fn, float dt) SV_MoverArm =
 	t.nextthink = t.ltime + dt;		// ltime.  NEVER time.  See above.
 };
 
+.float vbsp_door_slide;         // exact bunnyrace BSP + door fingerprint only
+.vector vbsp_door_closed, vbsp_door_open;
+
+void() SV_BunnyDoorReturn = { SV_DoorClose(self, self.vbsp_mv_act); };
+
+void() SV_BunnyDoorArrived =
+{
+	self.velocity = '0 0 0';
+	self.nextthink = 0;
+	if (self.vbsp_mv_state == TS_GOING_UP)
+	{
+		setorigin(self, self.vbsp_door_open);
+		self.vbsp_mv_state = TS_AT_TOP;
+		SV_MoverArm(self, SV_BunnyDoorReturn, self.vbsp_mv_wait);
+		SV_FireOutput(self, "OnFullyOpen", self.vbsp_mv_act);
+	}
+	else
+	{
+		setorigin(self, self.vbsp_door_closed);
+		self.vbsp_mv_state = TS_AT_BOTTOM;
+		SV_FireOutput(self, "OnFullyClosed", self.vbsp_mv_act);
+	}
+};
+
+void(entity t, vector goal) SV_BunnyDoorMove =
+{
+	local float dt;
+	dt = vlen(goal - t.origin) / t.speed;
+	if (dt < 0.001) dt = 0.001;
+	t.velocity = (goal - t.origin) / dt;
+	SV_MoverArm(t, SV_BunnyDoorArrived, dt);
+};
+
 /*
   Lock / Unlock -- 1,292 and 752 fires at func_button/func_rot_button across
   116 and 14 maps, plus ~130 at doors.
@@ -13340,6 +13373,8 @@ void(entity t, entity act) SV_DoorOpen =
 		return;
 	t.vbsp_mv_state = TS_GOING_UP;
 	t.vbsp_mv_act   = act;
+	if (t.vbsp_door_slide)
+		SV_BunnyDoorMove(t, t.vbsp_door_open);
 	SV_FireOutput(t, "OnOpen", act);
 };
 
@@ -13351,6 +13386,8 @@ void(entity t, entity act) SV_DoorClose =
 		return;
 	t.vbsp_mv_state = TS_GOING_DOWN;
 	t.vbsp_mv_act   = act;
+	if (t.vbsp_door_slide)
+		SV_BunnyDoorMove(t, t.vbsp_door_closed);
 	SV_FireOutput(t, "OnClose", act);
 };
 
@@ -13426,6 +13463,28 @@ void() SV_MoverSetup =
 		self.vbsp_mv_travel = 0.05;
 };
 
+.vector movedir;
+.float hammerid;
+
+// BSP checksum is XOR-MD4 of the complete verified VBSP20 file, not a name guess.
+// These two doors close three seconds after arriving. Other doors stay state-only.
+float(string loaded_map, string loaded_crc) SV_BunnyDoorMatch =
+{
+	if (strcmp(loaded_map, "bhop_bunnyrace")) return FALSE;
+	if (strcmp(loaded_crc, "431ee83e")) return FALSE;
+	if (strcmp(self.classname, "func_door")) return FALSE;
+	if (strcmp(self.targetname, "glassdoor")) return FALSE;
+	if (self.spawnflags != 1024 || self.speed != 600 || self.lip != 0 || self.wait != 3)
+		return FALSE;
+	if (self.health != 0 || strcmp(self.vbsp_io_raw, "")) return FALSE;
+	if (self.mins != '-125 -9 -257' || self.maxs != '125 9 257') return FALSE;
+	if (!strcmp(self.model, "*17") && self.hammerid == 6119)
+		return self.origin == '1660 -1016 -1216' && self.movedir == '0 180 0' && self.angles == '0 180 0';
+	if (!strcmp(self.model, "*18") && self.hammerid == 6127)
+		return self.origin == '1924 -1016 -1216' && self.movedir == '0 0 0' && self.angles == '0 0 0';
+	return FALSE;
+};
+
 void() SV_SpawnDoor =
 {
 	if (!self.model)
@@ -13447,6 +13506,14 @@ void() SV_SpawnDoor =
 	self.vbsp_mv_kind   = MVK_DOOR;
 	self.vbsp_mv_locked = (self.spawnflags & SF_DOOR_LOCKED) ? TRUE : FALSE;
 	SV_MoverSetup();
+	if (SV_BunnyDoorMatch(mapname, infokey(world, "*mapcrc")))
+	{
+		self.vbsp_door_slide = TRUE;
+		self.vbsp_door_closed = self.origin;
+		// Compiled width is 248; the loaded bounds include one-unit expansion.
+		self.vbsp_door_open = self.origin + ((self.hammerid == 6119) ? '-248 0 0' : '248 0 0');
+		self.vbsp_mv_travel = 248 / self.speed;
+	}
 };
 
 void() func_door          = { SV_SpawnDoor(); };
@@ -14175,6 +14242,23 @@ void(entity pl) SV_BhopFrame =
 	if (pl.flags & FL_ONGROUND)
 		b = pl.groundentity;
 
+	// P1492: bhop_on is contact-only and is cleared in the air. cntblk retains the
+	// last landing, so ResetOnOtherBlock also works across an ordinary jump.
+	// Keep the lobby's consecutive per-player counter policy unchanged.
+	if (!vbsp_retrigger && (pl.flags & FL_ONGROUND))
+	if (pl.vbsp_bhop_cntblk != world && pl.vbsp_bhop_cntblk != b)
+	if (!strcmp(pl.vbsp_bhop_cntblk.classname, "func_bhop"))
+	if (pl.vbsp_bhop_cntblk.spawnflags & (SF_BHOP_RESET_ON_OTHER | SF_BHOP_RESET_ON_ANY))
+	{
+		pl.vbsp_bhop_cntblk.count = 0;
+		// Consume a normal-ground landing once, not on every grounded frame.
+		if (strcmp(b.classname, "func_bhop") || b.solid == SOLID_NOT)
+		{
+			pl.vbsp_bhop_cntblk = world;
+			pl.vbsp_bhop_cnt = 0;
+		}
+	}
+
 	if (b.classname != "func_bhop" || b.solid == SOLID_NOT)
 	{
 		// Landed on something that is not a func_bhop.  Source's spawnflag 2
@@ -14217,7 +14301,7 @@ void(entity pl) SV_BhopFrame =
 		  per-player would be a different change with a different blast radius.
 		  Only the LandingLimit comparison moves.
 
-		  INVISIBLE ON THE WHOLE LIBRARY AS IT STANDS: LandingLimit is 0
+		  INVISIBLE ON THE P270 LIBRARY SNAPSHOT: LandingLimit was 0
 		  (unlimited) on every func_bhop in all 1310 maps, which is why the arm
 		  below is described as correct-by-construction rather than tested.  This
 		  is a latent bug being closed before 32 players can find it, not an
@@ -14258,8 +14342,8 @@ void(entity pl) SV_BhopFrame =
 		return;
 	}
 
-	// LandingLimit 0 is unlimited, which is every block on both maps here, so
-	// this arm is correct-by-construction rather than tested against a map.
+	// LandingLimit 0 is unlimited; verified kz_bhop_avantura uses 1.
+	// Keep its actual landing limit separate from the dwell timeout.
 	// -1 is per-gamemode func_door emulation and is deliberately not done.
 	//
 	/*
