@@ -59,9 +59,11 @@
 // air strafing toward the demo's exit point) or at the exit, the chain takes over (Lex, 10 Nov).
 .float as_arm, as_nolegal, as_lastground;
 .float as_sn2;                  // ticks steered since the run started (the start clears the box's triggers first)
-.float as_sback;
+.float as_sback;                // start back-offs at an unaligned exit (2 at most)
 .float as_sbl;                  // a back-off counted this approach (cleared once back past 450 u)
-.float as_smeth, as_sredo;      // the start's way (1 the guide's prestrafe replayed, else steering), and whether it was redone                // start back-offs at an unaligned exit (2 at most)
+.float as_exair;                // the guide was in the air at its exit (it had jumped by the box's edge)
+.float as_sjmp;                 // this start has jumped
+.float as_smeth, as_sredo;      // the start's way (1 the guide's prestrafe replayed, else steering), and whether it was redone
 .float as_sph;                  // the start's ground phase: 0 speed (a left circle), 1 onto the line, 2 around again
 .float as_sdrop;                // ticks of the spawn's drop (as_sn2 is the out-of-box phase's own: review 2)
 .float as_ri;                   // P1478: the guide's row the start replays next (stage 13), -1 when it steers instead
@@ -560,6 +562,7 @@ float(entity e, float track, float leg) SV_TASAutoCourse =
 	as_r0 = r; as_rmin = max(0, r - 64);
 	e.as_szone = z;
 	e.as_ex = SV_TASAutoRowO(r);
+	e.as_exair = (as_rows[r*7+6] > 50);
 	e.as_exd = normalize([as_rows[r*7+4], as_rows[r*7+5], 0]);
 	if (e.as_exd == '0 0 0') e.as_exd = '1 0 0';
 	return TRUE;
@@ -1631,6 +1634,7 @@ void(entity e) SV_TASAutoFrame =
 			else if ((ph >= 1 && ph != 4 && fabs(lat) < 100 && fabs(herr) < 10 && along >= 130 && along <= 220) || along < 60 || e.as_sn >= e.as_sg)
 			{
 				SV_TASAutoStep(e, 400, e.as_sair, 1, 1, e.v_angle_y);         // the start's one jump
+				e.as_sjmp = 1;
 				SV_TASAutoNote(e, 1, sprintf("start: jumped at %.0f u/s, %.0f u short of the demo's exit, %.0f u and %.0f deg off its line", t, along, lat, herr));
 				e.as_stage = 12; e.as_sn = 0;
 				return;
@@ -1681,6 +1685,16 @@ void(entity e) SV_TASAutoFrame =
 			// 30) -- the zones are positions, not volumes, and a body paused over the box's edge was put back in the
 			// start, cancelling the run mid-search (rig tstart10)
 			if (!e.as_sn2) e.as_runo = e.origin;
+			if (!e.as_sjmp && e.as_exair && (e.flags & FL_ONGROUND) && cvar("tas_jargon_startfix"))
+			{	// the box's edge came before the jump's spot and the body ran off it on the ground, while the guide had
+				// jumped by its edge (surf_anubis stage 1's redo: no jump, 918 u from ramp 1 and every line missed it)
+				e.as_sjmp = 1;
+				SV_TASAutoStep(e, 400, e.as_sair, 1, 1, e.v_angle_y);
+				SV_TASAutoNote(e, 1, sprintf("start: out of the box still on the ground at %.0f u/s: jumped at its edge, as the guide had",
+					vlen([e.velocity_x, e.velocity_y, 0])));
+				e.as_sn2 = e.as_sn2 + 1;
+				return;
+			}
 			SV_TASAutoSteer(e, (e.flags & FL_ONGROUND) ? 400 : 0, 0, 2, 3, 0, vectoyaw(e.as_exd)); e.as_sn2 = e.as_sn2 + 2;
 		}
 		else if (e.run_t_state == TS_RUNNING)
@@ -1699,7 +1713,7 @@ void(entity e) SV_TASAutoFrame =
 				if (!e.taslg_on || e.taslg_zone != e.as_szone || e.run_t_state != TS_ARMED)
 					{ SV_TASAutoStop(e, "the start could not be redone (no legal start in the box)"); return; }
 				e.as_ri = (e.as_smeth == 1) ? -1 : SV_TASAutoRest(e);
-				e.as_smeth = 0; e.as_stage = 10; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_sbl = 0;
+				e.as_smeth = 0; e.as_stage = 10; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_sbl = 0; e.as_sjmp = 0;
 				return;
 			}
 			e.as_stage = 1; e.as_i = 0; e.as_try = 0; e.as_backs = 0; e.as_tprev = as_rows[s*7]; e.as_failat = -1;
@@ -2194,6 +2208,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 	if ((st || arm) && as_nrows < 2) { sprint(e, PRINT_HIGH, "tas autosurf: that demo has no samples to start from\n"); SV_TASAutoOptRestore(e); strunzone(path); return; }
 	for (i = 0; i < as_nrows - 1 && as_rows[i*7] < 0; i = i + 1) ;
 	e.as_ex = SV_TASAutoRowO(i);
+	e.as_exair = (as_rows[i*7+6] > 50);
 	e.as_exd = normalize([as_rows[i*7+4], as_rows[i*7+5], 0]);
 	if (e.as_exd == '0 0 0') e.as_exd = '1 0 0';
 	nct = -1; ncl = 0;
@@ -2230,7 +2245,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		}
 		if (e.as_file != "") strunzone(e.as_file);
 		e.as_file = path;
-		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_sbl = 0; e.as_smeth = 0; e.as_sredo = 0;
+		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_sbl = 0; e.as_sjmp = 0; e.as_smeth = 0; e.as_sredo = 0;
 		e.as_ctrack = nct; e.as_cleg = ncl; e.as_saved = -1; e.as_esc = 0; e.as_keepsaid = 0; e.as_cseed = 0;
 		SV_TASAutoRunSalt();
 		e.as_ri = (e.as_ctrack >= 0) ? SV_TASAutoRest(e) : -1;      // a `zone` start steers as before
