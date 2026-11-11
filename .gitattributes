@@ -66,3 +66,4 @@ src/viewer/vendor/**        linguist-vendored=true
 # A blank unified-diff context line requires its literal one-space prefix.
 # This is patch syntax; the generated Python's exact raw hash is checked separately.
 tools/p1502-mapwatch-fetch85.patch whitespace=-blank-at-eol
+tools/p1502-mapwatch-fetch85-reader.patch whitespace=-blank-at-eol

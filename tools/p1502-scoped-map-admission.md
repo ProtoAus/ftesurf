@@ -104,11 +104,28 @@ sidecars or fresh full-Beta evidence. Existing cached momnames383 is not the
 qualified approved411 census; 28 newly approved native names need that fresh
 list, not extra identities minted from the old cache.
 
-A three-hunk source-only fetch85 build recipe retains the existing serving
-fail-closed guards without the unavailable tascontent import. It reproduces the
-independently reviewed raw artifact hash with standard Git and explicit LF:
-`tools/p1502-mapwatch-fetch85.md`. This does not waive runtime/POSIX/dependency,
-input, preservation or privileged-profile gates; the main source is unchanged.
+Both source-only fetch85 artifacts retain the three existing serving fail-closed
+guards without the unavailable tascontent import. Standard Git with explicit LF
+reproduces each exact reviewed hash: `tools/p1502-mapwatch-fetch85.md`. The primary
+contains P1502; its independent reader-compatible companion uses public P1496,
+not the scoped-import subject. The legacy reader demonstrably loses129 existing
+Beta IDs under the typed sidecars; do not treat an unchanged legacy fallback as
+current-reader proof. Both compatible readers parse178 exact selected tuples and
+preserve177 unselected literal lines per sidecar plus all semantic fields in a
+noncanonical merged fixture. The main product source remains unchanged.
+
+Native POSIX qualification uses each exact matched85-file runtime and external
+reader hashes/metadata: primary and independent P1496 suites each finish0failed/
+0skips; the test fixture is restored to exact primary afterwards. Earlier DrvFS
+and patch-context refusals remain failures, not renamed or regraded passes.
+Read-only source-backed body checks qualify all589pins:515 at the actual watcher
+map root plus74 explicit staged sources. Staged411approved+178Beta identity sets
+are disjoint and cover589, not a fresh full-Beta census. The old wrong-directory
+515-missing observation was not proof and is explicitly superseded by this actual
+path-attested positive. Canonical sidecars still have48 selected identity faults;
+staged merge proof does not install them. Fresh complete source/status readings,
+actual current-DATA/operational fallback, preimages/writer/quiet preservation and
+privileged-profile qualification remain separate execution gates.
 
 Canonical admission has NOT run. The serving backend's fixed-route immutable
 generation and exact privileged namespace/source policy do not authorize this

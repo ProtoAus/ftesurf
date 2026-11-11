@@ -1,5 +1,25 @@
 # AGENT_NOTES.md
 
+## P1502 sidecar reader compatibility is a rollback gate (11 Nov 2026 UTC)
+
+- Matching runtime count/SQL schema does not prove sidecar-reader compatibility.
+  The legacy four-field Beta reader knew131 selected IDs in the canonical base
+  but only2 after the typed178-row staged projection:129 existing ID bindings
+  lost,47 native names refused. This was an acting component counterexample,
+  not a missing-file search or a live data mutation.
+- Keep an independent compatible reader, not the new scoped-import subject, in
+  the relevant fallback. The exact public P1496 reader plus the same existing
+  serving guards reads all178 selected tuples; the P1502 primary agrees. Preserve
+  all177 unselected literal lines per sidecar and every semantic field. Producer
+  headers are not appended data rows; original unselected comments stay literal.
+- Public source recipes: `tools/p1502-mapwatch-fetch85.md`. The primary patch's
+  mapmanifest adjacency is P1502-only context, so standard apply correctly refuses
+  on P1496. A separate context-only three-hunk reader patch preserves that failed
+  apply and reproduces the independently derived raw artifact with standard Git.
+- Matched native POSIX suites pass for each exact85-file family; a DrvFS511
+  refusal is not regraded as Linux. Staged-reader proof is not canonical merge,
+  live current-DATA/fallback fitness, a fresh full census or installation consent.
+
 ## P1502 source-artifact patches inherit global autocrlf (11 Nov 2026 UTC)
 
 - Standard `git apply --no-index` outside the source checkout still inherited
