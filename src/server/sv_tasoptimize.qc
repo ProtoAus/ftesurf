@@ -34,6 +34,9 @@
 #define TOPT_QHARD 240          // `hardq`: a demo row's own command may reach this (anubis stage 2's maze: 173 at 870 u/s)
 #define TOPT_QPHYS 615          // `freeq`: the sharpest turn a tick allows -- ~585 added (150 x 260 x 0.015) tangent to the new
                                 // heading is q = 30 + 585 at any speed past 585; beyond it a tick turns less and brakes more
+#define TOPT_QENGINE 180        // tas_rollout refuses a FOLLOW row's command past +-180 (the slot is a yaw word too:
+                                // SV_TASRollFlags), code -10 for the whole batch: tight2 lost 109 searches to it. Every
+                                // row stops here, so free/tight/catch/flick top out at 180 until the engine takes more
 #define TOPT_QMAX  120          // P1449 curve: the turn command's range (see SV_TASOptFollow); farsh's rides
                                 // reach ~80 (braking turns), the follow optimum on ramp 0 ~130
 #define TOPT_CEPOP 20           // P1449 curve: samples a generation
@@ -571,7 +574,7 @@ float(entity e, float r, float f) SV_TASOptFollow =
 			if (topt_ride[i]) q = 30 * topt_ride[i];
 			topt_rows[i*7] = 0; topt_rows[i*7+1] = -450 * e.topt_dir; topt_rows[i*7+2] = 0;
 			topt_rows[i*7+3] = SV_TASPWord(e.topt_pitch0);
-			topt_rows[i*7+4] = e.topt_freeq ? bound(-TOPT_QPHYS, q, TOPT_QPHYS) : bound(-TOPT_QMAX, q, TOPT_QMAX);
+			topt_rows[i*7+4] = e.topt_freeq ? bound(-TOPT_QENGINE, q, TOPT_QENGINE) : bound(-TOPT_QMAX, q, TOPT_QMAX);
 			topt_rows[i*7+5] = 0; topt_rows[i*7+6] = TOPT_EFOLLOW + (e.topt_pfoff ? 0 : TOPT_EPITCHV) + ((e.topt_mode & 128) ? TOPT_EAIM : 0) + (e.topt_hop ? 1 : 0)
 				+ (e.topt_ewall ? TOPT_EWALL : 0) + (((e.topt_mode & 128) && e.topt_ewide) ? TOPT_EWIDE : 0);
 		}
@@ -772,6 +775,7 @@ void(entity e) SV_TASOptDemoRows =
 			topt_rows[i*7+4] = ((topt_dqr[j] > 0) ? 1 : -1) * bound(0, min(fabs(topt_dqr[j]), TOPT_QHARD) + off, a);
 		}
 		else topt_rows[i*7+4] = (topt_dq[j] == 0) ? 0 : ((topt_dq[j] > 0) ? 1 : -1) * bound(0, fabs(topt_dq[j]) + off, a);
+		topt_rows[i*7+4] = bound(-TOPT_QENGINE, topt_rows[i*7+4], TOPT_QENGINE);
 		topt_rows[i*7+5] = 0;
 		// this row aims: only where the demo holds a side key (before the engine's aim takes over, airk < 3,
 		// FOLLOW strafes a 0 command at side 0 as 450 left -- review)
@@ -2365,7 +2369,7 @@ void(entity e) SV_TASOptCurveNext =
 		if (SV_TASOptKnotTick(e, j) <= e.topt_tgtj + 5) u = 3 * u;     // the catch's knots (bounded: review L)
 		if (e.topt_flick > 0 && j < e.topt_kn && (e.topt_mode & 64))
 		if (fabs(SV_TASOptKnotTick(e, j) - e.topt_flick) <= 12) u = 3 * u;        // the launch's knots
-		if (e.topt_freeq && j < e.topt_kn) u = min(TOPT_QPHYS, 6 * u);              // freeq: the bound is not the limit, the score is
+		if (e.topt_freeq && j < e.topt_kn) u = min(TOPT_QENGINE, 6 * u);              // freeq: the bound is not the limit, the score is
 		c = (e.topt_kidx >= TOPT_CEPOP - TOPT_CEWIDE) ? max(topt_ksig[j], SV_TASOptSig0(e, j)) : topt_ksig[j];   // the wide few
 		topt_kcur[j] = bound(-u, topt_kmean[j] + c * g, u);
 		topt_kpop[e.topt_kidx * TOPT_KMAX + j] = topt_kcur[j];
