@@ -34,5 +34,35 @@ evidence grammar, scoring, enforcement, mover, settings or QC Build change.
 Published engine source: `b077b6715ac9bcefecac13949075b3b3c5c5a086`,
 tag `patch-1500`.
 
-Final clean tag-linked rebuild and guarded dual-Windows delivery are pending.
-No backend generation or lobby progs swap is implied by this compiler repair.
+Final clean full rebuild and guarded dual-Windows delivery are **verified**.
+At `2026-11-11T08:17:31Z`, the seven qualified native images in each install and
+the existing developer compiler were promoted through the source-pinned build
+entrypoint's existing `Deploy` function. All 15 destination hashes and immediate
+predecessors in `.prev` were verified, with separate rollback copies retained.
+All 12 protected VM/config identities remain unchanged; no process was killed.
+Both actual installed clients report `git-8684-patch-1500-0-gb077b6715`.
+The installed developer compiler passes all nine required controls. Its stock
+make metadata uses annotated tags, yielding clean
+`git-8684-patch-1498-2-gb077b6715`: the exact same published source SHA.
+The published lightweight `patch-1500` tag is unchanged; no history/tag rewrite.
+All 5,882 shared read-only dependency members and bytes match the prior baseline.
+
+| Artifact | SHA256 (same native image in both installs) |
+|---|---|
+| client | `ba2d0c2a6e8d113e79fb924dfd7b135ccd51898e3b4269722dc0467a1247a728` |
+| server | `811340d967737831fc0d98c303130a517ef4a73edb20c409650a15c413ffb9b1` |
+| hl2 plugin | `4bea0d59593b4a73ef3ba47e36ffb1c9b42006e34a623c439690ff9c2b861b1e` |
+| cod plugin | `0006571b3b1926d043985df9d0540c6dd69fbbc0fa5afbe95845baf136a99d38` |
+| box3d plugin | `933a59349e5e56cfae780423745d399a6c89de274f49c78ac69df5ef07ad2494` |
+| ode plugin | `86bb6ebc7cfdc761db1690d630a722eca968e5bd2bbba6e164ecd667ac1f6917` |
+| ui_imgui plugin | `904663449d3b53a2ff4cf83979a28e622dac057288f083c23c76eb0aa9ebb9bc` |
+| developer compiler | `b47411935afe25fc457f681466666acf12b18b7f3c225a37d4e5ed71f751ecfb` |
+
+An initial incremental compiler retained an old version constant; it was refused
+before deployment. A forced standalone build restored clean source identity,
+without repeating the already-qualified full native build or changing source.
+A dedicated-server `--version` probe did not exit and its own timed-out child was
+stopped; no server runtime acceptance is inferred from that probe. The client
+version checks and actual compiler controls above did complete.
+No backend generation or lobby progs swap occurred. This is a development native
+and compiler delivery, not a release or completion of the broader security plan.
