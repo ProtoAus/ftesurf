@@ -21,13 +21,16 @@
 
 ## next
 
+### P1493 Local game version in map info
+- The map-info title now shows your local game version beside World of Surf.
+
 ### P1489 No freeze right after you spawn on a map
 - Light glows, sprites, emitters, decals, overlays and portals now load behind the loading screen instead of in the first frames after you spawn, which could freeze for a moment (about 130 ms on surf_fairy).
 
 ### P1488 Steadier frames on maps full of light glows
 - Light glows and sky checks spend at most about 1 ms a frame testing what they can see, so maps with hundreds of glows stutter far less (surf_fairy's slowest frames about 45% faster, surf_jumble's 38%).
 
-### Replays
+### P1487 Replay ladder climbs
 - Ladder climbs and descents are no longer mistaken for standing still by replay idle skipping.
 
 ### P1486 Recording statistics keep their measurement state

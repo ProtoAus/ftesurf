@@ -3996,7 +3996,11 @@ void(vector scr) HUD_DrawMapInfo =
 	  would have been a right-aligned block whose box is the wrong width, i.e. text
 	  hanging off the screen edge with the editor's outline somewhere else.
 	*/
-	s = "World of Surf";
+	// Client-local release metadata, not the version of downloaded lobby CSQC.
+	s = cvar_string("ui_release_version");
+	if (!strcmp(s, "")) s = cvar_string("ui_menu_version");
+	if (!strcmp(s, "")) s = "unknown";
+	s = strcat("World of Surf ", s);
 	tw = stringwidth(s, TRUE, [tsz, tsz]);  if (tw > bw) bw = tw;
 	HUD_TextR(p, s, tsz, '0.88 0.92 0.98', 0.95);
 	p_y = p_y + tsz * 1.3;

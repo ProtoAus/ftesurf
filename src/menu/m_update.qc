@@ -52,6 +52,9 @@ string mpn_forver, mpn_askver; // update_version at the last good reply / the as
 void() MU_Init =
 {
 	registercvar("ui_release_version", "", 0);
+	// Local menu fallback for the HUD; a lobby's CSQC cannot know this build.
+	registercvar("ui_menu_version", "", 0);
+	cvar_set("ui_menu_version", strcat(UI_MENU_VERSION, UI_MENU_DEVELOPMENT ? " (dev)" : ""));
 	mu_checked = FALSE;
 	mu_apply_sent = FALSE;
 	mu_lastcheck = 0;

@@ -13,7 +13,7 @@ no recorder, evidence reader, physics, pin/tag or QC Build change.
 
 Source base QC `206a4d94d06b0282932283e474b777e6905d454f` (product-identical to the
 control `2dcc6041`), engine pin `b5c841c01`. Compiler: retained qualified
-fteqcc64-p1412, SHA256 `73f9a1a471d603a8d0ee5a83432229ba2dd10affbf358ba41d345c8c15a94bd61`.
+fteqcc64-p1412, SHA256 `73f9a1a471d603a8d0ee5a83432229ba2dd10affbf358ba41d345c8c15af68c4`.
 Three VMs built with `pwsh -NoProfile -Command './build.ps1 -NoDeploy -Jobs 8'`,
 zero warnings. Latest QC LSP diagnostics unavailable (no QC server), not called
 validation. Native control/subject use actual production progs and replay scanner,

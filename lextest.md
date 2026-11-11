@@ -1,5 +1,9 @@
 # lextest.md — things waiting on a human
 
+## P1493 map-info game version — owner check PENDING
+- In-game map info should read `World of Surf 0.1.xx`, matching this install's release metadata. Without release metadata, a current local development menu supplies its compiled version plus `(dev)`; an old unversioned development menu shows `unknown`, never the lobby's version. Check the longer title remains comfortably right-aligned.
+- Three VMs zero warnings; native menu producer/fallback metadata checked. No rendered HUD acceptance yet: peer graphics benchmarks held the shared interval. This is display metadata, not engine/QC integrity proof.
+
 ## P1489 map loads behind the loading screen -- 12 lobbies + both installs (cs 876a1202) 11 Nov 04:40Z; owner check PENDING
 - Join a map (or wait for a lobby map change): the first second after you spawn should be smooth now. Check that
   glows, decals, overlays (screen tints), dust/steam emitters and portals still show as before, on the first map
