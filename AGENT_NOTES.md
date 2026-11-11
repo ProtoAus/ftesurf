@@ -1,5 +1,18 @@
 # AGENT_NOTES.md
 
+## P1502 source-artifact patches inherit global autocrlf (11 Nov 2026 UTC)
+
+- Standard `git apply --no-index` outside the source checkout still inherited
+  Windows global autocrlf. The three-hunk fetch85 mapwatch artifact was177538
+  CRLF bytes, not the expected173959 LF bytes; raw checksum correctly refused.
+- Fix the producing seam, not the evidence: use `git -c core.autocrlf=false
+  -c core.eol=lf apply --no-index`, with `--check` first and the output-directory
+  parent as `GIT_CEILING_DIRECTORIES`. The exact generated SHA256 then matches
+  the independently reviewed artifact. Keep the original CRLF refusal; do not
+  normalize a previously qualified payload or weaken raw hash comparisons.
+- Recipe: `tools/p1502-mapwatch-fetch85.md`. This is a one-file source artifact,
+  not a deployed generation, POSIX qualification or a new native/QC Build.
+
 ## P1424 a new .hid record kind must not move the clock (8 Nov 2026; ftesurf-b9)
 
 - hidcheck skips an unknown record kind BEFORE adding its dt to the running clock,

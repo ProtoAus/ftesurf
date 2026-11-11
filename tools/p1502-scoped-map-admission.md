@@ -78,6 +78,38 @@ and exact compressed/decompressed hashes, not a native-client/every-download
 claim. Main-ledger asset rows remained unchanged during this completed drain;
 all owned processes exited and both gzip locks were free at postflight.
 
+A subsequent exact16 current canonical/public-body transaction added16 verified
+R2 raw tuples (368,148,799 bytes), followed by16 more gzip skips, zero errors.
+The wrong-build17th candidate was excluded. Every column of all4548 unselected
+main-ledger asset rows retained its ordered digest throughout; integrity checks
+pass and the returned foreground receipt records all raw/gzip locks unheld.
+No scan, global run, manifest/catalogue publication or staged/new-body admission
+occurred. The selected total is now515 matching verified raw tuples representing
+9,180,775,823 bytes, all gzip skips. Remaining74pins comprise70 missing mirror
+aliases plus4 build mismatches; this does not assert absent filesystem bodies.
+
+The first representative public GET used raw fallback, so was not an offload
+pass. Later bounded no-body FTE/gzip-accepting GET probes independently returned
+302/X-R2-Route:r2 to the exact expected RAW object for the718360-byte sample
+and a60341472-byte sample. Raw object full byte/digest readbacks were already
+completed by the original transaction. This proves routing for those requests,
+not every alias, a fresh native client, compression gain or measured throughput.
+No signed destination URLs were retained or published.
+
+Exact178 selected public-testing sidecar fragments are now staged using the
+published producer with all transport disabled. The exact importer parses all
+178 identity tuples, including47 nonprefix native names; the stale build's URL
+was refreshed from its own current anonymous public reply. They are NOT installed
+sidecars or fresh full-Beta evidence. Existing cached momnames383 is not the
+qualified approved411 census; 28 newly approved native names need that fresh
+list, not extra identities minted from the old cache.
+
+A three-hunk source-only fetch85 build recipe retains the existing serving
+fail-closed guards without the unavailable tascontent import. It reproduces the
+independently reviewed raw artifact hash with standard Git and explicit LF:
+`tools/p1502-mapwatch-fetch85.md`. This does not waive runtime/POSIX/dependency,
+input, preservation or privileged-profile gates; the main source is unchanged.
+
 Canonical admission has NOT run. The serving backend's fixed-route immutable
 generation and exact privileged namespace/source policy do not authorize this
 new scoped input/profile. Promotion requires a reviewed source/dependency closure,
