@@ -8,6 +8,8 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import subprocess
+import sys
 import unittest
 import threading
 
@@ -58,6 +60,16 @@ class GzipTests(unittest.TestCase):
                                                       len(body), state, sha, "objects/maps/" + sha + ".bsp"))
             db.commit()
         return p, sha
+
+    def test_isolated_cli_loads_trusted_sibling_not_cwd_or_pythonpath(self):
+        (self.root / 'r2mirror.py').write_text("raise RuntimeError('untrusted sibling')\n")
+        env = dict(os.environ, PYTHONPATH=str(self.root))
+        result = subprocess.run(
+            [sys.executable, '-I', '-B', str(Path(z.__file__).resolve()), '--help'],
+            cwd=self.root, env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('--only', result.stdout)
+        self.assertNotIn('untrusted sibling', result.stderr)
 
     def test_compressible_map_gets_a_verified_companion(self):
         _, sha = self.seed("surf_a.bsp", b"VBSP" + b"\0" * 20000 + b"lump" * 3000)

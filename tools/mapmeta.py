@@ -215,6 +215,17 @@ ST_PUBLIC_TESTING = 3           # "the Beta tab, to all users"
 ST_FINAL_APPROVAL = 4
 ST_DISABLED = 5
 
+# Public asset publication, not IN_SUBMISSION/tier selection. APPROVED is the
+# anonymous public catalogue; map-status.enum.ts explicitly makes PUBLIC_TESTING
+# available to all users. No visibility proof is assumed for approval states 2/4.
+PUBLIC_ASSET_STATUSES = frozenset((ST_APPROVED, ST_PUBLIC_TESTING))
+
+
+def public_asset_status(status):
+    """Fail closed on private, unproved, missing and malformed visibility."""
+    return type(status) is int and status in PUBLIC_ASSET_STATUSES
+
+
 # MapStatuses.IN_SUBMISSION, same file.  These are the maps whose tier lives in
 # submission.suggestions rather than in leaderboards -- see the module docstring.
 IN_SUBMISSION = frozenset((ST_PRIVATE_TESTING, ST_PUBLIC_TESTING,

@@ -41,7 +41,7 @@ def fetch(url, limit):
 def live_maps():
     """Fail closed on short pages, changed totals or repeated IDs."""
     rows = []
-    for mode in (1, 2):
+    for mode in (1, 2, 3):
         skip, total, seen = 0, None, set()
         while total is None or skip < total:
             data = json.loads(fetch(API + '?gamemode=%d&take=100&skip=%d&expand=thumbnail,images' %
@@ -69,18 +69,29 @@ def live_maps():
 def catalogue(momentum, online, prior=()):
     rows = {}
     for old in prior:
-        if NAME.fullmatch(str(old.get('name', ''))):
-            rows[old['name']] = (dict(id=old.get('id'), name=old['name'], status=old.get('status'),
+        if (isinstance(old, dict) and NAME.fullmatch(str(old.get('name', '')))
+                and mapmeta.public_asset_status(old.get('status'))):
+            rows[old['name'].lower()] = (dict(id=old.get('id'), name=old['name'], status=old.get('status'),
                 thumbnail=dict(id=old.get('uuid')), images=[dict(id=u) for u in old.get('alternatives', [])]), 'retained-catalogue')
     for path in sorted((Path(momentum) / '_cache').glob('*.dat')):
         for m in mapmeta.read_msml(str(path)):
+            if not isinstance(m, dict):
+                continue
             name = m.get('name', '')
+            if not isinstance(name, str) or not NAME.fullmatch(name):
+                continue
+            if not mapmeta.public_asset_status(m.get('status')):
+                rows.pop(name.lower(), None)
+                continue
             native = mapmeta.pick_gamemode(m, m.get('leaderboards') or [], name)
-            if NAME.fullmatch(name) and (name.lower().startswith(('surf_', 'bhop_')) or native in (1,2)):
+            if NAME.fullmatch(name) and (name.lower().startswith(('surf_', 'bhop_')) or native in (1,2,3)):
                 rows[name.lower()] = (m, 'momentum-cache')
     for m in online:
-        if NAME.fullmatch(m.get('name', '')):
-            rows[m['name'].lower()] = (m, 'live-approved')
+        if isinstance(m, dict) and NAME.fullmatch(str(m.get('name', ''))):
+            if mapmeta.public_asset_status(m.get('status')):
+                rows[m['name'].lower()] = (m, 'live-approved')
+            else:
+                rows.pop(m['name'].lower(), None)
     if not rows:
         raise ValueError('no surf/bhop catalogue; refusing empty success')
     result = []
@@ -186,6 +197,12 @@ def main():
             testing_coverage='cached only; authenticated upstream census unavailable', maps=rows), indent=2) + '\n').encode())
     if not isinstance(rows, list) or not rows:
         raise ValueError('empty/invalid saved catalogue')
+    # Saved/offline catalogues are not a visibility bypass. Leave archived bytes
+    # and predecessor aliases untouched, but emit no new identity/alias for them.
+    rows = [row for row in rows if isinstance(row, dict)
+            and mapmeta.public_asset_status(row.get('status'))]
+    if not rows:
+        raise ValueError('no explicitly public maps in saved catalogue')
     for row in rows:
         if not isinstance(row, dict) or not NAME.fullmatch(str(row.get('name', ''))):
             raise ValueError('invalid saved map name')

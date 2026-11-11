@@ -3,10 +3,42 @@
 ## Inventory and originals
 
 `tools/mapmedia.py` unions the live approved surf/bhop API (including native
-mode matches whose names lack a surf_/bhop_ prefix) with all readable Momentum
-MSML caches. It validates pagination and refuses an empty/incomplete approved
+mode matches whose names lack a surf_/bhop_ prefix; live modes 1/2/3 include
+bhop-HL1) with all readable Momentum MSML caches. It validates pagination and refuses an empty/incomplete approved
 census. Public-testing access requires an upstream login: testing entries here
 are **cached coverage, not a fresh authenticated census**. No login is harvested.
+
+Public acquisition identities and media aliases share the exact-integer status
+allowlist in `mapmeta.public_asset_status`: APPROVED (0, the anonymous public
+catalogue) and PUBLIC_TESTING (3, available to all users per Momentum's
+`panorama/scripts/common/web/enums/map-status.enum.ts`). PRIVATE_TESTING (1)
+requires an invite. CONTENT_APPROVAL (2) and FINAL_APPROVAL (4) have no normative
+public-visibility proof here and are excluded, as are DISABLED (5), unknown,
+missing and malformed statuses. Tier/submission membership and a valid byte hash
+are not publication permission.
+
+This gate applies before cache/retained catalogue projection and before offline
+image processing or alias generation. A current ineligible record cannot revive
+an older retained public row. Archived/staged originals and predecessor aliases
+are preserved, not deleted. Publication must use an explicit eligible JPEG
+whitelist; an archive directory is not a public upload list. Primary-thumbnail
+coverage is distinct from the map's full gallery (`images[]`); count and verify
+all eligible gallery identities separately before claiming all screenshots.
+
+The existing acquisition path is `surfd/mapwatch.py`, not a parallel library
+manifest. Modes 1/2 retain their 150-name census floor; mode 3 has its own floor
+of 38 (77 approved observed on 11 November 2026). Valid native names do not need
+a surf_/bhop_ prefix; path syntax, publisher hash and on-build zone checks remain.
+
+`tools/mapscan.py` projects cached submissions through the existing `extra.tsv`
+(`name sha1 url`) and `betaids.tsv` (`name sha1 id zoneHash [nativeGamemode]`).
+The optional fifth field is 1/2/3. Legacy four-field prefix sidecars still work;
+nonprefix names require a matching five-field identity. Missing, malformed or
+conflicting native identities fail closed. A live approved name takes precedence
+over its cached submission, and cached zone/replacement admission still requires
+the map's own current API reply. These files contain only projected public map
+fields, not private caches or account data. Promote the reader before emitting
+new sidecars: older readers safely ignore five-field identities.
 
 The October 16 audit contains 1,124 maps, zero without an available image, and
 1,124 preserved XL originals. One deleted primary thumbnail was recovered from

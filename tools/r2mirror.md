@@ -96,6 +96,22 @@ automatic deletion/repair of an allegedly immutable corrupted remote object.
 Fix that explicitly only after establishing exact ownership and intended bytes.
 Transport output is suppressed; report error classes, not signed URLs/paths.
 
+## Gzip companions
+
+`tools/r2gzip.py` reads the existing publisher ledger and keeps its own existing
+gzip ledger/lock. Install `r2mirror.py` beside it in the trusted tools directory.
+The gzip entrypoint explicitly adds only that script directory so isolated Python
+(`-I`) works without trusting the caller's CWD, user site or `PYTHONPATH`:
+
+```
+python3 -I tools/r2gzip.py run --config /private/config.json --state /private/state/state.sqlite --work /private/gzip-state --limit 1 --only ftesurf/maps/example.bsp
+```
+
+A verified companion requires full remote readback and decompressed identity;
+packed BSPs that save too little are skipped, never called a compression pass.
+Keep the raw object and existing aliases. Public GET with both identity and gzip
+must decode to the same publisher SHA256 before claiming engine delivery.
+
 ## Delivery remains a separate deployment
 
 A CDN gateway/edge mapping must translate these existing paths to the verified

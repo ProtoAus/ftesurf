@@ -8,7 +8,7 @@ maps they add, so we need rescanning, and downloading of new maps".  The
 and is missed while that PC is off; this runs on the box that serves the maps.
 
 WHAT IT READS, each anonymous:
-  Momentum   /v1/maps?gamemode=1|2&expand=currentVersion,leaderboards --
+  Momentum   /v1/maps?gamemode=1|2|3&expand=currentVersion,leaderboards --
              APPROVED maps only (ranked and unranked boards; a submission
              answers 401).  A row names its BSP's SHA1 (bspHash), its URL on
              the CDN and its zones' SHA1 (zoneHash).
@@ -18,9 +18,12 @@ WHAT IT READS, each anonymous:
   extra.tsv  <state>/extra.tsv, `name sha1 url` a line: Momentum's Beta maps,
              from the game's own cache on a PC that has it (tools/mapscan.py
              pushes it).  Without that PC the Beta list stays as it was.
-             <state>/betaids.tsv (P1093), `name sha1 id zoneHash`, gives a line
-             of the same name and sha1 its map id: a separate file because a
-             watcher older than P1093 reads any other extra.tsv line as bad.
+             <state>/betaids.tsv, `name sha1 id zoneHash [nativeGamemode]`,
+             gives a line of the same name and sha1 its map id. The optional
+             fifth field is 1/2/3; nonprefix names require it. Legacy four-field
+             prefix rows still work. A conflicting native identity fails closed.
+             extra.tsv remains three fields; older watchers ignore the new
+             sidecar rows rather than infer identities from them.
 
 WHAT IT INSTALLS: a map whose NAME the library does not hold.  A Momentum file
 is kept only when its SHA1 is the one its row publishes -- the row and the hash
@@ -162,10 +165,11 @@ MOM_CDN = "https://cdn.momentum-mod.org/maps/"
 KSF_BASE = "https://ksf.surf"
 UA = "FTESurf/0.1 mapwatch (+https://proto.bar/ftesurf)"
 
-MOM_MODES = ((1, "surf"), (2, "bhop"))      # Momentum's gamemode ids
+MOM_MODES = ((1, "surf"), (2, "bhop"), (3, "bhop"))  # 3 = bhop-HL1
 MOM_TAKE = 100                              # the API's own cap
 MOM_PAGES = 40                              # a list longer than this is not theirs
-MOM_MIN = 150           # surf_/bhop_ names a gamemode's list must hold (383 and 375)
+MOM_MIN = 150           # unchanged floor for surf and bhop
+MOM_HL1_MIN = 38        # 77 approved on 11 Nov 2026; refuse below half that census
 KSF_MIN = 400           # fewer maps than this is a page we failed to read (952)
 KSF_MAX = 5000          # ...and more is not their list either
 API_DELAY = 1.5         # s between requests; 1.0 tripped Momentum's 429 (momfetch)
@@ -247,9 +251,9 @@ class Transient(Exception):
     """This file's transfer broke off: counted against the file, tried later."""
 
 
-def okname(name):
+def okname(name, native=False):
     return (isinstance(name, str) and NAME_OK.fullmatch(name) is not None
-            and name.lower().startswith(PREFIX))
+            and (native or name.lower().startswith(PREFIX)))
 
 
 def okcdn(url):
@@ -517,13 +521,12 @@ class LocalFault(Exception):
 # --------------------------------------------------------------------------
 # the lists
 
-def mom_row(m):
-    """One /v1/maps row as a catalogue row, or None when it is not a surf/bhop
-    map we could install."""
+def mom_row(m, gamemode=None):
+    """One validated mode census row; native modes need no filename prefix."""
     if not isinstance(m, dict):
         return None
     name = m.get("name")
-    if not okname(name) or type(m.get("id")) is not int:
+    if not okname(name, native=gamemode in (1, 2, 3)) or type(m.get("id")) is not int:
         return None
     cv = m.get("currentVersion")
     cv = cv if isinstance(cv, dict) else {}
@@ -531,11 +534,12 @@ def mom_row(m):
     if not HEX40.fullmatch(sha) or not okcdn(url):
         return None
     zh = str(cv.get("zoneHash") or "").lower()
-    mode = "surf" if name.lower().startswith("surf_") else "bhop"
-    tier, ranked, boards = leaderboard_boards(m.get("leaderboards"), 1 if mode == "surf" else 2)
+    gm = gamemode if gamemode in (1, 2, 3) else (1 if name.lower().startswith("surf_") else 2)
+    mode = "surf" if gm == 1 else "bhop"
+    tier, ranked, boards = leaderboard_boards(m.get("leaderboards"), gm)
     return {"name": name, "id": m["id"], "sha": sha, "url": url, "mode": mode,
             "zh": zh if HEX40.fullmatch(zh) else None, "tier": tier, "ranked": ranked,
-            "src": "mom", "boards": boards}
+            "src": "mom", "boards": boards, "gamemode": gm}
 
 
 def leaderboard_boards(lbs, gm):
@@ -595,9 +599,11 @@ def beta_boards(pacer, extra, inv, asked, tracks_path, now, deadline):
                 or str(m.get("name") or "").lower() != k):
             print("  %s: Beta boards: the reply is not this map's" % k)
             continue
-        tier, _, boards = leaderboard_boards(m.get("leaderboards"), 1 if k.startswith("surf_") else 2)
+        gm = r.get("gamemode", 1 if k.startswith("surf_") else 2)
+        tier, _, boards = leaderboard_boards(m.get("leaderboards"), gm)
         if boards:
-            out[k] = {"name": r["name"], "id": r["id"], "tier": tier, "boards": boards}
+            out[k] = {"name": r["name"], "id": r["id"], "tier": tier,
+                      "boards": boards, "gamemode": gm}
     return out, ""
 
 
@@ -1751,7 +1757,7 @@ def tracks_rows(mom, inv, old_lines):
         lines = old.get(key, [])
         # P1117 review: a reply listing under half the map's own-gamemode boards
         # held is not trusted to drop the rest.
-        gm = "1" if key.startswith("surf_") else "2"
+        gm = str(r.get("gamemode", 1 if key.startswith("surf_") else 2))
         held = sum(1 for ln in lines if ln.split("\t")[3] == gm)
         if held and 2 * sum(1 for b in r["boards"] if str(b[0]) == gm) < held:
             continue
@@ -1809,14 +1815,14 @@ def mom_list(pacer):
                 raise Refused("a page of %d maps where %d were asked for"
                               % (len(page), MOM_TAKE))
             for m in page:
-                if isinstance(m, dict) and okname(m.get("name")):
+                if isinstance(m, dict) and okname(m.get("name"), native=True):
                     names.add(m["name"].lower())
                     seen.add(m["name"].lower())
                     info = m.get("info") if isinstance(m.get("info"), dict) else {}
                     t = iso_epoch(info.get("approvedDate"), now)
                     if t is not None and t <= now and type(m.get("id")) is int and m["id"] > 0:
                         appr.setdefault(m["name"].lower(), (t, m["id"]))
-                r = mom_row(m)
+                r = mom_row(m, gm)
                 if r:
                     rows.setdefault(r["name"].lower(), r)
             skip += len(page)
@@ -1826,7 +1832,8 @@ def mom_list(pacer):
                 raise Refused("the map list ended at %d of %d" % (skip, total))
         else:
             raise Refused("the map list ran past %d pages" % MOM_PAGES)
-        if len(seen) < MOM_MIN:
+        minimum = MOM_HL1_MIN if gm == 3 else MOM_MIN
+        if len(seen) < minimum:
             raise Refused("only %d maps in gamemode %d -- their format has "
                           "probably changed" % (len(seen), gm))
     return rows, names, appr
@@ -1895,8 +1902,18 @@ def extra_list(path, ids_path=None):
     P1093: <state>/betaids.tsv, `name sha1 id zoneHash` (`-` = no zones), gives
     a line its map id and zoneHash when name and sha1 both match it.  Only a
     row with an id can have zones or replace a build, and only once the map's
-    own API reply names that build (zone_fetch): the PC's cache can be stale."""
-    out, bad = {}, 0
+    own API reply names that build (zone_fetch): the PC's cache can be stale.
+    An optional fifth native gamemode (1/2/3) admits nonprefix cache names;
+    missing, malformed or conflicting matching sidecars never admit them."""
+    out, bad, refused = {}, 0, set()
+
+    def finish():
+        dropped = [k for k, r in out.items() if not okname(r["name"])
+                   and (k in refused or r.get("gamemode") not in (1, 2, 3))]
+        for k in dropped:
+            del out[k]
+        return out, bad + len(dropped)
+
     try:
         fh = io.open(path, encoding="utf-8", errors="replace")
     except OSError:
@@ -1906,7 +1923,7 @@ def extra_list(path, ids_path=None):
             f = ln.split()
             if not f or f[0].startswith("#"):
                 continue
-            if (len(f) != 3 or not okname(f[0]) or not HEX40.fullmatch(f[1].lower())
+            if (len(f) != 3 or not okname(f[0], native=True) or not HEX40.fullmatch(f[1].lower())
                     or not okcdn(f[2])):
                 bad += 1
                 continue
@@ -1919,20 +1936,34 @@ def extra_list(path, ids_path=None):
     except OSError:
         fh = None
     if fh is None:
-        return out, bad
+        return finish()
     with fh:
         for ln in fh:
             f = ln.split()
             if not f or f[0].startswith("#"):
                 continue
-            r = out.get(f[0].lower()) if len(f) == 4 else None
-            if (r is None or r["name"] != f[0] or r["sha"] != f[1].lower()
-                    or not re.fullmatch(r"[1-9][0-9]{0,8}", f[2])
-                    or not (f[3] == "-" or HEX40.fullmatch(f[3].lower()))):
-                continue            # no line of that name and build: nothing to give an id to
-            r["id"] = int(f[2])
-            r["zh"] = f[3].lower() if f[3] != "-" else None
-    return out, bad
+            r = out.get(f[0].lower())
+            if r is None or r["name"] != f[0]:
+                continue
+            if len(f) < 2 or r["sha"] != f[1].lower():
+                continue            # a sidecar from another build gives this one no identity
+            if (len(f) not in (4, 5) or not re.fullmatch(r"[1-9][0-9]{0,8}", f[2])
+                    or not (f[3] == "-" or HEX40.fullmatch(f[3].lower()))
+                    or (len(f) == 5 and f[4] not in ("1", "2", "3"))):
+                refused.add(f[0].lower())
+                continue
+            gm = int(f[4]) if len(f) == 5 else None
+            zh = f[3].lower() if f[3] != "-" else None
+            if not okname(r["name"]):
+                if gm is None or (r["id"] is not None and
+                                  (r["id"], r["zh"], r.get("gamemode")) != (int(f[2]), zh, gm)):
+                    refused.add(f[0].lower())
+                    continue
+            r["id"], r["zh"] = int(f[2]), zh
+            if gm is not None:
+                r["gamemode"] = gm
+                r["mode"] = "surf" if gm == 1 else "bhop"
+    return finish()
 
 
 # --------------------------------------------------------------------------
@@ -2432,7 +2463,9 @@ def list_rows(maps_dir, inv, cat, seen, today, cutoff):
     out = []
     for k in sorted(inv):
         stem = inv[k]
-        if not okname(stem):            # surf_/bhop_, and a name a row can carry
+        c = cat.get(k)
+        native = isinstance(c, dict) and c.get("mode") in ("surf", "bhop")
+        if not okname(stem, native=native):
             continue
         try:
             kb = (os.path.getsize(os.path.join(maps_dir, stem + ".bsp")) + 1023) // 1024
@@ -2452,7 +2485,7 @@ def list_rows(maps_dir, inv, cat, seen, today, cutoff):
             letters or "-", mt or kt, kb, first[0],
             1 if first[1] == "scan" and first[0] >= cutoff else 0, mt, kt)
         of = c.get("of")
-        if isinstance(of, str) and of.lower() in inv and okname(inv[of.lower()]):
+        if isinstance(of, str) and of.lower() in inv and okname(inv[of.lower()], native=True):
             row += " " + inv[of.lower()]
         out.append(row)
     return out

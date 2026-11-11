@@ -21,6 +21,10 @@
 
 ## next
 
+### P1496 Public bhop library imports
+- Map acquisition recognizes Momentum's native HL1-bhop category even when the filename does not begin with bhop_. This does not switch the current movement model.
+- New map and screenshot publication excludes private or unqualified testing entries, including retained offline catalogues.
+
 ### P1495 Remember the equipped knife
 - Your linked knife setup can equip again on a new map after it has loaded. Drop keeps it off until you choose a knife again.
 - Late setup/content replies no longer override a newer Drop or weapon choice; a newly mounted missing model can retry loading.

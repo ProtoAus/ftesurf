@@ -214,11 +214,16 @@ def push_beta(host):
     """Momentum's Beta maps (the game's submission cache: name, bspHash, CDN
     url) to the Pi as mapwatch's extra.tsv.  Returns the count, or None when
     this PC has no such cache or the Pi did not take the file -- the Pi then
-    keeps the list it had, and the sweep goes on."""
+    keeps the list it had, and the sweep goes on. betaids.tsv optionally adds
+    nativeGamemode (1/2/3) after zoneHash; nonprefix names require that identity.
+    These are cached submissions, never a fresh authenticated Beta census.
+    Only exact public statuses 0/3 may project acquisition identities; see
+    mapmeta.public_asset_status. A digest establishes bytes, not visibility."""
     import glob
     import zlib
     try:
         import mapgrab
+        import mapmeta
     except Exception as e:
         print("  no Beta list sent: mapgrab did not load (%s)" % e)
         return None
@@ -233,21 +238,34 @@ def push_beta(host):
     for kind in ("approved", "submission"):
         hits = sorted(glob.glob(os.path.join(mapgrab.MOMENTUM, "_cache", kind + "_*.dat")))
         try:
-            raw = open(hits[-1], "rb").read() if hits else b""
+            raw = b""
+            if hits:
+                with open(hits[-1], "rb") as fh:
+                    raw = fh.read()
             got = json.loads(zlib.decompress(raw[12:])) if raw[:4] == b"MSML" else None
         except (OSError, ValueError, zlib.error):
             got = None
         recs[kind] = [r for r in got if isinstance(r, dict)] if isinstance(got, list) else None
     if not recs["approved"] or not recs["submission"]:
         return None
-    done = {str(r.get("name")).lower() for r in recs["approved"]}
+    done = {str(r.get("name")).lower() for r in recs["approved"]
+            if mapmeta.public_asset_status(r.get("status"))}
     rows = {}
     for r in recs["submission"]:
         cv = r.get("currentVersion")
         cv = cv if isinstance(cv, dict) else {}
         n = r.get("name")
-        if (isinstance(n, str) and CAT_NAME.fullmatch(n)
-                and n.lower().startswith(("surf_", "bhop_")) and n.lower() not in done
+        if not isinstance(n, str) or not CAT_NAME.fullmatch(n):
+            continue
+        if not mapmeta.public_asset_status(r.get("status")):
+            rows.pop(n.lower(), None)
+            continue
+        try:
+            gm = mapmeta.pick_gamemode(r, r.get("leaderboards") or [], n)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            gm = None
+        gm = gm if type(gm) is int and gm in (1, 2, 3) else None
+        if ((n.lower().startswith(("surf_", "bhop_")) or gm in (1, 2, 3)) and n.lower() not in done
                 and isinstance(cv.get("bspHash"), str) and isinstance(cv.get("downloadURL"), str)
                 and not any(c.isspace() for c in cv["bspHash"] + cv["downloadURL"])):
             # P1093: the id lets the Pi ask the map's own reply for its zones and
@@ -255,22 +273,23 @@ def push_beta(host):
             mid, zh = r.get("id"), cv.get("zoneHash")
             mid = str(mid) if type(mid) is int and 0 < mid < 10 ** 9 else None
             zh = zh.lower() if isinstance(zh, str) and re.fullmatch(r"[0-9a-fA-F]{40}", zh) else "-"
-            rows.setdefault(n.lower(), (n, cv["bspHash"], cv["downloadURL"], mid, zh))
+            rows.setdefault(n.lower(), (n, cv["bspHash"], cv["downloadURL"], mid, zh,
+                                        gm if gm in (1, 2, 3) else None))
     rows = sorted(rows.values())
     if not rows:
         return None
     local = os.path.join(DATA, "mapbeta.tsv")
     with open(local, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("# written by tools/mapscan.py %s -- name sha1 url\n" % today())
-        for n, h, u, _, _ in rows:
+        for n, h, u, _, _, _ in rows:
             fh.write("%s %s %s\n" % (n, h, u))
     # A file of its own: a watcher older than P1093 counts a 5-field extra.tsv line as bad.
     ids = os.path.join(DATA, "mapbetaids.tsv")
     with open(ids, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write("# written by tools/mapscan.py %s -- name sha1 id zoneHash\n" % today())
-        for n, h, _, mid, zh in rows:
+        fh.write("# written by tools/mapscan.py %s -- name sha1 id zoneHash [nativeGamemode]\n" % today())
+        for n, h, _, mid, zh, gm in rows:
             if mid:
-                fh.write("%s %s %s %s\n" % (n, h, mid, zh))
+                fh.write("%s %s %s %s%s\n" % (n, h, mid, zh, " %d" % gm if gm is not None else ""))
     rc, out = quick(["ssh", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes", host,
                      "mkdir -p %s" % PI_WATCH])
     if rc == 0:

@@ -55,10 +55,81 @@ class Media(unittest.TestCase):
     def test_cached_bhop_without_bhop_prefix_is_included(self):
         with tempfile.TemporaryDirectory() as d:
             p=Path(d)/'_cache';p.mkdir();(p/'fixture.dat').touch()
-            data=[dict(id=1,name='kz_bhop_fixture',leaderboards=[dict(style=0,gamemode=2,trackType=0,tier=1)],thumbnail=dict(id=U))]
+            data=[dict(id=1,name='kz_bhop_fixture',status=3,leaderboards=[dict(style=0,gamemode=2,trackType=0,tier=1)],thumbnail=dict(id=U))]
             with patch.object(m.mapmeta,'read_msml',return_value=data), patch.object(m.mapmeta,'pick_gamemode',return_value=2):
                 rows=m.catalogue(d,[])
                 self.assertEqual([x['name'] for x in rows],['kz_bhop_fixture'])
+
+    def test_cached_hl1_bhop_without_prefix_is_included(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / '_cache'; p.mkdir(); (p / 'fixture.dat').touch()
+            row = dict(id=1, name='kz_hl1_fixture', status=3, thumbnail=dict(id=U))
+            with patch.object(m.mapmeta, 'read_msml', return_value=[row]), \
+                    patch.object(m.mapmeta, 'pick_gamemode', return_value=3):
+                self.assertEqual([x['name'] for x in m.catalogue(d, [])], ['kz_hl1_fixture'])
+
+    def test_public_asset_status_is_an_exact_documented_allowlist(self):
+        for status in (0, 3):
+            self.assertTrue(m.mapmeta.public_asset_status(status))
+        for status in (1, 2, 4, 5, 99, None, True, False, '0', 0.0, [], {}):
+            self.assertFalse(m.mapmeta.public_asset_status(status), repr(status))
+
+    def test_cache_and_retained_projection_cannot_revive_nonpublic_rows(self):
+        blocked = [dict(id=i, name='kz_blocked_%d' % i, status=status,
+                        thumbnail=dict(id=U))
+                   for i, status in enumerate((1, 2, 4, 5, 99, None, True, '3', 3.0, [], {}))]
+        blocked.append(dict(id=99, name='kz_missing', thumbnail=dict(id=U)))
+        prior = [dict(name=x['name'], status=x.get('status'), uuid=U) for x in blocked]
+        prior.append(dict(name='kz_changed', status=0, uuid=U))
+        with tempfile.TemporaryDirectory() as d:
+            cache = Path(d) / '_cache'; cache.mkdir(); (cache / 'fixture.dat').touch()
+            rows = blocked + [dict(name='kz_changed', status=1)]
+            with patch.object(m.mapmeta, 'read_msml', return_value=rows):
+                out = m.catalogue(d, [dict(id=100, name='kz_public', status=3,
+                                          thumbnail=dict(id=U))], prior)
+            self.assertEqual([x['name'] for x in out], ['kz_public'])
+        # An ineligible current record cannot fall back to a retained public row.
+        with self.assertRaises(ValueError):
+            m.catalogue('absent', [dict(name='kz_changed', status=1)],
+                        [dict(name='kz_changed', status=0, uuid=U)])
+
+    def test_offline_aliases_only_public_rows_and_preserves_archived_bytes(self):
+        other = 'aaaaaaaa-abcd-1234-abcd-123456789abc'
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); body = picture()
+            (root / (U + '-xl.jpg')).write_bytes(body)
+            (root / (other + '-xl.jpg')).write_bytes(b'preserve archived original')
+            predecessor = root / 'bhop_blocked_0.jpg'
+            predecessor.write_bytes(b'preserve predecessor alias')
+            rows = [dict(name='kz_public', status=3, uuid=U)]
+            for i, status in enumerate((1, 2, 4, 5, 99, None, True, False, '3', 3.0, [], {})):
+                rows.append(dict(name='bhop_blocked_%d' % i, status=status, uuid=other))
+            rows.append(dict(name='kz_missing_status', uuid=other))
+            cat = root / 'catalogue.json'; cat.write_text(json.dumps(dict(maps=rows)))
+            with patch('sys.argv', ['mapmedia.py', '--offline', '--output', str(root)]), \
+                    patch.object(m, 'fetch', side_effect=AssertionError('network')), \
+                    patch.object(m, 'process', wraps=m.process) as process:
+                self.assertEqual(m.main(), 0)
+            self.assertEqual([c.args[0] for c in process.call_args_list], [U])
+            self.assertTrue((root / 'kz_public.jpg').is_file())
+            self.assertEqual(predecessor.read_bytes(), b'preserve predecessor alias')
+            self.assertEqual((root / (other + '-xl.jpg')).read_bytes(), b'preserve archived original')
+            self.assertFalse((root / (other + '-bg.jpg')).exists())
+            self.assertFalse((root / (other + '-medium.jpg')).exists())
+            for row in rows[2:]:
+                self.assertFalse((root / (row['name'] + '.jpg')).exists())
+            self.assertEqual(json.loads((root / 'coverage.json').read_text())['maps'], 1)
+
+    def test_offline_without_public_rows_emits_no_identity_or_alias(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); cat = root / 'catalogue.json'
+            cat.write_text(json.dumps(dict(maps=[dict(name='kz_private', status=1, uuid=U)])))
+            with patch('sys.argv', ['mapmedia.py', '--offline', '--output', str(root)]), \
+                    patch.object(m, 'process') as process:
+                with self.assertRaises(ValueError):
+                    m.main()
+            process.assert_not_called()
+            self.assertFalse(list(root.glob('*.jpg')))
 
     def test_atlas_large_cell_chooses_large_source(self):
         import mapthumbs as t
@@ -95,12 +166,13 @@ class Media(unittest.TestCase):
         calls = []
         def body(url, limit):
             calls.append(url)
-            mode = 1 if 'gamemode=1' in url else 2
+            mode = int(url.split('gamemode=')[1].split('&')[0])
             skip = 100 if 'skip=100' in url else 0
             return json.dumps(dict(totalCount=101, data=[dict(id=mode*1000+i) for i in range(skip, min(101, skip+100))])).encode()
         with patch.object(m, 'fetch', side_effect=body), patch.object(m.time, 'sleep'):
-            self.assertEqual(len(m.live_maps()), 202)
-        self.assertEqual(len(calls), 4)
+            self.assertEqual(len(m.live_maps()), 303)
+        self.assertEqual(len(calls), 6)
+        self.assertTrue(any('gamemode=3' in url for url in calls))
         bad = json.dumps(dict(totalCount=101, data=[dict(id=1)]*100)).encode()
         with patch.object(m, 'fetch', return_value=bad):
             with self.assertRaises(ValueError): m.live_maps()

@@ -64,6 +64,7 @@ W.MOM_TAKE = 2           # so the list pages
 W.PROBE_PAGES = 3        # so a probe board's middle goes unread with few rows
 W.KSF_MIN = 1
 W.MOM_MIN = 0            # the fixture worlds are a handful of maps
+W.MOM_HL1_MIN = 0
 W.GET_DELAY = 0.0
 W.FLOOR_GB = 0           # this box's free space is not under test (the Pi's /tmp has 4 GB)
 W.KSF_LOCK = os.path.join(HOME, "ksfwatch.lock")    # not the live crawl's
@@ -177,7 +178,7 @@ class World(object):
         cv = {"bspHash": m.get("hash") or sha(m["bsp"]),
               "downloadURL": m.get("url") or W.MOM_CDN + uuid_of(n) + ".bsp",
               "zoneHash": sha(ztext(m["zones"]).encode()) if m.get("zones") else None}
-        lb = [{"gamemode": 1 if n.startswith("surf_") else 2, "trackType": 0,
+        lb = [{"gamemode": m.get("gamemode", 1 if n.startswith("surf_") else 2), "trackType": 0,
                "trackNum": 1, "style": 0, "tier": m.get("tier"), "type": 0}]
         row = {"id": self.ids[n], "name": n, "status": 0, "currentVersion": cv,
                "leaderboards": m.get("leaderboards", lb)}
@@ -194,7 +195,7 @@ class World(object):
             q = dict(kv.split("=") for kv in url.split("?", 1)[1].split("&"))
             surf = q["gamemode"] == "1"
             rows = [self.row(n) for n in sorted(self.mom) if n not in self.hidden
-                    and n.startswith("surf_") == surf]
+                    and self.mom[n].get("gamemode", 1 if n.startswith("surf_") else 2) == int(q["gamemode"])]
             if surf:
                 rows += self.rawrows
             skip, take = int(q["skip"]), int(q["take"])
@@ -1808,7 +1809,7 @@ def case_plan_and_install():
     check("...the surf list was paged (3 maps, 2 a page), then bhop, then ksf",
           [u.split("?")[1].split("&expand")[0] if "?" in u else u for u in w.asked],
           ["gamemode=1&take=2&skip=0", "gamemode=1&take=2&skip=2",
-           "gamemode=2&take=2&skip=0", W.KSF_BASE + "/maps"])
+           "gamemode=2&take=2&skip=0", "gamemode=3&take=2&skip=0", W.KSF_BASE + "/maps"])
     check("...and writes nothing into the library, a killed run's leftovers included",
           (lib(maps), os.listdir(os.path.join(state, "tmp"))),
           ([".mapwatch.surf_dead.part"], ["surf_dead.zip"]))
@@ -1857,7 +1858,7 @@ def case_plan_and_install():
     w.asked = []
     tick(maps, state, "--go")
     check("a second run asks for the lists and nothing else",
-          (len(w.asked), w.files()), (4, []))
+          (len(w.asked), w.files()), (5, []))
     os.remove(os.path.join(site, "surf_a.json"))
     tick(maps, state, "--go", "--site-zones", site)
     check("a zone file the site has lost is copied again, from the one held",
@@ -1969,6 +1970,97 @@ def case_bad_files():
            ("surf_z64", "badzip")])
     check("control: zipfile itself reads the bzip2 archive whole",
           zipfile.ZipFile(io.BytesIO(ksf["surf_bz"]["zip"])).read("surf_bz.bsp") == bsp("bz"), True)
+
+
+def case_native_modes():
+    native = {"ahop_fixture": dict(M("native2"), gamemode=2),
+              "kz_hl1_fixture": dict(M("native3"), gamemode=3)}
+    w, maps, state = setup(native, {})
+    check("native nonprefix mode2/3 BSPs and hashed zones install through the existing gates",
+          (tick(maps, state, "--go"), lib(maps), zlist(maps)),
+          (0, ["ahop_fixture.bsp", "kz_hl1_fixture.bsp", "zones"],
+           ["ahop_fixture.json", "kz_hl1_fixture.json"]))
+    rows, names, _ = W.mom_list(W.Pacer(0))
+    check("native rows keep the census mode's tier and bhop category",
+          [(k, rows[k]["mode"], rows[k]["tier"]) for k in sorted(rows)],
+          [("ahop_fixture", "bhop", 1), ("kz_hl1_fixture", "bhop", 1)])
+    check("native names count toward Momentum's ownership census", sorted(names), sorted(native))
+    display = W.list_rows(maps, {"ahop_fixture": "ahop_fixture", "kz_unrelated": "kz_unrelated"},
+                          {"ahop_fixture": {"mode": "bhop", "src": "m"}}, {}, "2026-11-11", "2026-11-01")
+    check("catalogued native names reach the download list without admitting unrelated held modes",
+          [r.split()[:3] for r in display], [["dl", "ahop_fixture", "bhop"]])
+    check("native names still reject traversal and whitespace",
+          [W.okname(n, native=True) for n in ("../ahop_x", "ahop_x\n", "kz_fixture")],
+          [False, False, True])
+
+    class Census:
+        counts = {1: 150, 2: 150, 3: 38}
+
+        def json(self, url):
+            q = dict(p.split("=") for p in url.split("?", 1)[1].split("&"))
+            gm, skip, take = int(q["gamemode"]), int(q["skip"]), int(q["take"])
+            return {"totalCount": self.counts[gm], "data": [
+                {"name": "native%d_%d" % (gm, i), "id": gm * 1000 + i}
+                for i in range(skip, min(skip + take, self.counts[gm]))]}
+
+    old = W.MOM_MIN, W.MOM_HL1_MIN, W.MOM_TAKE
+    W.MOM_MIN, W.MOM_HL1_MIN, W.MOM_TAKE = 150, 38, 100
+    try:
+        census = Census()
+        check("control: legacy mode floors and the separate HL1 floor act", len(W.mom_list(census)[1]), 338)
+        for gm, short in ((1, 149), (2, 149), (3, 37), (3, 0)):
+            census.counts = {1: 150, 2: 150, 3: 38}
+            census.counts[gm] = short
+            try:
+                W.mom_list(census)
+                refused = False
+            except W.Refused:
+                refused = True
+            check("mode %d refuses %d entries without lowering modes1/2" % (gm, short), refused, True)
+    finally:
+        W.MOM_MIN, W.MOM_HL1_MIN, W.MOM_TAKE = old
+
+
+def case_native_beta_sidecars():
+    native = "kz_hl1_beta"
+    fixture = dict(M("nativebeta"), gamemode=3)
+    w, maps, state = setup({native: fixture}, {})
+    w.hidden = {native}
+    os.makedirs(state)
+    path, ids = os.path.join(state, "extra.tsv"), os.path.join(state, "betaids.tsv")
+    h = sha(fixture["bsp"])
+    with io.open(path, "w", encoding="utf-8") as fh:
+        fh.write("%s %s %s%s.bsp\n" % (native, h, W.MOM_CDN, uuid_of(native)))
+    line = "%s %s %d %s" % (native, h, w.ids[native], sha(ztext(fixture["zones"]).encode()))
+    check("a nonprefix Beta row without a sidecar is not fetched", W.extra_list(path), ({}, 1))
+    for label, text in (("legacy", line), ("malformed", line + " nope"),
+                        ("other mode", line + " 6"), ("missing identity", native + " " + h),
+                        ("conflicting mode", line + " 3\n" + line + " 2"),
+                        ("conflicting id", line + " 3\n" + "%s %s %d - 3" % (native, h, w.ids[native] + 1)),
+                        ("stale hash", line.replace(h, "0" * 40) + " 3")):
+        with io.open(ids, "w", encoding="utf-8") as fh:
+            fh.write(text + "\n")
+        check("nonprefix sidecar refuses " + label, W.extra_list(path, ids), ({}, 1))
+    with io.open(ids, "w", encoding="utf-8") as fh:
+        fh.write(line + " 3\n" + line + " 3\n")
+    rows, bad = W.extra_list(path, ids)
+    check("matching native identity is repeatable and carries its own mode",
+          (bad, rows[native]["id"], rows[native]["gamemode"]), (0, w.ids[native], 3))
+    check("native cached Beta installs through the unchanged hash and zone gates",
+          (tick(maps, state, "--go"), lib(maps), zlist(maps)),
+          (0, [native + ".bsp", "zones"], [native + ".json"]))
+
+    # A stale cache sidecar cannot override the live approved row of this name.
+    w2, maps2, state2 = setup({native: fixture}, {})
+    os.makedirs(state2)
+    stale = "0" * 40
+    with io.open(os.path.join(state2, "extra.tsv"), "w", encoding="utf-8") as fh:
+        fh.write("%s %s %s%s.bsp\n" % (native, stale, W.MOM_CDN, uuid_of(native)))
+    with io.open(os.path.join(state2, "betaids.tsv"), "w", encoding="utf-8") as fh:
+        fh.write("%s %s %d - 2\n" % (native, stale, w2.ids[native]))
+    tick(maps2, state2, "--go")
+    check("live approved build wins over a contradictory native Beta sidecar",
+          sha(read(os.path.join(maps2, native + ".bsp"))), h)
 
 
 def case_page_scan():
@@ -3996,7 +4088,8 @@ def case_mapscan():
 
 
 def main():
-    for case in (case_plan_and_install, case_bad_files, case_page_scan, case_limits_on_a_reply,
+    for case in (case_plan_and_install, case_bad_files, case_native_modes, case_native_beta_sidecars,
+                 case_page_scan, case_limits_on_a_reply,
                  case_turns_with_the_crawl, case_given_zones, case_map_list, case_kept_build,
                  case_unhashed_zones,
                  case_bad_names_and_shapes, case_hosts,
