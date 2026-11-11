@@ -57,8 +57,8 @@
 .float topt_on, topt_head, topt_n, topt_dir, topt_yaw0, topt_pitch0;
 .float topt_stage;              // 1 go back to the head and stage the tape, 2 the tape is running
 .float topt_endz, topt_endtrack;    // P1483: a course's end (a zone box, or -1; the track whose END boxes, or -1): a reach there
-.float topt_airdir;
-.float topt_lookw;              // P1483 `lookw W`: the lookahead's weight for this search (0: TOPT_LOOKW)             // P1483 `airdir`: an air point is a place and a way (the demo's heading there)
+.float topt_airdir;             // P1483 `airdir`: an air point is a place and a way (the demo's heading there)
+.float topt_lookw;              // P1483 `lookw W`: the lookahead's weight for this search (0: TOPT_LOOKW)
 .float topt_startz, topt_startz2;             // P1483: the course's start box: a teleport landing there is a fall (`startz`, -1 none)
 .entity topt_cutent;            // P1483: the volume a rollout was cut at (topt_rollcut 1)
 .float topt_playk;              // P1483: `play K`: the search's K-th kept candidate played, no search (0 none, else K + 1)
@@ -1468,7 +1468,12 @@ float(entity e, float ran) SV_TASOptTargetScore =
 	if ((!hit || !endhit) && lim >= 1 && lim == ran - 1 && e.topt_rollcut == 1 && (e.topt_endz >= 0 || e.topt_endtrack >= 0))
 	if (SV_TASOptEndTele(e, e.topt_cutent) == 1)
 		{ best = 0; bk = lim - 1; hit = TRUE; endhit = TRUE; }     // the tick before the teleport into the end
-	if (held && !endhit) { bk = dmk; best = dmin; }     // played to its nearest approach: the coast starts there (review J)
+	if (held && !endhit)
+	{	// played to its nearest approach: the coast starts there (review J); not when that is the tick before a cut, where
+		// the line was still closing and the coast would start against the trigger (review K)
+		if (!(dmk == lim - 1 && e.topt_rollcut == 1)) bk = dmk;
+		best = dmin;
+	}
 	hj = bk;        // a hop's jump tick, before the link moves past it
 	if (hit && e.topt_tgtn_z >= 0.99)
 	{	// a hop: the link goes on past the jump until the hull stands (farsh ducks over a platform's lip
@@ -1553,7 +1558,8 @@ float(entity e, float ran) SV_TASOptTargetScore =
 			eg = e.topt_tgtj; dh = 1000000;
 			for (j = max(1, e.topt_tgtj - 60); j <= e.topt_tgtj; j = j + 1)
 				if (vlen([topt_dpos[j*3], topt_dpos[j*3+1], topt_dpos[j*3+2]] - [topt_out[i], topt_out[i+1], topt_out[i+2]]) < dh)
-				{ dh = vlen([topt_dpos[j*3], topt_dpos[j*3+1], topt_dpos[j*3+2]] - [topt_out[i], topt_out[i+1], topt_out[i+2]]); eg = j; }	// P1483: scored on energy alone, a turn point kept the fastest line that touched its 200 u, whatever its way, and
+				{ dh = vlen([topt_dpos[j*3], topt_dpos[j*3+1], topt_dpos[j*3+2]] - [topt_out[i], topt_out[i+1], topt_out[i+2]]); eg = j; }
+			// P1483: scored on energy alone, a turn point kept the fastest line that touched its 200 u, whatever its way, and
 			// the board after it failed every try (t2s5 stretch 3, bench p15): off the demo's heading costs TOPT_HOPDIR a degree
 			dh = vectoyaw([topt_dpos[eg*3+3] - topt_dpos[eg*3-3], topt_dpos[eg*3+4] - topt_dpos[eg*3-2], 0])
 				- vectoyaw([topt_out[i+3], topt_out[i+4], 0]);
