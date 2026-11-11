@@ -1,5 +1,8 @@
 # P1512 ordinary save-load preview acknowledgement
 
+Implemented, independently source-reviewed and deployed on 11 November 2026 UTC
+to both Windows installs and all 12 lobbies. Human/Mark acceptance remains pending.
+
 ## Change
 
 The ordinary registered console `sl_load` path predicted the saved view without
@@ -22,7 +25,7 @@ Independent source and acting-artifact review cleared final product SHA256
 `58ee3d95a32a29ab14b79e5c00744ebe36fda95b73ea7ac3200b47dbb1b31373`
 and test-tool SHA256
 `e65385d1152c726907d16eb8aaae66108544d097d8ba72de40ff4013ddce76dd`.
-The review checked16 extracted production functions in both subject and actual
+The review checked 16 extracted production functions in both subject and actual
 prepatch helpers, their identical assertion tail, real sender/queue/camera
 ownership, conditional cleanup/re-entry and finite test boundaries.
 
@@ -70,7 +73,49 @@ Human standalone-load acceptance and Mark's exact bind/map/error remain pending
 in `lextest.md`. The P1508 snapshot transport repair is a separate deployed fix;
 neither its packet checks nor these CPU controls establish Mark's root cause.
 
-Product publication and dual-Windows/all-lobby deployment are the next execution
-steps. This preparation record is not yet a deployment receipt; actual source,
-UTC, hashes, restart/preservation and served-client readbacks will be recorded
-when complete. Ordinary progs deployment retains `.prev`; no release is claimed.
+## Development deployment -- 11 November 2026 UTC
+
+Published inspected QC source `20ee7283dcfb7c70a572ea00250bde3110571c81` and engine
+documentation `1df81b79185706f0331277de4630c9884596758a`. Deployment reused that
+clean source's qualified NoDeploy artifacts, not a later source rebuild. Native
+pin/tag remain `041181a7b`/`patch-1508` and QC Build 89; no release is claimed.
+
+| Program | SHA256 |
+|---|---|
+| qwprogs.dat |`de63efd32542f6b03bb4469abb9d2c0a9b8221285697e8c7754041efe9467867`|
+| csprogs.dat |`957ddec338dbd0591d7af0ccb63807eccc2803ad9cc44ba5265d1aaf6d3de75d`|
+| menu.dat |`c00ab9456a9735fd2838929b5cbc4cb49b269acbb5050ab4fda86f968694530e`|
+
+- Windows receipt 23:12:55.7835722Z: DAT+LNO for all three VMs match the qualified
+  artifacts in BOTH installs, all12 targets independently rehashed. Current and
+  prior-previous preimages were retained and verified; all27 bounded protected
+  files remain equal. Only the existing build.ps1 Deploy function performed the
+  swaps. Its caller's old hardcoded qualification ref was made explicit and
+  includes ENGINE.txt in the unchanged-input check; no quality gate was removed.
+- Pi postflight 23:19:09.944252Z: the unchanged inspected build.ps1 -Pi block warned
+  every lobby and used its default10-second countdown, then swapped only QW/CSQC
+  and restarted all12, none skipped. Menu/native/backend/configs were not shipped.
+  Both destination hashes match above and both `.prev` hashes match actual prior
+  current bytes. Twelve actual new native actor epochs/hashes were observed.
+- Before ANY canonical Pi staging/restart, all 216 recorder/resume payloads
+  (326,906,867 bytes:9 parts+207 resume members) and all4 current/prior-previous
+  progs preimages were archived, on-box verified and independently rehashed
+  off-box. Raw identity/nanosecond inventories and resume archive metadata were
+  retained. Fresh boundary and postflight use the original strict guards; all216
+  rows/payload/recorded metadata remain equal. Backend actor epochs, native and
+  bounded configs remain unchanged. No player-data restoration was performed.
+- The first immediate post-restart UDP postflight timed out after all swaps and
+  restarts had succeeded. It is retained as a failed check, not regraded. All12
+  readiness/actor checks then passed and ONLY the same read-only postflight was
+  completed; no second swap or extra restart occurred.
+- Subsequent live serverinfo on all12 actual new actors advertises folded-MD4
+  `0x1d67ca2e` and 5,317,994 bytes, matching the qualified CSQC. The first metadata
+  reader missed native^2/^7 color prefixes; that failed reader and the bounded
+  format diagnostic are preserved. Correcting only color decoding (including
+  hexadecimal size) gave all12 matches without any server/file change. This is
+  live advertisement proof, NOT a cold-client download or graphical-camera pass.
+
+The HUD's P1493 title shows the editable local game/menu release version, not this
+QC patch identifier. Reconnecting and retrying ordinary `sl_load` and the usual
+binding is the small pending human check; do not infer P1512 loading from that
+release label or turn deployment into a claim that Mark's entire report is fixed.
