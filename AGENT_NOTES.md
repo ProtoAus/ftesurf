@@ -1,5 +1,22 @@
 # AGENT_NOTES.md
 
+## P1523 float conversion did not prove usable observer arithmetic (12 Nov 2026)
+
+Actual13reader/cached-consumer controls: all8NaN terms (six v/two d) retained
+contentOK, finite2judge/join19, lexical/contradiction2FAULT/controllerBLIND. Digest
+checked/no-reopen/signature-status independence ACTED, no signature verification
+or hardware claim. Validate finite observed numeric terms; keep descriptions vs
+measurements separate. A bad v can poison next baseline, so both-axis profile
+exclusions and raw-target join unavailable; bad d never means absent/equal, but
+independent finite view arithmetic still judges19. Legacy optional None is NOT
+bad numeric data. Existing malformed observer width/time/value must also not
+retain partial comparisons. Refuse data quality, not angle/count guilt. Windows
+HID805/receipt529/reader949 allpass;136HID3faulty identical lists/568REC automatic
+pairedVIEW356faulty/751hashes unchanged. NaN-only proof, no infinity-loop/native
+attack/audit demonstration; not whole-parser/constants/hardware calibration.
+No native code/pin/tag or Build change, no deployment/review grant implied.
+`tools/p1523-observer-values.md`; keep required reviews/genuine input explicit.
+
 ## P1522 pointer numeric conversion was not a catch-all fault (12 Nov 2026)
 
 Trace actual parser and consumer, not comments: m conversion swallowed ValueError,

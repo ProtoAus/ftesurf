@@ -697,6 +697,43 @@ def test_pointer_coordinate_content_join():
               (r.ok, r.faults), (before, []))
 
 
+def test_observer_numeric_content_join():
+    import test_hidcheck as vectors
+
+    cases = [("finite view", vectors.observer_value_journal("v", 2, "4"), True, 19),
+             ("finite raw", vectors.observer_value_journal("d", 2, "4"), True, 19)]
+    for kind, columns in (("v", (2, 3, 5, 6, 7, 8)), ("d", (2, 3))):
+        for column in columns:
+            cases.append(("%s column%d" % (kind, column),
+                          vectors.observer_value_journal(kind, column, "nan", once=True),
+                          False, None if kind == "v" else 19))
+    for label, text, valid, judged in cases:
+        data = text.encode("utf-8")
+        r = rcptcheck.Receipt("observer.rcpt")
+        r.file_bytes["observer.hid"] = data
+        r.signed = [("hid", "%s %d 1" % (hashlib.sha256(data).hexdigest(), len(data)))]
+        before = r.ok
+        with mock.patch("builtins.open", side_effect=AssertionError("reopened observer capture")):
+            rcptcheck.join_journal(r)
+        check("observer %s: actual captured digest checked" % label,
+              (("hid", "observer.hid") in r.digest_checked, r.digest_bad), (True, {}))
+        check("observer %s: quality is not a clean content result" % label,
+              r.journal, "OK" if valid else "FAULT")
+        metrics = r.journal_metrics["metrics"]
+        check("observer %s: descriptions vs actual angle availability" % label,
+              (metrics.get("view_records"), metrics.get("identity_judged")), (20, judged))
+        check("observer %s: unavailable join/input is absent not zero" % label,
+              (metrics.get("join_checked"), metrics.get("legacy_presses")),
+              (19, 0) if valid else (None, None))
+        check("observer %s: signature/rank remains independent" % label,
+              (r.ok, r.faults), (before, []))
+        if not valid:
+            check("observer %s: quality is not an angle/count accusation" % label,
+                  ("non-finite" in r.journal_detail,
+                   "IDENTITY BROKEN" in r.journal_detail or "COUNTS JOIN BROKEN" in r.journal_detail),
+                  (True, False))
+
+
 def main():
     tests = (lambda: test_swap("view"), lambda: test_swap("hid"),
              lambda: test_swap("hid", broken_first=True), test_rec_swap,
@@ -706,7 +743,8 @@ def main():
              test_unavailable_angles_keep_view_faults, test_usable_angles_keep_view_faults,
              test_signed_usable_view_faults, test_initial_clock_origin, test_retry_clock_faults,
              test_unavailable_hid_capture_keeps_content_refusal,
-             test_device_namespace_content_join, test_pointer_coordinate_content_join)
+             test_device_namespace_content_join, test_pointer_coordinate_content_join,
+             test_observer_numeric_content_join)
     for test in tests:
         try:
             test()

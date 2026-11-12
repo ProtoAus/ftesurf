@@ -951,6 +951,74 @@ def case_joystick_does_not_spend_touchpad_budget():
                   "CONTROL real pad motion still exceeds zero accepted reports")
 
 
+def observer_value_journal(kind, column, value, once=False, legacy=False):
+    text = namespace_journal([("mouse", "0", "mouse-example")], pointer=0)
+    text = text.replace("begin\n", 'input m_filter "0" "0"\nbegin\n', 1)
+    lines = []
+    index = 0
+    for line in text.splitlines():
+        fields = line.split()
+        if fields and fields[0] == "v":
+            if legacy:
+                fields = fields[:7]
+            mutate = not once or index == 10
+            if kind == "d":
+                raw = ["d", "0", "4", "0"]
+                if mutate:
+                    raw[column] = value
+                lines.append(" ".join(raw))
+            elif mutate:
+                fields[column] = value
+            line = " ".join(fields)
+            index += 1
+        lines.append(line)
+    return "\n".join(lines) + "\n"
+
+
+def case_observer_numeric_quality():
+    for kind, columns in (("v", (2, 3, 5, 6, 7, 8)), ("d", (2, 3))):
+        for column in columns:
+            for once in (False, True):
+                r = run(observer_value_journal(kind, column, "nan", once=once))
+                label = "%s column%d once%s" % (kind, column, once)
+                check(not r.ok and has_fault(r, "non-finite"),
+                      "unusable observation quality is refused: " + label)
+                check(r.info.get("view_records") == 20 and r.info.get("events") == 20,
+                      "descriptive records consumed, not measurements: " + label)
+                check("join_checked" not in r.info and "join_broke" not in r.info,
+                      "invalid observation is not an absent/equal raw join: " + label)
+                if kind == "v":
+                    check("identity_judged" not in r.info and
+                          r.info.get("identity_yaw_exclusions") == {"reader_profile_gate": 20} and
+                          r.info.get("identity_pitch_exclusions") == {"reader_profile_gate": 20},
+                          "unusable view baseline poisons neither judged axis: " + label)
+                else:
+                    check(r.info.get("identity_yaw_mouse_frames") == 19,
+                          "bad raw annotation does not erase independent finite angle arithmetic")
+                check(not any("COUNTS JOIN BROKEN" in f or "IDENTITY BROKEN" in f
+                              for f in r.faults),
+                      "quality unavailability is not an angle/count accusation: " + label)
+
+    for legacy in (False, True):
+        r = run(observer_value_journal("v", 2, "4", legacy=legacy))
+        check(r.ok and r.info.get("identity_yaw_mouse_frames") == 19 and
+              r.info.get("join_checked") == 19 and r.info.get("join_broke") == 0,
+              "CONTROL finite current/legacy view still ACTS, legacy=%s" % legacy)
+        r = run(observer_value_journal("v", 5, "nan", once=True, legacy=legacy))
+        check(not r.ok and "identity_judged" not in r.info,
+              "finite guard does not mistake legacy optional None for data, legacy=%s" % legacy)
+    r = run(observer_value_journal("d", 2, "4"))
+    check(r.ok and r.info.get("join_checked") == 19 and r.info.get("join_broke") == 0,
+          "CONTROL finite raw annotation actually joins")
+    for kind, column in (("d", 2), ("v", 5), ("d", 1), ("v", 1)):
+        r = run(observer_value_journal(kind, column, "broken", once=True))
+        check(not r.ok and "join_checked" not in r.info,
+              "already-invalid %s syntax/time cannot retain partial join" % kind)
+        if kind == "v":
+            check("identity_judged" not in r.info,
+                  "already-invalid view cannot silently keep a partial baseline")
+
+
 def pointer_coordinate_journal(kind, x, y, profile=False):
     text = namespace_journal([("mouse", "0", "mouse-example")], pointer=0)
     text = text.replace("m 0 0 4 0", "%s 0 0 %s %s" % (kind, x, y))
@@ -2848,7 +2916,7 @@ def main():
                case_cvar_quote_identity, case_cvar_quote_malformed,
                case_leftisright_capture_boundary, case_float_capture_boundary,
                case_controller_profile_is_not_a_keyboard_turn,
-               case_pointer_coordinate_quality):
+               case_pointer_coordinate_quality, case_observer_numeric_quality):
         print("%s:" % fn.__name__)
         fn()
         print("")

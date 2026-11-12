@@ -22,6 +22,9 @@
 ## next
 - Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
+### P1523 Observation quality
+- Unusable recorded view data no longer produces clean comparisons. Analysis now distinguishes records that were read from measurements it could actually check.
+
 ### P1522 Input recording validation
 - Unusable input samples no longer appear as clean analysis. Incomplete input measurements stay unavailable instead of being reported as healthy zeroes.
 

@@ -684,6 +684,7 @@ def check_hid(path, verbose=False, *, data=None):
     j_nm = j_a = 0       # how many 'm' and 'a' records fell in it
     j_raw = None         # the window's 'd' record, if it had one
     bad_pointer = False  # no complete counts join from unusable coordinates
+    bad_observers = set()  # unusable d/v arithmetic must not become measurements
     devmaps = []         # (type, id, name) -- Patch 303, the resolved table
     # devid -> event count, for the attribution check below.  SPLIT BY CLASS,
     # and that split is a bug fix rather than tidiness -- see the device section.
@@ -763,15 +764,21 @@ def check_hid(path, verbose=False, *, data=None):
 
         if len(tok) < 2:
             r.fault("line %d: %r has no dt" % (lineno + 1, kind))
+            if kind in ("d", "v"):
+                bad_observers.add(kind)
             continue
         try:
             dt = int(tok[1])
         except ValueError:
             r.fault("line %d: dt is not an integer: %r" % (lineno + 1, tok[1]))
+            if kind in ("d", "v"):
+                bad_observers.add(kind)
             continue
         if dt < 0:
             r.fault("line %d: negative dt %d -- time does not run backwards"
                     % (lineno + 1, dt))
+            if kind in ("d", "v"):
+                bad_observers.add(kind)
             continue
         dts.append(dt)
         clock += dt / 1000000.0
@@ -783,6 +790,8 @@ def check_hid(path, verbose=False, *, data=None):
                     % (lineno + 1, kind, len(tok), 2 + want))
             if kind in ("m", "a"):
                 bad_pointer = True
+            if kind == "d":
+                bad_observers.add(kind)
             continue
 
         # Parse BOTH coordinates before changing the window. The catch-all only
@@ -814,30 +823,46 @@ def check_hid(path, verbose=False, *, data=None):
         elif kind == "d":
             # Annotation only: consume it before the catch-all event counter.
             try:
-                j_raw = (float(tok[2]), float(tok[3]))
+                raw = (float(tok[2]), float(tok[3]))
             except ValueError:
+                bad_observers.add("d")
                 r.fault("line %d: 'd' has a non-numeric field" % (lineno + 1))
+            else:
+                if all(math.isfinite(value) for value in raw):
+                    j_raw = raw
+                else:
+                    bad_observers.add("d")
+                    r.fault("line %d: non-finite raw observation; counts join "
+                            "unavailable, not a counts accusation" % (lineno + 1))
             continue
 
         if kind == "v":
             # v <dt> <dx> <dy> <flags> <pitch> <yaw>   -- engine Patch 293
             try:
                 if len(tok) not in (7, 9):
+                    bad_observers.add("v")
                     r.fault("line %d: 'v' has %d fields, expected 7 (pre-305) "
                             "or 9" % (lineno + 1, len(tok)))
                     continue
                 kp = float(tok[7]) if len(tok) == 9 else None
                 ky = float(tok[8]) if len(tok) == 9 else None
-                views.append((lineno + 1, float(tok[2]), float(tok[3]),
-                              int(tok[4]), float(tok[5]), float(tok[6]), kp, ky,
-                              idover))
+                view = (lineno + 1, float(tok[2]), float(tok[3]),
+                        int(tok[4]), float(tok[5]), float(tok[6]), kp, ky, idover)
+                views.append(view)  # descriptions, not comparative measurements
+                if any(value is not None and not math.isfinite(value)
+                       for value in view[1:3] + view[4:8]):
+                    bad_observers.add("v")
+                    r.fault("line %d: non-finite view observation; angle/counts "
+                            "comparisons unavailable, not an angle accusation"
+                            % (lineno + 1))
                 # Patch 312: close the window this 'v' ends. The expected raw is
                 # the 'd' record if the frame had one and the v's own delta if it
                 # did not -- a missing 'd' IS the claim that they are equal.
-                exp = j_raw if j_raw is not None else (float(tok[2]), float(tok[3]))
+                exp = j_raw if j_raw is not None else (view[1], view[2])
                 joins.append((lineno + 1, j_mx, j_my, exp[0], exp[1],
-                              int(tok[4]), j_nm, j_a, j_raw is not None))
+                              view[3], j_nm, j_a, j_raw is not None))
             except ValueError:
+                bad_observers.add("v")
                 r.fault("line %d: 'v' has a non-numeric field" % (lineno + 1))
             j_mx = j_my = 0.0
             j_nm = j_a = 0
@@ -1794,13 +1819,14 @@ def check_hid(path, verbose=False, *, data=None):
         idhead = dict(head, leftisright=lir)
     controller = bool(devids_joy) or any(
         t == "joy" and did not in ("-", "unset") for t, did, _n in devs + devmaps)
-    check_identity(r, idhead, views, controller=controller)
+    check_identity(r, idhead, views, controller=controller,
+                   unavailable="v" in bad_observers)
     # Patch 312, and ABOVE the same bail-out for the same reason -- plus its own:
     # the join is the one check whose most interesting subject is a file with
     # counts that reached no view at all.
-    if bad_pointer:
-        r.note("counts join unavailable: unusable pointer coordinates in this "
-               "journal; partial or non-finite sums are not measurements.")
+    if bad_pointer or bad_observers:
+        r.note("counts join unavailable: unusable pointer/observer data in this "
+               "journal; partial or non-finite terms are not measurements.")
     else:
         check_counts_join(r, joins, bool(inputcvars))
 
@@ -2058,7 +2084,7 @@ def check_counts_join(r, joins, post312):
 # WHY THE CHECK IS SKIPPED RATHER THAN FAILED in several cases below: a check
 # that reports a fault it cannot distinguish from a configuration is worse than
 # no check, because the first false accusation is what people remember.
-def check_identity(r, head, views, controller=False):
+def check_identity(r, head, views, controller=False, unavailable=False):
     if not views:
         r.info["identity_blind"] = ("no view records to judge" if "sensitivity" in head
                                     else "pre-293 journal: no recorded angle identity")
@@ -2127,6 +2153,13 @@ def check_identity(r, head, views, controller=False):
     # A seed is not a judged endpoint; early gates are not measured zeroes.
     y_excl = r.info["identity_yaw_exclusions"] = {}
     p_excl = r.info["identity_pitch_exclusions"] = {}
+
+    if unavailable:
+        y_excl["reader_profile_gate"] = p_excl["reader_profile_gate"] = len(views)
+        r.info["identity_blind"] = "unusable view observation"
+        r.note("angle identity unavailable: an unusable view observation can "
+               "poison the next baseline; no clean-angle judgement is made.")
+        return
 
     if controller:
         y_excl["reader_profile_gate"] = p_excl["reader_profile_gate"] = len(views)
