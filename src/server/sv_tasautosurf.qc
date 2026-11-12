@@ -2220,8 +2220,8 @@ void(entity e, float argc) SV_TASAutoCommand =
 	}
 	// `start` begins in the start box, before the running attempt the tools need (it is a legal start's own path)
 	if (pl) { if (Lobby_Active()) { sprint(e, PRINT_HIGH, "tas autosurf: a local practice tool; not on lobby servers\n"); SV_TASAutoOptRestore(e); return; } }
-	else if (st || arm) { if (Lobby_Active() || !e.run_tas_rwcap) { SV_TASToolGate(e, "autosurf"); return; } }
-	else if (!pl && !SV_TASToolGate(e, "autosurf")) { SV_TASAutoNote(e, 0, "TAS is not paused in a run here: use Restart from the start zone"); return; }
+	else if (st || arm) { if (Lobby_Active() || !e.run_tas_rwcap) { SV_TASToolGate(e, "autosurf"); SV_TASAutoOptRestore(e); return; } }
+	else if (!pl && !SV_TASToolGate(e, "autosurf")) { SV_TASAutoNote(e, 0, "TAS is not paused in a run here: use Restart from the start zone"); SV_TASAutoOptRestore(e); return; }
 	if (ct >= 0 && zg) { sprint(e, PRINT_HIGH, "tas autosurf: `course` picks the start itself; not with zone\n"); SV_TASAutoOptRestore(e); return; }      // onjump/onexit with a course: armed in its own box (below)
 	if (path == "route")
 	{	// the clicked route: no demo, no plan to make; from here (a running attempt, paused)
@@ -2275,6 +2275,11 @@ void(entity e, float argc) SV_TASAutoCommand =
 		{	// a picked course takes over from its own box only: its rows and its end are that course's (Lex: start it yourself on stream)
 			sprint(e, PRINT_HIGH, sprintf("tas autosurf: stand in %s's start box first (!r, or !s for a stage), then this again\n", SV_TASAutoCourseName(nct, ncl)));
 			SV_TASAutoOptRestore(e); strunzone(path); return;
+		}
+		if (!e.run_tas_mode)
+		{	// the arm is taken: TAS on here, not from the client before the gates (review: a refused arm marked the run)
+			e.run_tas_mode = TRUE; SV_TASMark(e);
+			sprint(e, PRINT_HIGH, "tas: on -- Jargon takes over at your jump\n");
 		}
 		if (e.as_file != "") strunzone(e.as_file);
 		e.as_file = path;
@@ -2339,8 +2344,8 @@ void(entity e, float argc) SV_TASAutoCommand =
 		return;
 	}
 	s = SV_TASAutoPlan(e, -1);
-	if (s < 0) { SV_TASAutoNote(e, 0, "you are not on the guide run's route (400 u): restart, or redo from a stretch"); strunzone(path); return; }
-	if (as_n < 1) { sprint(e, PRINT_HIGH, "tas autosurf: no ramp, hop or finish ahead on the demo from here\n"); strunzone(path); return; }
+	if (s < 0) { SV_TASAutoNote(e, 0, "you are not on the guide run's route (400 u): restart, or redo from a stretch"); SV_TASAutoOptRestore(e); strunzone(path); return; }
+	if (as_n < 1) { sprint(e, PRINT_HIGH, "tas autosurf: no ramp, hop or finish ahead on the demo from here\n"); SV_TASAutoOptRestore(e); strunzone(path); return; }
 	if (e.as_file != "") strunzone(e.as_file);
 	e.as_file = path;
 	e.as_ctrack = nct; e.as_cleg = ncl; e.as_saved = -1; e.as_esc = 0; e.as_fromstart = 0; e.as_keepsaid = 0; e.as_cseed = 0;

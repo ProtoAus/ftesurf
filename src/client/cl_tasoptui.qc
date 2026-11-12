@@ -451,13 +451,13 @@ string() TASOptUI_ArmCmd =
 {
 	jg_gat = 0; TASJargon_Guides();
 	if (!jg_gn) return "";
-	return sprintf("tas on\ntas autosurf %s%s onjump%s\ntas play\n", jg_gp[jg_pick], TASOptUI_DemoWords(), TASJargon_CourseWords());
+	return sprintf("tas autosurf %s%s onjump%s\ntas play\n", jg_gp[jg_pick], TASOptUI_DemoWords(), TASJargon_CourseWords());   // TAS on: the server's, once armed
 };
 void(float n) TASOptUI_Course =
 {
 	TASJargon_Courses();
 	if (!(n >= 0 && n < jg_cn) || n != floor(n)) { print(sprintf("tas jargon course: 1..%g on this map\n", jg_cn)); return; }
-	if (n != jg_cpick) { TASOptUI_Stop(0); jg_cpick = n; jg_gat = 0; jg_kat = 0; }
+	if (n != jg_cpick) { TASOptUI_Stop(1); jg_cpick = n; jg_gat = 0; jg_kat = 0; }
 	print(sprintf("tas jargon: %s\n", TASJargon_CourseLabel(n)));
 };
 void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
