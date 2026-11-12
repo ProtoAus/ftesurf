@@ -6342,6 +6342,22 @@ actual replay time; native memo spelling is `ALPHATRACE memo hits 0`. Retain a
 premature-reader failure, correct that seam rather than rebuild the renderer,
 and keep new evidence exclusive inside the same owned attempt directory.
 
+P1517 shared-rig measurement (owner explicitly requested timing beside peers):
+`exec fullfx.cfg; exec psv_lex.cfg` is NOT full-FX: the latter sets BOTH
+`vbsp_sprites 0` and `vbsp_lightglow 0`. Set both1AFTERexec and verify actual
+effective readback. Earlier smoke claims without that control stay limited.
+A43second wall wait reached only41.2–41.7replayseconds while warming; bound a
+small actual-clock completion instead of relabeling warm coverage or accepting
+an unmatched run. Eight full-FX warmed ABBA/BAAB runs retained every accepted
+sample and showed NOdemonstratedgain; details in tools/p1517-fairy-timing.md.
+Aggregate means of per-run tail FPS are NOT inverses of aggregate meanms or
+pooledglobalpercentiles. Each0.1%tail had7–10frames; sharedload and block changes
+preclude a precise causalregression/significance claim. Do not cherry-pick the
+last+7.1%pair. Resource surveys during a run include OWN client/server: subtract
+the actual Actor ProcessIds before calling a count foreign. Preserve preliminary
+mislabelled analysis rather than silently rewrite it. Owner-authorized shared
+measurements are valid bounded observations, not quiet/portable acceptance.
+
 ## Run and test
 
 - **P1513 uploader settings/Flask fixtures (11 Nov 2026).** Optional run-length

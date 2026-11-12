@@ -76,7 +76,9 @@ not a warning-free native build. TLS checker:365objects/10symbols/0plain-address
 uses. Normal shipping stamp is `git-8709-patch-1517-0-g9aa225a8f`.
 
 Actual final-client smoke used the unchanged installed legacy dedicated server
-and HL2 plugin, frozen own VMs and full effects. Reader0.0->12.0125s, admitted85,
+and HL2 plugin and frozen own VMs. Correction: psv_lex left sprites/lightglows0,
+so this is an acting native render smoke, NOT an established full-FX smoke.
+Reader0.0->12.0125s, admitted85,
 status1/edges54/work30371/moved24/pass1, certworld-1/memohits0; decoded nonblank
 RGB1920x1200, no detected renderer/VM fatal. An initial smoke driver read the
 next-frame trace too early; its failed source/logs remain retained. One bounded
@@ -105,10 +107,19 @@ No native server/plugin/VM/config/player-data/Pi/backend/HID shipment, release o
 QC Build bump occurred. Native source/tag remains9aa225a8f/patch-1517; later
 ledger/docs commits are not the binary's source. Global QC patch1518 and
 QC Build89 were preserved; peer P1519 QC delivery is separate, not repackaged.
-Owner glass/feel checks remain pending in `lextest.md`. A numerical frame-tail
-A/B still needs a coordinated quiet rig: latest check found two foreign games
-and a peer benchmark lock. Handoff's TANDEM mode expressly makes no timing
-claims. No native game-FPS or0.1%-low improvement is claimed here.
+Owner glass/feel checks remain pending in `lextest.md`. The owner subsequently
+explicitly requested measurement alongside the other tests, superseding the
+earlier quiet-only scheduling restriction for that bounded shared-rig batch.
+Eight warmed full-FX Fairy diagnostic A/B runs now show **no demonstrated gain**:
+mean average295.4->267.2FPS(-9.5%),1%122.3->99.8(-18.4%),0.1%95.2->78.6(-17.4%).
+The mirrored block's average was+0.5%,0.1%was-6.8%; variability/sharedload prevent
+a precise causal-regression claim. No accepted run was excluded. The4common
+collector files, other actors/VMs/settings match; this is P1517-only vsP1511,
+not all cumulative patches or direct production1799timing. Both sprite/glow
+cvars were explicitly1AFTERpsv_lex and actually read back1 in all8arms. No build,
+re-deployment or rollback occurred. See [full timing report](p1517-fairy-timing.md)
+and [all eight readings](p1517-fairy-timing.tsv); independent raw-summary review
+reproduced the arithmetic. Do not describe P1517 as a measured performance win.
 
 The actual release-note parser accepts the isolated P1517 entry (one point,
 273byte preview). Complete-file parsing still stops at the inherited unheaded
