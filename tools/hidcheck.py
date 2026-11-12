@@ -1779,7 +1779,9 @@ def check_hid(path, verbose=False, *, data=None):
     lir = next((v for (n, v, d) in inputcvars if n == "leftisright"), None)
     if lir not in (None, "-") and "leftisright" not in head:
         idhead = dict(head, leftisright=lir)
-    check_identity(r, idhead, views)
+    controller = bool(devids_joy) or any(
+        t == "joy" and did not in ("-", "unset") for t, did, _n in devs + devmaps)
+    check_identity(r, idhead, views, controller=controller)
     # Patch 312, and ABOVE the same bail-out for the same reason -- plus its own:
     # the join is the one check whose most interesting subject is a file with
     # counts that reached no view at all.
@@ -2039,7 +2041,7 @@ def check_counts_join(r, joins, post312):
 # WHY THE CHECK IS SKIPPED RATHER THAN FAILED in several cases below: a check
 # that reports a fault it cannot distinguish from a configuration is worse than
 # no check, because the first false accusation is what people remember.
-def check_identity(r, head, views):
+def check_identity(r, head, views, controller=False):
     if not views:
         r.info["identity_blind"] = ("no view records to judge" if "sensitivity" in head
                                     else "pre-293 journal: no recorded angle identity")
@@ -2108,6 +2110,15 @@ def check_identity(r, head, views):
     # A seed is not a judged endpoint; early gates are not measured zeroes.
     y_excl = r.info["identity_yaw_exclusions"] = {}
     p_excl = r.info["identity_pitch_exclusions"] = {}
+
+    if controller:
+        y_excl["reader_profile_gate"] = p_excl["reader_profile_gate"] = len(views)
+        r.info["identity_blind"] = "controller look is not in the recorded keyboard turn terms"
+        r.note("controller assignment or axis records: this file does not carry "
+               "the look mapping or initial persistent axis state needed to "
+               "reconstruct controller turn. The angle identity is NOT checked; "
+               "this is not a clean-angle verdict.")
+        return
 
     if all(consts(v)[2] for v in views):
         y_excl["reader_profile_gate"] = p_excl["reader_profile_gate"] = len(views)

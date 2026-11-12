@@ -623,15 +623,17 @@ def test_device_namespace_content_join():
            ("joy", "1", "joy-example")]
     duplicate = [("mouse", "0", "mouse-A"), ("mouse", "0", "mouse-B")]
     cases = (
+        ("plain mouse control", vectors.namespace_journal([("mouse", "0", "mouse-example")],
+                                                         pointer=0), True, False),
         ("shared native namespaces", vectors.namespace_journal(shared, pointer=0,
-                                                               joystick=0, keyboard=0), True),
+                                                               joystick=0, keyboard=0), True, True),
         ("joy not pad motion", vectors.namespace_journal(pad, pointer=0, joystick=1,
-                                                         pad_accepted=0), True),
+                                                         pad_accepted=0), True, True),
         ("real pad without acceptance", vectors.namespace_journal(pad, pointer=1, joystick=1,
-                                                                  pad_accepted=0), False),
-        ("same-namespace collision", vectors.namespace_journal(duplicate, pointer=0), False),
+                                                                  pad_accepted=0), False, True),
+        ("same-namespace collision", vectors.namespace_journal(duplicate, pointer=0), False, False),
     )
-    for label, text, valid in cases:
+    for label, text, valid, controller in cases:
         data = text.encode("utf-8")
         r = rcptcheck.Receipt("namespace.rcpt")
         r.file_bytes["namespace.hid"] = data
@@ -642,10 +644,11 @@ def test_device_namespace_content_join():
         check("namespace %s: captured bytes actually digest-checked" % label,
               (("hid", "namespace.hid") in r.digest_checked, r.digest_bad), (True, {}))
         check("namespace %s: content result preserves the proper namespace" % label,
-              r.journal, "OK" if valid else "FAULT")
+              r.journal, ("BLIND" if controller else "OK") if valid else "FAULT")
         metrics = r.journal_metrics["metrics"]
-        check("namespace %s: existing allowlisted view metrics still acted" % label,
-              (metrics.get("view_records"), metrics.get("identity_yaw_mouse_frames")), (20, 19))
+        check("namespace %s: views consumed without inventing controller judgement" % label,
+              (metrics.get("view_records"), metrics.get("identity_yaw_mouse_frames")),
+              (20, None if controller else 19))
         check("namespace %s: healthy counter control or actual fault withholding" % label,
               metrics.get("legacy_presses"), 0 if valid else None)
         check("namespace %s: no signature/rank verdict invented" % label,

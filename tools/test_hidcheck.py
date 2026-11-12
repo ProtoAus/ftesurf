@@ -881,7 +881,7 @@ def case_device_id_namespaces():
                                   joystick=0 if joystick else None))
         check(r.ok, "native independent namespace ID0 is valid: %s %s" % (devices, r.faults[:1]))
         check(r.info.get("events") == 20 + 40 * keyboard + 20 * joystick and
-              r.info.get("identity_yaw_mouse_frames") == 19,
+              r.info.get("identity_yaw_mouse_frames") == (None if joystick else 19),
               "shared namespace control actually records/compares both streams")
         if joystick:
             check(r.info.get("joystick_axis_events") == 20,
@@ -938,7 +938,8 @@ def case_joystick_does_not_spend_touchpad_budget():
         check(r.ok == should_pass, "joy1/pad1 separate; pointer%d accepted%d: %s" %
               (pointer, accepted, r.faults[:1]))
         check(r.info.get("joystick_axis_events") == 20 and
-              r.info.get("identity_yaw_mouse_frames") == 19,
+              r.info.get("identity_yaw_mouse_frames") is None and
+              r.info.get("identity_blind"),
               "pad budget test actually processes20axis and20mouse records")
         check(not has_fault(r, "claimed by two devices"),
               "joy1 and pad1 are not a duplicate pointer identity")
@@ -948,6 +949,58 @@ def case_joystick_does_not_spend_touchpad_budget():
         if not should_pass:
             check(has_fault(r, "20 pointer events carry the touchpad's devid"),
                   "CONTROL real pad motion still exceeds zero accepted reports")
+
+
+def case_controller_profile_is_not_a_keyboard_turn():
+    for table, axis, unsupported in (("assigned", True, True),
+                                      ("assigned", False, True),
+                                      ("closing", False, True),
+                                      ("unset", True, True),
+                                      ("unset", False, False),
+                                      ("dash", False, False)):
+        did = "unset" if table == "unset" else "-" if table == "dash" else "0"
+        devices = [MOUSE0, ("joy", did, "controller-example")]
+        if table == "closing":
+            devices[1] = ("joy", "unset", "controller-example")
+        j = Journal(devices=devices)
+        yaw = 0.0
+        for i in range(30):
+            j.frame(8800 + i)
+            j.mouse(4, 0)
+            if axis:
+                j.joyaxis(0, 0.5)
+            yaw += j.k * 4 + (1.8 if unsupported else 0)
+            j.view(4, 0, 10.0, yaw)
+        if table == "closing":
+            j.devices[1] = ("joy", "0", "controller-example")
+        text = j.end()
+        r = run(text)
+        check(r.ok, "controller %s/axis%s: no fabricated identity fault" % (table, axis))
+        check(r.info.get("view_records") == 30 and
+              r.info.get("events") == 30 + 30 * axis,
+              "controller profile control actually consumes view and input records")
+        if unsupported:
+            check("controller" in r.info.get("identity_blind", "") and
+                  r.info.get("identity_yaw_exclusions") == {"reader_profile_gate": 30} and
+                  r.info.get("identity_pitch_exclusions") == {"reader_profile_gate": 30},
+                  "unavailable controller model accounts for BOTH axes")
+            check("identity_judged" not in r.info and
+                  "identity_yaw_mouse_frames" not in r.info,
+                  "unavailable is not a measured zero or a clean-angle judgement")
+            bad = run(text.replace("m 0 0 4 0", "m broken 0 4 0", 1))
+            check(not bad.ok, "controller profile does NOT hide malformed pointer data")
+            bad = run(text.replace("m_yaw 0.022", "m_yaw broken", 1))
+            check(not bad.ok, "controller profile does NOT hide malformed header scales")
+            wire = float_capture_cases()[0][2]
+            bad = run(text.replace("v 30", "c 0 m_yaw " + wire + "\nv 30", 1))
+            check(has_fault(bad, "m_yaw capture unavailable"),
+                  "controller profile preserves actual captured-scalar quality faults")
+        else:
+            check(r.info.get("identity_yaw_mouse_frames") == 29,
+                  "empty unassigned controller slots preserve actual mouse judgement")
+            bad = run(text.replace("v 30 4 0 0 10.000000", "v 30 5 0 0 10.000000"))
+            check(has_fault(bad, "YAW IDENTITY BROKEN"),
+                  "CONTROL normal mouse identity still rejects a changed delta")
 
 
 def case_key_devid_is_not_the_mouse():
@@ -2721,7 +2774,8 @@ def main():
                case_cvar_change_followed, case_leftisright_sign,
                case_leftisright_engine_parse, case_cvar_quote_codec,
                case_cvar_quote_identity, case_cvar_quote_malformed,
-               case_leftisright_capture_boundary, case_float_capture_boundary):
+               case_leftisright_capture_boundary, case_float_capture_boundary,
+               case_controller_profile_is_not_a_keyboard_turn):
         print("%s:" % fn.__name__)
         fn()
         print("")

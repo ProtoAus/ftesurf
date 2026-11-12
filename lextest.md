@@ -1,5 +1,9 @@
 # lextest.md — things waiting on a human
 
+## P1521 controller-turn observation -- NOT deployed; owner check PENDING after reviewed deployment
+- If a real controller is available, record one short normal controller turn and one mouse-only turn with the same settings. Controls should feel unchanged; report any new input/analysis warnings. Keep the original captures for comparison; no reset or deletion is requested.
+- This is not yet a human pass or calibrated input classification. Literal-function controls and a full isolated Windows build do not replace actual controller/full-game acceptance. Independent reviews and deployment must happen first; tools/p1521-controller-identity.md.
+
 ## P1519 Jargon stream view -- LIVE 12 Nov 04:41Z: 12 lobbies + both installs cs c4772add / qw 7c80108b, codes.txt 126; owner check PENDING
 - Open the TAS panel (Jargon tab, simple view). Pick a stage, press "Jargon surfs ...", try Chase. Switch stage mid-run, Stop, Back to playing: nothing should stick. Hotkeys: e.g. bind F5 "tas jargon go"
 - "I start it": stand in that stage's start box (!r, or !s N), press it, prestrafe and jump; Jargon takes over at your jump. Outside the box it says which box and arms nothing (your run is not marked TAS)

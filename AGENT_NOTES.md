@@ -1,5 +1,30 @@
 # AGENT_NOTES.md
 
+## P1521 a keyboard tap does not capture later controller turn (12 Nov 2026)
+
+Trace the actual view order: CL_AdjustAngles is tapped BEFORE IN_MoveJoystick;
+controller changes are absent from v's keyboard-turn terms. Literal native
+arithmetic reproduced29/29 false angle failures. Preserve those column meanings:
+mark actual primary-view accumulator changes for the live observer's existing
+abstention; reset on begin AND both quiet/normal view paths. Source/zero/unmapped/
+null/other-seat controls must prove unaffected frames still judge. Actual native
+view functions300rows retain120parent motion rows; quiet-reset/next-frame acted,
+whole begin lifecycle and hardware remain unqualified. Offline tables/axis events
+lack mappings and initial persistent axis state, so report both axes unsupported,
+not healthy zero. Assigned tables without axis messages are still insufficient;
+unassigned slots without axis messages preserve actual mouse judgement. The
+receipt consumer must retain BLIND rather than manufacture OK. HID606/receipt413/
+reader949 all pass on Windows;136HID/751paired corpus inputs unchanged, fault lists
+unchanged. Full native/QC NoDeploy passes,74baseline/subject native warnings,
+zero QC/new warnings. No independent review/deployment/human pass is implied.
+`tools/p1521-controller-identity.md` records the bounded context and unknowns.
+
+Large existing REC argument sets exceed Windows CreateProcess's command limit.
+Use the supported reccheck.main in-process with the SAME relative REC arguments
+and automatic paired VIEW behavior, as qualified for P1518; do not invent an
+unpaired corpus parser. The final568REC sweep retains356faulty reports. Keep
+failed callers distinct from product faults; never print raw private corpus rows.
+
 ## P1518 input IDs are namespace-local; inspect the actual metric wrapper (12 Nov 2026)
 
 Native pointer, keyboard and joystick allocators search separate arrays. All
