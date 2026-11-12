@@ -1362,7 +1362,11 @@ void(entity e) SV_TASAutoLink =
 	// opt-in (tas_jargon_near): "boarding nearer the guide's point" (rule 32) also tightens the board radius, 800 -> 400 -> 200;
 	// its low weight alone left boarding before or above the point free (surf_shape bonus 1 boards 350 u off, stretch 2 falls)
 	if (as_wk[i] == 1 && as_lowx[i] >= 2 && cvar("tas_jargon_near")) r = max(200, 1200 / as_lowx[i]);     // 600, 300, 200
-	h = min(h, e.topt_dn);
+	// tas_jargon_finishpast: the finish may come later than the guide's. Capped at the demo's last row, a line slower than
+	// the guide at the end ran out short of the zone (surf_sandtrap2 b4: "reached" at tick 116 of 116, 34-67 u off, every
+	// try); past it the line holds the last row's command (the tube is free there)
+	if (as_wk[i] == 3 && cvar("tas_jargon_finishpast")) h = min(TOPT_HMAX, max(h, e.topt_dn + 60));
+	else h = min(h, e.topt_dn);
 	}
 	if (n == '0 0 0') argc = tokenize(sprintf("tas target %.1f %.1f %.1f %.0f", o_x, o_y, o_z, r));
 	else argc = tokenize(strcat(sprintf("tas target %.1f %.1f %.1f %.0f %.4f %.4f %.4f", o_x, o_y, o_z, r, n_x, n_y, n_z),
