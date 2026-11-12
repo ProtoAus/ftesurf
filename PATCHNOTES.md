@@ -22,6 +22,9 @@
 ## next
 - Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
+### P1526 Recording clock validation
+- Unusable recording clocks are now reported as evidence-quality problems instead of valid timing. Unproved duration and rate measurements stay unavailable without becoming player accusations.
+
 ### P1525 Input setting analysis
 - Input analysis no longer mistakes a character-valued setting for unexplained movement. Comparisons with unrecorded numeric meaning stay unavailable, while known settings remain checked.
 

@@ -433,6 +433,13 @@ EVENT_KINDS = {"m", "a", "+", "-", "x", "j"}
 TIME_EPS = 2e-6
 
 
+def _finite_clock(value):
+    value = float(value)
+    if not math.isfinite(value):
+        raise ValueError("non-finite clock")
+    return value
+
+
 class Report:
     def __init__(self, path):
         self.path = path
@@ -543,9 +550,9 @@ def check_hid(path, verbose=False, *, data=None):
 
     r.info["map"] = head["map"]
     try:
-        r.info["base"] = float(head["base"])
+        r.info["base"] = _finite_clock(head["base"])
     except ValueError:
-        r.fault("base is not a number: %r" % head["base"])
+        r.fault("base is not a finite number: %r" % head["base"])
         return r
 
     if left_capture_unknown:
@@ -652,6 +659,7 @@ def check_hid(path, verbose=False, *, data=None):
 
     # ---- body --------------------------------------------------------------
     clock = 0.0          # running sum of dt, seconds since base
+    bad_clock = False   # no timing measurements from unusable clock records
     events = 0
     frames = 0
     dropped = 0
@@ -727,11 +735,15 @@ def check_hid(path, verbose=False, *, data=None):
                 continue
             try:
                 dt = int(tok[1])
-                trailer = [float(tok[2])] + [int(x) for x in tok[3:]]
-            except ValueError:
-                r.fault("line %d: 'end' has a non-numeric field" % (lineno + 1))
+                if dt < 0:
+                    raise ValueError("negative clock delta")
+                elapsed = _finite_clock(clock + dt / 1000000.0)
+                pending = [_finite_clock(tok[2])] + [int(x) for x in tok[3:]]
+            except (ValueError, OverflowError):
+                bad_clock = True
+                r.fault("line %d: 'end' has an unusable clock or non-numeric field" % (lineno + 1))
                 continue
-            clock += dt / 1000000.0
+            trailer, clock = pending, elapsed
             continue
 
         if kind == "truncated":
@@ -741,10 +753,16 @@ def check_hid(path, verbose=False, *, data=None):
                         % (lineno + 1, len(tok)))
                 continue
             try:
-                clock += int(tok[1]) / 1000000.0
-                truncated = float(tok[2])
-            except ValueError:
-                r.fault("line %d: 'truncated' has a non-numeric field" % (lineno + 1))
+                dt = int(tok[1])
+                if dt < 0:
+                    raise ValueError("negative clock delta")
+                elapsed = _finite_clock(clock + dt / 1000000.0)
+                absolute = _finite_clock(tok[2])
+            except (ValueError, OverflowError):
+                bad_clock = True
+                r.fault("line %d: 'truncated' has an unusable clock or non-numeric field" % (lineno + 1))
+            else:
+                clock, truncated = elapsed, absolute
             continue
 
         if kind == "devmap":
@@ -779,18 +797,29 @@ def check_hid(path, verbose=False, *, data=None):
         try:
             dt = int(tok[1])
         except ValueError:
+            bad_clock = True
             r.fault("line %d: dt is not an integer: %r" % (lineno + 1, tok[1]))
+            if kind in ("m", "a"):
+                bad_pointer = True
             if kind in ("d", "v"):
                 bad_observers.add(kind)
             continue
         if dt < 0:
+            bad_clock = True
             r.fault("line %d: negative dt %d -- time does not run backwards"
                     % (lineno + 1, dt))
+            if kind in ("m", "a"):
+                bad_pointer = True
             if kind in ("d", "v"):
                 bad_observers.add(kind)
             continue
         dts.append(dt)
-        clock += dt / 1000000.0
+        try:
+            clock = _finite_clock(clock + dt / 1000000.0)
+        except (ValueError, OverflowError):
+            bad_clock = True
+            r.fault("line %d: unusable clock delta; timing unavailable" % (lineno + 1))
+            # Still parse finite payloads; losing a clock is not losing counts.
 
         want = KINDS[kind]
         if want is not None and (len(tok) < 2 + want if kind == "c"
@@ -881,10 +910,11 @@ def check_hid(path, verbose=False, *, data=None):
         if kind == "f":
             frames += 1
             try:
-                abst = float(tok[2])
+                abst = _finite_clock(tok[2])
                 seq = int(tok[3])
             except ValueError:
-                r.fault("line %d: 'f' has a non-numeric field" % (lineno + 1))
+                bad_clock = True
+                r.fault("line %d: 'f' has an unusable clock or non-numeric field" % (lineno + 1))
                 continue
             seqs.append(seq)
             if first_f is None:
@@ -1890,6 +1920,12 @@ def check_hid(path, verbose=False, *, data=None):
         if events:
             r.info["events_per_sec"] = events / span
             r.info["events_per_frame"] = events / float(frames)
+
+    if bad_clock:
+        for key in ("time", "truncated_at", "first_frame_at", "frame_rate", "events_per_sec"):
+            r.info.pop(key, None)
+        r.note("timing measurements unavailable: an unusable journal clock is "
+               "not a healthy duration or rate; finite input comparisons are separate.")
 
     if seqs:
         r.info["movesequence"] = "%d..%d" % (min(seqs), max(seqs))

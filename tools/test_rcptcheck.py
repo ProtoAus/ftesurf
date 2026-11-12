@@ -771,6 +771,38 @@ def test_model_numeric_content_join():
                   (True, False))
 
 
+def test_clock_content_join():
+    import test_hidcheck as vectors
+
+    cases = [("finite", vectors.model_constant_journal(), False, True)]
+    cases += [(label, text, header, False)
+              for label, text, header in vectors.clock_quality_cases()]
+    for label, text, header, valid in cases:
+        data = text.encode("utf-8")
+        r = rcptcheck.Receipt("clock.rcpt")
+        r.file_bytes["clock.hid"] = data
+        r.signed = [("hid", "%s %d 1" % (hashlib.sha256(data).hexdigest(), len(data)))]
+        before = r.ok
+        with mock.patch("builtins.open", side_effect=AssertionError("reopened clock capture")):
+            rcptcheck.join_journal(r)
+        check("clock %s: actual captured digest checked" % label,
+              (("hid", "clock.hid") in r.digest_checked, r.digest_bad), (True, {}))
+        check("clock %s: unusable timing is not clean content" % label,
+              r.journal, "OK" if valid else "FAULT")
+        metrics = r.journal_metrics["metrics"]
+        check("clock %s: parser acted at declared stage" % label,
+              metrics.get("view_records"), None if header else 20)
+        check("clock %s: independent finite identity remains separate" % label,
+              metrics.get("identity_judged"), None if header else 19)
+        check("clock %s: unproved input total absent, not zero" % label,
+              metrics.get("legacy_presses"), 0 if valid else None)
+        check("clock %s: signature status unchanged by content quality" % label,
+              (r.ok, r.faults), (before, []))
+        check("clock %s: not an angle/count accusation" % label,
+              "IDENTITY BROKEN" in r.journal_detail or "COUNTS JOIN BROKEN" in r.journal_detail,
+              False)
+
+
 def main():
     tests = (lambda: test_swap("view"), lambda: test_swap("hid"),
              lambda: test_swap("hid", broken_first=True), test_rec_swap,
@@ -781,7 +813,8 @@ def main():
              test_signed_usable_view_faults, test_initial_clock_origin, test_retry_clock_faults,
              test_unavailable_hid_capture_keeps_content_refusal,
              test_device_namespace_content_join, test_pointer_coordinate_content_join,
-             test_observer_numeric_content_join, test_model_numeric_content_join)
+             test_observer_numeric_content_join, test_model_numeric_content_join,
+             test_clock_content_join)
     for test in tests:
         try:
             test()

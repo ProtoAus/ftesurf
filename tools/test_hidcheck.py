@@ -1150,6 +1150,65 @@ def case_native_quoted_byte():
                   "CONTROL known nonlinear nonzero path abstains without corruption")
 
 
+def clock_journal(kind, value, delta=None):
+    lines = model_constant_journal().splitlines()
+    if kind == "truncated":
+        i = next(i for i, line in enumerate(lines) if line.startswith("end "))
+        lines.insert(i, "truncated %s %s" % (0 if delta is None else delta, value))
+    else:
+        indexes = [i for i, line in enumerate(lines) if line.startswith(kind + " ")]
+        i = indexes[1] if kind == "m" else indexes[0]  # first join is seed-exempt
+        fields = lines[i].split()
+        if kind != "m":
+            fields[1 if kind == "base" else 2] = value
+        if delta is not None:
+            fields[1] = str(delta)
+        lines[i] = " ".join(fields)
+    return "\n".join(lines) + "\n"
+
+
+def clock_quality_cases():
+    cases = [(kind + " " + value, clock_journal(kind, value), kind == "base")
+             for kind in ("base", "f", "end", "truncated")
+             for value in ("nan", "inf", "-inf")]
+    cases += [("negative end delta", clock_journal("end", "0.0245", -100), False),
+              ("negative truncated delta", clock_journal("truncated", "0.0246", -100), False),
+              ("unrepresentable end delta", clock_journal("end", "0.0247", "9" * 400), False),
+              ("malformed body delta", clock_journal("m", "unused", "broken"), False),
+              ("negative body delta", clock_journal("m", "unused", -1), False),
+              ("unrepresentable body delta", clock_journal("m", "unused", "9" * 400), False)]
+    return cases
+
+
+def case_clock_quality():
+    for label, text, header in clock_quality_cases():
+        try:
+            r = run(text)
+        except OverflowError:
+            check(False, "unusable clock must refuse rather than crash: " + label)
+            continue
+        wanted = "finite number" if header else "dt" if "body" in label and "unrepresentable" not in label else "unusable clock"
+        check(not r.ok and has_fault(r, wanted),
+              "clock quality refuses unusable timing: " + label)
+        check(all(key not in r.info for key in ("time", "frame_rate", "events_per_sec")),
+              "unusable clock has no healthy duration/rate: " + label)
+        check(r.info.get("map") == "test_identity" if header else
+              r.info.get("view_records") == 20,
+              "clock subject actually parses its declared stage: " + label)
+        check(not has_fault(r, "IDENTITY BROKEN") and not has_fault(r, "COUNTS JOIN BROKEN"),
+              "clock quality is not an angle/count accusation: " + label)
+    for text in (clock_journal("base", "1000000000000"),
+                 clock_journal("f", "0.001201")):
+        r = run(text)
+        check(r.ok and r.info.get("identity_judged") == 19,
+              "CONTROL finite clocks and bounded rounding still judge19")
+        check(r.info.get("time") == 0.0247 and r.info.get("frame_rate", 0) > 0,
+              "CONTROL finite duration/rate are actual measurements, not silence")
+    r = run(clock_journal("end", "0.030000"))
+    check(not r.ok and has_fault(r, "dt sum") and not has_fault(r, "unusable clock"),
+          "CONTROL finite clock contradiction still ACTS with unchanged tolerance")
+
+
 def pointer_coordinate_journal(kind, x, y, profile=False):
     text = namespace_journal([("mouse", "0", "mouse-example")], pointer=0)
     text = text.replace("m 0 0 4 0", "%s 0 0 %s %s" % (kind, x, y))
@@ -3048,7 +3107,7 @@ def main():
                case_leftisright_capture_boundary, case_float_capture_boundary,
                case_controller_profile_is_not_a_keyboard_turn,
                case_pointer_coordinate_quality, case_observer_numeric_quality,
-               case_model_numeric_quality, case_native_quoted_byte):
+               case_model_numeric_quality, case_native_quoted_byte, case_clock_quality):
         print("%s:" % fn.__name__)
         fn()
         print("")
