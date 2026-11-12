@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1528 Jargon panel, portals, starts -- owner check PENDING
+## P1528 Jargon panel, portals, starts -- LIVE 12 Nov 22:13Z: 12 lobbies + both installs qw 9693e177 / cs 2bfa1db8, codes.txt 128; owner check PENDING
 - TAS panel, Jargon tab: pick a stage in Course and a run in Guide run. In the waypoint table click a number, type, Enter: the row gets a * and the route moves. Pick a row, + Air point, type its numbers; Delete air point; Undo, Redo; Reset asks twice.
 - Arm with "At my jump" or "When I leave the start zone", or pick "It starts by itself" and Start. The keys display should show Jargon's keys while it drives. Stop, then Back to playing.
 - surf_colin_blaster_69000, main course: Jargon should go through each stage's end portal ("through the portal" in the console).
