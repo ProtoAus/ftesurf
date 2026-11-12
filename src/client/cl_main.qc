@@ -2224,8 +2224,8 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 
 		// The 2D lines -- replay path (BUILD 43; hud_watch_path_mode gives it to this or the world-depth drawer), P433's
 		// world lines, trails, Jargon's -- and their labels (Line_FrameEnd) go UNDER the HUD and every panel (Lex: they covered
-		// it). A 2D polygon batch is drawn by the next 2D call or setproperty (pr_csqc.c:2486), else at the frame's end
-		// (cl_screen.c:3793). Mark energies read last frame's zero on the frame it moves (HUD_Draw sets ui_anchor_z).
+		// it). A 2D polygon batch is drawn by the next 2D call or setproperty (PF_R_SetViewFlag), else at the end of
+		// SCR_DrawTwoDimensional. Mark energies read last frame's zero on the frame it moves (HUD_Draw's anchor/jump refs).
 		if (!worldonly)
 		{
 			if (rec_wt_on)
