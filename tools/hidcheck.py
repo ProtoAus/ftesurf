@@ -352,6 +352,10 @@ VF_FREE     = 4     # the cursor was free (menu/console); counts reached neither
 IDENTITY_CVARS = ("sensitivity", "m_yaw", "m_pitch", "m_filter", "m_accel", "leftisright")
 
 
+class _NativeCharUnavailable(ValueError):
+    """The journal does not identify native char signedness or byte encoding."""
+
+
 def q_atof(s):
     """The engine's Q_atof (common.c), which sets a cvar's value from the
     string a 'c' record carries: 0x hex, a quoted character, else digits and
@@ -372,7 +376,11 @@ def q_atof(s):
             i += 1
         return val * sign
     if s[i:i + 1] == "'":
-        return sign * (ord(s[i + 1]) if i + 1 < n else 0)
+        char = ord(s[i + 1]) if i + 1 < n else 0
+        if char > 127:
+            # Native str[1] is one char byte, NOT this Unicode codepoint.
+            raise _NativeCharUnavailable("unrecorded native quoted-byte value")
+        return sign * char
     decimal, total = -1, 0
     while i < n:
         c = s[i]
@@ -2147,7 +2155,13 @@ def check_identity(r, head, views, controller=False, unavailable=False):
         if id(ov) not in cache:
             def num(name, dflt=None):
                 if name in ov:
-                    return model_float(q_atof(ov[name]))
+                    try:
+                        return model_float(q_atof(ov[name]))
+                    except _NativeCharUnavailable:
+                        if name in ("m_filter", "m_accel"):
+                            return 1.0  # both native char modes are nonzero
+                        model_bad[0] = True
+                        return None
                 s = head.get(name, dflt)
                 try:
                     return None if s is None else model_float(float(s))

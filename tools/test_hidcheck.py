@@ -295,7 +295,7 @@ class Journal:
 def run(text):
     fd, path = tempfile.mkstemp(suffix=".hid")
     try:
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(text)
         return hidcheck.check_hid(path)
     finally:
@@ -1082,6 +1082,72 @@ def case_model_numeric_quality():
         check(not r.ok and has_fault(r, "IDENTITY BROKEN") and
               not has_fault(r, "unusable numeric input-model"),
               "CONTROL NativeQ_atof scientific-prefix1 is a genuine finite contradiction")
+
+
+def native_byte_journal(value, native, late=False):
+    """Literal Q_atof byte coefficient, not a Unicode-codepoint equation."""
+    text = model_constant_journal("sensitivity", value, change=True, late=late)
+    f32 = lambda x: hidcheck.struct.unpack("=f", hidcheck.struct.pack("=f", x))[0]
+    oldgain, gain = f32(-f32(0.022) * f32(0.3)), f32(-f32(0.022) * native)
+    yaw, changed, lines = 0.0, False, []
+    for line in text.splitlines():
+        if line.startswith("c 0 sensitivity "):
+            changed = True
+        if line.startswith("v "):
+            yaw = f32(yaw + f32((gain if changed else oldgain) * 4))
+            fields = line.split()
+            fields[6] = "%.9g" % yaw
+            line = " ".join(fields)
+        lines.append(line)
+    return "\n".join(lines) + "\n"
+
+
+def native_byte_cases():
+    # UTF8 'é is -61/195 and '😀 is -16/240 in the two native char modes.
+    cases = [(label, native_byte_journal(value, native))
+             for label, value, native in (
+                 ("signed UTF8 latin", "'é", -61),
+                 ("unsigned UTF8 latin", "'é", 195),
+                 ("signed UTF8 emoji", "'😀", -16),
+                 ("unsigned UTF8 emoji", "'😀", 240),
+                 ("negative signed byte", "-'é", 61),
+                 ("negative unsigned byte", "-'é", -195))]
+    cases.append(("late unavailable native byte",
+                  native_byte_journal("'é", -61, late=True)))
+    return cases
+
+
+def case_native_quoted_byte():
+    for label, text in native_byte_cases():
+        r = run(text)
+        check(not r.ok and has_fault(r, "unusable numeric input-model"),
+              "native-byte coefficient is unavailable, not Unicode: " + label)
+        check(r.info.get("view_records") == 20 and r.info.get("events") == 20,
+              "native byte subject actually consumes20records: " + label)
+        check("identity_judged" not in r.info and "deg_per_count" not in r.info,
+              "unrecorded char mode cannot leave healthy partial identity: " + label)
+        check(r.info.get("identity_yaw_exclusions") == {"reader_profile_gate": 20},
+              "whole native-byte identity partition is unavailable: " + label)
+        check(not has_fault(r, "IDENTITY BROKEN") and r.info.get("join_checked") == 19,
+              "no angle guilt; independent finite counts still ACT: " + label)
+
+    for value, native in (("'A", 65), ("'Aé", 65), ("1é", 1), ("0x10", 16)):
+        r = run(native_byte_journal(value, native))
+        check(r.ok and r.info.get("identity_yaw_mouse_frames") == 19,
+              "CONTROL known native ASCII/prefix coefficient actually judges: " + ascii(value))
+    r = run(model_constant_journal("sensitivity", "'A", change=True))
+    check(not r.ok and has_fault(r, "IDENTITY BROKEN"),
+          "CONTROL finite ASCII contradiction still ACTS")
+    for name in ("leftisright", "m_filter", "m_accel"):
+        r = run(model_constant_journal(name, "'é", change=True))
+        check(not has_fault(r, "unusable numeric input-model"),
+              "CONTROL native signedness-independent nonzero path stays known: " + name)
+        if name == "leftisright":
+            check(not r.ok and has_fault(r, "IDENTITY BROKEN"),
+                  "CONTROL known nonzero flip actually contradicts unflipped data")
+        else:
+            check(r.ok and "identity_judged" not in r.info,
+                  "CONTROL known nonlinear nonzero path abstains without corruption")
 
 
 def pointer_coordinate_journal(kind, x, y, profile=False):
@@ -2982,7 +3048,7 @@ def main():
                case_leftisright_capture_boundary, case_float_capture_boundary,
                case_controller_profile_is_not_a_keyboard_turn,
                case_pointer_coordinate_quality, case_observer_numeric_quality,
-               case_model_numeric_quality):
+               case_model_numeric_quality, case_native_quoted_byte):
         print("%s:" % fn.__name__)
         fn()
         print("")

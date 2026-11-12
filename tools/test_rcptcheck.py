@@ -741,6 +741,7 @@ def test_model_numeric_content_join():
              ("Native scientific-prefix1", vectors.model_constant_journal(
                  "m_pitch", "1e999", change=True), True)]
     cases += [(label, text, False) for label, text in vectors.model_constant_bad_cases()]
+    cases += [(label, text, False) for label, text in vectors.native_byte_cases()]
     for label, text, valid in cases:
         data = text.encode("utf-8")
         r = rcptcheck.Receipt("model.rcpt")

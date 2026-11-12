@@ -22,6 +22,9 @@
 ## next
 - Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
+### P1525 Input setting analysis
+- Input analysis no longer mistakes a character-valued setting for unexplained movement. Comparisons with unrecorded numeric meaning stay unavailable, while known settings remain checked.
+
 ### P1524 Input-model quality
 - Unusable input settings no longer produce false angle findings or clean comparisons. Native observation abstains, and analysis keeps unavailable measurements separate from genuine contradictions.
 
