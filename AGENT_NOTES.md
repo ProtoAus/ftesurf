@@ -1,5 +1,31 @@
 # AGENT_NOTES.md
 
+## P1514 water-jump gravity controls (12 Nov 2026 UTC)
+
+- A positive assist at FullWalkMove entry still moves when its timer expires or
+  shallow water ends DURING that command. Test the actual early-return mover,
+  not just the numeric gravity helper or post-tick remaining time. New bounded
+  use proof is not complete retained-state coverage; delivery remains separate.
+- Pin fixslopes/fixedges in a synthetic landing fixture. A standable ground probe
+  is not proof that CategorizePosition accepted landing: the initial fixture
+  found a flat plane but remained airborne under inherited edge rules. Preserve
+  that failure; the corrected fixture disables those rules explicitly and proves
+  landing acted. Final-fixture old runtime misses exactly4 use signals on ARM;
+  subject passes1690/0 on Windows/ARM, including82 new checks and whole-body parity.
+- Windows server color output can use WriteConsole instead of redirected stdout;
+  zero captured bytes is NOT a successful CLI receipt. Explicit sys_colorconsole0
+  produces retained real stdout. Linux strips those color tags; count actual
+  plain ok lines, not Windows caret markup. Reparse retained output, do not rerun
+  successful native arms solely for a receipt reader.
+- The canonical dependency cache was empty; the documented prior pacing cache
+  contained the required codec headers. Borrow it read-only via owned junctions,
+  hash all1399 dependency files before/after, and Full after the initial partial
+  build. No codec disablement, canonical native-object copy or install writes.
+- Reader949 exceeded a90-second wrapper limit; retain its interrupted log and
+  finish the unchanged script with adequate time rather than changing coverage.
+  Same568REC183VIEW hashes/results and existing349/7 faulty counts are unchanged.
+  Public provenance/limits: tools/p1514-waterjump-gravity.md.
+
 ## P1502 sidecar reader compatibility is a rollback gate (11 Nov 2026 UTC)
 
 - Matching runtime count/SQL schema does not prove sidecar-reader compatibility.

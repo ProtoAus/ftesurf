@@ -22,6 +22,9 @@
 ## next
 - Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
+### P1514 Practice-run gravity attribution
+- Clear airborne water-jump moves now count proven use of retained gravity toward the existing practice-run policy, without changing movement.
+
 ### P1513 Configurable replay-journal upload budgets
 - Operators can configure a run-length budget for replay journals; servers without this setting keep their existing upload behavior.
 
