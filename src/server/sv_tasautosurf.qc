@@ -1402,6 +1402,7 @@ void(entity e) SV_TASAutoLink =
 	if (as_wk[i] == 1 && cvar("tas_jargon_kind23")) ps = strcat(ps, " kind23");     // boards on brush-entity and curved ramps (test)
 	if (as_wk[i] == 1 && cvar("tas_jargon_rideout")) ps = strcat(ps, " rideout");      // boards judged by how their ride ends (test)
 	if (as_wk[i] == 1 && cvar("tas_jargon_landed")) ps = strcat(ps, " landed");      // a board counts after a flight, not a slide on (test)
+	if (as_wk[i] == 1 && cvar("tas_jargon_boardway")) ps = strcat(ps, " boardway");  // ...and travelling the guide's way along the ramp (test)
 	if (as_wk[i] == 1 && e.as_region)
 	{	// the board's penalties begin at the human spread's far edge and lowest point, not the guide's own (a moved target too)
 		if (!as_rgndone) SV_TASAutoRegions(e);
