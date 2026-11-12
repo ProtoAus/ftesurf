@@ -1245,12 +1245,12 @@ void(entity e) SV_TASAutoLink =
 	}
 	if (as_wk[i] == 5 && SV_TASAutoRule(1024)) ps = strcat(ps, " airdir");     // an air point's way too (tas_jargon_off 1024: place only)
 	if (as_wk[i] == 3 && e.as_ctrack >= 0 && e.as_safe) ps = strcat(ps, " endsafe");
-	if (as_wk[i] == 1 && e.as_catch) ps = strcat(ps, " catch 25");
+	if (as_wk[i] == 1 && e.as_catch) ps = strcat(ps, " catch 25");     // the last 25 rows before a board
 	if (e.as_tight) ps = strcat(ps, " hardq");
 	if (e.as_free) ps = strcat(ps, " freeq");
 	if (as_wk[i] == 1 && e.as_parallel) ps = strcat(ps, " boarddir");
-	if (as_wk[i] == 1 && cvar("tas_jargon_kind23")) ps = strcat(ps, " kind23");
-	if (as_wk[i] == 1 && cvar("tas_jargon_rideout")) ps = strcat(ps, " rideout");      // boards judged by how their ride ends (test)     // boards on brush-entity and curved ramps (test)     // the last 25 rows before a board
+	if (as_wk[i] == 1 && cvar("tas_jargon_kind23")) ps = strcat(ps, " kind23");     // boards on brush-entity and curved ramps (test)
+	if (as_wk[i] == 1 && cvar("tas_jargon_rideout")) ps = strcat(ps, " rideout");      // boards judged by how their ride ends (test)
 	if (e.as_catch && i >= 1)       // and the launch off the ramp before (Lex: the height is the angle it leaves at, not speed)
 	if (as_wk[i - 1] == 1 && as_wl[i - 1] > e.as_tprev + PM_TICK)
 		ps = strcat(ps, sprintf(" flick %.0f", min(TOPT_HMAX, rint((as_wl[i - 1] - e.as_tprev) / PM_TICK))));
