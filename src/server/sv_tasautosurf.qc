@@ -2219,7 +2219,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 	if (pl) { if (Lobby_Active()) { sprint(e, PRINT_HIGH, "tas autosurf: a local practice tool; not on lobby servers\n"); SV_TASAutoOptRestore(e); return; } }
 	else if (st || arm) { if (Lobby_Active() || !e.run_tas_rwcap) { SV_TASToolGate(e, "autosurf"); return; } }
 	else if (!pl && !SV_TASToolGate(e, "autosurf")) { SV_TASAutoNote(e, 0, "TAS is not paused in a run here: use Restart from the start zone"); return; }
-	if (ct >= 0 && (zg || arm)) { sprint(e, PRINT_HIGH, "tas autosurf: `course` picks the start itself; not with zone, onjump or onexit\n"); SV_TASAutoOptRestore(e); return; }
+	if (ct >= 0 && zg) { sprint(e, PRINT_HIGH, "tas autosurf: `course` picks the start itself; not with zone\n"); SV_TASAutoOptRestore(e); return; }      // onjump/onexit with a course: armed in its own box (below)
 	if (path == "route")
 	{	// the clicked route: no demo, no plan to make; from here (a running attempt, paused)
 		if (st || arm) { sprint(e, PRINT_HIGH, "tas autosurf route: from a pause on the route (the start options follow a demo)\n"); return; }
