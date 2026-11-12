@@ -1450,6 +1450,7 @@ void(entity e, float track, float leg) SV_TASAutoContinue =
 	e.as_catch = e.as_safe = e.as_tight = e.as_parallel = e.as_free = 0;     // unsaved: the last command's leaked in (review)
 	SV_TASAutoNotes(e, track, leg, 1);
 	as_n = e.as_cof;
+	e.as_saved = e.as_cnext - 1;        // known now, not only once the load lands: a Stop during it, then Redo, saved over it (review 4)
 	if (as_cov)
 	{	// the panel's effort now; `finish` and `air` stay the save's (they shaped the saved plan: review A)
 		if (as_covtries > 0) e.as_tries = as_covtries;
