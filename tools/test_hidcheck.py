@@ -951,6 +951,78 @@ def case_joystick_does_not_spend_touchpad_budget():
                   "CONTROL real pad motion still exceeds zero accepted reports")
 
 
+def pointer_coordinate_journal(kind, x, y, profile=False):
+    text = namespace_journal([("mouse", "0", "mouse-example")], pointer=0)
+    text = text.replace("m 0 0 4 0", "%s 0 0 %s %s" % (kind, x, y))
+    if profile:
+        text = text.replace("begin\n", 'input m_filter "0" "0"\nbegin\n', 1)
+    return text
+
+
+def pointer_sum_journal(amount):
+    j = Journal(devices=[MOUSE0])
+    yaw = 0.0
+    for i in range(20):
+        j.frame(9000 + i)
+        j.mouse(amount, 0)
+        j.mouse(amount, 0)
+        yaw += j.k * 4
+        j.view(4, 0, 10, yaw)
+    return j.end()
+
+
+def case_pointer_coordinate_quality():
+    for kind in ("m", "a"):
+        for column in (0, 1):
+            for value in ("broken", "nan", "1e999"):
+                for profile in (False, True):
+                    coords = ["4", "0"]
+                    coords[column] = value
+                    r = run(pointer_coordinate_journal(kind, *coords, profile=profile))
+                    label = "%s column%d %s profile%s" % (kind, column, value, profile)
+                    check(not r.ok and has_fault(r, "pointer coordinates"),
+                          "unusable pointer data cannot become a clean content result: " + label)
+                    check(r.info.get("view_records") == 20 and r.info.get("events") == 20,
+                          "coordinate validator actually consumed the declared stream: " + label)
+                    check("join_checked" not in r.info and "join_broke" not in r.info,
+                          "partial/non-finite source is not a measured join or zero: " + label)
+                    check(not any("COUNTS JOIN BROKEN" in f or "IDENTITY BROKEN" in f
+                                  for f in r.faults),
+                          "quality refusal is not a fabricated angle/count accusation: " + label)
+
+    for kind in ("m", "a"):
+        r = run(pointer_coordinate_journal(kind, "4", "").replace("4 \n", "4\n"))
+        check(not r.ok and "join_checked" not in r.info,
+              "already-invalid %s width also withholds incomplete join measurement" % kind)
+    for dx in (-4.5, 0.125):
+        j = Journal(devices=[MOUSE0])
+        yaw = 0.0
+        for i in range(20):
+            j.frame(8900 + i)
+            j.mouse(dx, 0)
+            yaw += j.k * dx
+            j.view(dx, 0, 10, yaw)
+        r = run(j.end())
+        check(r.ok and r.info.get("join_checked") == 19 and
+              r.info.get("join_broke") == 0 and
+              r.info.get("identity_yaw_mouse_frames") == 19,
+              "CONTROL signed/fractional finite pointer motion still judges: %s" % dx)
+    r = run(pointer_coordinate_journal("a", "-4.5", "0.125"))
+    check(r.ok and r.info.get("join_checked") == 0 and
+          r.info.get("join_unjoinable") == 19,
+          "finite absolute coordinates retain existing unjoinable quantity, not a fault")
+    r = run(pointer_coordinate_journal("m", "5", "0", profile=True))
+    check(has_fault(r, "COUNTS JOIN BROKEN") and r.info.get("join_checked") == 19,
+          "CONTROL real finite counts contradiction still acts and faults")
+    for amount, valid in ((2.0, True), (1e308, False)):
+        r = run(pointer_sum_journal(amount))
+        check(r.ok == valid, "paired pointer numeric closure, valid=%s" % valid)
+        check(r.info.get("join_checked") == (19 if valid else None),
+              "paired finite source ACTS; overflowing sums stay unmeasured")
+        check(not any("COUNTS JOIN BROKEN" in f for f in r.faults),
+              "numeric overflow is unavailable source, not a counts accusation")
+
+
 def case_controller_profile_is_not_a_keyboard_turn():
     for table, axis, unsupported in (("assigned", True, True),
                                       ("assigned", False, True),
@@ -2775,7 +2847,8 @@ def main():
                case_leftisright_engine_parse, case_cvar_quote_codec,
                case_cvar_quote_identity, case_cvar_quote_malformed,
                case_leftisright_capture_boundary, case_float_capture_boundary,
-               case_controller_profile_is_not_a_keyboard_turn):
+               case_controller_profile_is_not_a_keyboard_turn,
+               case_pointer_coordinate_quality):
         print("%s:" % fn.__name__)
         fn()
         print("")

@@ -22,6 +22,9 @@
 ## next
 - Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
+### P1522 Input recording validation
+- Unusable input samples no longer appear as clean analysis. Incomplete input measurements stay unavailable instead of being reported as healthy zeroes.
+
 ### P1521 Controller input analysis
 - Controller turns no longer cause misleading run-analysis errors. Comparisons that lack the required input data are reported as unavailable rather than clean.
 

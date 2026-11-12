@@ -655,6 +655,48 @@ def test_device_namespace_content_join():
               (r.ok, r.faults), (before, []))
 
 
+def test_pointer_coordinate_content_join():
+    import test_hidcheck as vectors
+
+    cases = [("finite relative", vectors.pointer_coordinate_journal("m", "4", "0"), True, 19),
+             ("finite absolute", vectors.pointer_coordinate_journal("a", "-4.5", "0.125"), True, 0)]
+    for kind in ("m", "a"):
+        for x, y in (("broken", "0"), ("4", "nan"), ("1e999", "0")):
+            cases.append(("%s %s/%s" % (kind, x, y),
+                          vectors.pointer_coordinate_journal(kind, x, y), False, None))
+    cases.append(("finite samples overflow the sum",
+                  vectors.pointer_sum_journal(1e308), False, None))
+    controller = vectors.namespace_journal([("mouse", "0", "mouse-example"),
+                                            ("joy", "0", "controller-example")],
+                                           pointer=0, joystick=0)
+    cases.append(("controller does not hide bad pointer data",
+                  controller.replace("m 0 0 4 0", "m 0 0 nan 0"), False, None))
+    for label, text, valid, joined in cases:
+        data = text.encode("utf-8")
+        r = rcptcheck.Receipt("pointer.rcpt")
+        r.file_bytes["pointer.hid"] = data
+        r.signed = [("hid", "%s %d 1" % (hashlib.sha256(data).hexdigest(), len(data)))]
+        before = r.ok
+        with mock.patch("builtins.open", side_effect=AssertionError("reopened pointer capture")):
+            rcptcheck.join_journal(r)
+        check("pointer %s: actual captured digest checked" % label,
+              (("hid", "pointer.hid") in r.digest_checked, r.digest_bad), (True, {}))
+        check("pointer %s: known quality/valid content result" % label,
+              r.journal, "OK" if valid else "FAULT")
+        metrics = r.journal_metrics["metrics"]
+        check("pointer %s: consumed views without fabricated join" % label,
+              (metrics.get("view_records"), metrics.get("join_checked")), (20, joined))
+        check("pointer %s: valid zero retained, unavailable total withheld" % label,
+              metrics.get("legacy_presses"), 0 if valid else None)
+        if not valid:
+            check("pointer %s: quality is not angle/count accusation" % label,
+                  ("pointer coordinates" in r.journal_detail,
+                   "IDENTITY BROKEN" in r.journal_detail or "COUNTS JOIN BROKEN" in r.journal_detail),
+                  (True, False))
+        check("pointer %s: signature/rank status remains independent" % label,
+              (r.ok, r.faults), (before, []))
+
+
 def main():
     tests = (lambda: test_swap("view"), lambda: test_swap("hid"),
              lambda: test_swap("hid", broken_first=True), test_rec_swap,
@@ -664,7 +706,7 @@ def main():
              test_unavailable_angles_keep_view_faults, test_usable_angles_keep_view_faults,
              test_signed_usable_view_faults, test_initial_clock_origin, test_retry_clock_faults,
              test_unavailable_hid_capture_keeps_content_refusal,
-             test_device_namespace_content_join)
+             test_device_namespace_content_join, test_pointer_coordinate_content_join)
     for test in tests:
         try:
             test()

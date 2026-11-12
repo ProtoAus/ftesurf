@@ -74,6 +74,7 @@ Usage:
 import argparse
 import glob
 import io
+import math
 import os
 import sys
 
@@ -682,6 +683,7 @@ def check_hid(path, verbose=False, *, data=None):
     j_mx = j_my = 0.0    # running sum of this window's 'm' counts
     j_nm = j_a = 0       # how many 'm' and 'a' records fell in it
     j_raw = None         # the window's 'd' record, if it had one
+    bad_pointer = False  # no complete counts join from unusable coordinates
     devmaps = []         # (type, id, name) -- Patch 303, the resolved table
     # devid -> event count, for the attribution check below.  SPLIT BY CLASS,
     # and that split is a bug fix rather than tidiness -- see the device section.
@@ -779,27 +781,38 @@ def check_hid(path, verbose=False, *, data=None):
                                  else len(tok) != 2 + want):
             r.fault("line %d: %r has %d fields, expected %d"
                     % (lineno + 1, kind, len(tok), 2 + want))
+            if kind in ("m", "a"):
+                bad_pointer = True
             continue
 
-        # Patch 312: the counts join. Accumulated here, beside the 'v' snapshot it
-        # feeds, rather than down in the catch-all -- 'm' has never had its dx/dy
-        # parsed by anything before now.  'd' MUST be handled with its own
-        # `continue`: the catch-all counts every unclaimed kind as an event, and a
-        # 'd' is an annotation, so letting it fall through would inflate `events`
-        # and break the trailer agreement it has nothing to do with.
-        if kind == "m" and len(tok) == 5:
+        # Parse BOTH coordinates before changing the window. The catch-all only
+        # counts/attributes events; it cannot validate unusable pointer values.
+        if kind in ("m", "a"):
             try:
-                j_mx += float(tok[3])
-                j_my += float(tok[4])
-                j_nm += 1
+                x, y = float(tok[3]), float(tok[4])
+                if not (math.isfinite(x) and math.isfinite(y)):
+                    raise ValueError
             except ValueError:
-                pass    # the catch-all below already faults on a bad payload
-        elif kind == "a":
-            # An abs position can put counts into the view that were journalled
-            # as 'a' and never as 'm' (the engine derives a delta from successive
-            # positions), so a window holding one cannot be joined.
-            j_a += 1
+                bad_pointer = True
+                r.fault("line %d: %r pointer coordinates are non-numeric or "
+                        "non-finite; complete input is unavailable, not an "
+                        "angle accusation" % (lineno + 1, kind))
+            else:
+                if kind == "m":
+                    mx, my = j_mx + x, j_my + y
+                    if math.isfinite(mx) and math.isfinite(my):
+                        j_mx, j_my = mx, my
+                        j_nm += 1
+                    else:
+                        bad_pointer = True
+                        r.fault("line %d: pointer coordinates overflow the counts "
+                                "sum; complete input is unavailable" % (lineno + 1))
+                else:
+                    # Absolute positions are a different quantity from raw
+                    # deltas; a valid absolute window remains unjoinable.
+                    j_a += 1
         elif kind == "d":
+            # Annotation only: consume it before the catch-all event counter.
             try:
                 j_raw = (float(tok[2]), float(tok[3]))
             except ValueError:
@@ -1785,7 +1798,11 @@ def check_hid(path, verbose=False, *, data=None):
     # Patch 312, and ABOVE the same bail-out for the same reason -- plus its own:
     # the join is the one check whose most interesting subject is a file with
     # counts that reached no view at all.
-    check_counts_join(r, joins, bool(inputcvars))
+    if bad_pointer:
+        r.note("counts join unavailable: unusable pointer coordinates in this "
+               "journal; partial or non-finite sums are not measurements.")
+    else:
+        check_counts_join(r, joins, bool(inputcvars))
 
     # Patch 416: the run nonce, noted into the journal by the client when the
     # server issues one.  REPORTED AND NOT CHECKED, and the distinction is the

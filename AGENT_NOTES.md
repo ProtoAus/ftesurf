@@ -1,5 +1,25 @@
 # AGENT_NOTES.md
 
+## P1522 pointer numeric conversion was not a catch-all fault (12 Nov 2026)
+
+Trace actual parser and consumer, not comments: m conversion swallowed ValueError,
+a coordinates were never converted, NaN compared as an unbroken join.11coupled
+controls showed5bad numeric payloads contentOK/19judgments/healthy0, finite2OK,
+shape/clock/view4FAULT with real captured digest/no-reopen checks. Width was
+already validated; initial missing-width prediction was FALSE. Both coordinates
+must be finite locals BEFORE a window changes; finite individual values also
+need finite next sums. These are data-quality refusals, not angle guilt. Withhold
+whole join after unusable pointer source rather than publish partial/NaN metrics;
+existing receipt quality handling withholds unproved input totals, not signature
+status. Preserve signed/fractional data, absolute unjoinability, controllerBLIND
+and real finite contradiction controls. A large binary64 closure fixture is NOT
+native float32/hardware provenance. Windows714HID/471receipt/949reader allpass;
+136HID3faulty identical;568REC automatic pairedVIEW356faulty/751hashes unchanged.
+First candidate omitted GLOBAL math import and actually crashed: retain failure,
+fix dependency, test actual bodies. Blank Python LSP never proved runtime clean.
+Native code/pin/tag and Build89 unchanged; review/deployment still pending.
+`tools/p1522-pointer-coordinates.md`; no whole-parser or deferred audit claim.
+
 ## P1521 a keyboard tap does not capture later controller turn (12 Nov 2026)
 
 Trace the actual view order: CL_AdjustAngles is tapped BEFORE IN_MoveJoystick;
