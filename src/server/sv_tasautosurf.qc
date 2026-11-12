@@ -113,7 +113,9 @@ float(float b) SV_TASAutoRule = { return !(cvar("tas_jargon_off") & b); };
 // on by default since 13 Nov (tas_jargon_off turns each off): 4096 one jump off the start platform, 8192 portal waypoints,
 // 16384 near-twin faces told apart (bench twin1: surf_tensor2 stage 6 from stretch 4 to 7), 32768 a board counts after a
 // flight, 65536 a finish's horizon 60 ticks past the guide's last row, 131072 a finish aimed inside its end box, 262144 a
-// coast past the end is a failed finish (fin3: tensor2 stage 1's seed 0 from "did not reach the end" to 0:10.905)
+// coast past the end is a failed finish (fin3: tensor2 stage 1's seed 0 from "did not reach the end" to 0:10.905); 524288 the
+// start backs off at its exit more than 30 deg off the guide's line and walks to within 16 u of its standstill (was test
+// cvar tas_jargon_startfix: tensor2 stage 6 after another course jumped 366 u and -59 deg off and stuck at stretch 1)
 .float as_fromstart;            // the chain began at the course's start box (a Start or a Continue): only these autosave
 .float as_savedold, as_keepsaid; // a saved run of this course that got further (its stretch), and the note that kept it said
 .float as_savedoldt;            // ...its last reached waypoint's guide time: plans differ (turn points, options), times do not (review H)
@@ -1903,7 +1905,7 @@ void(entity e) SV_TASAutoFrame =
 				rd = vlen([e.origin_x - as_rows[e.as_ri*7+1], e.origin_y - as_rows[e.as_ri*7+2], 0]);
 				// startfix: within the walk's own 16 u, not 64 -- surf_anubis stage 1's box places the body 50 u from the
 				// guide's standstill, and its prestrafe replayed from there left the box at 76 u/s against his 283
-				if (rd <= (cvar("tas_jargon_startfix") ? 16 : 64) && fabs(e.origin_z - as_rows[e.as_ri*7+3]) <= 18)
+				if (rd <= (SV_TASAutoRule(524288) ? 16 : 64) && fabs(e.origin_z - as_rows[e.as_ri*7+3]) <= 18)
 				{
 					e.as_stage = 13; e.as_ri = e.as_ri + 1;
 					e.as_smeth = 1; SV_TASAutoNote(e, 1, sprintf("start: the guide's own prestrafe from where it stood (%.0f u from here)", rd));
@@ -1929,7 +1931,7 @@ void(entity e) SV_TASAutoFrame =
 			if (ph == 0 && t >= 283) ph = 1;
 			// heading only: stage 6 jumped 59 deg off (the back-off helped); stage 5 jumps 433 u to the side but 19 deg off,
 			// and from there ramp 1 is reachable (Lex) -- backing off there left the box without its jump (bench broad2)
-			if (along < 60 && fabs(herr) > 30 && e.as_sn < e.as_sg && (e.as_sbl || e.as_sback < 2) && cvar("tas_jargon_startfix"))
+			if (along < 60 && fabs(herr) > 30 && e.as_sn < e.as_sg && (e.as_sbl || e.as_sback < 2) && SV_TASAutoRule(524288))
 			{	// at the exit unaligned: the forced jump left surf_tensor2 stage 6 366 u and -59 deg off the guide's line and
 				// every stretch-1 line off its path (bench f1); back off and line up again, twice at most -- counted once an
 				// approach, and no jump while backing off (a count a step spent both in 6 ticks: review L)
@@ -1995,7 +1997,7 @@ void(entity e) SV_TASAutoFrame =
 			// 30) -- the zones are positions, not volumes, and a body paused over the box's edge was put back in the
 			// start, cancelling the run mid-search (rig tstart10)
 			if (!e.as_sn2) e.as_runo = e.origin;
-			if (!e.as_sjmp && e.as_exair && (e.flags & FL_ONGROUND) && cvar("tas_jargon_startfix"))
+			if (!e.as_sjmp && e.as_exair && (e.flags & FL_ONGROUND) && SV_TASAutoRule(524288))
 			{	// the box's edge came before the jump's spot and the body ran off it on the ground, while the guide had
 				// jumped by its edge (surf_anubis stage 1's redo: no jump, 918 u from ramp 1 and every line missed it)
 				e.as_sjmp = 1;
@@ -2011,7 +2013,7 @@ void(entity e) SV_TASAutoFrame =
 		{
 			s = SV_TASAutoPlan(e, -1);
 			if (s < 0 || as_n < 1) { SV_TASAutoStop(e, "out of the start box off the demo's route (not within 400 u)"); return; }
-			if (!e.as_sredo && !e.as_nolegal && e.as_ctrack >= 0 && cvar("tas_jargon_startfix") && vlen([e.velocity_x, e.velocity_y, 0]) < 0.6 * vlen([as_rows[s*7+4], as_rows[s*7+5], 0]))
+			if (!e.as_sredo && !e.as_nolegal && e.as_ctrack >= 0 && SV_TASAutoRule(524288) && vlen([e.velocity_x, e.velocity_y, 0]) < 0.6 * vlen([as_rows[s*7+4], as_rows[s*7+5], 0]))
 			if (e.as_smeth == 1 || SV_TASAutoRest(e) >= 0)
 			{	// out of the box far slower than the guide there: the other way, once (surf_anubis stage 1 left at 76 u/s
 				// from the guide's replayed prestrafe and every stretch-1 line moved away from the ramp, bench f1)
