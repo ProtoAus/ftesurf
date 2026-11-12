@@ -2626,7 +2626,8 @@ float(string cmd) CSQC_ConsoleCommand =
 			}
 		}
 		else if (cmdargc >= 3 && !strcmp(argv(1), "jargon") && (argv(2) == "start" || argv(2) == "mode" || argv(2) == "set" ||
-		         argv(2) == "air" || argv(2) == "del" || argv(2) == "undo" || argv(2) == "redo" || argv(2) == "list"))
+		         argv(2) == "air" || argv(2) == "del" || argv(2) == "undo" || argv(2) == "redo" || argv(2) == "list" ||
+		         argv(2) == "field"))
 			TASOptUI_Verb(cmdargc);     // the Jargon panel's own functions (cl_tasoptui.qc)
 		else if (cmdargc >= 2 && !strcmp(argv(1), "jargon"))       // P1449: Jargon is autosurf's name in the menus
 		{
