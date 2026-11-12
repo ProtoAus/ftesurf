@@ -977,6 +977,10 @@ float topt_bat_map[TOPT_BATMAX];
 .float topt_ebatch;             // this search rolls generations in batches
 .float topt_batgen, topt_batcount;  // the generation held (topt_kgen + 2; 0 none) and its candidates
 .float topt_batruns, topt_batworkers;   // batches run and candidates the workers ran (the report's)
+// where a batched search's time and rolled ticks go (Lex: use the 6 workers better): wall seconds inside tas_rollout_batch
+// and in the prefetch around it; ticks the workers rolled, the pass-1 ticks a second pass threw away, the ticks left
+// after the volume cut (SV_TASOptRoll) and inside the target score's window (its tube cut)
+.float topt_trol, topt_tpref, topt_tkran, topt_tkre, topt_tkvol, topt_tkuse;
 // slices copied by index: memcpy from &ptr[i] read the wrong candidates (rig tlow2: every candidate of a search
 // scored as the demo's own line left the tube at tick 45; the same QC with one rollout at a time made the board)
 void(float *dst, float doff, float *src, float soff, float count) SV_TASOptCopy =
@@ -991,17 +995,21 @@ void(entity e, float c) SV_TASOptBatchAim =
 };
 float(entity e, float m, float *rows, float *out, float *par) SV_TASOptBatchRoll =
 {
-	local float r;
+	local float r, t0, c;
+	t0 = gettime(1);
 	SV_NoColPre(e);
 	r = tas_rollout_batch(e, rows, e.topt_n, out, m, par, (e.topt_mode & 128) ? TOPT_AIMGAIN : 0,
 		(e.topt_mode & 128) ? e.topt_tgtn : '0 0 0');
 	SV_NoColPost(e);
+	e.topt_trol = e.topt_trol + gettime(1) - t0;
 	if (r >= 0) { e.topt_batruns = e.topt_batruns + 1; e.topt_batworkers = e.topt_batworkers + r; }
+	if (r >= 0) for (c = 0; c < m; c = c + 1) e.topt_tkran = e.topt_tkran + max(0, par[c*5+4]);
 	return r;
 };
 void(entity e) SV_TASOptBatchPrefetch =
 {
-	local float c, j, i, count, m, n, ran, r, kidx0;
+	local float c, j, i, count, m, n, ran, r, kidx0, tp;
+	tp = gettime(1);
 	n = e.topt_n;
 	if (!topt_bat_rows)
 	{
@@ -1043,6 +1051,7 @@ void(entity e) SV_TASOptBatchPrefetch =
 		for (i = 0; i < n; i = i + 1) topt_dmap[i] = min(i, e.topt_dn - 1);
 		SV_TASOptCopy(topt_out, 0, topt_bat_out, c * n * 13, n * 13);
 		if (!SV_TASOptDemoMap(e, ran)) continue;
+		e.topt_tkre = e.topt_tkre + ran;
 		SV_TASOptDemoRows(e);
 		SV_TASOptCopy(topt_bat_rows2, m * n * 7, topt_rows, 0, n * 7);
 		for (j = 0; j < 5; j = j + 1) topt_bat_par2[m*5+j] = topt_bat_par[c*5+j];
@@ -1066,6 +1075,7 @@ void(entity e) SV_TASOptBatchPrefetch =
 		}
 	}
 	e.topt_batgen = e.topt_kgen + 2; e.topt_batcount = count;
+	e.topt_tpref = e.topt_tpref + gettime(1) - tp;
 };
 // the held candidate this sample is: its stored rows and outputs, as its rollout left them
 float(entity e) SV_TASOptBatchHeld =
@@ -1083,15 +1093,19 @@ float(entity e) SV_TASOptBatchTake =
 
 float(entity e, float r, float y, float f) SV_TASOptRoll =
 {
-	local float i, ran, a;
+	local float i, ran, a, held;
 	e.topt_rollcut = 0;
 	if (!checkbuiltin(tas_rollout)) return -20;
 	if (!topt_rows) topt_rows = (float*)memalloc(TOPT_HMAX * 7 * 4);
 	if (!topt_out) topt_out = (float*)memalloc(TOPT_HMAX * 13 * 4);
 	if (!topt_rows || !topt_out) return -20;
 	e.topt_curp = SV_TASOptValue(e, 4); e.topt_curr2 = SV_TASOptValue(e, 5); e.topt_curs = SV_TASOptValue(e, 6);
+	held = 0;
 	if (e.topt_mode & 64)
-		ran = SV_TASOptBatchHeld(e) ? SV_TASOptBatchTake(e) : SV_TASOptDemoRoll(e);
+	{
+		held = SV_TASOptBatchHeld(e);
+		ran = held ? SV_TASOptBatchTake(e) : SV_TASOptDemoRoll(e);
+	}
 	else if (e.topt_mode & 16)
 		ran = SV_TASOptFollow(e, r, f);
 	else
@@ -1120,9 +1134,11 @@ float(entity e, float r, float y, float f) SV_TASOptRoll =
 				sprint(e, PRINT_HIGH, sprintf("tas optimize: rollout meets %s %s tick %.0f of %.0f\n",
 					edict_num(fabs(a)).classname, (a < 0) ? "before" : "at", i + 1, e.topt_n));
 			e.topt_rollcut = 1; e.topt_cutent = edict_num(fabs(a));
+			if (held) e.topt_tkvol = e.topt_tkvol + ((a < 0) ? i : i + 1);
 			return (a < 0) ? i : i + 1;
 		}
 	}
+	if (held) e.topt_tkvol = e.topt_tkvol + max(0, ran);
 	return ran;
 };
 
@@ -1585,6 +1601,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 	lim = (e.topt_rollcut == 1) ? ran - 1 : ran;        // the tick QC acts on is not one the prediction holds
 	tx = SV_TASOptLimit(e, lim);
 	if (tx >= 0) lim = tx;                              // a wall touched or the tube left: a cut there
+	if (e.topt_ebatch) e.topt_tkuse = e.topt_tkuse + max(0, lim);
 	for (i = 0; i < lim; i = i + 1)
 	{
 		if (i > 0)
@@ -1907,7 +1924,13 @@ void(entity e, float v) SV_TASOptResult =
 				e.topt_fcut, e.topt_evals - 1));
 		SV_TASOptRollReport(e);
 		if (e.topt_batruns)
+		{
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: %.0f batches on the worker threads (%.0f candidates there)\n", e.topt_batruns, e.topt_batworkers));
+			sprint(e, PRINT_HIGH, sprintf("tas optimize: efficiency: %.2f s searching, %.2f s inside the batches, %.2f s preparing them; ",
+				gettime(1) - e.topt_tstart, e.topt_trol, e.topt_tpref - e.topt_trol));
+			sprint(e, PRINT_HIGH, sprintf("%.0f ticks rolled, %.0f thrown away by a second pass, %.0f left after volume cuts, %.0f scored inside the tube\n",
+				e.topt_tkran, e.topt_tkre, e.topt_tkvol, e.topt_tkuse));
+		}
 		if (e.topt_tube > 0)
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: %.0f candidates left the tube (%.0f u round the demo's path) and scored as cut there\n",
 				e.topt_tubeout, e.topt_tube));
@@ -3276,6 +3299,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	// P1467: a demo curve's generations in batches on the engine's worker threads (sv_tas_threads 1: one at a time)
 	e.topt_ebatch = (e.topt_efol && (mode & 64) && kn && checkbuiltin(tas_rollout_batch) && cvar("sv_tas_threads") > 1);
 	e.topt_batgen = 0; e.topt_batruns = e.topt_batworkers = 0;
+	e.topt_trol = e.topt_tpref = e.topt_tkran = e.topt_tkre = e.topt_tkvol = e.topt_tkuse = 0;
 	if (kn && i < 0)
 	{
 		SV_TASOptStop(e, SV_TASRollWhy(i));
