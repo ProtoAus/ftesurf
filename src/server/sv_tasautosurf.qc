@@ -65,6 +65,7 @@
 .float as_sjmp;                 // this start has jumped
 .float as_sgj, as_sjk;           // the guide's own take-off row (-1: none); ticks since this start's jump
 .float as_sbfar, as_sbst;        // a back-off's farthest distance short of the exit; ticks since it last grew
+.float as_sland;                 // starts lined up again after the jump came down in the box
 .float as_sdk;                  // this start has replayed the guide's crouch (said once)
 .float as_smeth, as_sredo;      // the start's way (1 the guide's prestrafe replayed, else steering), and whether it was redone
 .float as_sph;                  // the start's ground phase: 0 speed (a left circle), 1 onto the line, 2 around again
@@ -1969,7 +1970,10 @@ void(entity e) SV_TASAutoFrame =
 				}
 				ph = 4;
 			}
-			else if ((ph >= 1 && ph != 4 && fabs(lat) < 100 && fabs(herr) < 10 && along >= 130 && along <= 220) || along < 60 || e.as_sn >= e.as_sg)
+			// not at the exit while a back-off runs: its heading came round in one step and the exit rule jumped at 57 u/s, back
+			// into the box (panel6, a start after a moved waypoint: "the start never left the box")
+			else if ((ph >= 1 && ph != 4 && fabs(lat) < 100 && fabs(herr) < 10 && along >= 130 && along <= 220) || (along < 60 && !(ph == 4 && e.as_sbl))
+				|| e.as_sn >= e.as_sg)
 			{
 				e.as_sgj = SV_TASAutoGuideJump(); e.as_sjk = 0;
 				SV_TASAutoStep(e, 400, e.as_sair, 1 | SV_TASAutoStartDuck(e, 0, 1), 1, e.v_angle_y);         // the start's one jump
@@ -2058,13 +2062,19 @@ void(entity e) SV_TASAutoFrame =
 				if (!e.taslg_on || e.taslg_zone != e.as_szone || e.run_t_state != TS_ARMED)
 					{ SV_TASAutoStop(e, "the start could not be redone (no legal start in the box)"); return; }
 				e.as_ri = (e.as_smeth == 1) ? -1 : SV_TASAutoRest(e);
-				e.as_smeth = 0; e.as_stage = 10; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_sbl = 0; e.as_sjmp = 0; e.as_sdk = 0; e.as_sgj = -1;
+				e.as_smeth = 0; e.as_stage = 10; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_sbl = 0; e.as_sjmp = 0; e.as_sdk = 0; e.as_sgj = -1; e.as_sland = 0;
 				return;
 			}
 			e.as_stage = 1; e.as_i = 0; e.as_try = 0; e.as_backs = 0; e.as_tprev = as_rows[s*7]; e.as_failat = -1;
 			SV_TASAutoBacks(e);
 			sprint(e, PRINT_HIGH, sprintf("tas autosurf: out of the start box at %.0f u/s (tick %.0f); %.0f stretches ahead\n",
 				vlen([e.velocity_x, e.velocity_y, 0]), SV_TimerTicks(e), as_n));
+		}
+		else if ((e.flags & FL_ONGROUND) && e.as_sjk > 8 && e.as_sland < 2)
+		{	// the jump came down in the box: line up again (twice), not 240 ticks standing still
+			e.as_sland = e.as_sland + 1;
+			e.as_stage = 10; e.as_sn = 0; e.as_sph = 0; e.as_sbl = 0; e.as_sjmp = 0; e.as_sgj = -1;
+			SV_TASAutoNote(e, 1, "start: the jump came down in the box: lining up again");
 		}
 		else if (e.as_sn >= 240) SV_TASAutoStop(e, "the start never left the box (240 air ticks)");
 		else
@@ -2685,7 +2695,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		}
 		if (e.as_file != "") strunzone(e.as_file);
 		e.as_file = path;
-		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_sbl = 0; e.as_sjmp = 0; e.as_sdk = 0; e.as_sgj = -1; e.as_smeth = 0; e.as_sredo = 0;
+		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_sbl = 0; e.as_sjmp = 0; e.as_sdk = 0; e.as_sgj = -1; e.as_sland = 0; e.as_smeth = 0; e.as_sredo = 0;
 		e.as_ctrack = nct; e.as_cleg = ncl; e.as_saved = -1; e.as_esc = 0; e.as_keepsaid = 0; e.as_cseed = 0;
 		SV_TASAutoRunSalt();
 		e.as_ri = (e.as_ctrack >= 0) ? SV_TASAutoRest(e) : -1;      // a `zone` start steers as before
