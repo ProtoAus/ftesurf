@@ -281,6 +281,7 @@ float as_spotq[TAS_ASMAX];      // tas_jargon_spotback: sweep this board's spots
 float as_rgnn[TAS_ASMAX], as_rgna0[TAS_ASMAX], as_rgna1[TAS_ASMAX], as_rgnu0[TAS_ASMAX], as_rgnu1[TAS_ASMAX];
 float as_rged[TAS_ASMAX * 3], as_rgup[TAS_ASMAX * 3];   // each board's face axes: along the guide's way, up the face
 float as_rgndone;               // worked out for this plan (SV_TASAutoPlan clears it)
+float as_twx[4], as_twy[4], as_twz[4];     // SV_TASAutoTwins' picks so far
 float as_rgnspots;              // the spots being swept are the regions' (their names)
 float as_hbx[64], as_hby[64], as_hbz[64], as_hbn;   // one human run's boards (ride starts), in order
 .float as_region;
@@ -1022,6 +1023,39 @@ void(entity e) SV_TASAutoRegions =
 			sprint(e, PRINT_HIGH, sprintf("tas autosurf: regions: stretch %.0f's ramp, %.0f human boards: along %.0f..%.0f u, up %.0f..%.0f u of the guide's\n",
 				i + 1, as_rgnn[i], as_rgna0[i], as_rgna1[i], as_rgnu0[i], as_rgnu1[i]));
 };
+// tas_jargon_twins: other boards' faces within the optimizer's 0.95 of board i's and 2000 u of it (the nearest in the plan
+// first, 4 at most, one per face) -- a contact must be nearer board i's face than each (see topt_tw0)
+string(float i) SV_TASAutoTwins =
+{
+	local float k, k2, j, s, c, d, t;
+	local vector ni, nj, nk;
+	local string out;
+	out = ""; c = 0;
+	ni = [as_wn[i*3], as_wn[i*3+1], as_wn[i*3+2]];
+	if (ni_z < 0) ni = -ni;
+	for (k = 1; k < as_n && c < 4; k = k + 1)
+		for (s = -1; s <= 1; s = s + 2)
+		{
+			j = i + s * k;
+			if (j < 0 || j >= as_n || c >= 4) continue;
+			if (as_wk[j] != 1) continue;
+			nj = [as_wn[j*3], as_wn[j*3+1], as_wn[j*3+2]];
+			if (nj_z < 0) nj = -nj;
+			d = ni * nj;
+			if (d < 0.95 || d >= 0.9995) continue;
+			if (vlen([as_wo[j*3], as_wo[j*3+1], as_wo[j*3+2]] - [as_wo[i*3], as_wo[i*3+1], as_wo[i*3+2]]) > 2000) continue;
+			t = 0;          // one per face (stage 6's revisit is the same face twice)
+			for (k2 = 0; k2 < c; k2 = k2 + 1)
+			{
+				nk = [as_twx[k2], as_twy[k2], as_twz[k2]];
+				if (nk * nj >= 0.9995) t = 1;
+			}
+			if (t) continue;
+			as_twx[c] = nj_x; as_twy[c] = nj_y; as_twz[c] = nj_z; c = c + 1;
+			out = strcat(out, sprintf(" %.4f %.4f %.4f", nj_x, nj_y, nj_z));
+		}
+	return out;
+};
 string(float k) SV_TASAutoSpotName =
 {
 	if (as_rgnspots)
@@ -1331,7 +1365,8 @@ void(entity e) SV_TASAutoLink =
 	h = min(h, e.topt_dn);
 	}
 	if (n == '0 0 0') argc = tokenize(sprintf("tas target %.1f %.1f %.1f %.0f", o_x, o_y, o_z, r));
-	else argc = tokenize(sprintf("tas target %.1f %.1f %.1f %.0f %.4f %.4f %.4f", o_x, o_y, o_z, r, n_x, n_y, n_z));
+	else argc = tokenize(strcat(sprintf("tas target %.1f %.1f %.1f %.0f %.4f %.4f %.4f", o_x, o_y, o_z, r, n_x, n_y, n_z),
+		(as_wk[i] == 1 && cvar("tas_jargon_twins")) ? SV_TASAutoTwins(i) : ""));      // sprintf takes 8 arguments
 	e.topt_tgton = 0;
 	SV_TASTargetCommand(e, argc);
 	if (!e.topt_tgton) { SV_TASAutoStop(e, "this stretch's target was refused"); return; }
@@ -1366,6 +1401,7 @@ void(entity e) SV_TASAutoLink =
 	if (as_wk[i] == 1 && e.as_parallel) ps = strcat(ps, " boarddir");
 	if (as_wk[i] == 1 && cvar("tas_jargon_kind23")) ps = strcat(ps, " kind23");     // boards on brush-entity and curved ramps (test)
 	if (as_wk[i] == 1 && cvar("tas_jargon_rideout")) ps = strcat(ps, " rideout");      // boards judged by how their ride ends (test)
+	if (as_wk[i] == 1 && cvar("tas_jargon_landed")) ps = strcat(ps, " landed");      // a board counts after a flight, not a slide on (test)
 	if (as_wk[i] == 1 && e.as_region)
 	{	// the board's penalties begin at the human spread's far edge and lowest point, not the guide's own (a moved target too)
 		if (!as_rgndone) SV_TASAutoRegions(e);
