@@ -410,13 +410,14 @@ var float taso_effort = 1;      // 0 quick, 1 normal, 2 thorough
 float taso_full;
 string taso_pend;
 float taso_pendat;
-void() TASOptUI_Stop =
-{
+void(float force) TASOptUI_Stop =
+{	// force: the Stop button and hotkey (review: a note with state 0 mid-run left them doing nothing)
 	if (taso_pend != "") { strunzone(taso_pend); taso_pend = ""; }
-	if (taso_state == 1) localcmd("tas autosurf stop\n");
+	if (force || taso_state == 1) localcmd("tas autosurf stop\n");
 };
 void(string c) TASOptUI_Go =
 {
+	if (c == "") { print("tas jargon: no guide run for this course (turn one on in the leaderboard)\n"); return; }    // review: stopped, started nothing
 	if (taso_pend != "") { strunzone(taso_pend); taso_pend = ""; }
 	if (taso_state != 1) { localcmd(c); return; }
 	localcmd("tas autosurf stop\n");
@@ -450,13 +451,13 @@ string() TASOptUI_ArmCmd =
 {
 	jg_gat = 0; TASJargon_Guides();
 	if (!jg_gn) return "";
-	return sprintf("tas autosurf %s%s onjump%s\ntas play\n", jg_gp[jg_pick], TASOptUI_DemoWords(), TASJargon_CourseWords());
+	return sprintf("tas on\ntas autosurf %s%s onjump%s\ntas play\n", jg_gp[jg_pick], TASOptUI_DemoWords(), TASJargon_CourseWords());
 };
 void(float n) TASOptUI_Course =
 {
 	TASJargon_Courses();
-	if (n < 0 || n >= jg_cn) { print(sprintf("tas jargon course: 1..%g on this map\n", jg_cn)); return; }
-	if (n != jg_cpick) { TASOptUI_Stop(); jg_cpick = n; jg_gat = 0; jg_kat = 0; }
+	if (!(n >= 0 && n < jg_cn) || n != floor(n)) { print(sprintf("tas jargon course: 1..%g on this map\n", jg_cn)); return; }
+	if (n != jg_cpick) { TASOptUI_Stop(0); jg_cpick = n; jg_gat = 0; jg_kat = 0; }
 	print(sprintf("tas jargon: %s\n", TASJargon_CourseLabel(n)));
 };
 void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
@@ -514,9 +515,9 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 			sui_text(at, [hint, hint], "Stand in the course's start box for \"I start it\" (!r, or !s for a stage).", SUI_THEME_MUTED, 1, 0);
 			at_y = at_y + hint * 1.8;
 		}
-		if (Profile_Chip("jgs_stop", at, chip, "Stop", hint, running)) TASOptUI_Stop();
+		if (Profile_Chip("jgs_stop", at, chip, "Stop", hint, running)) TASOptUI_Stop(1);
 		if (Profile_Chip("jgs_play", at + [half + 6, 0, 0], chip, "Back to playing", hint, FALSE))
-			{ TASOptUI_Stop(); localcmd("tas play\n"); TASUI_Close(); }
+			{ TASOptUI_Stop(1); localcmd("tas play\n"); TASUI_Close(); }
 		at_y = at_y + row + hint;
 		sui_text(at, [hint, hint], "Camera", SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.5;
 		if (Profile_Chip("jgs_c0", at, chip3, "First person", hint, !autocvar_tas_viz_cam)) cvar_set("tas_viz_cam", "0");

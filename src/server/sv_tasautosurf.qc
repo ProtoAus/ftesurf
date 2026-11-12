@@ -1446,7 +1446,8 @@ void(entity e, float track, float leg) SV_TASAutoContinue =
 	}
 	e.as_backmax = -1;
 	SV_TASAutoBacks(e);
-	e.as_beam = 0; e.as_turns = 0;      // a save without opts3 (P1478's) had neither (review J)
+	e.as_beam = 0; e.as_turns = 0; e.as_launch = 0;      // a save without opts3 (P1478's) had neither (review J)
+	e.as_catch = e.as_safe = e.as_tight = e.as_parallel = e.as_free = 0;     // unsaved: the last command's leaked in (review)
 	SV_TASAutoNotes(e, track, leg, 1);
 	as_n = e.as_cof;
 	if (as_cov)
@@ -1455,6 +1456,7 @@ void(entity e, float track, float leg) SV_TASAutoContinue =
 		if (as_covbacks >= 0) e.as_backmax = as_covbacks;
 		e.as_rideknots = (as_covflags & 1) ? 1 : 0; e.as_polish = (as_covflags & 2) ? 1 : 0; e.as_low = (as_covflags & 4) ? 1 : 0;
 		e.as_wide = (as_covflags & 16) ? 1 : 0; e.as_spots = (as_covflags & 32) ? 1 : 0; e.as_beam = (as_covflags & 128) ? 1 : 0;
+		e.as_safe = (as_covflags & 256) ? 1 : 0;
 	}
 	if (e.as_file != "") strunzone(e.as_file);
 	e.as_file = strzone(as_cguide);
@@ -2095,6 +2097,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 			else if (w == "spots") as_covflags = as_covflags | 32;
 			else if (w == "finish") as_covflags = as_covflags | 64;
 			else if (w == "beam") as_covflags = as_covflags | 128;
+			else if (w == "safe") as_covflags = as_covflags | 256;     // the stream view's Go words (review: refused every time)
 			else { sprint(e, PRINT_HIGH, sprintf("tas autosurf continue: unknown option '%s'\n", w)); return; }
 		}
 		SV_TASAutoContinue(e, ct, cl);
@@ -2267,15 +2270,15 @@ void(entity e, float argc) SV_TASAutoCommand =
 	}
 	if (arm)
 	{
-		if (e.run_t_state != TS_ARMED) { sprint(e, PRINT_HIGH, "tas autosurf: onjump / onexit wait in the start box (stand in it, TAS on)\n"); strunzone(path); return; }
+		if (e.run_t_state != TS_ARMED) { sprint(e, PRINT_HIGH, "tas autosurf: onjump / onexit wait in the start box (stand in it, TAS on)\n"); SV_TASAutoOptRestore(e); strunzone(path); return; }
 		if (nct >= 0 && e.run_t_armzone != e.as_szone)
 		{	// a picked course takes over from its own box only: its rows and its end are that course's (Lex: start it yourself on stream)
 			sprint(e, PRINT_HIGH, sprintf("tas autosurf: stand in %s's start box first (!r, or !s for a stage), then this again\n", SV_TASAutoCourseName(nct, ncl)));
-			strunzone(path); return;
+			SV_TASAutoOptRestore(e); strunzone(path); return;
 		}
 		if (e.as_file != "") strunzone(e.as_file);
 		e.as_file = path;
-		e.as_on = 1; e.as_stage = 20; e.as_arm = arm; e.as_nolegal = 1; e.as_backs = 0; e.as_sair = -1; e.as_sn2 = 0;
+		e.as_on = 1; e.as_stage = 20; e.as_arm = arm; e.as_nolegal = 1; e.as_backs = 0; e.as_sair = -1; e.as_sn2 = 0; e.as_sjmp = 0; e.as_sdk = 0;
 		e.as_ctrack = nct; e.as_cleg = ncl; e.as_saved = -1; e.as_esc = 0; e.as_fromstart = 0; e.as_cseed = 0;   // a course: to its end
 		SV_TASAutoRunSalt();
 		e.as_lastground = (e.flags & FL_ONGROUND) ? 1 : 0;
@@ -2286,12 +2289,13 @@ void(entity e, float argc) SV_TASAutoCommand =
 	{	// A finished stage hands its run on into the next (stage 1's end is a split), so that stage's start was refused
 		// as a restart and the still-on legal session hid it: surf_tensor2 stage 2 after stage 1 left the box walking,
 		// 51 u/s, and bhopped to ramp 1 (Lex, bench safe2). A course start is fresh: end the old run, as `!r` does.
-		if (e.run_t_state == TS_RUNNING) SV_TimerVoid(e, "Jargon: a fresh start of the course");
+		if (e.run_t_state == TS_RUNNING && e.run_tas_ready == 1 && e.run_tas_rwcap && checkbuiltin(tas_tape))     // review: not if no start can follow
+			SV_TimerVoid(e, "Jargon: a fresh start of the course");
 		SV_TASLegalStart(e, e.as_szone);
 		if (!e.taslg_on || e.taslg_zone != e.as_szone || e.run_t_state != TS_ARMED)
 		{
 			sprint(e, PRINT_HIGH, "tas autosurf: no legal start in the course's box (the line before says why)\n");
-			strunzone(path); return;
+			SV_TASAutoOptRestore(e); strunzone(path); return;
 		}
 		if (e.as_file != "") strunzone(e.as_file);
 		e.as_file = path;

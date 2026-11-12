@@ -2633,8 +2633,8 @@ float(string cmd) CSQC_ConsoleCommand =
 		{	// P1483 stream: the simple view's buttons as commands -- hotkeys, and the harness that tests them (cl_tasoptui.qc)
 			if (argv(2) == "course") { if (cmdargc == 4) TASOptUI_Course(stof(argv(3)) - 1); }
 			else if (argv(2) == "cam") { if (cmdargc == 4) cvar_set("tas_viz_cam", argv(3)); }
-			else if (argv(2) == "stop") TASOptUI_Stop();
-			else if (argv(2) == "play") { TASOptUI_Stop(); localcmd("tas play\n"); }
+			else if (argv(2) == "stop") TASOptUI_Stop(1);
+			else if (argv(2) == "play") { TASOptUI_Stop(1); localcmd("tas play\n"); }
 			else
 			{
 				tsline = (argv(2) == "go") ? TASOptUI_GoCmd() : TASOptUI_ArmCmd();
