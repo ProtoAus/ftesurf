@@ -273,8 +273,19 @@ string(float k) SV_TASAutoKind =
 float as_swo[TAS_SPOTS * 3], as_swv[TAS_SPOTS], as_sws[TAS_SPOTS], as_swe[TAS_SPOTS];  // spots: place, on the face, score, energy
 float as_swd[TAS_ASMAX];        // a swept board's kept spot + 1 (0: not swept)
 float as_spotq[TAS_ASMAX];      // tas_jargon_spotback: sweep this board's spots now (the stretch after it failed)
+// `regions` (Lex: many ways to surf a ramp, all valid if the route is): every human run of the course on disk, its boards
+// paired with the guide's in order (surf_tensor2 stage 6 boards one face twice: nearest-only would mix the visits) on the
+// same face within TAS_RGNR -- the spread along the guide's way and up the face, from the guide's board
+#define TAS_RGNR 500
+#define TAS_RGNFILES 64
+float as_rgnn[TAS_ASMAX], as_rgna0[TAS_ASMAX], as_rgna1[TAS_ASMAX], as_rgnu0[TAS_ASMAX], as_rgnu1[TAS_ASMAX];
+float as_rged[TAS_ASMAX * 3], as_rgup[TAS_ASMAX * 3];   // each board's face axes: along the guide's way, up the face
+float as_rgndone;               // worked out for this plan (SV_TASAutoPlan clears it)
+float as_rgnspots;              // the spots being swept are the regions' (their names)
+float as_hbx[64], as_hby[64], as_hbz[64], as_hbn;   // one human run's boards (ride starts), in order
+.float as_region;
 float as_swp[TAS_ASMAX * 3];    // its place
-float as_optsave[28];
+float as_optsave[29];
 .float as_launch;               // P1483 `launch`: the guide's leave from each ramp as an air point (opt-in, see SV_TASAutoLaunch)
 .float as_free;                 // `free`: no hand cap on how hard it may turn; energy decides (opt-in experiment)
 .float as_parallel;             // `parallel`: boards judged by their arrival heading too (opt-in experiment)
@@ -288,7 +299,7 @@ void(entity e) SV_TASAutoOptSave =
 	as_optsave[4] = e.as_hop; as_optsave[5] = e.as_finish; as_optsave[6] = e.as_pace; as_optsave[7] = e.as_emin;
 	as_optsave[8] = e.as_join; as_optsave[9] = e.as_rideknots; as_optsave[10] = e.as_polish; as_optsave[11] = e.as_low;
 	as_optsave[12] = e.as_apex; as_optsave[13] = e.as_air; as_optsave[14] = e.as_wide; as_optsave[15] = e.as_szone;
-	as_optsave[16] = e.as_sg; as_optsave[17] = e.as_sy; as_optsave[18] = e.as_sside; as_optsave[19] = e.as_spots; as_optsave[20] = e.as_beam; as_optsave[21] = e.as_turns; as_optsave[22] = e.as_catch; as_optsave[23] = e.as_safe; as_optsave[24] = e.as_tight; as_optsave[25] = e.as_parallel; as_optsave[26] = e.as_free; as_optsave[27] = e.as_launch;
+	as_optsave[16] = e.as_sg; as_optsave[17] = e.as_sy; as_optsave[18] = e.as_sside; as_optsave[19] = e.as_spots; as_optsave[20] = e.as_beam; as_optsave[21] = e.as_turns; as_optsave[22] = e.as_catch; as_optsave[23] = e.as_safe; as_optsave[24] = e.as_tight; as_optsave[25] = e.as_parallel; as_optsave[26] = e.as_free; as_optsave[27] = e.as_launch; as_optsave[28] = e.as_region;
 };
 void(entity e) SV_TASAutoOptRestore =
 {
@@ -296,7 +307,7 @@ void(entity e) SV_TASAutoOptRestore =
 	e.as_hop = as_optsave[4]; e.as_finish = as_optsave[5]; e.as_pace = as_optsave[6]; e.as_emin = as_optsave[7];
 	e.as_join = as_optsave[8]; e.as_rideknots = as_optsave[9]; e.as_polish = as_optsave[10]; e.as_low = as_optsave[11];
 	e.as_apex = as_optsave[12]; e.as_air = as_optsave[13]; e.as_wide = as_optsave[14]; e.as_szone = as_optsave[15];
-	e.as_sg = as_optsave[16]; e.as_sy = as_optsave[17]; e.as_sside = as_optsave[18]; e.as_spots = as_optsave[19]; e.as_beam = as_optsave[20]; e.as_turns = as_optsave[21]; e.as_catch = as_optsave[22]; e.as_safe = as_optsave[23]; e.as_tight = as_optsave[24]; e.as_parallel = as_optsave[25]; e.as_free = as_optsave[26]; e.as_launch = as_optsave[27];
+	e.as_sg = as_optsave[16]; e.as_sy = as_optsave[17]; e.as_sside = as_optsave[18]; e.as_spots = as_optsave[19]; e.as_beam = as_optsave[20]; e.as_turns = as_optsave[21]; e.as_catch = as_optsave[22]; e.as_safe = as_optsave[23]; e.as_tight = as_optsave[24]; e.as_parallel = as_optsave[25]; e.as_free = as_optsave[26]; e.as_launch = as_optsave[27]; e.as_region = as_optsave[28];
 };
 
 void(entity e, float s) SV_TASAutoAir =
@@ -451,6 +462,7 @@ void() SV_TASAutoTurnsPlace =
 // from < 0: from the sample nearest the body; else from that sample (the preview's: the start box's exit)
 float(entity e, float from) SV_TASAutoPlan =
 {
+	as_rgndone = 0;
 	local float i, s, d, best, st, lastleave, gdt, j, pk;
 	local vector n;
 	best = 1000000; s = -1;
@@ -916,8 +928,107 @@ void(entity e, float argc) SV_TASRouteCommand =
 // Lex, 10 Nov: a board stays on the guide's spot (its aim moves +-30 u); try places around it on the ramp, and judge each
 // by the stretch after it -- the energy a board keeps or loses shows on the next ramp. Spots: the guide's, 160 u back
 // along the ramp's edge, 160 u on, 96 u up the face, the top-back corner; each kept at the guide's height off the face.
+// `regions`: one human run's boards -- the first row of each ride of 0.3 s or more (vz off free fall by 1.5 u/s a tick),
+// as the guide's own plan finds them
+void(string fn) SV_TASAutoRgnRead =
+{
+	local float fh, c, pvz, vz, g, st, n, lines, blank;
+	local vector p, sp;
+	local string line;
+	as_hbn = 0;
+	fh = fopen(fn, FILE_READ);
+	if (fh < 0) return;
+	g = cvar("sv_gravity") * PM_TICK; n = 0; st = 0; lines = 0; blank = 0; pvz = 0; sp = '0 0 0';
+	while (lines < 40000 && blank < 64 && as_hbn < 64)
+	{
+		line = fgets(fh); lines = lines + 1;
+		if (line == "") { blank = blank + 1; continue; }
+		blank = 0;
+		c = tokenize(line);
+		if (c < 7 || !FS_TASNumber(argv(0))) continue;
+		p = [stof(argv(1)), stof(argv(2)), stof(argv(3))]; vz = stof(argv(6));
+		if (n > 0 && fabs(vz - pvz + g) > 1.5) { if (!st) sp = p; st = st + 1; }
+		else
+		{
+			if (st >= 20) { as_hbx[as_hbn] = sp_x; as_hby[as_hbn] = sp_y; as_hbz[as_hbn] = sp_z; as_hbn = as_hbn + 1; }
+			st = 0;
+		}
+		pvz = vz; n = n + 1;
+	}
+	fclose(fh);
+};
+void(entity e) SV_TASAutoRegions =
+{
+	local float i, j, k, h, f, nf, b, best, bd, d, pt, a, u, r;
+	local string dir, leg, fn, d2;
+	local vector o, nn, ed, up, v, q;
+	as_rgndone = 1;
+	for (i = 0; i < as_n; i = i + 1) as_rgnn[i] = 0;
+	k = FS_LastOf(e.as_file, 47);
+	if (e.as_file == "" || k < 1) return;
+	dir = substring(e.as_file, 0, k + 1);
+	j = FS_LastOf(substring(dir, 0, k), 47);
+	leg = substring(dir, j + 1, k - j - 1);
+	for (i = 0; i < as_n; i = i + 1)
+	{	// each board's axes, as the spots and the optimizer's board offsets take them
+		if (as_wk[i] != 1) continue;
+		nn = [as_wn[i*3], as_wn[i*3+1], as_wn[i*3+2]];
+		if (nn_z < 0) nn = -nn;
+		for (r = 0; r < as_nrows - 1 && as_rows[r*7] < as_wt[i] - 0.0001; r = r + 1) ;
+		v = [as_rows[r*7+4], as_rows[r*7+5], 0];
+		ed = normalize([nn_y, -nn_x, 0]);
+		if (ed * v < 0) ed = -ed;
+		up = normalize('0 0 1' - nn_z * nn);
+		as_rged[i*3] = ed_x; as_rged[i*3+1] = ed_y; as_rged[i*3+2] = ed_z;
+		as_rgup[i*3] = up_x; as_rgup[i*3+1] = up_y; as_rgup[i*3+2] = up_z;
+	}
+	nf = 0;
+	for (f = 0; f < 2; f = f + 1)
+	{
+		d2 = (f == 0) ? dir : strcat("data/momentum/", mapname, "/", leg, "/");
+		h = search_begin(strcat(d2, "*.rec"), 0, TRUE);
+		if (h < 0) continue;
+		for (b = 0; b < search_getsize(h) && nf < TAS_RGNFILES; b = b + 1)
+		{
+			fn = search_getfilename(h, b);
+			SV_TASAutoRgnRead(fn);
+			nf = nf + 1;
+			pt = 0;         // the run's next unmatched board: its boards pair with the guide's in order
+			for (i = 0; i < as_n; i = i + 1)
+			{
+				if (as_wk[i] != 1) continue;
+				o = [as_wo[i*3], as_wo[i*3+1], as_wo[i*3+2]]; nn = [as_wn[i*3], as_wn[i*3+1], as_wn[i*3+2]];
+				best = -1; bd = TAS_RGNR;
+				for (j = pt; j < as_hbn; j = j + 1)
+				{
+					q = [as_hbx[j], as_hby[j], as_hbz[j]] - o;
+					d = vlen(q);
+					if (fabs(q * nn) < 32) if (d < bd) { bd = d; best = j; }
+				}
+				if (best < 0) continue;
+				pt = best + 1;
+				q = [as_hbx[best], as_hby[best], as_hbz[best]] - o;
+				a = q * [as_rged[i*3], as_rged[i*3+1], as_rged[i*3+2]]; u = q * [as_rgup[i*3], as_rgup[i*3+1], as_rgup[i*3+2]];
+				if (!as_rgnn[i]) { as_rgna0[i] = as_rgna1[i] = a; as_rgnu0[i] = as_rgnu1[i] = u; }
+				else { as_rgna0[i] = min(as_rgna0[i], a); as_rgna1[i] = max(as_rgna1[i], a); as_rgnu0[i] = min(as_rgnu0[i], u); as_rgnu1[i] = max(as_rgnu1[i], u); }
+				as_rgnn[i] = as_rgnn[i] + 1;
+			}
+		}
+		search_end(h);
+	}
+	sprint(e, PRINT_HIGH, sprintf("tas autosurf: regions: %.0f human runs read\n", nf));
+	for (i = 0; i < as_n; i = i + 1)
+		if (as_wk[i] == 1 && as_rgnn[i])
+			sprint(e, PRINT_HIGH, sprintf("tas autosurf: regions: stretch %.0f's ramp, %.0f human boards: along %.0f..%.0f u, up %.0f..%.0f u of the guide's\n",
+				i + 1, as_rgnn[i], as_rgna0[i], as_rgna1[i], as_rgnu0[i], as_rgnu1[i]));
+};
 string(float k) SV_TASAutoSpotName =
 {
+	if (as_rgnspots)
+	{
+		if (k == 1) return "the humans' back end"; if (k == 2) return "the humans' far end"; if (k == 3) return "the humans' highest";
+		if (k == 4) return "the humans' lowest";
+	}
 	if (k == 1) return "further back"; if (k == 2) return "further along"; if (k == 3) return "higher";
 	if (k == 4) return "higher and back"; return "the guide's";
 };
@@ -934,12 +1045,16 @@ void(entity e, float i) SV_TASAutoSpots =
 	up = normalize('0 0 1' - n_z * n);
 	traceline(o, o - n * 128, MOVE_NOMONSTERS, e);
 	d0 = (trace_fraction < 1 && !trace_startsolid) ? 128 * trace_fraction : -1;
+	as_rgnspots = (e.as_region && as_rgnn[i] >= 3);
 	for (k = 0; k < TAS_SPOTS; k = k + 1)
 	{
 		as_sws[k] = -1000000; as_swe[k] = 0; as_swv[k] = (k == 0); p = o;
-		for (f = 1; f >= 0.5 && k > 0 && !as_swv[k]; f = f - 0.5)
+		if (as_rgnspots)        // `regions`: the human spread's four ends (a corner the guide sits on is not tried twice)
+			v = ((k == 1) ? as_rgna0[i] : ((k == 2) ? as_rgna1[i] : 0)) * ed + ((k == 3) ? as_rgnu1[i] : ((k == 4) ? as_rgnu0[i] : 0)) * up;
+		else v = (((k == 1 || k == 4) ? -160 : ((k == 2) ? 160 : 0)) * ed + ((k >= 3) ? 96 : 0) * up);
+		for (f = 1; f >= 0.5 && k > 0 && !as_swv[k] && vlen(v) >= 16; f = f - 0.5)
 		{	// on the same face, or half as far; else not tried
-			p = o + f * (((k == 1 || k == 4) ? -160 : ((k == 2) ? 160 : 0)) * ed + ((k >= 3) ? 96 : 0) * up);
+			p = o + f * v;
 			traceline(p + n * 64, p - n * 192, MOVE_NOMONSTERS, e);
 			if (d0 >= 0 && trace_fraction < 1 && !trace_startsolid && fabs(trace_plane_normal * n) >= 0.95)
 			if (fabs((trace_endpos - o) * n + d0) < 2)      // the same plane: not a parallel ramp past the edge (review)
@@ -1150,7 +1265,7 @@ float(float i) SV_TASAutoIsMoved =
 void(entity e) SV_TASAutoLink =
 {
 	local float i, h, argc, r, q, fz, fz2;
-	local vector o, n, cr, cl_v;
+	local vector o, n, cr, cl_v, rv;
 	local string ps, ls, cl;
 	i = e.as_i;
 	e.topt_reachd = 1000000;     // a search that never runs leaves no closest distance (review D)
@@ -1251,6 +1366,16 @@ void(entity e) SV_TASAutoLink =
 	if (as_wk[i] == 1 && e.as_parallel) ps = strcat(ps, " boarddir");
 	if (as_wk[i] == 1 && cvar("tas_jargon_kind23")) ps = strcat(ps, " kind23");     // boards on brush-entity and curved ramps (test)
 	if (as_wk[i] == 1 && cvar("tas_jargon_rideout")) ps = strcat(ps, " rideout");      // boards judged by how their ride ends (test)
+	if (as_wk[i] == 1 && e.as_region)
+	{	// the board's penalties begin at the human spread's far edge and lowest point, not the guide's own (a moved target too)
+		if (!as_rgndone) SV_TASAutoRegions(e);
+		if (as_rgnn[i] >= 3)
+		{
+			rv = o - [as_wo[i*3], as_wo[i*3+1], as_wo[i*3+2]];
+			ps = strcat(ps, sprintf(" rgna %.0f rgnu %.0f", as_rgna1[i] - rv * [as_rged[i*3], as_rged[i*3+1], as_rged[i*3+2]],
+				as_rgnu0[i] - rv * [as_rgup[i*3], as_rgup[i*3+1], as_rgup[i*3+2]]));
+		}
+	}
 	if (e.as_catch && i >= 1)       // and the launch off the ramp before (Lex: the height is the angle it leaves at, not speed)
 	if (as_wk[i - 1] == 1 && as_wl[i - 1] > e.as_tprev + PM_TICK)
 		ps = strcat(ps, sprintf(" flick %.0f", min(TOPT_HMAX, rint((as_wl[i - 1] - e.as_tprev) / PM_TICK))));
@@ -1447,7 +1572,7 @@ void(entity e, float track, float leg) SV_TASAutoContinue =
 	e.as_backmax = -1;
 	SV_TASAutoBacks(e);
 	e.as_beam = 0; e.as_turns = 0; e.as_launch = 0;      // a save without opts3 (P1478's) had neither (review J)
-	e.as_catch = e.as_safe = e.as_tight = e.as_parallel = e.as_free = 0;     // unsaved: the last command's leaked in (review)
+	e.as_catch = e.as_safe = e.as_tight = e.as_parallel = e.as_free = e.as_region = 0;     // unsaved: the last command's leaked in (review)
 	SV_TASAutoNotes(e, track, leg, 1);
 	as_n = e.as_cof;
 	e.as_saved = e.as_cnext - 1;        // known now, not only once the load lands: a Stop during it, then Redo, saved over it (review 4)
@@ -2179,7 +2304,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 	if (SV_TASOptBusy(e)) return;
 	SV_TASAutoOptSave(e);
 	st = 0; flip = 0; arm = 0; pl = 0; ct = -1; cl = 0; zg = 0; e.as_szone = 0; e.as_sg = 900; e.as_sy = 0; e.as_sside = -1;
-	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = -1; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1; e.as_emin = 0.95; e.as_join = 0; e.as_rideknots = 0; e.as_polish = 0; e.as_low = 0; e.as_apex = 0; e.as_air = 0; e.as_wide = 0; e.as_spots = 0; e.as_beam = 0; e.as_turns = 0; e.as_catch = 0; e.as_safe = 0; e.as_tight = 0; e.as_parallel = 0; e.as_free = 0; e.as_launch = 0;
+	e.as_tube = 300; e.as_look = 100; e.as_tries = 2; e.as_backmax = -1; e.as_hop = 1; e.as_finish = 0; e.as_pace = 1; e.as_emin = 0.95; e.as_join = 0; e.as_rideknots = 0; e.as_polish = 0; e.as_low = 0; e.as_apex = 0; e.as_air = 0; e.as_wide = 0; e.as_spots = 0; e.as_beam = 0; e.as_turns = 0; e.as_catch = 0; e.as_safe = 0; e.as_tight = 0; e.as_parallel = 0; e.as_free = 0; e.as_launch = 0; e.as_region = 0;
 	for (i = 3; i < argc; i = i + 1)
 	{
 		w = argv(i); n = FS_TASNumber(argv(i + 1)) ? stof(argv(i + 1)) : -1;    // not a number: refused below, not 0 (review)
@@ -2206,6 +2331,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		else if (w == "parallel") e.as_parallel = 1;
 		else if (w == "free") e.as_free = 1;
 		else if (w == "launch") e.as_launch = 1;        // P1483
+		else if (w == "regions") e.as_region = 1;
 		else if (w == "start") st = 1;
 		else if (w == "plan") pl = 1;
 		else if (w == "zone" && n >= 0 && n < 64 && n == floor(n)) { e.as_szone = n; zg = 1; i = i + 1; }
