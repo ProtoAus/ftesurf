@@ -1298,8 +1298,8 @@ float(float i) SV_TASAutoIsMoved =
 
 void(entity e) SV_TASAutoLink =
 {
-	local float i, h, argc, r, q, fz, fz2;
-	local vector o, n, cr, cl_v, rv;
+	local float i, h, argc, r, q, fz, fz2, zq, zd;
+	local vector o, n, cr, cl_v, rv, zmn, zmx, zp, zo;
 	local string ps, ls, cl;
 	i = e.as_i;
 	e.topt_reachd = 1000000;     // a search that never runs leaves no closest distance (review D)
@@ -1367,6 +1367,24 @@ void(entity e) SV_TASAutoLink =
 	// try); past it the line holds the last row's command (the tube is free there)
 	if (as_wk[i] == 3 && cvar("tas_jargon_finishpast")) h = min(min(TOPT_HMAX, h), e.topt_dn + 60);  // tas optimize takes 64 past
 	else h = min(h, e.topt_dn);
+	}
+	if (as_wk[i] == 3 && e.as_ctrack >= 0 && cvar("tas_jargon_finishin"))
+	{	// tas_jargon_finishin: the guide's last row is where its HULL first met the end box, so its origin can lie outside
+		// it (surf_sandtrap2 b4: 11.8 u) and lines aimed there pass the edge into the pit. Aim at the nearest point of an end
+		// box where the hull sits wholly inside it, 16 u in.
+		zo = o; zd = 1000000;
+		for (zq = 0; zq < zone_count; zq = zq + 1)
+			if (zone_type[zq] == ZONE_END)
+			if (zone_track[zq] == e.as_ctrack)
+			{
+				zmn = zone_zmins[zq] - PM_HULL_MINS + '16 16 0'; zmx = zone_zmaxs[zq] - PM_HULL_MAXS - '16 16 0';
+				zp = [(zmn_x <= zmx_x) ? bound(zmn_x, zo_x, zmx_x) : 0.5 * (zmn_x + zmx_x),
+				      (zmn_y <= zmx_y) ? bound(zmn_y, zo_y, zmx_y) : 0.5 * (zmn_y + zmx_y),
+				      (zmn_z <= zmx_z) ? bound(zmn_z, zo_z, zmx_z) : zmn_z];     // zmn_z: the box's floor (the hull's mins z is 0)
+				if (vlen(zp - zo) < zd) { zd = vlen(zp - zo); o = zp; }
+			}
+		if (zd < 1000000 && zd >= 1)
+			sprint(e, PRINT_HIGH, sprintf("tas autosurf: the finish aims %.0f u inside the end box from the guide's last row\n", zd));
 	}
 	if (n == '0 0 0') argc = tokenize(sprintf("tas target %.1f %.1f %.1f %.0f", o_x, o_y, o_z, r));
 	else argc = tokenize(strcat(sprintf("tas target %.1f %.1f %.1f %.0f %.4f %.4f %.4f", o_x, o_y, o_z, r, n_x, n_y, n_z),
