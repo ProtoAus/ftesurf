@@ -120,8 +120,11 @@ float(float b) SV_TASAutoRule = { return !(cvar("tas_jargon_off") & b); };
 // start backs off at its exit more than 30 deg off the guide's line and walks to within 16 u of its standstill (was test
 // cvar tas_jargon_startfix: tensor2 stage 6 after another course jumped 366 u and -59 deg off and stuck at stretch 1);
 // 1048576 the guide's crouch copied from any recording, as from a KSF replay's button lines (was test cvar
-// tas_jargon_rowkeys); 2097152 in the start: the crouch the guide held after its own jump (was tas_jargon_startduck) --
-// Lex, 13 Nov: humans duck off the start platform's lip; kenos' tensor2 stage 1 jumps ducked for 9 ticks
+// tas_jargon_rowkeys) -- Lex, 13 Nov: humans duck off the start platform's lip. The start's own copy of the guide's
+// crouch after its jump stays test cvar tas_jargon_startduck: tensor2 stage 1 (kenos crouch-jumps 9 ticks), stretch 1
+// at the panel's effort -- both on: not reached in 300 s (12 misses); the start's alone: not reached; the search's
+// alone: reached after 3 misses, stage finished 0:10.905 (A/B 13 Nov, one run an arm). Copied by time, its unduck
+// lands where Jargon is, not where the guide was (Jargon jumps 54 u before the guide's exit).
 .float as_fromstart;            // the chain began at the course's start box (a Start or a Continue): only these autosave
 .float as_savedold, as_keepsaid; // a saved run of this course that got further (its stretch), and the note that kept it said
 .float as_savedoldt;            // ...its last reached waypoint's guide time: plans differ (turn points, options), times do not (review H)
@@ -856,7 +859,7 @@ float() SV_TASAutoGuideJump =
 float(entity e, float k, float n) SV_TASAutoStartDuck =
 {
 	local float i, r;
-	if (e.as_sgj < 0 || !SV_TASAutoRule(2097152)) return 0;
+	if (e.as_sgj < 0 || !cvar("tas_jargon_startduck")) return 0;     // a test cvar: the rule notes' A/B
 	for (i = 0; i < n; i = i + 1)
 	{
 		r = e.as_sgj + k + i;
@@ -1890,7 +1893,7 @@ void(entity e) SV_TASAutoFrame =
 			best = as_bin[i*4+3] - 360 * floor((as_bin[i*4+3] + 180) / 360);
 			// tas_jargon_startduck: the guide's crouch too (surf_gigapede bonus 4's human ducks from 0.5 s before the jump to
 			// its board at 0.4 s; this replay carried the jump only, and every stretch-1 line skimmed or overshot)
-			if (as_bdk[i] && SV_TASAutoRule(2097152))
+			if (as_bdk[i] && cvar("tas_jargon_startduck"))
 			{
 				t = t + 2;
 				if (!e.as_sdk) { e.as_sdk = 1; SV_TASAutoNote(e, 1, sprintf("start: crouching as the guide did (his duck from t=%.3f)", as_rows[i*7])); }
