@@ -195,6 +195,10 @@ float topt_kel[TOPT_CEPOP];      // the generation's elite marks
 float topt_drow[TOPT_HMAX * 5];  // fwd, side, pitch, yaw (degrees), buttons
 float topt_dq[TOPT_HMAX];         // the row's turn command (SV_TASOptFollow's q) against the velocity before it
 float topt_dmap[TOPT_HMAX];       // demo search: the demo row each tick takes its keys from (SV_TASOptDemoMap)
+// tas_opt_warmmap: a line's first roll takes its rows from the best line's measured map, not the clock's. By the clock
+// every line of a search was rolled twice (surf_sandtrap2 bonus 4: half of all rolled ticks thrown away, every search)
+float topt_wmap[TOPT_HMAX], topt_wmapn;
+.float topt_wmapon;
 float topt_ride[TOPT_HMAX];       // curve search without a demo: a ride tick's side into its ramp (+1 left, -1 right, 0 none)
 // tick i's contact normal facing up: the engine counts a ramp by fabs(nz) (pm_source.c, a displacement's winding can
 // face down) and passes the normal as wound (review 8-9)
@@ -775,6 +779,12 @@ float(entity e, float ran) SV_TASOptDemoMap =
 	}
 	return ch;
 };
+void(entity e) SV_TASOptMapStart =
+{
+	local float i;
+	if (e.topt_wmapon && topt_wmapn) for (i = 0; i < e.topt_n; i = i + 1) topt_dmap[i] = topt_wmap[i];
+	else for (i = 0; i < e.topt_n; i = i + 1) topt_dmap[i] = min(i, e.topt_dn - 1);
+};
 
 // P1449 `kex T`: a demo curve's knots spent where the launch is made -- 60% of them from the stretch's start to tick T
 // (the demo's leaving its ramp and a little after: autosurf's `rideknots`), the rest to the target's row, past it
@@ -849,7 +859,7 @@ float(entity e) SV_TASOptDemoRoll =
 	{	// the demo's own command each tick plus the curve, applied by the engine from the body's velocity:
 		// its technique (side switches included) on this run's state, so drift does not compound. Rolled
 		// twice: by the clock, then with each tick's keys from where that roll put it (SV_TASOptDemoMap)
-		for (i = 0; i < e.topt_n; i = i + 1) topt_dmap[i] = min(i, e.topt_dn - 1);
+		SV_TASOptMapStart(e);
 		ran = -1;
 		for (pass = 0; pass < 2; pass = pass + 1)
 		{
@@ -972,6 +982,7 @@ float *topt_bat_par;
 float *topt_bat_rows2;
 float *topt_bat_out2;
 float *topt_bat_par2;
+float *topt_bat_dm;             // each candidate's measured map (warm start: the best's seeds the next)
 float topt_bat_kcur[TOPT_BATMAX * TOPT_KMAX];
 float topt_bat_map[TOPT_BATMAX];
 .float topt_ebatch;             // this search rolls generations in batches
@@ -1008,7 +1019,7 @@ float(entity e, float m, float *rows, float *out, float *par) SV_TASOptBatchRoll
 };
 void(entity e) SV_TASOptBatchPrefetch =
 {
-	local float c, j, i, count, m, n, ran, r, kidx0, tp;
+	local float c, j, i, count, m, n, ran, r, kidx0, tp, ch;
 	tp = gettime(1);
 	n = e.topt_n;
 	if (!topt_bat_rows)
@@ -1016,9 +1027,10 @@ void(entity e) SV_TASOptBatchPrefetch =
 		topt_bat_rows = (float*)memalloc(TOPT_BATMAX * TOPT_HMAX * 7 * 4); topt_bat_out = (float*)memalloc(TOPT_BATMAX * TOPT_HMAX * 13 * 4);
 		topt_bat_par = (float*)memalloc(TOPT_BATMAX * 5 * 4); topt_bat_rows2 = (float*)memalloc(TOPT_BATMAX * TOPT_HMAX * 7 * 4);
 		topt_bat_out2 = (float*)memalloc(TOPT_BATMAX * TOPT_HMAX * 13 * 4); topt_bat_par2 = (float*)memalloc(TOPT_BATMAX * 5 * 4);
+		topt_bat_dm = (float*)memalloc(TOPT_BATMAX * TOPT_HMAX * 4);
 	}
 	e.topt_batgen = 0;
-	if (!topt_bat_rows || !topt_bat_out || !topt_bat_par || !topt_bat_rows2 || !topt_bat_out2 || !topt_bat_par2)
+	if (!topt_bat_rows || !topt_bat_out || !topt_bat_par || !topt_bat_rows2 || !topt_bat_out2 || !topt_bat_par2 || !topt_bat_dm)
 	{
 		e.topt_ebatch = 0;
 		return;
@@ -1030,7 +1042,7 @@ void(entity e) SV_TASOptBatchPrefetch =
 		e.topt_kidx = c;
 		SV_TASOptCurveNext(e);
 		for (j = 0; j < e.topt_kd; j = j + 1) topt_bat_kcur[c * TOPT_KMAX + j] = topt_kcur[j];
-		for (i = 0; i < n; i = i + 1) topt_dmap[i] = min(i, e.topt_dn - 1);
+		SV_TASOptMapStart(e);
 		SV_TASOptDemoRows(e);
 		SV_TASOptCopy(topt_bat_rows, c * n * 7, topt_rows, 0, n * 7);
 		SV_TASOptBatchAim(e, c);
@@ -1046,11 +1058,13 @@ void(entity e) SV_TASOptBatchPrefetch =
 	for (c = 0; c < count; c = c + 1)
 	{	// pass 2: those whose key map moves more than 2 rows, compacted
 		ran = topt_bat_par[c*5+4];
-		if (ran < 1) continue;
+		SV_TASOptMapStart(e);
+		if (ran < 1) { for (i = 0; i < n; i = i + 1) topt_bat_dm[c * n + i] = topt_dmap[i]; continue; }
 		for (j = 0; j < e.topt_kd; j = j + 1) topt_kcur[j] = topt_bat_kcur[c * TOPT_KMAX + j];
-		for (i = 0; i < n; i = i + 1) topt_dmap[i] = min(i, e.topt_dn - 1);
 		SV_TASOptCopy(topt_out, 0, topt_bat_out, c * n * 13, n * 13);
-		if (!SV_TASOptDemoMap(e, ran)) continue;
+		ch = SV_TASOptDemoMap(e, ran);
+		for (i = 0; i < n; i = i + 1) topt_bat_dm[c * n + i] = topt_dmap[i];
+		if (!ch) continue;
 		e.topt_tkre = e.topt_tkre + ran;
 		SV_TASOptDemoRows(e);
 		SV_TASOptCopy(topt_bat_rows2, m * n * 7, topt_rows, 0, n * 7);
@@ -1084,10 +1098,11 @@ float(entity e) SV_TASOptBatchHeld =
 };
 float(entity e) SV_TASOptBatchTake =
 {
-	local float c, n;
+	local float c, n, i;
 	c = e.topt_kidx; n = e.topt_n;
 	SV_TASOptCopy(topt_out, 0, topt_bat_out, c * n * 13, n * 13);
 	SV_TASOptCopy(topt_rows, 0, topt_bat_rows, c * n * 7, n * 7);
+	if (e.topt_wmapon) for (i = 0; i < n; i = i + 1) topt_dmap[i] = topt_bat_dm[c * n + i];
 	return topt_bat_par[c*5+4];
 };
 
@@ -2566,6 +2581,7 @@ void(entity e, float v) SV_TASOptCurveResult =
 	if (v > e.topt_bestv)
 	{
 		e.topt_bestv = v; e.topt_bestce = e.topt_cande; e.topt_bestcd = e.topt_candd;
+		if (e.topt_wmapon && (e.topt_mode & 64)) { for (i = 0; i < e.topt_n; i = i + 1) topt_wmap[i] = topt_dmap[i]; topt_wmapn = 1; }
 		e.topt_bestbal = e.topt_bal; e.topt_bestbup = e.topt_bup; e.topt_bestbr = e.topt_candbr;
 		for (j = 0; j < e.topt_kd; j = j + 1) topt_kbest[j] = topt_kcur[j];
 		for (j = 0; j < e.topt_n; j = j + 1)
@@ -3354,7 +3370,7 @@ void(entity e, float argc) SV_TASOptCommand =
 		sprint(e, PRINT_HIGH, "tas optimize: an earlier search's best line from this state is among the first candidates\n");
 	e.topt_obj = obj; e.topt_seg0 = e.run_t_seg;
 	e.topt_fast = fast; e.topt_energy = energy; e.topt_z0 = e.origin_z; e.topt_fcut = 0;
-	e.topt_tstart = gettime(1); e.topt_bestbal = e.topt_bestbup = e.topt_refspeed = e.topt_refz = e.topt_bestbr = 0;
+	e.topt_tstart = gettime(1); topt_wmapn = 0; e.topt_wmapon = cvar("tas_opt_warmmap"); e.topt_bestbal = e.topt_bestbup = e.topt_refspeed = e.topt_refz = e.topt_bestbr = 0;
 	e.topt_tgtuse = (fast && e.topt_tgton); e.topt_reachv = -1;   // bracketed: = binds tighter than && here
 	e.topt_reachk = e.topt_reachd = e.topt_reachw = e.topt_reacheg = e.topt_reachbr = 0;
 	if (fast) SV_TASOptVizSend(e, 0, 0);
