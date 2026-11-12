@@ -1666,7 +1666,9 @@ void(entity e) SV_TASAutoFrame =
 				sprint(e, PRINT_HIGH, strcat(sprintf("tas autosurf: start %.0f ph %.0f at %v %.0f u/s, ", e.as_sn, ph, e.origin, t),
 					sprintf("%.0f u short of the exit, %.0f u off the line, %.0f deg off it, side %.0f\n", along, lat, herr, e.as_sair)));
 			if (ph == 0 && t >= 283) ph = 1;
-			if (along < 60 && (fabs(lat) > 150 || fabs(herr) > 30) && e.as_sn < e.as_sg && (e.as_sbl || e.as_sback < 2) && cvar("tas_jargon_startfix"))
+			// heading only: stage 6 jumped 59 deg off (the back-off helped); stage 5 jumps 433 u to the side but 19 deg off,
+			// and from there ramp 1 is reachable (Lex) -- backing off there left the box without its jump (bench broad2)
+			if (along < 60 && fabs(herr) > 30 && e.as_sn < e.as_sg && (e.as_sbl || e.as_sback < 2) && cvar("tas_jargon_startfix"))
 			{	// at the exit unaligned: the forced jump left surf_tensor2 stage 6 366 u and -59 deg off the guide's line and
 				// every stretch-1 line off its path (bench f1); back off and line up again, twice at most -- counted once an
 				// approach, and no jump while backing off (a count a step spent both in 6 ticks: review L)
