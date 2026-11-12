@@ -22,6 +22,9 @@
 ## next
 - Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
+### P1529 Recording consistency
+- Run recording retains a confirmed movement-condition signal through supported landings. Movement itself is unchanged; unavailable comparisons remain unavailable.
+
 ### P1526 Recording clock validation
 - Unusable recording clocks are now reported as evidence-quality problems instead of valid timing. Unproved duration and rate measurements stay unavailable without becoming player accusations.
 
