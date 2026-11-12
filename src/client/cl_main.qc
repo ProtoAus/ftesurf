@@ -1600,6 +1600,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 			return TRUE;
 
 	if (TASOptUI_Wheel(evtype, scanx)) return TRUE;      // P1528: the Jargon waypoint list
+	if (TASOptUI_DropKey(evtype, scanx)) return TRUE;    // P1528: Esc closes an open Jargon dropdown
 	if (TASUI_Input(evtype, scanx, chary, devid)) return TRUE;
 	if (WPU_Input(evtype, scanx, chary, devid)) return TRUE;
 	if (av_open)
@@ -2627,7 +2628,7 @@ float(string cmd) CSQC_ConsoleCommand =
 		}
 		else if (cmdargc >= 3 && !strcmp(argv(1), "jargon") && (argv(2) == "start" || argv(2) == "mode" || argv(2) == "set" ||
 		         argv(2) == "air" || argv(2) == "del" || argv(2) == "undo" || argv(2) == "redo" || argv(2) == "list" ||
-		         argv(2) == "field"))
+		         argv(2) == "field" || argv(2) == "guide" || argv(2) == "guides" || argv(2) == "drop"))
 			TASOptUI_Verb(cmdargc);     // the Jargon panel's own functions (cl_tasoptui.qc)
 		else if (cmdargc >= 2 && !strcmp(argv(1), "jargon"))       // P1449: Jargon is autosurf's name in the menus
 		{

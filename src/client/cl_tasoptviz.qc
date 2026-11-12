@@ -36,12 +36,12 @@ var float autocvar_tas_chase_dist = 150, autocvar_tas_chase_up = 36;
 vector tov_cprev;               // the eye last frame (the heading comes from its motion: local games predict nothing)
 float tov_cyaw, tov_cok;        // the eased heading; the chase has a previous eye
 
-// The first point as floats, the rest as 4-unit shorts from it (SV_TASOptVizWrite).
+// The first point as floats, each next as 1/8-unit shorts from the one before (SV_TASOptVizWrite): p0 is that one.
 vector(float i, vector p0) TASOptViz_Point =
 {
 	local vector p;
 	if (i == 0) { p_x = readfloat(); p_y = readfloat(); p_z = readfloat(); return p; }
-	p_x = readshort() * 4; p_y = readshort() * 4; p_z = readshort() * 4;
+	p_x = readshort() * 0.125; p_y = readshort() * 0.125; p_z = readshort() * 0.125;
 	return p0 + p;
 };
 
@@ -59,8 +59,7 @@ void() TASOptViz_Event =
 		tov_bestn = 0; tov_final = 0; tov_tgton = 0; tov_tgtt = cltime;
 		for (i = 0; i < n; i = i + 1)
 		{
-			p = TASOptViz_Point(i, p0);
-			if (i == 0) p0 = p;
+			p_x = readfloat(); p_y = readfloat(); p_z = readfloat();     // floats, each (SV_TASOptVizWrite)
 			if (i == 0) tov_start = p;
 			if (i == 1) { tov_tgt = p; tov_tgton = 1; }
 		}
@@ -71,7 +70,7 @@ void() TASOptViz_Event =
 		for (i = 0; i < n; i = i + 1)
 		{
 			p = TASOptViz_Point(i, p0);
-			if (i == 0) p0 = p;
+			p0 = p;
 			if (i < TOV_PTS) tov_best[i] = p;
 		}
 		tov_bestn = min(n, TOV_PTS); tov_bestt = cltime; tov_final = (kind == 4);
@@ -83,7 +82,7 @@ void() TASOptViz_Event =
 	for (i = 0; i < n; i = i + 1)
 	{
 		p = TASOptViz_Point(i, p0);
-		if (i == 0) p0 = p;
+		p0 = p;
 		if (i < TOV_PTS && tov_pt) tov_pt[slot * TOV_PTS + i] = p;
 	}
 	tov_n[slot] = min(n, TOV_PTS); tov_t[slot] = cltime; tov_kind[slot] = kind;
