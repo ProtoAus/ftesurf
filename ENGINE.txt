@@ -8,9 +8,11 @@
 # Patch 1512 (QC): ordinary sl_load preview owns its actual sent ACK; busy queued loads do not borrow a newer preview. Render-only, no body/physics/evidence change; native pin/tag and qcbuild unchanged.
 # Patch 1511 (native renderer): conservative ambiguous-plane early exit;
 # 1312 normal/fast frozen-reference cases each agree, acted work2/64versus64/64.
-# Controlled Full baseline/candidate build zero new warnings; real render smoke
-# and one exact-pixel paused view pass. Native FPS gain UNMEASURED (quiet gate
-# occupied); final clean-tag build/delivery pending. tools/p1511-plane-side.md.
+# Controlled and final clean-tag Full builds zero new warnings; final-image
+# render/replay smoke passes. Earlier exact-pixel claim RETRACTED (alpha-only
+# comparison reader); broader visuals pending. Native FPS UNMEASURED (quiet gate
+# occupied). BOTH Windows clients532842ea verified12Nov00:04:26Z;19594captured
+# protected files unchanged, rollback retained. tools/p1511-plane-side.md.
 # Clean native source24a3d0104 / tagpatch-1511 published; no QC Build bump.
 # Patch 1510 (backend only): the contained comparison worker preserves the guard's
 # explicitly inheritable lifetime leases; ordinary CLOEXEC handles stay private.
