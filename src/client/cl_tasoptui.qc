@@ -476,7 +476,7 @@ vector jgu_a[JGU_MAX], jgu_b[JGU_MAX];    // from, to (3: b the point; 4: a the 
 string(float k) TASOptUI_WpKind =
 {
 	if (k == 1) return "Board"; if (k == 2) return "Hop"; if (k == 3) return "End"; if (k == 4) return "Peak";
-	if (k == 5) return "Air"; if (k == 6) return "Turn";
+	if (k == 5) return "Air"; if (k == 6) return "Turn"; if (k == 7) return "Portal";
 	return "?";
 };
 float(float k) TASOptUI_WpEditable = { return (k == 1 || k == 2 || k == 5); };

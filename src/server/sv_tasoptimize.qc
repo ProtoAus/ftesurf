@@ -244,6 +244,8 @@ float topt_dqr[TOPT_HMAX];      // the demo's own command per row, clamped at QP
 .float topt_trigcut;            // the played miss ended on a trigger within TOPT_EARLYCUT ticks (the tick, or 0)
 .float topt_wallhit;            // P1449: fast candidates cut at a wall touched in flight (SV_TASOptLimit)
 .float topt_bdirn;              // `boarddir`: boards that arrived past the tolerance off the guide's heading (the report)
+.float topt_teleon;             // `telex X teley Y telez Z`: a portal waypoint -- reached only by a teleport landing near (X Y Z)
+.vector topt_tele;
 .float topt_boardway, topt_waybad, topt_wayn;   // `boardway`; this candidate met its ramp the wrong way; lines that did (the report)
 float topt_dlen[TOPT_HMAX];     // the demo path's length from its first row to each row
 .float topt_tgtj;               // the row nearest the target (tube searches)
@@ -1590,6 +1592,16 @@ float(entity e, entity t, float z) SV_TASOptTeleTo =
 	if (z < 0 || z >= zone_count) return -1;
 	return (Zone_BoxInside(z, d.origin, PM_HULL_MINS, PM_HULL_MAXS) || Zone_PointInside(z, d.origin)) ? z : -1;
 };
+// a teleport whose destination lies within r of dest (a portal waypoint's: where the guide's own teleport put it)
+float(entity e, entity t, vector dest, float r) SV_TASOptTeleNear =
+{
+	local entity d;
+	if (!t || (strcmp(t.classname, "trigger_teleport") && strcmp(t.classname, "trigger_momentum_teleport"))) return FALSE;
+	d = world;
+	if (t.target != "") d = find(world, targetname, t.target);
+	if (!d) return FALSE;
+	return (vlen(d.origin - dest) <= r);
+};
 // 1 a teleport into the end, -1 a teleport elsewhere, 0 not a teleport that acts on this body
 float(entity e, entity t) SV_TASOptEndTele;
 // Lex on surf_tensor2's stage ends: launch high and make the platform, not the portal -- the portal is fastest, the
@@ -1671,6 +1683,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 			continue;
 		}
 		if (e.topt_endsafe) if (de <= TOPT_SAFER) { best = d; bk = i; hit = TRUE; held = TRUE; dmin = de; dmk = i; continue; }     // near any way in
+		if (!e.topt_teleon)     // a portal counts only through its teleport (below), not by passing near it
 		if (d <= e.topt_tgtr || (e.topt_tgtn_z >= 0.99 && fabs(topt_out[i*13+2] - e.topt_tgt_z) <= TOPT_HOPZ &&
 		    vlen([topt_out[i*13] - e.topt_tgt_x, topt_out[i*13+1] - e.topt_tgt_y, 0]) <= TOPT_HOPR))
 		if (e.topt_tgtn == '0 0 0' ||
@@ -1689,6 +1702,9 @@ float(entity e, float ran) SV_TASOptTargetScore =
 	if ((!hit || !endhit) && lim >= 1 && lim == ran - 1 && e.topt_rollcut == 1 && (e.topt_endz >= 0 || e.topt_endtrack >= 0))
 	if (SV_TASOptEndTele(e, e.topt_cutent) == 1)
 		{ best = 0; bk = lim - 1; hit = TRUE; endhit = TRUE; }     // the tick before the teleport into the end
+	if (!endhit && e.topt_teleon && lim >= 1 && lim == ran - 1 && e.topt_rollcut == 1)
+	if (SV_TASOptTeleNear(e, e.topt_cutent, e.topt_tele, 512))
+		{ best = 0; bk = lim - 1; hit = TRUE; endhit = TRUE; }     // a portal waypoint: into the guide's own teleport, then through it
 	if (held && !endhit)
 	{	// played to its nearest approach: the coast starts there (review J); not when that is the tick before a cut, where
 		// the line was still closing and the coast would start against the trigger (review K)
@@ -3191,12 +3207,13 @@ void(entity e) SV_TASOptReset =
 // tas optimize <ticks> <left|right> [board] [flick [k]] [time] [energy] [fast]
 void(entity e, float argc) SV_TASOptCommand =
 {
-	local float n, dir, i, mode, fk, searches, obj, fast, energy, fixp, kn, tube, hop, look, pace, emin, gens, kex, stall, low, edgeok, ride, wide, leadmin, fresh, slack, airdir, lookw, catch, flick, endsafe, hardq, boarddir, kind23, freeq, rideout, rgna, rgnu, rgnak, rgnuk, landed, boardway;
+	local float n, dir, i, mode, fk, searches, obj, fast, energy, fixp, kn, tube, hop, look, pace, emin, gens, kex, stall, low, edgeok, ride, wide, leadmin, fresh, slack, airdir, lookw, catch, flick, endsafe, hardq, boarddir, kind23, freeq, rideout, rgna, rgnu, rgnak, rgnuk, landed, boardway,
+		telexk, teleyk, telezk, tdx, tdy, tdz;
 	local float seed, playk, endz, endtr, k, startz, startz2;
 	local string w;
 	n = stof(argv(2));
 	dir = !strcmp(argv(3), "left") ? 1 : (!strcmp(argv(3), "right") ? -1 : 0);
-	mode = 0; fk = 0; obj = 0; fast = 0; energy = 0; fixp = 0; kn = 0; tube = 0; hop = 0; look = 0; pace = 0; emin = 0; gens = 0; kex = 0; stall = 0; low = 0; edgeok = 0; ride = 0; wide = 0; leadmin = 0; fresh = 0; slack = 0; airdir = 0; lookw = -2; catch = -2; flick = -2; endsafe = 0; hardq = 0; boarddir = 0; kind23 = 0; freeq = 0; rideout = 0; rgna = rgnu = rgnak = rgnuk = 0; landed = 0; boardway = 0;
+	mode = 0; fk = 0; obj = 0; fast = 0; energy = 0; fixp = 0; kn = 0; tube = 0; hop = 0; look = 0; pace = 0; emin = 0; gens = 0; kex = 0; stall = 0; low = 0; edgeok = 0; ride = 0; wide = 0; leadmin = 0; fresh = 0; slack = 0; airdir = 0; lookw = -2; catch = -2; flick = -2; endsafe = 0; hardq = 0; boarddir = 0; kind23 = 0; freeq = 0; rideout = 0; rgna = rgnu = rgnak = rgnuk = 0; landed = 0; boardway = 0; telexk = teleyk = telezk = 0; tdx = tdy = tdz = 0;
 	seed = -2; playk = -2; endz = -2; endtr = -2; startz = -2; startz2 = -2;      // -2 not given, -1 its number expected next
 	for (i = 4; i < argc; i = i + 1)
 	{
@@ -3233,6 +3250,12 @@ void(entity e, float argc) SV_TASOptCommand =
 		else if (w == "rideout" && !rideout) rideout = 1;
 		else if (w == "landed" && !landed) landed = 1;
 		else if (w == "boardway" && !boardway) boardway = 1;
+		else if (w == "telex" && !telexk) telexk = 1;
+		else if (telexk == 1 && argv(i - 1) == "telex" && FS_TASNumber(w) && fabs(stof(w)) <= 65536) { tdx = stof(w); telexk = 2; }
+		else if (w == "teley" && !teleyk) teleyk = 1;
+		else if (teleyk == 1 && argv(i - 1) == "teley" && FS_TASNumber(w) && fabs(stof(w)) <= 65536) { tdy = stof(w); teleyk = 2; }
+		else if (w == "telez" && !telezk) telezk = 1;
+		else if (telezk == 1 && argv(i - 1) == "telez" && FS_TASNumber(w) && fabs(stof(w)) <= 65536) { tdz = stof(w); telezk = 2; }
 		else if (w == "rgna" && !rgnak) rgnak = 1;
 		else if (rgnak == 1 && argv(i - 1) == "rgna" && FS_TASNumber(w) && fabs(stof(w)) <= 4000) { rgna = stof(w); rgnak = 2; }
 		else if (w == "rgnu" && !rgnuk) rgnuk = 1;
@@ -3341,6 +3364,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_kn = kn; e.topt_kgen = -1; e.topt_kidx = 0; e.topt_wok = e.topt_bok = 0; e.topt_vizt = 0;   // vizt before the clear below
 	e.topt_efol = 0; e.topt_tube = tube; e.topt_tubeex = (slack > 0) ? slack : 0; e.topt_tubeout = e.topt_wallhit = e.topt_bdirn = e.topt_wayn = e.topt_slidn = e.topt_exdirn = 0; e.topt_hop = hop; e.topt_look = look; e.topt_pace = pace; e.topt_emin = emin; e.topt_weakn = 0; e.topt_cegen = gens ? gens : TOPT_CEGEN; e.topt_cestall = stall ? stall : TOPT_CESTALL; e.topt_low = low; e.topt_edgeok = edgeok; e.topt_edgen = 0; e.topt_earlycut = 0; e.topt_lowneed = 0; e.topt_airdir = airdir; e.topt_lookw = (lookw > 0) ? lookw : 0; e.topt_catch = (catch > 0) ? catch : 0; e.topt_flick = (flick > 0) ? flick : 0; e.topt_endsafe = 0; e.topt_hardq = hardq; e.topt_boarddir = boarddir; e.topt_kind23 = kind23; e.topt_freeq = freeq; e.topt_rideout = rideout;
 	e.topt_rgnon = (rgnak == 2 && rgnuk == 2); e.topt_rgna = rgna; e.topt_rgnu = rgnu; e.topt_landed = landed; e.topt_boardway = boardway;
+	e.topt_teleon = (telexk == 2 && teleyk == 2 && telezk == 2); e.topt_tele = [tdx, tdy, tdz];
 	e.topt_rideT = ride; e.topt_briefn = 0; e.topt_leadmin = leadmin; e.topt_over = 0;
 	e.topt_tgtj = 0;
 	if (tube)

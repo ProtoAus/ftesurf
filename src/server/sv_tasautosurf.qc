@@ -264,6 +264,7 @@ string(float k) SV_TASAutoKind =
 	if (k == 2) return "hop";
 	if (k == 4) return "peak";
 	if (k == 5) return "air point";
+	if (k == 7) return "portal";
 	return "finish";
 };
 
@@ -285,6 +286,8 @@ float as_twx[4], as_twy[4], as_twz[4];     // SV_TASAutoTwins' picks so far
 float as_rgnspots;              // the spots being swept are the regions' (their names)
 float as_hbx[64], as_hby[64], as_hbz[64], as_hbn;   // one human run's boards (ride starts), in order
 .float as_region;
+.vector as_ptp;                 // a portal's pass-through: where the body stood when it began (stage 32)
+.float as_ptry;                 // ...and the try that reached the portal (a miss is that try failing)
 float as_swp[TAS_ASMAX * 3];    // its place
 float as_optsave[29];
 .float as_launch;               // P1483 `launch`: the guide's leave from each ramp as an air point (opt-in, see SV_TASAutoLaunch)
@@ -311,6 +314,32 @@ void(entity e) SV_TASAutoOptRestore =
 	e.as_sg = as_optsave[16]; e.as_sy = as_optsave[17]; e.as_sside = as_optsave[18]; e.as_spots = as_optsave[19]; e.as_beam = as_optsave[20]; e.as_turns = as_optsave[21]; e.as_catch = as_optsave[22]; e.as_safe = as_optsave[23]; e.as_tight = as_optsave[24]; e.as_parallel = as_optsave[25]; e.as_free = as_optsave[26]; e.as_launch = as_optsave[27]; e.as_region = as_optsave[28];
 };
 
+// Lex, surf_colin_blaster_69000's main run: Jargon reached stage 1's last platform and jumped off it -- the guide's teleport
+// into stage 2 was no waypoint, the next target lay past it, and a line into a teleport is cut there (a miss). Each guide
+// teleport (300 u or more between rows) with a board or hop after it is a portal (kind 7): its point the guide's last row
+// before it, as_wn (a portal has no face) where the teleport put it. A stage's own last teleport stays the finish's.
+// Rule 8192 (on by default).
+void(entity e, float s) SV_TASAutoPortals =
+{
+	local float j, m, i, k, after;
+	for (j = s + 2; j < as_nrows && as_n < TAS_ASMAX; j = j + 1)
+	{
+		if (vlen(SV_TASAutoRowO(j) - SV_TASAutoRowO(j - 1)) < 300) continue;
+		after = FALSE;
+		for (k = 0; k < as_n; k = k + 1) if ((as_wk[k] == 1 || as_wk[k] == 2) && as_wt[k] > as_rows[j*7] - 0.0001) after = TRUE;
+		if (!after) continue;
+		for (m = 0; m < as_n && as_wt[m] <= as_rows[(j-1)*7]; m = m + 1) ;
+		for (i = as_n; i > m; i = i - 1)
+		{
+			as_wt[i] = as_wt[i - 1]; as_wk[i] = as_wk[i - 1]; as_wr[i] = as_wr[i - 1]; as_wl[i] = as_wl[i - 1];
+			for (k = 0; k < 3; k = k + 1) { as_wo[i*3 + k] = as_wo[i*3 - 3 + k]; as_wn[i*3 + k] = as_wn[i*3 - 3 + k]; }
+		}
+		as_wt[m] = as_rows[(j-1)*7]; as_wk[m] = 7; as_wr[m] = 400; as_wl[m] = 0;
+		as_wo[m*3] = as_rows[(j-1)*7+1]; as_wo[m*3+1] = as_rows[(j-1)*7+2]; as_wo[m*3+2] = as_rows[(j-1)*7+3];
+		as_wn[m*3] = as_rows[j*7+1]; as_wn[m*3+1] = as_rows[j*7+2]; as_wn[m*3+2] = as_rows[j*7+3];
+		as_n = as_n + 1;
+	}
+};
 void(entity e, float s) SV_TASAutoAir =
 {
 	local float k, j, jb, d, best, m, i;
@@ -519,6 +548,7 @@ float(entity e, float from) SV_TASAutoPlan =
 		}
 	}
 	if (e.as_finish) SV_TASAutoAdd(3, as_nrows - 1, '0 0 0');
+	if (SV_TASAutoRule(8192)) SV_TASAutoPortals(e, s);
 	if (e.as_air) SV_TASAutoAir(e, s);
 	SV_TASAutoTurnsPlace();     // after the player's air points: near TAS_ASMAX theirs stay (review H)
 	SV_TASAutoMoved();
@@ -1343,6 +1373,7 @@ void(entity e) SV_TASAutoLink =
 		return;
 	}
 	o = [as_wo[i*3], as_wo[i*3+1], as_wo[i*3+2]]; n = [as_wn[i*3], as_wn[i*3+1], as_wn[i*3+2]];
+	if (as_wk[i] == 7) n = '0 0 0';     // a portal: as_wn is where its teleport puts the body, not a face
 	if ((e.as_spots || as_spotq[i]) && !e.as_beam && !e.as_route && !e.as_swph && !as_swd[i] && as_wk[i] == 1 && i + 1 < as_n && (n_x || n_y) && !SV_TASAutoIsMoved(i))
 	{
 		SV_TASAutoSpots(e, i);
@@ -1461,6 +1492,7 @@ void(entity e) SV_TASAutoLink =
 	if (as_wk[i - 1] == 1 && as_wl[i - 1] > e.as_tprev + PM_TICK)
 		ps = strcat(ps, sprintf(" flick %.0f", min(TOPT_HMAX, rint((as_wl[i - 1] - e.as_tprev) / PM_TICK))));
 	if (cvar("tas_jargon_lookw") >= 0.0001 && cvar("tas_jargon_lookw") <= 1) ps = strcat(ps, sprintf(" lookw %.4f", cvar("tas_jargon_lookw")));     // P1483: bench (1e-05 would read as no number: review K)
+	if (as_wk[i] == 7) ps = strcat(ps, sprintf(" telex %.1f teley %.1f telez %.1f", as_wn[i*3], as_wn[i*3+1], as_wn[i*3+2]));
 	if (as_wk[i] == 3 && e.as_ctrack >= 0)
 	{	// P1483: the course's end box, or its track's END boxes: a reach there (or into the teleport to it) is the finish
 		r = (e.as_cleg >= 1) ? SV_ZoneFindLeg(e.as_ctrack, e.as_cleg) : -1;
@@ -2022,6 +2054,34 @@ void(entity e) SV_TASAutoFrame =
 		return;
 	}
 	if (e.as_stage == 1) { SV_TASAutoLink(e); return; }
+	if (e.as_stage == 32)
+	{	// through a portal: no keys, 2 ticks a step, until the body jumps (teleported) -- 60 ticks at most, else that try failed
+		if (e.run_tas_pending || e.run_tas_replaystate == TAS_TAPE_ACTIVE || e.run_tas_replaystate == TAS_TAPE_STAGING) return;
+		if (vlen(e.origin - e.as_ptp) > 300)
+		{	// on from the guide's own row nearest the body past its teleport
+			best = 1000000; t = e.as_tprev;
+			for (i = 0; i < as_nrows; i = i + 1)
+				if (as_rows[i*7] > e.as_tprev - 0.0001)
+				{
+					d = vlen(SV_TASAutoRowO(i) - e.origin);
+					if (d < best) { best = d; t = as_rows[i*7]; }
+				}
+			e.as_tprev = t; e.as_stage = 1;
+			SV_TASAutoNote(e, 1, sprintf("through the portal (%.0f u from the guide's landing)", best));
+			return;
+		}
+		if (e.as_sn >= 60)
+		{	// that try failed: tried again or backtracked, as a finish's coast that misses
+			SV_TASAutoNote(e, 1, sprintf("stretch %.0f: the portal was missed: again", e.as_i));
+			e.as_i = e.as_i - 1; e.as_tprev = as_wp[e.as_i]; e.as_try = e.as_ptry;
+			e.topt_outcome = 1; e.topt_lowneed = e.topt_earlycut = e.topt_trigcut = 0; e.topt_over = e.topt_briefn = 0;
+			e.as_stage = 2;
+			return;
+		}
+		SV_TASAutoGuide(e, 0, 0, e.v_angle_y, 0, 2);
+		e.as_sn = e.as_sn + 2;
+		return;
+	}
 	if (e.as_stage == 31)
 	{	// no keys, 4 ticks a step, at most 6 s; the finish check above ends it
 		if (e.run_tas_pending || e.run_tas_replaystate == TAS_TAPE_ACTIVE || e.run_tas_replaystate == TAS_TAPE_STAGING) return;
@@ -2080,8 +2140,15 @@ void(entity e) SV_TASAutoFrame =
 			SV_TASAutoNote(e, 1, sprintf("stretch %.0f reached with energy %.0f (the guide %.0f)", e.as_i + 1, as_rb, as_rf));
 			}
 			if (e.as_i == as_n - 1) e.as_fintry = e.as_try;
+			s = (as_wk[e.as_i] == 7); e.as_ptry = e.as_try;
 			e.as_tprev = t; e.as_i = e.as_i + 1; e.as_try = 0;
 			SV_TASAutoSave(e, e.as_i);
+			if (s && e.as_i < as_n)
+			{	// a portal reached: its line stops the tick before the teleport; stepped through it, then the next stretch
+				e.as_stage = 32; e.as_sn = 0; e.as_ptp = e.origin;
+				SV_TASAutoNote(e, 1, sprintf("stretch %.0f: into the portal", e.as_i));
+				return;
+			}
 			if (e.as_i >= as_n && e.as_ctrack >= 0 && e.as_finish)
 			{	// P1478: the course's last target is reached within 400 u of its end: the coast, predicted first, does the rest
 				e.as_stage = 31; e.as_sn = 0;
@@ -2594,8 +2661,9 @@ void(entity e, float argc) SV_TASAutoCommand =
 			{
 				WriteByte(MSG_MULTICAST, (as_wk[n] == 5 && as_wl[n] < 0) ? 6 : as_wk[n]); WriteFloat(MSG_MULTICAST, as_wt[n]);
 				WriteFloat(MSG_MULTICAST, as_wo[n*3]); WriteFloat(MSG_MULTICAST, as_wo[n*3+1]); WriteFloat(MSG_MULTICAST, as_wo[n*3+2]);
-				WriteShort(MSG_MULTICAST, rint(as_wn[n*3] * 30000)); WriteShort(MSG_MULTICAST, rint(as_wn[n*3+1] * 30000));
-				WriteShort(MSG_MULTICAST, rint(as_wn[n*3+2] * 30000));
+				WriteShort(MSG_MULTICAST, (as_wk[n] == 7) ? 0 : rint(as_wn[n*3] * 30000));
+				WriteShort(MSG_MULTICAST, (as_wk[n] == 7) ? 0 : rint(as_wn[n*3+1] * 30000));
+				WriteShort(MSG_MULTICAST, (as_wk[n] == 7) ? 0 : rint(as_wn[n*3+2] * 30000));
 			}
 			msg_entity = e; multicast(e.origin, MULTICAST_ONE_R);
 		}
