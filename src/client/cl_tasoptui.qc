@@ -457,7 +457,12 @@ void(float n) TASOptUI_Course =
 {
 	TASJargon_Courses();
 	if (!(n >= 0 && n < jg_cn) || n != floor(n)) { print(sprintf("tas jargon course: 1..%g on this map\n", jg_cn)); return; }
-	if (n != jg_cpick) { TASOptUI_Stop(1); jg_cpick = n; jg_gat = 0; jg_kat = 0; taso_sel = -1; taso_stale = 1; jg_n = 0; jgw_sel = -1; }    // the old course's strip hides (review 4-5: a Redo redid it)
+	if (n != jg_cpick)
+	{	// the stop runs before the plan request: one console buffer, in order (review 1528: the hotkeys drew no route)
+		TASOptUI_Stop(1); jg_cpick = n; jg_gat = 0; jg_kat = 0; taso_sel = -1; taso_stale = 1; jg_n = 0; jgw_sel = -1;
+		TASJargon_Guides();
+		if (jg_gn) TASJargon_RequestPlan();
+	}    // the old course's strip hides (review 4-5: a Redo redid it)
 	print(sprintf("tas jargon: %s\n", TASJargon_CourseLabel(n)));
 };
 // ---- The Jargon panel (Lex, 13 Nov: one panel, not a simple and an advanced view -- the waypoints in order with
@@ -470,8 +475,6 @@ string jgf_buf;
 string jgf_seed;                 // the text it opened with: left unchanged is no edit (review 1528: a click moved it 0.05 u)
 float jgf_k, jgf_t;              // the focused waypoint by what it is, not its row: a replan reorders rows (review 1528)
 vector jgf_o;
-float jgw_selk, jgw_selt;        // the selected one's, the same way
-vector jgw_selo;
 float jgw_wheel, jgw_rowh, jgw_rows;
 float jgd_open, jgd_w, jgd_n, jgd_rows;      // the open dropdown (1 course, 2 guide run), drawn last over the panel
 vector jgd_pos, jgd_scroll;
@@ -590,7 +593,14 @@ void(float undo) TASOptUI_WpUndo =
 	else { if (jgu_top >= jgu_n) return; i = jgu_top; jgu_top = jgu_top + 1; }
 	k = jgu_k[i];
 	if (k == 1) TASOptUI_WpSend(1, jgu_t[i], undo ? jgu_b[i] : jgu_a[i], undo ? jgu_a[i] : jgu_b[i]);
-	else if (k == 2) TASOptUI_WpSend(5, 0, undo ? jgu_b[i] : jgu_a[i], undo ? jgu_a[i] : jgu_b[i]);
+	else if (k == 2)
+	{
+		if (TASOptUI_WpSend(5, 0, undo ? jgu_b[i] : jgu_a[i], undo ? jgu_a[i] : jgu_b[i]))
+		{	// as FieldCommit: the row and the selection at the new place until the replan (review 1528: it dropped them)
+			k = TASOptUI_WpFind(5, 0, undo ? jgu_b[i] : jgu_a[i], -1);
+			if (k >= 0) { jg_o[k] = undo ? jgu_a[i] : jgu_b[i]; if (jgw_sel == k) jgw_selo = jg_o[k]; }
+		}
+	}
 	else if (k == 3) { if (undo) TASOptUI_AirDel(jgu_b[i]); else TASOptUI_AirAdd(jgu_b[i]); }
 	else if (undo) TASOptUI_AirAdd(jgu_a[i]);
 	else TASOptUI_AirDel(jgu_a[i]);
@@ -678,7 +688,12 @@ float(float evtype, float scanx, float chary) TASOptUI_FieldInput =
 	return TASOptUI_FieldKey(scanx, chary);
 };
 // a repeat of a key the field owns, after TASTimeline_RecipeRepeat took it (cl_main)
-void(float scanx, float chary) TASOptUI_FieldRepeat = { if (jgf_on) TASOptUI_FieldKey(scanx, chary); };
+void(float scanx, float chary) TASOptUI_FieldRepeat =
+{
+	if (!jgf_on) return;
+	if (!tasu_open || tasu_tab != TAS_TAB_OPTIMIZE || chat_typing) { jgf_on = FALSE; sui_field_focus(""); return; }
+	TASOptUI_FieldKey(scanx, chary);
+};
 // Esc with a dropdown open closes it, not the panel
 float(float evtype, float scanx) TASOptUI_DropKey =
 {
@@ -780,6 +795,35 @@ void(string id, float which, vector pos, vector sz, string label, float tsz) TAS
 	if (Profile_Chip(id, pos, sz, label, tsz, jgd_open == which)) { jgd_open = (jgd_open == which) ? 0 : which; jgd_scroll = '0 0 0'; }
 	if (jgd_open == which) { jgd_pos = pos + [0, sz_y + 2, 0]; jgd_w = sz_x; }     // under its opener (`tas jargon drop` opens one too)
 };
+// the guide points back where the guide run put them, and the panel's air points gone -- deleted highest route slot first
+// (each delete renumbers those after it); the clicked-route tool's points (with a normal) stay (review 1528: `tas route
+// clear` took them too). Undo brings the air points back.
+float jgp_resetask;
+float jgr_s[JG_MAX];
+vector jgr_p[JG_MAX];
+void() TASOptUI_Reset =
+{
+	local float i, j, n, r, t;
+	local vector tv;
+	n = 0;
+	for (i = 0; i < jg_n; i = i + 1)
+		if (jg_k[i] == 5)
+		{
+			r = TASJargon_RouteOf(jg_o[i]);
+			if (r >= 0) { jgr_s[n] = r; jgr_p[n] = jg_o[i]; n = n + 1; }
+		}
+	for (i = 0; i < n; i = i + 1)       // highest slot first, each with its place
+		for (j = i + 1; j < n; j = j + 1)
+			if (jgr_s[j] > jgr_s[i]) { t = jgr_s[i]; jgr_s[i] = jgr_s[j]; jgr_s[j] = t; tv = jgr_p[i]; jgr_p[i] = jgr_p[j]; jgr_p[j] = tv; }
+	localcmd("tas autosurf reset\n");
+	jgu_n = jgu_top = 0;
+	for (i = 0; i < n; i = i + 1)
+	{
+		localcmd(sprintf("tas route del %g\n", jgr_s[i] + 1));
+		TASOptUI_WpPush(4, 0, jgr_p[i], '0 0 0');
+	}
+	jgw_sel = -1; jg_replan = cltime + 0.2;
+};
 // `tas jargon start | mode 0|1|2 | set N x|y|z V | field N x|y|z | air N | del N | undo | redo | list`: the panel's own
 // functions, for binds and the harness that tests them (N counts from 1, as the list does; field opens one as a click)
 void(float argc) TASOptUI_Verb =
@@ -877,7 +921,7 @@ void(vector at, float width, float tsz, float hint, float row, float running, st
 		TASOptUI_Start();
 	if (Profile_Chip("jgp_stop", at + [third + 6, 0, 0], [third, row * 1.4, 0], "Stop", tsz, running)) TASOptUI_Stop(1);
 	if (Profile_Chip("jgp_play", at + [2 * (third + 6), 0, 0], [third, row * 1.4, 0], "Back to playing", tsz, FALSE))
-		{ TASOptUI_Stop(1); localcmd("tas play\n"); TASUI_Close(); }
+		{ TASOptUI_Stop(0); localcmd("tas play\n"); TASUI_Close(); }
 	at_y = at_y + row * 1.4 + 3;
 	if (autocvar_tas_jargon_startmode != 2)
 	{
@@ -951,10 +995,12 @@ void(vector at, float width, float tsz, float hint, float row, float running, st
 	at_y = at_y + row + 3;
 	if (Profile_Chip("jgp_undo", at, chip3, sprintf("Undo (%g)", jgu_top), hint, FALSE)) TASOptUI_WpUndo(TRUE);
 	if (Profile_Chip("jgp_redo", at + [third + 6, 0, 0], chip3, sprintf("Redo (%g)", jgu_n - jgu_top), hint, FALSE)) TASOptUI_WpUndo(FALSE);
-	if (Profile_Chip("jgp_reset", at + [2 * (third + 6), 0, 0], chip3, "Reset to the guide run", hint, FALSE))
+	if (Profile_Chip("jgp_reset", at + [2 * (third + 6), 0, 0], chip3, (cltime < jgp_resetask) ? "Click again to reset" : "Reset to the guide run", hint,
+		cltime < jgp_resetask))
 	if (TASOptUI_EditOK())
-	{	// the moved guide points and the air points (review 1528: the air points stayed)
-		localcmd("tas autosurf reset\ntas route clear\n"); jgu_n = jgu_top = 0; jgw_sel = -1; jg_replan = cltime + 0.2;
+	{
+		if (cltime >= jgp_resetask) jgp_resetask = cltime + 3;      // twice: it moves every guide point back
+		else { jgp_resetask = 0; TASOptUI_Reset(); }
 	}
 	at_y = at_y + row + hint;
 	if (Profile_Chip("jgs_l1", at, [half, row, 0], "Search lines", hint, cvar("tas_viz"))) cvar_set("tas_viz", cvar("tas_viz") ? "0" : "1");

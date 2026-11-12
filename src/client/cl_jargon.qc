@@ -20,6 +20,9 @@ float jg_edit;                  // "Edit in world"
 var float jg_hover = -1, jg_drag = -1;
 vector jg_pos, jg_off, jg_from;
 float jg_m1, jg_m2, jg_far, jg_replan;
+var float jgw_sel = -1;           // the panel's selected waypoint
+float jgw_selk, jgw_selt;         // ...by what it is (cl_tasoptui.qc follows it across replans)
+vector jgw_selo;
 #define JG_GUIDES 12
 string jg_gp[JG_GUIDES];        // a guide run's file
 string jg_gl[JG_GUIDES];        // ...and its label
@@ -376,7 +379,7 @@ void() TASJargon_Frame =
 	local vector eye, fwd;
 	local float i, d, best;
 	jg_show = (jg_n > 0 && (jg_edit || (tasu_open && tasu_tab == TAS_TAB_OPTIMIZE) || taso_state == 1 || taso_armed || autocvar_tas_jargon_route));     // route: the stream panel's
-	if (jg_replan && cltime >= jg_replan) { jg_replan = 0; TASJargon_RequestPlan(); }
+	if (jg_replan && cltime >= jg_replan && taso_state != 1) { jg_replan = 0; TASJargon_RequestPlan(); }    // held while it runs (review 1528)
 	if (!jg_edit) { jg_hover = jg_drag = -1; return; }
 	eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
@@ -400,6 +403,7 @@ void() TASJargon_Frame =
 
 void() TASJargon_EditStart =
 {
+	if (taso_state == 1) { print("tas jargon: Stop Jargon to move its waypoints\n"); return; }      // review 1528: an edit cleared the armed state
 	if (!jg_n) TASJargon_RequestPlan();
 	jg_edit = jg_fly = TRUE; jg_flyt = cltime;
 	jg_camorg = getproperty(VF_ORIGIN); jg_bodyang = getproperty(VF_CL_VIEWANGLES); jg_move = '0 0 0'; jg_btn = 0;
@@ -465,6 +469,7 @@ float(float evtype, float scanx, float chary, float devid) TASJargon_InputEvent 
 	if (evtype == IE_KEYUP && scanx == K_MOUSE2 && jg_m2) { jg_m2 = FALSE; return TRUE; }
 	if (evtype == IE_KEYUP && scanx == K_MOUSE1 && jg_m1 && jg_drag < 0) { jg_m1 = FALSE; return TRUE; }
 	if (!jg_edit) return FALSE;
+	if (taso_state == 1 && jg_drag < 0) return FALSE;   // armed or running: no new drag (review 1528)
 	if (tasu_open && jg_drag < 0) return FALSE;         // the panel's clicks are its own
 	if (evtype == IE_KEYDOWN && scanx == K_MOUSE1 && jg_hover >= 0)
 	{
@@ -487,6 +492,7 @@ float(float evtype, float scanx, float chary, float devid) TASJargon_InputEvent 
 			if (r >= 0) { localcmd(sprintf("tas route set %g %.1f %.1f %.1f 0 0 0\n", r + 1, jg_pos_x, jg_pos_y, jg_pos_z)); jg_replan = cltime + 0.4; }
 		}
 		jg_o[jg_drag] = jg_pos;
+		if (jg_drag == jgw_sel) jgw_selo = jg_pos;
 		jg_drag = -1; jg_m1 = FALSE;
 		return TRUE;
 	}
@@ -511,7 +517,6 @@ void(vector a, vector b, vector col, float al) TASJargon_Seg =
 	R_PolygonVertex(b, '0.5 0 0', col, al);
 	R_EndPolygon();
 };
-var float jgw_sel = -1;           // the panel's selected waypoint
 // hovered, selected in the panel, or the one a running chain works on: its ramp lit, its handle big
 float(float i) TASJargon_Lit = { return (i == jg_hover || i == jgw_sel || (taso_state == 1 && i == taso_i)); };
 void() TASJargon_DrawWorld =
