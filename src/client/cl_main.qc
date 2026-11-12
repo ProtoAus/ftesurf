@@ -2223,8 +2223,9 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		if (!worldonly) MapMsg_DrawFade(scr); // P870: no map effects over the overview
 
 		// The 2D lines -- replay path (BUILD 43; hud_watch_path_mode gives it to this or the world-depth drawer), P433's
-		// world lines, trails, Jargon's -- go UNDER the HUD and every panel (Lex: they covered it). A 2D polygon batch is drawn
-		// by the next 2D call or at the frame's end (cl_screen.c:2896); cl_hudcache.qc:153 flushes it before switching target.
+		// world lines, trails, Jargon's -- and their labels (Line_FrameEnd) go UNDER the HUD and every panel (Lex: they covered
+		// it). A 2D polygon batch is drawn by the next 2D call or setproperty (pr_csqc.c:2486), else at the frame's end
+		// (cl_screen.c:3793). Mark energies read last frame's zero on the frame it moves (HUD_Draw sets ui_anchor_z).
 		if (!worldonly)
 		{
 			if (rec_wt_on)
@@ -2236,6 +2237,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 			TASJargon_Draw2D();
 			LineGraph_WorldLabels();
 		}
+		Line_FrameEnd();
 
 		/*
 		  Patch 270.  NM_Frame samples the engine's received-delta counters and
@@ -2297,14 +2299,11 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  what runs before it.
 		*/
 		Chat_Draw(scr);
-		Line_FrameEnd();                // the 2D lines draw before HUD_Draw (above)
 
 		/*
-		  Build 54.  The inspector's labels, and they are here for exactly the
-		  reason the block above gives: they are 2D, so they have to be after
-		  renderscene, and after HUD_Draw so that a later 2D call is guaranteed to
-		  flush the batch.  Their positions were projected in Ev_Draw, before
-		  renderscene, while the view matrix was set.
+		  Build 54.  The inspector's labels: 2D, so after renderscene.  Their
+		  positions were projected in Ev_Draw, before renderscene, while the view
+		  matrix was set.
 		*/
 		if (!worldonly)
 		{
