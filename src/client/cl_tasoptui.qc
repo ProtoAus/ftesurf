@@ -15,6 +15,7 @@ float taso_demon, taso_pick;
 float taso_rb[TASO_STRETCHES], taso_rf[TASO_STRETCHES];   // each reached stretch: speed at farsh's board height, and his (0: none)
 var float taso_lastk = -1;          // the stretch last reached (the line under the strip)
 var float taso_sel = -1;            // the stretch picked under the strip to redo the run from
+float taso_stale;               // the strip is another course's (a switch since its run): hidden until a run starts
 // the guide run's name for the panel's lines (Lex: farsh's name was baked into Jargon)
 string() TASOptUI_Guide = { return (jg_pick < jg_gn) ? jg_gl[jg_pick] : "the guide"; };
 
@@ -205,7 +206,7 @@ void() TASAuto_Event =
 	if (taso_note != "") strunzone(taso_note);
 	taso_note = strzone(readstring());
 	rk = readshort(); rb = readshort(); rf = readshort();
-	if (taso_state == 1 && was != 1) { for (k = 0; k < TASO_STRETCHES; k = k + 1) taso_rb[k] = taso_rf[k] = 0; taso_lastk = -1; }
+	if (taso_state == 1 && was != 1) { for (k = 0; k < TASO_STRETCHES; k = k + 1) taso_rb[k] = taso_rf[k] = 0; taso_lastk = -1; taso_stale = 0; }
 	else if (taso_state == 1 && taso_i < wasi)      // a backtrack: what came after it is to be done again
 		for (k = taso_i; k < TASO_STRETCHES; k = k + 1) taso_rb[k] = taso_rf[k] = 0;
 	if (rk >= 0 && rk < TASO_STRETCHES) { taso_rb[rk] = rb; taso_rf[rk] = (rf > 0) ? rf : -1; taso_lastk = rk; }   // -1: a route point
@@ -457,7 +458,7 @@ void(float n) TASOptUI_Course =
 {
 	TASJargon_Courses();
 	if (!(n >= 0 && n < jg_cn) || n != floor(n)) { print(sprintf("tas jargon course: 1..%g on this map\n", jg_cn)); return; }
-	if (n != jg_cpick) { TASOptUI_Stop(1); jg_cpick = n; jg_gat = 0; jg_kat = 0; taso_sel = -1; taso_n = 0; }    // the old course's stretches go (review 4: a Redo redid them)
+	if (n != jg_cpick) { TASOptUI_Stop(1); jg_cpick = n; jg_gat = 0; jg_kat = 0; taso_sel = -1; taso_stale = 1; }    // the old course's strip hides (review 4-5: a Redo redid it)
 	print(sprintf("tas jargon: %s\n", TASJargon_CourseLabel(n)));
 };
 void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
@@ -657,7 +658,7 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	if (Profile_Chip("jg_panel", at + [half + 6, 0, 0], chip, autocvar_tas_searchpanel ? "Thinking panel: on" : "Thinking panel: off", hint, autocvar_tas_searchpanel))
 		cvar_set("tas_searchpanel", autocvar_tas_searchpanel ? "0" : "1");
 	at_y = at_y + row + hint;
-	if (taso_n > 0)
+	if (taso_n > 0 && !taso_stale)      // server notes refill taso_n with the old chain's count: the flag holds
 	{	// the run so far: a numbered button a stretch, its colour bar how it went; one picked, the run redone from there
 		sui_text(at, [hint, hint], "Stretches -- pick one to redo the run from there", SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.5;
 		third = (width - 3 * (min(taso_n, 16) - 1)) / min(taso_n, 16);
