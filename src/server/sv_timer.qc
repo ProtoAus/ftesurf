@@ -737,6 +737,7 @@ float sv_ts_taint_uid[FS_MAXPLAYERS]; // existing native userid, VM-only; surviv
 .float run_tas_next;
 // P1055: native gate protocol. Controls/counters are never saved as run state.
 .float run_tas_paused, run_tas_pending, run_tas_done, run_tas_ready, run_tas_fault;
+.float run_taskeys;             // STAT_FS_TASKEYS (SV_TASAutoKeysStat)
 .float run_tas_req, run_tas_seen; // seen is the bounded completed-step ACK
 .float run_tas_rwcap, run_tas_rwpin;
 .float run_tas_incap, run_tas_replaystate, run_tas_replaycount, run_tas_replayat;

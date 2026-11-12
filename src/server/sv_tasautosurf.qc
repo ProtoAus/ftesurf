@@ -629,6 +629,24 @@ float(entity e) SV_TASAutoRest =
 		}
 	return -1;
 };
+// the keys HUD while a tape or Jargon drives the body: the command it played (none while paused), + 65536 to say so
+void(entity e) SV_TASAutoKeysStat =
+{
+	if (e.run_tas_mode && (e.as_on || e.run_tas_replaystate == TAS_TAPE_ACTIVE))
+		e.run_taskeys = 65536 + (e.run_tas_paused ? 0 : SV_RecKeys(e));
+	else e.run_taskeys = 0;
+};
+// the guide's jumps from its standstill row r until just past leaving the box (as_r0 + 4, stage 13's own handover), read
+// from the physics as stage 13 reads them. Lex: a human jumps once from the start platform to the first ramp on nearly
+// every map; replaying a guide that hopped about on the platform made the bot bhop off it (rule 4096, on by default).
+float(float r) SV_TASAutoStartJumps =
+{
+	local float i, n;
+	n = 0;
+	for (i = max(1, r + 1); i < min(as_nrows, as_r0 + 5); i = i + 1)
+		if (as_rows[i*7+6] - as_rows[i*7-1] > 150 && fabs(as_rows[i*7-1]) < 1) n = n + 1;
+	return n;
+};
 
 // P1478: Continue. A course chain that began at the start zone (a legal session) saves the run as a legal-start TAS
 // project, jg_<leg folder>, each time it reaches its furthest stretch yet, and its place in the chain beside it
@@ -1765,6 +1783,12 @@ void(entity e) SV_TASAutoFrame =
 			if (e.run_t_state == TS_RUNNING) { SV_TASAutoStop(e, "walking to the guide's start left the box"); return; }
 			rd = vlen([as_rows[e.as_ri*7+1] - e.origin_x, as_rows[e.as_ri*7+2] - e.origin_y, 0]);
 			t = vlen([e.velocity_x, e.velocity_y, 0]);
+			if (rd <= 16 && t < 1 && SV_TASAutoRule(4096) && SV_TASAutoStartJumps(e.as_ri) > 1)
+			{
+				SV_TASAutoNote(e, 1, sprintf("start: the guide hopped %.0f times in the box; one jump to the first ramp instead", SV_TASAutoStartJumps(e.as_ri)));
+				e.as_stage = 10; e.as_ri = -1; e.as_sn = 0;
+				return;
+			}
 			if (rd <= 16 && t < 1)
 			{
 				e.as_stage = 13; e.as_ri = e.as_ri + 1; e.as_sn = 0;
@@ -1825,6 +1849,11 @@ void(entity e) SV_TASAutoFrame =
 				if (e.as_sdrop > 300) { SV_TASAutoStop(e, "the start never landed in the box (300 ticks)"); return; }
 				SV_TASAutoGuide(e, 0, 0, e.v_angle_y, 0, 2);
 				return;
+			}
+			if (!e.as_sn && e.as_ri >= 0 && vlen(e.velocity) < 1 && SV_TASAutoRule(4096) && SV_TASAutoStartJumps(e.as_ri) > 1)
+			{
+				SV_TASAutoNote(e, 1, sprintf("start: the guide hopped %.0f times in the box; one jump to the first ramp instead", SV_TASAutoStartJumps(e.as_ri)));
+				e.as_ri = -1;
 			}
 			if (!e.as_sn && e.as_ri >= 0 && vlen(e.velocity) < 1)
 			{	// landed and still: the guide's own prestrafe, from where it stood -- walked there first when that is on this

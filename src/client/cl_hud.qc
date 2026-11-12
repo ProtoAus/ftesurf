@@ -5206,6 +5206,18 @@ void(vector scr) HUD_DrawKeys =
 		tl   = (rec_wt_keys & FSI_TLEFT)  ? TRUE : FALSE;
 		tr   = (rec_wt_keys & FSI_TRIGHT) ? TRUE : FALSE;
 	}
+	else if (getstatf(STAT_FS_TASKEYS) >= 65536)
+	{
+		// the keys a TAS tape or Jargon played on this body, not the ones held here
+		kw   = (getstatf(STAT_FS_TASKEYS) & FSI_FWD)    ? TRUE : FALSE;
+		ks   = (getstatf(STAT_FS_TASKEYS) & FSI_BACK)   ? TRUE : FALSE;
+		ka   = (getstatf(STAT_FS_TASKEYS) & FSI_LEFT)   ? TRUE : FALSE;
+		kd   = (getstatf(STAT_FS_TASKEYS) & FSI_RIGHT)  ? TRUE : FALSE;
+		jump = (getstatf(STAT_FS_TASKEYS) & FSI_JUMP)   ? TRUE : FALSE;
+		duck = (getstatf(STAT_FS_TASKEYS) & FSI_DUCK)   ? TRUE : FALSE;
+		tl   = FALSE;
+		tr   = FALSE;
+	}
 	else if (spc_hud)
 	{
 		// Patch 385: the watched player's usercmd keys (Body_Keys).  +left/+right
