@@ -92,18 +92,20 @@ transparent-sort/draw cost, nor a promised gain on every map/machine.
   The sampled large frames did not reproduce the earlier large game-code spike;
   presentation/profiling-overlay costs dominated the largest samples. This is
   attribution only, not FPS evidence or a causal fix. Coverage stops before the
-  end of the historical survey's 1.5..36.5s window; the remaining interval and the
-  rest of the 151s replay are not cleared.
-  A12Nov read-only full-tail preflight bound the correct25800cache:10,347samples,
-  -3.840..151.351s (filename151.365is not the last sample). Existing diagnostic
-  feature strings and historical named-builtin output were bound, not newly
-  executed. The retained frame-specific output calls `r_frametime_dump`, which
-  unconditionally writes the global clipboard; no console-only argument exists.
-  No coordinated clipboard interval was available within the no-overwrite scope,
-  so no five-minute arm was launched and no replacement harness/build invented.
-  **New coverage: none; tail remains untested**, not a fixed/absent QC spike or
-  GPU conclusion. An exact owner stall location or coordinated attribution is
-  needed before another safe code change is justified.
+  end of the historical survey's 1.5..36.5s window; that earlier partial capture
+  did not clear the remaining tail. An initial12Nov full-tail preflight bound
+  correct25800cache10,347samples/-3.840..151.351s (filename151.365is not the last
+  sample), then stopped before runtime because its frame dump always wrote the
+  global clipboard. That blocked history remains unchanged.
+  Renewed continuation later added a DIAGNOSTIC-ONLY explicit console-output
+  argument, preserving the default path, then actually completed a full warm
+  and a full per-builtin diagnostic pass through151.351s without clipboard
+  access. Neither reproduced the earlier spontaneous large QC hitch. The
+  largest captured155.65ms endpoint interval was the test's requested
+  Watch_Status printing28lines; future timing snapshots precede that control.
+  This TANDEM attribution is not an isolated timing/FPS or global no-hitch pass,
+  and not a reason to change gameplay QC/GC. Exact owner stall location or an
+  actual coordinated quiet reproduction remains needed. See P1517's report.
 - Native read-only review found a possible monotonic plane-side early exit in
   `GLBE_BlendPlaneSide`. Not implemented or measured by P1507. Subsequent P1511
   implements it with unchanged logical sort-work accounting and qualified

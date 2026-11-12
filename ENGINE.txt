@@ -8,7 +8,9 @@
 # P1517 selects one strict halfspace for transparent-face proof scans, retaining
 # the same results, thresholds, ordering and charged vertex budget. Finite/native
 # controls qualify less helper bookkeeping, not a measured game-FPS gain.
-# Clean production build/client-only rollout pending; tools/p1517-plane-selected.md.
+# Clean tagged Full passed; both Windows clients installed12Nov05:02:33Z and
+# independently verified05:08:37Z. No other native/VM/Pi/backend roles shipped.
+# Quantitative frame benefit/owner feel pending; tools/p1517-plane-selected.md.
 # Patch 1516 (Python HID reader only): clipped identity constants are explicit
 # unavailable data, never a false angle accusation or unproved journal OK.
 # Native25literal rows; HID535/0 Windows/ARM, receipt388/0, reader949/0; existing

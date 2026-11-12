@@ -6273,7 +6273,12 @@ a capped moving list can still prove acting sort metadata, but complete-list
 comparison requires a genuinely untruncated matched scene. Different playback
 clocks/paused states never establish pixel/order equality. Prefer finite/source
 proof plus an acting real-render smoke over growing a camera harness; leave
-manual visual acceptance and measured frame benefit explicit.
+manual visual acceptance and measured frame benefit explicit. `r_blendtrace`
+arms the NEXT rendered frame: a console echo marker does not imply that trace
+is already in the log. Reuse the existing bounded next-frame reader, then check
+actual replay time; native memo spelling is `ALPHATRACE memo hits 0`. Retain a
+premature-reader failure, correct that seam rather than rebuild the renderer,
+and keep new evidence exclusive inside the same owned attempt directory.
 
 ## Run and test
 

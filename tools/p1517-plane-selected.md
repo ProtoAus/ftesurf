@@ -66,14 +66,50 @@ on future captures; do not silently remove the actual reader coverage check.
 This does not globally clear the original hitch or justify a speculative GC/QC
 change. No exclusive GPU/CPU root or numerical frame gain follows from TANDEM.
 
-## Production / rollout — pending
+## Production / actual client delivery
 
-Clean normally stamped production Full, final-image/dependency smoke and guarded
-dual-Windows client-only promotion remain pending. Diagnostic images are not
-shipping payloads. The unchanged upstream native dependency received two bounded
-independent source reviews; no backend/HID reader rollout is cleared by them.
+Clean tagged source9aa225a8f and QC metadata3edf9034 completed the supported
+`-Engine -Full -NoDeploy -Jobs 2 -FteRoot <owned-engine>` invocation at
+2026-11-12 04:33:37–04:38:12 UTC, RC0. All three QC programs have zero warnings;
+the native74 warning payloads exactly equal the inherited baseline (zeroNEW),
+not a warning-free native build. TLS checker:365objects/10symbols/0plain-address
+uses. Normal shipping stamp is `git-8709-patch-1517-0-g9aa225a8f`.
 
-No native server/plugin/VM/Pi/backend release or QC Build bump is part of this
-renderer-only delivery. Owner glass/feel checks are pending in `lextest.md`.
-A controlled frame-tail A/B still needs the shared rig's actual quiet window;
-no isolated FPS or0.1%-low improvement is claimed here.
+Actual final-client smoke used the unchanged installed legacy dedicated server
+and HL2 plugin, frozen own VMs and full effects. Reader0.0->12.0125s, admitted85,
+status1/edges54/work30371/moved24/pass1, certworld-1/memohits0; decoded nonblank
+RGB1920x1200, no detected renderer/VM fatal. An initial smoke driver read the
+next-frame trace too early; its failed source/logs remain retained. One bounded
+existing-reader correction then completed these gates, without a renderer
+rebuild or paused-scene/pixel comparison. Diagnostic images were NOT shipped.
+
+Both installed clients were promoted once at **2026-11-12 05:02:33 UTC**:
+
+- `C:/FTESurf/ftesurf64.exe`
+- `C:/FTEQuake/fteqw64.exe`
+
+Exact SHA256 in both:
+`1799454a6f54e74a24a42be9f478edf717dd985582a1057ebe539fc30556eb45`.
+
+Separate independent read-only postflight at **05:08:37 UTC** freshly verified
+both clients/stamps/modes, both `.pre1517` and `.prev` predecessors, all four
+native-only predecessor-archive members, and every **19,595 existing protected
+path** (4,270,068,570bytes): zero mismatches/missing/read errors. Original previous
+images remain in the verified archive; normal rollback copies remain retained.
+This is an existing-file inventory, not a whole-host/new-file audit or an
+unconditional filesystem atomicity/durability guarantee. Do NOT rerun the healthy
+promotion. The two independent inherited-native source reviews and independent
+actual binding/postflight reviews are bounded, not a broad audit.
+
+No native server/plugin/VM/config/player-data/Pi/backend/HID shipment, release or
+QC Build bump occurred. Native source/tag remains9aa225a8f/patch-1517; later
+ledger/docs commits are not the binary's source. Global QC patch1518 and
+QC Build89 were preserved; peer P1519 QC delivery is separate, not repackaged.
+Owner glass/feel checks remain pending in `lextest.md`. A numerical frame-tail
+A/B still needs a coordinated quiet rig: latest check found two foreign games
+and a peer benchmark lock. Handoff's TANDEM mode expressly makes no timing
+claims. No native game-FPS or0.1%-low improvement is claimed here.
+
+The actual release-note parser accepts the isolated P1517 entry (one point,
+273byte preview). Complete-file parsing still stops at the inherited unheaded
+P1512 point on line23, already tracked in BACKLOG; no release was attempted.
