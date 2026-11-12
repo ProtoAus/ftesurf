@@ -1597,7 +1597,16 @@ float(entity e, entity t, float z) SV_TASOptTeleTo =
 // their target, others remotely, relatively or through outputs (review 1528); stage 32 checks where the body lands.
 float(entity e, entity t, vector dest, float r) SV_TASOptTeleNear =
 {
+	local entity d;
 	if (!t) return FALSE;
+	// a teleport into the course's start box is a fall, as the trigger cut reads it (review 1528: a void trigger under a
+	// low portal counted)
+	if (max(SV_TASOptTeleTo(e, t, e.topt_startz), SV_TASOptTeleTo(e, t, e.topt_startz2)) >= 0) return FALSE;
+	if (t.classname == "trigger_teleport" && t.landmark == "" && t.target != "")
+	{	// a plain one lands on its target: near where the guide's put it
+		d = find(world, targetname, t.target);
+		if (d) return (vlen(d.origin - dest) <= 512);
+	}
 	return (e.topt_tgt_x >= t.absmin_x - r && e.topt_tgt_x <= t.absmax_x + r && e.topt_tgt_y >= t.absmin_y - r && e.topt_tgt_y <= t.absmax_y + r
 		&& e.topt_tgt_z >= t.absmin_z - r && e.topt_tgt_z <= t.absmax_z + r);
 };
@@ -2140,18 +2149,26 @@ float(entity e, float ran, float w, float cap) SV_TASOptVizSample =
 	return n;
 };
 
+// the first point as floats, each next as 1/8-unit shorts from the one before as the client rebuilds it (no drift; a
+// step past 4096 u clamps and the next catches up). Was 4-unit steps from the first point: Lex, 13 Nov, "very wobbly".
 void(entity e, float kind, float n, float w) SV_TASOptVizWrite =
 {
 	local float k, b;
+	local vector q, d;
 	b = w * TOPT_VIZN * 3;
 	WriteByte(MSG_MULTICAST, SVC_CGAMEPACKET); WriteByte(MSG_MULTICAST, TAS_EV_OPTVIZ);
 	WriteByte(MSG_MULTICAST, kind); WriteByte(MSG_MULTICAST, n);
 	if (n >= 1) { WriteFloat(MSG_MULTICAST, topt_vp[b]); WriteFloat(MSG_MULTICAST, topt_vp[b+1]); WriteFloat(MSG_MULTICAST, topt_vp[b+2]); }
-	for (k = 1; k < n; k = k + 1)
+	q = [topt_vp[b], topt_vp[b+1], topt_vp[b+2]];
+	for (k = 1; k < n && kind == 0; k = k + 1)      // a search's start and target: any distance apart, floats
+		{ WriteFloat(MSG_MULTICAST, topt_vp[b+k*3]); WriteFloat(MSG_MULTICAST, topt_vp[b+k*3+1]); WriteFloat(MSG_MULTICAST, topt_vp[b+k*3+2]); }
+	for (k = 1; k < n && kind != 0; k = k + 1)
 	{
-		WriteShort(MSG_MULTICAST, bound(-32767, rint((topt_vp[b+k*3] - topt_vp[b]) / 4), 32767));
-		WriteShort(MSG_MULTICAST, bound(-32767, rint((topt_vp[b+k*3+1] - topt_vp[b+1]) / 4), 32767));
-		WriteShort(MSG_MULTICAST, bound(-32767, rint((topt_vp[b+k*3+2] - topt_vp[b+2]) / 4), 32767));
+		d_x = bound(-32767, rint((topt_vp[b+k*3] - q_x) * 8), 32767);
+		d_y = bound(-32767, rint((topt_vp[b+k*3+1] - q_y) * 8), 32767);
+		d_z = bound(-32767, rint((topt_vp[b+k*3+2] - q_z) * 8), 32767);
+		WriteShort(MSG_MULTICAST, d_x); WriteShort(MSG_MULTICAST, d_y); WriteShort(MSG_MULTICAST, d_z);
+		q = q + d * 0.125;
 	}
 	msg_entity = e; multicast(e.origin, MULTICAST_ONE_R);     // reliable: unreliable ones never arrived (a paused client's datagram)
 	if (cvar("developer") >= 2) print(sprintf("tas_viz: sent kind %.0f, %.0f points at %.3f\n", kind, n, time));
@@ -2294,7 +2311,7 @@ void(entity e, float argc) SV_TASDemoRowsCommand =
 		topt_drow[n*5+2] = bound(-89, stof(argv(7)), 89);
 		topt_drow[n*5+3] = yaw - 360 * floor((yaw + 180) / 360);
 		topt_drow[n*5+4] = ((kb & 2) ? 1 : 0) | ((kb & 4) ? 2 : 0);
-		if (!ksfseen && cvar("tas_jargon_rowkeys"))
+		if (!ksfseen && !(cvar("tas_jargon_off") & 1048576))      // rule 1048576 (sv_tasautosurf.qc), was test cvar tas_jargon_rowkeys
 		{	// an FTESurf recording (Jargon's own finish, a player's run) has no ksfbuttons lines: its <keys> column holds the
 			// jump and duck it asked for (SV_RecKeys) -- Lex: crouching keeps the legs off surfaces
 			kk = stof(argv(10));

@@ -63,6 +63,8 @@
 .float as_sbl;                  // a back-off counted this approach (cleared once back past 450 u)
 .float as_exair;                // the guide was in the air at its exit (it had jumped by the box's edge)
 .float as_sjmp;                 // this start has jumped
+.float as_sgj, as_sjk;           // the guide's own take-off row (-1: none); ticks since this start's jump
+.float as_sbfar, as_sbst;        // a back-off's farthest distance short of the exit; ticks since it last grew
 .float as_sdk;                  // this start has replayed the guide's crouch (said once)
 .float as_smeth, as_sredo;      // the start's way (1 the guide's prestrafe replayed, else steering), and whether it was redone
 .float as_sph;                  // the start's ground phase: 0 speed (a left circle), 1 onto the line, 2 around again
@@ -115,7 +117,10 @@ float(float b) SV_TASAutoRule = { return !(cvar("tas_jargon_off") & b); };
 // flight, 65536 a finish's horizon 60 ticks past the guide's last row, 131072 a finish aimed inside its end box, 262144 a
 // coast past the end is a failed finish (fin3: tensor2 stage 1's seed 0 from "did not reach the end" to 0:10.905); 524288 the
 // start backs off at its exit more than 30 deg off the guide's line and walks to within 16 u of its standstill (was test
-// cvar tas_jargon_startfix: tensor2 stage 6 after another course jumped 366 u and -59 deg off and stuck at stretch 1)
+// cvar tas_jargon_startfix: tensor2 stage 6 after another course jumped 366 u and -59 deg off and stuck at stretch 1);
+// 1048576 the guide's crouch copied from any recording, as from a KSF replay's button lines (was test cvar
+// tas_jargon_rowkeys), and in the start: the crouch the guide held after its own jump (was tas_jargon_startduck) --
+// Lex, 13 Nov: humans duck off the start platform's lip; kenos' tensor2 stage 1 jumps ducked for 9 ticks
 .float as_fromstart;            // the chain began at the course's start box (a Start or a Continue): only these autosave
 .float as_savedold, as_keepsaid; // a saved run of this course that got further (its stretch), and the note that kept it said
 .float as_savedoldt;            // ...its last reached waypoint's guide time: plans differ (turn points, options), times do not (review H)
@@ -838,6 +843,27 @@ float(entity e, float fwd, float side) SV_TASAutoGuideYaw =
 	return vectoyaw([e.velocity_x, e.velocity_y, 0]) + ((side < 0) ? th : -th) - off;
 };
 
+// the guide's take-off from the start: the last row by 4 past its box exit where vz rose 150+, or -1
+float() SV_TASAutoGuideJump =
+{
+	local float i;
+	for (i = min(as_r0 + 4, as_nrows - 1); i >= 1 && i > as_r0 - 120; i = i - 1)
+		if (as_rows[i*7+6] - as_rows[i*7-1] > 150) return i;
+	return -1;
+};
+// duck (bit 2) for n ticks from k after the start's jump, where the guide was ducked as long after its own
+float(entity e, float k, float n) SV_TASAutoStartDuck =
+{
+	local float i, r;
+	if (e.as_sgj < 0 || !SV_TASAutoRule(1048576)) return 0;
+	for (i = 0; i < n; i = i + 1)
+	{
+		r = e.as_sgj + k + i;
+		if (r >= 0 && r < as_nrows)
+			if (as_bdk[r]) return 2;
+	}
+	return 0;
+};
 // A guided step for these keys, starting on the guide's yaw (`rest` without a bearing).
 void(entity e, float fwd, float side, float bits, float n, float rest) SV_TASAutoStep =
 {
@@ -1642,7 +1668,7 @@ float(entity e, float track, float leg, float commit) SV_TASAutoNotes =
 			else if (argv(0) == "w")
 			{
 				nw = nw + 1;
-				if (!SV_TASAutoWhole(stof(argv(2)), 1, 7)) bad = 1;     // 7: a portal (review 1528: Continue refused every plan with one)
+				if (!SV_TASAutoWhole(stof(argv(2)), 1, 7) || stof(argv(2)) == 6) bad = 1;     // 7: a portal (review 1528: Continue refused every plan with one)
 				else if (commit) { as_wk[i] = stof(argv(2)); as_wt[i] = stof(argv(3)); as_wo[i*3] = stof(argv(4)); as_wo[i*3+1] = stof(argv(5)); as_wo[i*3+2] = stof(argv(6)); }
 				else as_cwt[i] = stof(argv(3));
 			}
@@ -1711,7 +1737,7 @@ void(entity e, float track, float leg) SV_TASAutoContinue =
 	SV_TASAutoNote(e, 1, sprintf("continue: replaying the saved run of %s to stretch %.0f of %.0f", SV_TASAutoCourseName(track, leg), e.as_cnext, e.as_cof));
 };
 
-// P1478: the coast into a course's end, predicted first (no keys, 160 ticks, the exact rollout): the tick a teleport into
+// P1478: the coast into a course's end, predicted first (no keys, 400 ticks, the exact rollout): the tick a teleport into
 // the course's end box is met (its finish), -1 for any other teleport met first (surf_tensor2's stage-2 fail teleport:
 // the coast lost the run, rigs t2chain3/6), 0 none met or no prediction (the end is a zone box the body coasts into)
 float *as_crows;
@@ -1863,7 +1889,7 @@ void(entity e) SV_TASAutoFrame =
 			best = as_bin[i*4+3] - 360 * floor((as_bin[i*4+3] + 180) / 360);
 			// tas_jargon_startduck: the guide's crouch too (surf_gigapede bonus 4's human ducks from 0.5 s before the jump to
 			// its board at 0.4 s; this replay carried the jump only, and every stretch-1 line skimmed or overshot)
-			if (as_bdk[i] && cvar("tas_jargon_startduck"))
+			if (as_bdk[i] && SV_TASAutoRule(1048576))
 			{
 				t = t + 2;
 				if (!e.as_sdk) { e.as_sdk = 1; SV_TASAutoNote(e, 1, sprintf("start: crouching as the guide did (his duck from t=%.3f)", as_rows[i*7])); }
@@ -1938,21 +1964,27 @@ void(entity e) SV_TASAutoFrame =
 				if (!e.as_sbl)
 				{	// not as_sph != 4: the older too-close rule enters 4 first, and then neither the note nor the count came
 					// (stage 6, bench start2: 380 ticks backing off, silent and uncounted)
-					e.as_sbl = 1; e.as_sback = e.as_sback + 1;
+					e.as_sbl = 1; e.as_sback = e.as_sback + 1; e.as_sbfar = along; e.as_sbst = 0;
 					SV_TASAutoNote(e, 1, sprintf("start: at the exit %.0f u and %.0f deg off the guide's line: backing off to line up again", lat, herr));
 				}
 				ph = 4;
 			}
 			else if ((ph >= 1 && ph != 4 && fabs(lat) < 100 && fabs(herr) < 10 && along >= 130 && along <= 220) || along < 60 || e.as_sn >= e.as_sg)
 			{
-				SV_TASAutoStep(e, 400, e.as_sair, 1, 1, e.v_angle_y);         // the start's one jump
-				e.as_sjmp = 1;
+				e.as_sgj = SV_TASAutoGuideJump(); e.as_sjk = 0;
+				SV_TASAutoStep(e, 400, e.as_sair, 1 | SV_TASAutoStartDuck(e, 0, 1), 1, e.v_angle_y);         // the start's one jump
+				e.as_sjmp = 1; e.as_sjk = 1;
 				SV_TASAutoNote(e, 1, sprintf("start: jumped at %.0f u/s, %.0f u short of the demo's exit, %.0f u and %.0f deg off its line", t, along, lat, herr));
 				e.as_stage = 12; e.as_sn = 0;
 				return;
 			}
-			if (ph >= 1 && ph <= 3 && along < 130) ph = 4;
+			if (ph >= 1 && ph <= 3 && along < 130) { ph = 4; e.as_sbfar = along; e.as_sbst = 0; }
 			if (ph == 4 && along > 450) { ph = 1; e.as_sbl = 0; }
+			if (ph == 4)
+			{	// a wall or the box's back short of 450 u (review 1528: backed off until the step cap): from here
+				if (along > e.as_sbfar + 8) { e.as_sbfar = along; e.as_sbst = 0; } else e.as_sbst = e.as_sbst + 3;
+				if (e.as_sbst >= 60) { ph = 1; e.as_sbl = 0; }
+			}
 			if (ph == 0) d = -1;
 			else if (ph == 4)
 			{	// back toward the box's back: a point 520 u short of the exit on the line
@@ -2000,14 +2032,15 @@ void(entity e) SV_TASAutoFrame =
 			if (!e.as_sjmp && e.as_exair && (e.flags & FL_ONGROUND) && SV_TASAutoRule(524288))
 			{	// the box's edge came before the jump's spot and the body ran off it on the ground, while the guide had
 				// jumped by its edge (surf_anubis stage 1's redo: no jump, 918 u from ramp 1 and every line missed it)
-				e.as_sjmp = 1;
-				SV_TASAutoStep(e, 400, e.as_sair, 1, 1, e.v_angle_y);
+				e.as_sjmp = 1; e.as_sgj = SV_TASAutoGuideJump(); e.as_sjk = 1;
+				SV_TASAutoStep(e, 400, e.as_sair, 1 | SV_TASAutoStartDuck(e, 0, 1), 1, e.v_angle_y);
 				SV_TASAutoNote(e, 1, sprintf("start: out of the box still on the ground at %.0f u/s: jumped at its edge, as the guide had",
 					vlen([e.velocity_x, e.velocity_y, 0])));
 				e.as_sn2 = e.as_sn2 + 1;
 				return;
 			}
-			SV_TASAutoSteer(e, (e.flags & FL_ONGROUND) ? 400 : 0, 0, 2, 3, 0, vectoyaw(e.as_exd)); e.as_sn2 = e.as_sn2 + 2;
+			SV_TASAutoSteer(e, (e.flags & FL_ONGROUND) ? 400 : 0, e.as_sjmp ? SV_TASAutoStartDuck(e, e.as_sjk, 2) : 0, 2, 3, 0, vectoyaw(e.as_exd));
+			e.as_sn2 = e.as_sn2 + 2; e.as_sjk = e.as_sjk + 2;
 		}
 		else if (e.run_t_state == TS_RUNNING)
 		{
@@ -2025,7 +2058,7 @@ void(entity e) SV_TASAutoFrame =
 				if (!e.taslg_on || e.taslg_zone != e.as_szone || e.run_t_state != TS_ARMED)
 					{ SV_TASAutoStop(e, "the start could not be redone (no legal start in the box)"); return; }
 				e.as_ri = (e.as_smeth == 1) ? -1 : SV_TASAutoRest(e);
-				e.as_smeth = 0; e.as_stage = 10; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_sbl = 0; e.as_sjmp = 0; e.as_sdk = 0;
+				e.as_smeth = 0; e.as_stage = 10; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_sbl = 0; e.as_sjmp = 0; e.as_sdk = 0; e.as_sgj = -1;
 				return;
 			}
 			e.as_stage = 1; e.as_i = 0; e.as_try = 0; e.as_backs = 0; e.as_tprev = as_rows[s*7]; e.as_failat = -1;
@@ -2034,7 +2067,11 @@ void(entity e) SV_TASAutoFrame =
 				vlen([e.velocity_x, e.velocity_y, 0]), SV_TimerTicks(e), as_n));
 		}
 		else if (e.as_sn >= 240) SV_TASAutoStop(e, "the start never left the box (240 air ticks)");
-		else { SV_TASAutoSteer(e, 0, 0, 2, 3, 0, vectoyaw(e.as_exd)); e.as_sn = e.as_sn + 2; }    // in the air in the box
+		else
+		{	// in the air in the box
+			SV_TASAutoSteer(e, 0, e.as_sjmp ? SV_TASAutoStartDuck(e, e.as_sjk, 2) : 0, 2, 3, 0, vectoyaw(e.as_exd));
+			e.as_sn = e.as_sn + 2; e.as_sjk = e.as_sjk + 2;
+		}
 		return;
 	}
 	if (!e.as_on || e.topt_on || e.tdem_on) return;
@@ -2066,7 +2103,10 @@ void(entity e) SV_TASAutoFrame =
 	{	// through a portal: no keys, 2 ticks a step, until the body jumps (teleported) -- 60 ticks at most, else that try failed
 		if (e.run_tas_pending || e.run_tas_replaystate == TAS_TAPE_ACTIVE || e.run_tas_replaystate == TAS_TAPE_STAGING) return;
 		u = [as_wn[(e.as_i - 1)*3], as_wn[(e.as_i - 1)*3+1], as_wn[(e.as_i - 1)*3+2]];      // where the guide's teleport put it
-		if (vlen(e.origin - u) <= 512)
+		// a jump of 300 u in one 2-tick step is a teleport, not flight (3500 u/s is 105 u): through when it landed near the
+		// guide's landing, missed when elsewhere (review 1528: distance alone passed a short teleport before it was taken)
+		d = (e.as_sn > 0 && vlen(e.origin - e.as_ptp) > 300);
+		if (d && vlen(e.origin - u) <= 512)
 		{	// on from the guide's own row nearest the body past its teleport
 			best = 1000000; t = e.as_tprev;
 			for (i = 0; i < as_nrows; i = i + 1)
@@ -2080,9 +2120,7 @@ void(entity e) SV_TASAutoFrame =
 			SV_TASAutoNote(e, 1, sprintf("through the portal (%.0f u from the guide's landing)", vlen(e.origin - u)));
 			return;
 		}
-		// a jump of 300 u in one 2-tick step is a teleport, not flight (3500 u/s is 105 u): elsewhere, so missed (review 1528:
-		// total distance from the stop passed 300 u within a few steps at speed and read as through)
-		if (e.as_sn >= 60 || (e.as_sn > 0 && vlen(e.origin - e.as_ptp) > 300))
+		if (e.as_sn >= 60 || d)
 		{	// that try failed: tried again or backtracked, as a finish's coast that misses
 			SV_TASAutoNote(e, 1, sprintf("stretch %.0f: the portal was missed: again", e.as_i));
 			e.as_i = e.as_i - 1; e.as_tprev = as_wp[e.as_i]; e.as_try = e.as_ptry;
@@ -2647,7 +2685,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		}
 		if (e.as_file != "") strunzone(e.as_file);
 		e.as_file = path;
-		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_sbl = 0; e.as_sjmp = 0; e.as_sdk = 0; e.as_smeth = 0; e.as_sredo = 0;
+		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_sbl = 0; e.as_sjmp = 0; e.as_sdk = 0; e.as_sgj = -1; e.as_smeth = 0; e.as_sredo = 0;
 		e.as_ctrack = nct; e.as_cleg = ncl; e.as_saved = -1; e.as_esc = 0; e.as_keepsaid = 0; e.as_cseed = 0;
 		SV_TASAutoRunSalt();
 		e.as_ri = (e.as_ctrack >= 0) ? SV_TASAutoRest(e) : -1;      // a `zone` start steers as before
