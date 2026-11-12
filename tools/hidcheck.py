@@ -223,6 +223,18 @@ def _unquote_pair(rest, *, require_pair=False):
     return tuple((values + ["", ""])[:2])
 
 
+def _invalidate_cvar_change(overrides, tokens):
+    """A rejected change must not leave an old angle setting in force."""
+    if len(tokens) > 1 and tokens[1] in IDENTITY_CVARS:
+        name = tokens[1]  # missing dt: the setting name shifted left
+    else:
+        name = tokens[2] if len(tokens) > 2 else None
+    if name is not None and name.lstrip("\\").startswith('"'):
+        name = None  # a quoted value in the name slot cannot identify the setting
+    names = IDENTITY_CVARS if name is None else ((name,) if name in IDENTITY_CVARS else ())
+    return dict(overrides, **dict.fromkeys(names))  # preserve earlier view snapshots
+
+
 def _identity_capture_unknown(name, token, capacity):
     """A legacy clipped numeric prefix cannot prove an effective identity cvar.
 
@@ -702,6 +714,7 @@ def check_hid(path, verbose=False, *, data=None):
     j_raw = None         # the window's 'd' record, if it had one
     bad_pointer = False  # no complete counts join from unusable coordinates
     bad_observers = set()  # unusable d/v arithmetic must not become measurements
+    bad_key_observer = False  # lost state/counts cannot establish whole-run coverage
     devmaps = []         # (type, id, name) -- Patch 303, the resolved table
     # devid -> event count, for the attribution check below.  SPLIT BY CLASS,
     # and that split is a bug fix rather than tidiness -- see the device section.
@@ -791,6 +804,10 @@ def check_hid(path, verbose=False, *, data=None):
 
         if len(tok) < 2:
             r.fault("line %d: %r has no dt" % (lineno + 1, kind))
+            if kind in ("y", "o"):
+                bad_key_observer = True
+            if kind == "c":
+                idover = _invalidate_cvar_change(idover, tok)
             if kind in ("d", "v"):
                 bad_observers.add(kind)
             continue
@@ -799,6 +816,10 @@ def check_hid(path, verbose=False, *, data=None):
         except ValueError:
             bad_clock = True
             r.fault("line %d: dt is not an integer: %r" % (lineno + 1, tok[1]))
+            if kind in ("y", "o"):
+                bad_key_observer = True
+            if kind == "c":
+                idover = _invalidate_cvar_change(idover, tok)
             if kind in ("m", "a"):
                 bad_pointer = True
             if kind in ("d", "v"):
@@ -808,6 +829,10 @@ def check_hid(path, verbose=False, *, data=None):
             bad_clock = True
             r.fault("line %d: negative dt %d -- time does not run backwards"
                     % (lineno + 1, dt))
+            if kind in ("y", "o"):
+                bad_key_observer = True
+            if kind == "c":
+                idover = _invalidate_cvar_change(idover, tok)
             if kind in ("m", "a"):
                 bad_pointer = True
             if kind in ("d", "v"):
@@ -826,6 +851,10 @@ def check_hid(path, verbose=False, *, data=None):
                                  else len(tok) != 2 + want):
             r.fault("line %d: %r has %d fields, expected %d"
                     % (lineno + 1, kind, len(tok), 2 + want))
+            if kind in ("y", "o"):
+                bad_key_observer = True
+            if kind == "c":
+                idover = _invalidate_cvar_change(idover, tok)
             if kind in ("m", "a"):
                 bad_pointer = True
             if kind == "d":
@@ -967,6 +996,7 @@ def check_hid(path, verbose=False, *, data=None):
             # (an older hidcheck faults any other dt), so a nonzero one is not
             # this engine's file.
             if tok[1] != "0":
+                bad_key_observer = True
                 r.fault("line %d: %r carries dt %s; the engine writes it with dt 0"
                         % (lineno + 1, kind, tok[1]))
             try:
@@ -983,6 +1013,7 @@ def check_hid(path, verbose=False, *, data=None):
                     kbdnohandle += dn
                     saw_y = True
             except ValueError:
+                bad_key_observer = True
                 r.fault("line %d: %r counts are not non-negative numbers"
                         % (lineno + 1, kind))
         elif kind == "p":
@@ -1359,7 +1390,12 @@ def check_hid(path, verbose=False, *, data=None):
             kbds_bound = int(head.get("rawkbds", "-1"))
         except ValueError:
             kbds_bound = -1
-        if kbdobserve == 1 and not obs_changes:
+        if bad_key_observer:
+            r.info["legacy_keys_partial"] = True
+            r.note("keyboard observation unavailable: an unusable state/count record "
+                   "cannot establish whole-journal coverage or a measured zero; "
+                   "independent angle/count checks are separate.")
+        elif kbdobserve == 1 and not obs_changes:
             r.info["legacy_keys"] = legacykeys
             r.info["kbd_nohandle"] = kbdnohandle
             if truncated is not None:

@@ -1019,6 +1019,105 @@ def case_observer_numeric_quality():
                   "already-invalid view cannot silently keep a partial baseline")
 
 
+def rejected_change_journal(wire='c 0 sensitivity "0.375"', restore=False,
+                            counts_mismatch=False, follows=True):
+    """Keep the actual changed angles/counts; damage only the setting record."""
+    j = Journal(devices=[("mouse", "0", "mouse-example")], inputcvars=P312_INPUT)
+    yaw = 90.0
+    for i in range(20):
+        j.frame(8800 + i)
+        j.mouse(6, 0)
+        if i == 10:
+            j.lines.append(wire)
+        if restore and i == 15:
+            j.cvarchange("sensitivity", "0.375")
+        yaw += (-0.022 * 0.375 if follows and i >= 10 else j.k) * 6
+        j.view(7 if counts_mismatch and i == 17 else 6, 0, 10.0, yaw)
+    return j.end()
+
+
+def case_rejected_model_change():
+    for restore in (False, True):
+        for wire in ('c 0 sensitivity', 'c broken sensitivity "0.375"',
+                     'c -1 sensitivity "0.375"', 'c sensitivity "0.375"'):
+            r = run(rejected_change_journal(wire, restore))
+            label = wire[:45] + (" restored" if restore else " unknown")
+            check(not r.ok and bool(r.faults),
+                  "rejected model record keeps its format fault: " + label)
+            check(not has_fault(r, "IDENTITY BROKEN"),
+                  "lost setting is unavailable, not a stale-scale accusation: " + label)
+            check(r.info.get("identity_yaw_judged") == (14 if restore else 9) and
+                  r.info.get("identity_yaw_exclusions", {}).get("profile") ==
+                  (5 if restore else 10),
+                  "known earlier/restored intervals ACT, lost ones excluded: " + label)
+            check(r.info.get("join_checked") == 19 and r.info.get("join_broke") == 0,
+                  "independent finite raw-count join ACTS: " + label)
+    for wire in ('c', 'c 0', 'c broken', 'c 0 "0.375"', r'c 0 \"0.375\"'):
+        r = run(rejected_change_journal(wire, restore=True))
+        check(not r.ok and not has_fault(r, "IDENTITY BROKEN"),
+              "unknown setting name cannot retain a stale model: " + wire)
+        check(r.info.get("identity_yaw_judged") == 9 and
+              r.info.get("identity_yaw_exclusions", {}).get("profile") == 10 and
+              r.info.get("join_checked") == 19,
+              "one restored setting cannot restore an unknown whole model: " + wire)
+    r = run(rejected_change_journal('c ' + '9' * 400 + ' sensitivity "0.375"'))
+    check(not r.ok and "time" not in r.info and
+          has_note(r, "timing measurements unavailable") and
+          r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+          "CONTROL lost clock with finite setting payload preserves independent judgements")
+    r = run(rejected_change_journal())
+    check(r.ok and r.info.get("identity_yaw_judged") == 19 and
+          r.info.get("join_checked") == 19,
+          "CONTROL valid actual change judges all19 intervals")
+    r = run(rejected_change_journal(follows=False))
+    check(has_fault(r, "IDENTITY BROKEN") and
+          r.info.get("identity_violations") == 10,
+          "CONTROL valid contradictory change still faults10actual intervals")
+    r = run(rejected_change_journal('c 0 r_shadow', follows=False))
+    check(not r.ok and not has_fault(r, "IDENTITY BROKEN") and
+          r.info.get("identity_yaw_judged") == 19,
+          "CONTROL named unrelated malformed setting does not hide angle checks")
+    r = run(rejected_change_journal('c 0 sensitivity', counts_mismatch=True))
+    check(has_fault(r, "COUNTS JOIN BROKEN") and
+          not has_fault(r, "IDENTITY BROKEN") and r.info.get("join_checked") == 19,
+          "CONTROL real independent count mismatch survives unknown angle setting")
+
+
+def rejected_key_observer_journal(wire=None):
+    lines = rejected_change_journal().splitlines()
+    lines.insert(lines.index("begin"), "kbdobserve 1")
+    if wire is not None:
+        at = next(i for i, line in enumerate(lines) if line.startswith("c 0 sensitivity"))
+        lines.insert(at, wire)
+    return "\n".join(lines) + "\n"
+
+
+def case_rejected_key_observer():
+    for wire in ('o', 'o 0', 'o broken 0', 'o -1 0', 'o 0 nope', 'o 0 -1',
+                 'o 10 0', 'y', 'y 0', 'y 0 nope 0', 'y 0 -1 0',
+                 'y broken 1 0', 'y 10 1 0'):
+        r = run(rejected_key_observer_journal(wire))
+        check(not r.ok and bool(r.faults),
+              "rejected keyboard observation keeps format fault: " + wire)
+        check("legacy_keys" not in r.info and "kbd_nohandle" not in r.info and
+              r.info.get("legacy_keys_partial") and
+              has_note(r, "keyboard observation unavailable"),
+              "lost keyboard state/count is unavailable, not whole-journal zero: " + wire)
+        check(r.info.get("identity_yaw_judged") == 19 and
+              r.info.get("join_checked") == 19 and r.info.get("join_broke") == 0,
+              "independent angle/count checks ACT despite lost keyboard observation: " + wire)
+    r = run(rejected_key_observer_journal())
+    check(r.ok and r.info.get("legacy_keys") == 0 and r.info.get("kbd_nohandle") == 0,
+          "CONTROL valid observed whole-journal zero stays measured zero")
+    r = run(rejected_key_observer_journal('y 0 2 1'))
+    check(r.ok and r.info.get("legacy_keys") == 2 and r.info.get("kbd_nohandle") == 1,
+          "CONTROL valid positive keyboard counts remain actual2/1")
+    r = run(rejected_key_observer_journal('o 0 0'))
+    check(r.ok and r.info.get("legacy_keys_partial") and "legacy_keys" not in r.info and
+          has_note(r, "only part of this journal"),
+          "CONTROL known observation stop stays partial, not corrupt/unavailable")
+
+
 def model_constant_journal(name=None, value=None, change=False, late=False, text=None):
     if text is None:
         text = namespace_journal([("mouse", "0", "mouse-example")], pointer=0)
@@ -3107,7 +3206,8 @@ def main():
                case_leftisright_capture_boundary, case_float_capture_boundary,
                case_controller_profile_is_not_a_keyboard_turn,
                case_pointer_coordinate_quality, case_observer_numeric_quality,
-               case_model_numeric_quality, case_native_quoted_byte, case_clock_quality):
+               case_model_numeric_quality, case_native_quoted_byte, case_clock_quality,
+               case_rejected_model_change, case_rejected_key_observer):
         print("%s:" % fn.__name__)
         fn()
         print("")

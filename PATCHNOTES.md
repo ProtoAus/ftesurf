@@ -22,6 +22,10 @@
 ## next
 - Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
+### P1530 Journal consistency
+- Journal checks no longer judge later angles against stale settings after a damaged setting-change record. Valid earlier comparisons and restored settings remain checkable.
+- Damaged keyboard-observation records are reported as unavailable, not a whole-run measured zero. Independent mouse-count checks remain active.
+
 ### P1529 Recording consistency
 - Run recording retains a confirmed movement-condition signal through supported landings. Movement itself is unchanged; unavailable comparisons remain unavailable.
 

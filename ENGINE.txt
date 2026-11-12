@@ -1,4 +1,9 @@
 # The engine build this QuakeC requires.
+# Patch 1530: rejected input-setting records cannot accuse angles using stale
+# settings; unusable keyboard observation cannot claim a whole-run measured zero.
+# Known earlier/restored comparisons and independent raw-count checks remain.
+# tools/p1530-journal-state-loss.md;1090/0checks,40old-reader failures/89newassertions.
+# Reader only: native code/pins/tag, recording fields, ranking and Build89 held.
 # Patch 1529: bounded clear-air landing gravity use remains observable only
 # when the default endpoint independently remains airborne and the body differs.
 # Windows/ARM native1773/0; old runtime misses4acted landing-use assertions.
@@ -260,7 +265,7 @@ commit   2274050a985f82a0e72e7fada681dae034b3972e
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
 tag      patch-1529
-patch    1529
+patch    1530
 # Patch 1440 (engine client gl_alias.c, gl_model.h, com_mesh.h, plugin.c; hl2 plugin mod_hl2.c, mod_vbsp.c; QC sv_entities.qc, sv_gameui.qc): Source MDL bodyparts draw the model the entity's body picks -- fteplug_hl2 tags a multi-model bodypart (first 32) as a geomset and writes its base/count into two arrays appended to model_t, GL_ChooseSkin draws (body / base) % count, Source's m_nBody; the exe answers "FTESurfModelTail/1440" and the plugin writes the tail only then (an older exe keeps every alternative drawn, no write past model_t). QC sets the networked .body from the SetBodyGroup key and input; SetAnimation also plays on a non-solid prop_dynamic. bhop_crash_egypt's crates draw whole and shatter frame by frame. Collision unchanged (lobby server and client must agree). Native: tag patch-1440 = ae448df27 (engine main, on P1442); both installs run exe edf50724 / fteqwsv64 0388bbe7 / fteplug_hl2 8d47ecb8 (git-8573-patch-1440-0-gae448df27). Rides the next release. tools/p1440-bodygroups.md.
 # Patch 1442 (engine client gl_shader.c, sys_win.c, sys.h; QC cl_hudedit.qc): the activation warm-up keeps the window responsive -- Sys_KeepAlive peeks the queue (PM_NOREMOVE) every 0.25 s inside GLSLWarm_MapActive/MapReady_Drain, so r_mapready_budget defaults to 6 (was 2) without Windows ghosting the window past 5 s; HE_MigrateDefaults moves a saved 2 to 6 only when the engine's description names Patch 1442 (r_mapready_rev 1442). Stress list at budget 10, IsHungAppWindow every 0.1 s: patch-1413 hung 5.4 s in the warm-up, P1442 0. Native: tag patch-1442 = df1444c99 (engine main a48d1d2ba); both installs run client exe 7e7564ae (git-8569-patch-1442-0-gdf1444c99), fteqwsv64 and hl2 plugin unchanged. Rides the next release. tools/p1442-warmbudget.md.
 # Patch 1424 (engine client in_win.c, in_generic.c, client.h): the .hid journal counts legacy key presses no keyboard device reported -- the keyboard half of Patch 307. Raw keyboard is registered observe-only (dwFlags 0) while in_rawinput_keyboard is 0, so legacy messages still drive the game; a legacy press unmatched by a real device's raw down within 100 ms is counted (in_raw_legacykey), repeats judged by held state not the lParam bit, expiry on the window thread. New .hid records: kbdobserve header, dt-0 'y <keys> <nohandle>' and 'o <state>' (observation changed); tools/hidcheck.py reads them as a note, never a fault, and the 'end' trailer is unchanged so older readers do not fault. Native: tag patch-1424 = a3de0326f (engine main); both installs run exe c61f874b (git-8565-patch-1424-0-ga3de0326f), fteqwsv64 d99cbbcb and hl2 plugin 3b085f6c unchanged. Rides the next release. Six-arm falsifier ftesurf/cfg/test/p1424keys.cfg; three review rounds.
