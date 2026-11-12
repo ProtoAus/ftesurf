@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1519 Jargon stream view -- both installs + 12 lobbies; owner check PENDING
+- Open the TAS panel (Jargon tab, simple view). Pick a stage, press "Jargon surfs ...", try Chase. Switch stage mid-run, Stop, Back to playing: nothing should stick. Hotkeys: e.g. bind F5 "tas jargon go"
+- "I start it": stand in that stage's start box (!r, or !s N), press it, prestrafe and jump; Jargon takes over at your jump. Outside the box it says which box and arms nothing (your run is not marked TAS)
+- The start and crouch fixes stay OFF by default until the broad bench reports: in a local game, `set tas_jargon_startfix 1; set tas_jargon_rowkeys 1; set tas_jargon_startduck 1` (they took surf_sandtrap2 bonus 4 to a finish)
+
 ## P1517 selected-side transparent sorting -- owner check PENDING; rollout in tools/p1517-plane-selected.md
 - After the native client update, take a normal surf_fairy run with glass, water, flowers and sprites enabled. Please report new flicker, missing surfaces or visibly wrong layering with the spot/time. Finite/native compiler controls and acting renderer smoke are not owner confirmation; the automated paused-camera comparison was not qualified.
 - Please say whether the heavy spots feel unchanged, smoother or worse. Subjective feel is not a measured0.1% percentage; controlled frame-tail measurement remains separate.

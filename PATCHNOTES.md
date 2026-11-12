@@ -22,6 +22,13 @@
 ## next
 - Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
+### P1519 Jargon stream view
+- The Jargon tab opens on a simple view: pick a course and press "Jargon surfs it", or "I start it" to prestrafe and jump yourself while Jargon takes over at your jump.
+- Switching course, Stop and Back to playing work at any time; pressing a start while Jargon runs stops it first. Camera: first person, chase (behind you) or overview.
+- Lines: keep the route on screen, and turn the search lines and the thinking panel on or off. Hotkeys: tas jargon go, arm, stop, play, course N, cam 0/1/2.
+- Starting the next stage right after Jargon finishes one now starts it properly instead of walking out of the box.
+- Prediction-error reports stay quiet while TAS or Jargon is in control. Jargon's panel calls its speed-with-height numbers energy.
+
 ### P1518 Input device analysis
 - Journal analysis keeps controllers, keyboards and pointers separate, avoiding false device conflicts and touchpad-report errors.
 
