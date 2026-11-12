@@ -31,6 +31,10 @@
 ### P1521 Controller input analysis
 - Controller turns no longer cause misleading run-analysis errors. Comparisons that lack the required input data are reported as unavailable rather than clean.
 
+### P1520 Lines under the HUD
+- Replay paths, trails, board lines and Jargon's route and search lines, with their numbers and names, now draw under the HUD and panels instead of over them.
+- Jargon's start fix (still off by default) lines up again only when its heading is off, not when it is merely to the side of the human's line.
+
 ### P1519 Jargon stream view
 - The Jargon tab opens on a simple view: pick a course and press "Jargon surfs it", or "I start it" to prestrafe and jump yourself while Jargon takes over at your jump.
 - Switching course, Stop and Back to playing work at any time; pressing a start while Jargon runs stops it first. Camera: first person, chase (behind you) or overview.

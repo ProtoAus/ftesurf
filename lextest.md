@@ -1,5 +1,9 @@
 # lextest.md — things waiting on a human
 
+## P1520 lines under the HUD -- owner check PENDING
+- Watch a replay with its path on, or let Jargon run with Route and Search lines on (Jargon tab, Lines). The speedometer, strafe bar, Jargon's panel, chat and the boarding window should now cover the lines and their numbers, not the other way round.
+- Known: on the one frame your energy zero moves (leaving the start, a jump), the energy numbers on the lines can read the previous frame's zero.
+
 ## P1521 controller-turn observation -- NOT deployed; owner check PENDING after reviewed deployment
 - If a real controller is available, record one short normal controller turn and one mouse-only turn with the same settings. Controls should feel unchanged; report any new input/analysis warnings. Keep the original captures for comparison; no reset or deletion is requested.
 - This is not yet a human pass or calibrated input classification. Literal-function controls and a full isolated Windows build do not replace actual controller/full-game acceptance. Independent reviews and deployment must happen first; tools/p1521-controller-identity.md.
