@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1520 lines under the HUD -- owner check PENDING
+## P1520 lines under the HUD -- LIVE 12 Nov 09:20Z: 12 lobbies + both installs qw aff0f1eb / cs 5f4536d3, codes.txt 127; owner check PENDING
 - Watch a replay with its path on, or let Jargon run with Route and Search lines on (Jargon tab, Lines). The speedometer, strafe bar, Jargon's panel, chat and the boarding window should now cover the lines and their numbers, not the other way round.
 - Known: on the one frame your energy zero moves (leaving the start, a jump), the energy numbers on the lines can read the previous frame's zero.
 
