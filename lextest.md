@@ -4,7 +4,7 @@
 - TAS panel, Jargon tab: pick a stage in Course and a run in Guide run. In the waypoint table click a number, type, Enter: the row gets a * and the route moves. Pick a row, + Air point, type its numbers; Delete air point; Undo, Redo; Reset asks twice.
 - Arm with "At my jump" or "When I leave the start zone", or pick "It starts by itself" and Start. The keys display should show Jargon's keys while it drives. Stop, then Back to playing.
 - surf_colin_blaster_69000, main course: Jargon should go through each stage's end portal ("through the portal" in the console).
-- Known: Jargon's own crouch at the start stays off (tas_jargon_startduck): copied by time it made tensor2 stage 1's first ramp unreachable. The human's crouch in the search is on.
+- Known: copying the human's crouch stays off, at the start (tas_jargon_startduck: tensor2 stage 1's first ramp became unreachable) and in the search (tas_jargon_rowkeys: colin_blaster's first portal, 0 of 3 runs through with it, 2 of 2 without). Copied by time, a crouch lands where Jargon is, not where the human was.
 
 ## P1520 lines under the HUD -- LIVE 12 Nov 09:20Z: 12 lobbies + both installs qw aff0f1eb / cs 5f4536d3, codes.txt 127; owner check PENDING
 - Watch a replay with its path on, or let Jargon run with Route and Search lines on (Jargon tab, Lines). The speedometer, strafe bar, Jargon's panel, chat and the boarding window should now cover the lines and their numbers, not the other way round.

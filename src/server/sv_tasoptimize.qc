@@ -2311,7 +2311,7 @@ void(entity e, float argc) SV_TASDemoRowsCommand =
 		topt_drow[n*5+2] = bound(-89, stof(argv(7)), 89);
 		topt_drow[n*5+3] = yaw - 360 * floor((yaw + 180) / 360);
 		topt_drow[n*5+4] = ((kb & 2) ? 1 : 0) | ((kb & 4) ? 2 : 0);
-		if (!ksfseen && !(cvar("tas_jargon_off") & 1048576))      // rule 1048576 (sv_tasautosurf.qc), was test cvar tas_jargon_rowkeys
+		if (!ksfseen && cvar("tas_jargon_rowkeys"))      // test cvar: off by default (the A/B in sv_tasautosurf.qc's rule notes)
 		{	// an FTESurf recording (Jargon's own finish, a player's run) has no ksfbuttons lines: its <keys> column holds the
 			// jump and duck it asked for (SV_RecKeys) -- Lex: crouching keeps the legs off surfaces
 			kk = stof(argv(10));

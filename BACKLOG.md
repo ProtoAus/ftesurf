@@ -76,10 +76,14 @@ gave 0:12.825 and 5 backtracks on two builds).
 
 ## Jargon -- leftovers of P1528 (13 Nov)
 
-- Site: the start's own crouch (test cvar tas_jargon_startduck). Copied by time after Jargon's jump, it made tensor2
-  stage 1's stretch 1 unreachable (A/B 13 Nov, one run an arm; Jargon jumps 54 u before the guide's exit, so its unduck
-  lands elsewhere). Lead: copy it by place -- crouched while over the box's edge, standing once the feet clear it.
-  Falsifier: with it on, tensor2 stage 1 reaches stretch 1 and no course in the broad set loses a stretch.
+- Site: copying the human's crouch (test cvars tas_jargon_startduck, tas_jargon_rowkeys), both off. The start's copy,
+  timed from Jargon's own jump, made tensor2 stage 1's stretch 1 unreachable (A/B 13 Nov, one run an arm; Jargon jumps
+  54 u before the guide's exit). The search's copy (the demo rows' duck bits) cost surf_colin_blaster_69000's first
+  portal: 0 of 3 runs through with it, 2 of 2 without (the board before it ended 120 u off and every line fell into the
+  void trigger under the portal); tensor2 stage 1 was alike either way. Lead: crouch by place, not time -- crouched
+  while over a lip or under a roof the guide crouched at, standing once clear. Lex's cases: tensor2 stage 1's start
+  (kenos crouch-jumps 9 ticks), colin_blaster bonus 4 (a crouch under a roof). Falsifier: with it on, those pass and
+  colin_blaster's first portal still does.
 - Site: SV_TASAutoCoastPredict / stage 31. A prediction the engine cuts short (water, a ladder) now returns 0, and a coast
   that then misses ends the chain after 400 ticks ("did not reach the end in 6 s") with no retry. Falsifier: a finish
   over water whose first coast misses is retried.

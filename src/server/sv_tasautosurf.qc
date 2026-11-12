@@ -119,8 +119,9 @@ float(float b) SV_TASAutoRule = { return !(cvar("tas_jargon_off") & b); };
 // coast past the end is a failed finish (fin3: tensor2 stage 1's seed 0 from "did not reach the end" to 0:10.905); 524288 the
 // start backs off at its exit more than 30 deg off the guide's line and walks to within 16 u of its standstill (was test
 // cvar tas_jargon_startfix: tensor2 stage 6 after another course jumped 366 u and -59 deg off and stuck at stretch 1);
-// 1048576 the guide's crouch copied from any recording, as from a KSF replay's button lines (was test cvar
-// tas_jargon_rowkeys) -- Lex, 13 Nov: humans duck off the start platform's lip. The start's own copy of the guide's
+// The guide's crouch copied from any recording (test cvar tas_jargon_rowkeys) stays off: surf_colin_blaster_69000's
+// first portal, 450 s an arm -- on, 0 of 3 runs went through (stretch 5's board ended 120 u off, every line fell into the
+// void under the portal); off, 2 of 2 did; tensor2 stage 1 alike either way (A/B 13 Nov). The start's own copy of the guide's
 // crouch after its jump stays test cvar tas_jargon_startduck: tensor2 stage 1 (kenos crouch-jumps 9 ticks), stretch 1
 // at the panel's effort -- both on: not reached in 300 s (12 misses); the start's alone: not reached; the search's
 // alone: reached after 3 misses, stage finished 0:10.905 (A/B 13 Nov, one run an arm). Copied by time, its unduck

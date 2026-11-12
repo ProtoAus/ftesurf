@@ -34,7 +34,7 @@
 - Choose how Jargon takes over: at your jump, when you leave the start zone, or by itself. Continue resumes a saved run, and Back to playing returns you to normal play.
 - While Jargon drives, the keys display shows the keys it presses.
 - Jargon now goes through the teleports between stages, so a full run no longer stops at the end of the first stage.
-- Jargon's starts take one jump off the platform and line up again when they reach the exit at a bad angle. It copies the human's crouch from any demo and finishes more stages.
+- Jargon's starts take one jump off the platform and line up again when they reach the exit at a bad angle, and it finishes more stages.
 - Jargon's lines are drawn smoothly instead of in 4-unit steps.
 
 ### P1526 Recording clock validation
