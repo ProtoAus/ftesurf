@@ -168,7 +168,7 @@ MOUSE_KEYS = set(range(178, 185)) | set(range(265, 270))
 PAD_BUTTONS = set(range(178, 183))
 
 
-def _unquote_pair(rest, *, require_pair=False):
+def _cvar_tokens(rest, *, require_pair=False):
     """Decode COM_QuotedString's default plain or backslash-prefixed form.
 
     Only the prefixed form interprets escapes; plain backslashes are literal.
@@ -183,6 +183,7 @@ def _unquote_pair(rest, *, require_pair=False):
             i += 1
         if i == len(rest):
             break
+        start = i
         escaped = rest.startswith('\\"', i)
         if escaped or rest[i] == '"':
             i += 2 if escaped else 1
@@ -201,15 +202,54 @@ def _unquote_pair(rest, *, require_pair=False):
             i += 1
             if i < len(rest) and not rest[i].isspace():
                 raise ValueError("characters after closing quote")
-            out.append("".join(buf))
+            out.append(("".join(buf), rest[start:i], escaped))
         else:
             j = i
             while i < len(rest) and not rest[i].isspace():
                 i += 1
-            out.append(rest[j:i])
+            out.append((rest[j:i], rest[start:i], False))
     if require_pair and len(out) != 2:
         raise ValueError("missing value or default")
-    return tuple((out + ["", ""])[:2])
+    return out
+
+
+def _unquote_pair(rest, *, require_pair=False):
+    values = [token[0] for token in _cvar_tokens(rest, require_pair=require_pair)]
+    return tuple((values + ["", ""])[:2])
+
+
+def _identity_capture_unknown(name, token, capacity):
+    """A legacy clipped numeric prefix cannot prove an effective identity cvar.
+
+    Encoded size matters: the escaped writer can stop one byte before the plain
+    boundary. A terminator/character already seen fixes the effective value
+    independently of any missing suffix; keep those comparisons, not blanket
+    long-value silence.
+    """
+    if name not in IDENTITY_CVARS:
+        return False
+    value, wire, escaped = token
+    if not escaped and not wire.startswith('"'):
+        return False
+    if len(wire.encode("utf-8")) < capacity - (2 if escaped else 1):
+        return False
+    integer = name == "leftisright"
+    i = 0
+    if not integer:
+        while i < len(value) and value[i] == " ":
+            i += 1
+    if value[i:i + 1] == "-":
+        i += 1
+    if value[i:i + 2] in ("0x", "0X"):
+        i += 2
+        digits = "0123456789abcdefABCDEF"
+    elif value[i:i + 1] == "'":
+        return len(value) <= i + 1
+    else:
+        digits = "0123456789" if integer else "0123456789."
+    while i < len(value) and value[i] in digits:
+        i += 1
+    return i == len(value)
 
 
 def parse_dev_line(line):
@@ -421,6 +461,7 @@ def check_hid(path, verbose=False, *, data=None):
     devs = []              # Patch 303: repeating, so a list and not `head`
     rendercvars = []       # Patch 310: (name, value, default)
     inputcvars = []        # Patch 312: (name, value, default) -- the input pipeline
+    left_capture_unknown = False
     cvar_changes = []      # Patch 310/312: (name, value), in order
     i = 1
     while i < len(lines):
@@ -443,12 +484,15 @@ def check_hid(path, verbose=False, *, data=None):
                 r.fault("malformed %r line: %r" % (parts[0], lines[i]))
             else:
                 try:
-                    val, dfl = _unquote_pair(rp[2], require_pair=True)
+                    tokens = _cvar_tokens(rp[2], require_pair=True)
+                    val, dfl = tokens[0][0], tokens[1][0]
                 except ValueError as exc:
                     r.fault("malformed quoted cvar in %r header: %s" % (parts[0], exc))
                 else:
                     (rendercvars if parts[0] == "render"
                      else inputcvars).append((rp[1], val, dfl))
+                    if parts[0] == "input" and rp[1] == "leftisright":
+                        left_capture_unknown |= _identity_capture_unknown("leftisright", tokens[0], 64)
             i += 1
             continue
         if parts[0] == "dev":
@@ -482,6 +526,12 @@ def check_hid(path, verbose=False, *, data=None):
     except ValueError:
         r.fault("base is not a number: %r" % head["base"])
         return r
+
+    if left_capture_unknown:
+        head["leftisright"] = None
+        r.fault("header: leftisright capture unavailable at legacy boundary; "
+                "exact identity unproved")
+        r.info["identity_capture_unavailable"] = ["leftisright"]
 
     # Patch 387: a Linux journal. Decided by the device table, not by a value a
     # Windows player can set, and never when the table holds a Windows name (a
@@ -872,7 +922,8 @@ def check_hid(path, verbose=False, *, data=None):
             # Patch 310: a render-integrity cvar changed mid-journal.
             nm = tok[2]
             try:
-                val = _unquote_pair(lines[lineno].split(None, 3)[3])[0]
+                token = _cvar_tokens(lines[lineno].split(None, 3)[3])[0]
+                val = token[0]
             except ValueError as exc:
                 r.fault("line %d: malformed quoted cvar: %s" % (lineno + 1, exc))
                 if nm in IDENTITY_CVARS:
@@ -880,6 +931,14 @@ def check_hid(path, verbose=False, *, data=None):
                     idover = dict(idover, **{nm: None})
                 continue
             cvar_changes.append((nm, val))
+            if _identity_capture_unknown(nm, token, 128):
+                r.fault("line %d: %s capture unavailable at legacy boundary; "
+                        "exact identity unproved" % (lineno + 1, nm))
+                unavailable = r.info.setdefault("identity_capture_unavailable", [])
+                if nm not in unavailable:
+                    unavailable.append(nm)
+                idover = dict(idover, **{nm: None})
+                continue
             if nm in IDENTITY_CVARS:
                 idover = dict(idover, **{nm: val})    # new dict: earlier views keep theirs
         elif kind == "g":

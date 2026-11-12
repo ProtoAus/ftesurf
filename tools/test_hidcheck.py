@@ -2234,6 +2234,138 @@ def case_cvar_quote_malformed():
           "only eight unknown transitions excluded; valid change resumes actual judging")
 
 
+def leftisright_capture_cases(capacity):
+    """Wire fixtures checked against literal native Q_atoi/COM_QuotedString."""
+    n = capacity - 3
+    return (
+        ("plain clipped one", "0" * n + "1", '"' + "0" * n + '"', 1, True),
+        ("same whole zero", "0" * n, '"' + "0" * n + '"', 0, True),
+        ("signed clipped one", "-" + "0" * (n - 1) + "1",
+         '"-' + "0" * (n - 1) + '"', -1, True),
+        ("hex clipped one", "0x" + "0" * (n - 2) + "1",
+         '"0x' + "0" * (n - 2) + '"', 1, True),
+        ("escaped clipped one", "0" * (capacity - 5) + "1\n",
+         '\\"' + "0" * (capacity - 5) + '"', 1, True),
+        ("escaped same zero", "0" * (capacity - 5) + "\n",
+         '\\"' + "0" * (capacity - 5) + '"', 0, True),
+        ("stable terminated one", "1x" + "0" * (capacity + 8),
+         '"1x' + "0" * (n - 2) + '"', 1, False),
+        ("stable quoted character", "'0" + "0" * (capacity + 8),
+         '"\'0' + "0" * (n - 2) + '"', 48, False),
+        ("escaped full boundary stable zero", "0" * (capacity - 6) + "\n" + "1" * 9,
+         '\\"' + "0" * (capacity - 6) + '\\n"', 0, False),
+        ("stable terminated hex", "0x1z" + "0" * (capacity + 8),
+         '"0x1z' + "0" * (n - 4) + '"', 1, False),
+    )
+
+
+def case_leftisright_capture_boundary():
+    for capacity, change in ((64, False), (128, True)):
+        for name, _value, wire, integer, unavailable in leftisright_capture_cases(capacity):
+            for correct in (True, False):
+                j = Journal(inputcvars=[("leftisright", "0", "0")])
+                if not change:
+                    j.lines = [l.replace('input leftisright "0" "0"',
+                                         'input leftisright ' + wire + ' "0"')
+                               for l in j.lines]
+                yaw = 0.0
+                for i in range(30):
+                    j.frame(8300 + i)
+                    j.mouse(3, 0)
+                    if change and i == 12:
+                        j.lines.append('c 0 leftisright ' + wire)
+                    if i == 20:
+                        j.cvarchange("leftisright", "1" if integer else "0")
+                    active = not change or i >= 12
+                    mirrored = (bool(integer) if correct else not bool(integer)) if active else False
+                    yaw += (-j.k if mirrored else j.k) * 3
+                    j.view(3, 0, 10.0, yaw)
+                r = run(j.end())
+                label = "%s %s correct=%s" % (name, "change" if change else "header", correct)
+                if unavailable:
+                    check(not r.ok and has_fault(r, "leftisright capture unavailable"),
+                          "ambiguous capture is refused, never an unproved pass: %s" % label)
+                    if correct:
+                        check(not has_fault(r, "YAW IDENTITY BROKEN"),
+                              "ambiguous capture does not accuse valid angles: %s" % label)
+                    expected = 21 if change else 10
+                    check(r.info.get("identity_yaw_judged") == expected,
+                          "known sign resumes exactly after replacement: %s" % label)
+                elif correct:
+                    check(r.ok and r.info.get("identity", "").startswith("exact"),
+                          "complete integer prefix keeps exact identity: %s %s" % (label, r.faults[:1]))
+                    check(r.info.get("identity_yaw_mouse_frames") == 29,
+                          "complete-prefix mouse comparisons actually act: %s" % label)
+                else:
+                    check(has_fault(r, "YAW IDENTITY BROKEN") and
+                          not has_fault(r, "leftisright capture unavailable"),
+                          "CONTROL complete-prefix wrong sign still faults: %s" % label)
+
+
+def float_capture_cases(capacity=128):
+    n = capacity - 3
+    return (
+        ("plain clipped one", "0" * n + "1", '"' + "0" * n + '"', 1, True),
+        ("same whole zero", "0" * n, '"' + "0" * n + '"', 0, True),
+        ("escaped clipped one", "0" * (capacity - 5) + "1\n",
+         '\\"' + "0" * (capacity - 5) + '"', 1, True),
+        ("escaped same zero", "0" * (capacity - 5) + "\n",
+         '\\"' + "0" * (capacity - 5) + '"', 0, True),
+        ("terminated one", "1x" + "0" * (capacity + 8),
+         '"1x' + "0" * (n - 2) + '"', 1, False),
+    )
+
+
+def float_capture_journal(name, wire, numeric, corrupt=False):
+    defaults = {"sensitivity": 0.3, "m_yaw": 0.022, "m_pitch": 0.022,
+                "m_filter": 0, "m_accel": 0}
+    j = Journal(inputcvars=[(name, str(defaults[name]), str(defaults[name]))])
+    pitch, yaw = 10.0, 0.0
+    for i in range(30):
+        j.frame(8500 + i)
+        j.mouse(3, 2)
+        if i == 12:
+            j.lines.append('c 0 ' + name + ' ' + wire)
+        if i == 20:
+            j.cvarchange(name, str(defaults[name]))
+        active = 12 <= i < 20
+        sensitivity = numeric if active and name == "sensitivity" else 0.3
+        myaw = numeric if active and name == "m_yaw" else 0.022
+        mpitch = numeric if active and name == "m_pitch" else 0.022
+        yaw -= 3 * sensitivity * myaw
+        pitch += 2 * sensitivity * mpitch
+        if corrupt and i == 15:
+            yaw += 5
+        j.view(3, 2, pitch, yaw)
+    return j.end()
+
+
+def case_float_capture_boundary():
+    for name in ("sensitivity", "m_yaw", "m_pitch", "m_filter", "m_accel"):
+        for label, _value, wire, numeric, unavailable in float_capture_cases():
+            r = run(float_capture_journal(name, wire, numeric))
+            label = name + " " + label
+            if unavailable:
+                check(not r.ok and has_fault(r, name + " capture unavailable"),
+                      "unfinished captured float cannot become proof: %s" % label)
+                check(not has_fault(r, "IDENTITY BROKEN"),
+                      "unfinished float capture does not invent angle accusations: %s" % label)
+                check(r.info.get("identity_yaw_judged") == 21 and
+                      r.info.get("identity_pitch_judged") == 21,
+                      "float replacement restores exactly the known comparisons: %s" % label)
+            else:
+                check(r.ok and not has_fault(r, "capture unavailable"),
+                      "terminated float prefix remains available: %s %s" % (label, r.faults[:1]))
+                expected = 21 if name in ("m_filter", "m_accel") else 29
+                check(r.info.get("identity_yaw_mouse_frames") == expected and
+                      r.info.get("identity_pitch_mouse_frames") == expected,
+                      "known float profile acts (nonlinear modes stay excluded): %s" % label)
+                if name not in ("m_filter", "m_accel"):
+                    broken = run(float_capture_journal(name, wire, numeric, corrupt=True))
+                    check(has_fault(broken, "YAW IDENTITY BROKEN"),
+                          "CONTROL terminated float does not hide angle rewrite: %s" % label)
+
+
 def case_leftisright_engine_parse():
     """The sign is leftisright's .ival (Q_atoi), so no value blinds the check
     and none the engine reads as 0 flips it: "abc", "0.5" and " 1" are all 0."""
@@ -2473,7 +2605,8 @@ def main():
                case_teleport_at_the_clamp_is_unresolved, case_no_frame_markers,
                case_cvar_change_followed, case_leftisright_sign,
                case_leftisright_engine_parse, case_cvar_quote_codec,
-               case_cvar_quote_identity, case_cvar_quote_malformed):
+               case_cvar_quote_identity, case_cvar_quote_malformed,
+               case_leftisright_capture_boundary, case_float_capture_boundary):
         print("%s:" % fn.__name__)
         fn()
         print("")

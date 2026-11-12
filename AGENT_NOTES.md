@@ -1,5 +1,27 @@
 # AGENT_NOTES.md
 
+## P1516 captured text is not automatically an effective constant (12 Nov 2026)
+
+- Literal COM_QuotedString plus native Q_atoi/Q_atof proves different effective
+  values can share one boundary token. Count encoded bytes, including codec
+  prefix/escapes; escaped output can stop one byte before the plain limit.
+  Twenty integer/five float rows ACT. Do not call a recovered prefix complete.
+- An observed terminator/character already establishes the effective prefix;
+  preserve those comparisons instead of blanket silence for long settings.
+  Ambiguous identity constants are data-quality faults with unknown comparison
+  state until replacement, not angle accusations OR journal OK. Typed scalar
+  header scales are distinct from redundant clipped text; only header leftisright
+  lacks that typed value. Existing non-linear mode exclusions remain unchanged.
+- Receipt journal-content status is deliberately independent from receipt
+  signature verdict. Actual captured-digest joins must preserve that separation;
+  no claim that this diagnostic invents rank/promote authority. Source matches
+  Windows/ARM HID535/0, receipt388/0, reader949/0; original corpus unchanged.
+- Respect the signed native yaw convention in synthetic float fixtures (minus
+  yaw, plus pitch). The first added float vector used plus yaw and failed25
+  checks for the wrong reason. Retain it, then run corrected535fixtures against
+  the actual published parent:92fail, subject0. Do not claim the bad vector's
+  failures as a product finding. Public limits: tools/p1516-hid-capture.md.
+
 ## P1515 native quoted cvars are two different codecs (12 Nov 2026)
 
 - Current hidcheck used a manual quote parser, not shlex; reread the actual

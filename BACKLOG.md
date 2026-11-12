@@ -1844,17 +1844,20 @@ From the two independent reviews of 28 Oct. Every case stays TAS-flagged; none r
 - 28 Oct: generation 74e060d7 carries P984's zonefit (live 06:32Z); remove this
   once a mapwatch run (cron 23 */6) shows the falsifier above.
 
-## hidcheck: long cvar values the legacy journal cannot carry exactly
+## HID journal: complete cvar capture and non-default console codec
 
-- P1515 fixes default-form escaping/plain backslashes and quoted whitespace;
-  that is NOT recovery of a producer-clipped suffix.
+- P1515 fixes default-form escaping/plain backslashes and quoted whitespace.
+  P1516 prevents false angle findings/unproved journal OK from legacy clipped
+  identity constants, with explicit unavailable-data refusal and later recovery.
+  Neither reconstructs missing producer text.
 - Sites: engine client/in_generic.c COM_QuotedString header qval[64] (plain
-  payload61bytes), change quoted[128] (125bytes). tools/hidcheck.py can still
-  derive a different .ival from a clipped value and falsely blame angle identity.
-  Falsifier: actual leftisright "0"*61+"1", observed header prefix allzero, while
-  actual movement is mirrored. Plain/escaped boundary cases differ by capacity.
-- Need an exact effective-value/complete-capture proof or explicit unavailable
-  result that does not become either an angle accusation OR an unproved pass.
+  payload61bytes), change quoted[128] (125bytes) still lose suffixes. A future
+  producer needs complete-capture/effective-value proof, not larger guessed
+  fixed buffers. Falsifier: actual leftisright "0"*61+"1" and whole61zeros
+  produce identical header tokens but different native effective values.
+  Current expected result: capture-unavailable content fault, not an angle
+  accusation or journal OK; valid replacements resume exact known windows.
+- Full text/effective capture remains unavailable for original legacy files.
   Larger fixed buffers alone do not solve arbitrary cvar length. No new recorded
   field or historical regrade is assumed. Non-default dpcompat_console encoding
   is also unrecorded and is not claimed by the default-form decoder.

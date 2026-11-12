@@ -574,6 +574,46 @@ def test_retry_clock_faults():
               (r.angles, bool(r.faults)), (expected, expected == "FAULT"))
 
 
+def test_unavailable_hid_capture_keeps_content_refusal():
+    import test_hidcheck as vectors
+
+    samples = []
+    cases = vectors.leftisright_capture_cases(64)
+    for name, _value, wire, integer, _opaque in (cases[0], cases[1], cases[4], cases[5]):
+        j = vectors.Journal(inputcvars=[("leftisright", "0", "0")])
+        j.lines = [line.replace('input leftisright "0" "0"',
+                                'input leftisright ' + wire + ' "0"') for line in j.lines]
+        yaw = 0.0
+        for i in range(30):
+            j.frame(8400 + i)
+            j.mouse(3, 0)
+            yaw += (-j.k if integer else j.k) * 3
+            j.view(3, 0, 10.0, yaw)
+        samples.append((name, j.end().encode("utf-8"), "leftisright"))
+    for cvar in ("sensitivity", "m_yaw", "m_pitch", "m_filter", "m_accel"):
+        for label, _value, wire, numeric, _opaque in vectors.float_capture_cases()[:4]:
+            data = vectors.float_capture_journal(cvar, wire, numeric).encode("utf-8")
+            samples.append((cvar + " " + label, data, cvar))
+    for name, data, cvar in samples:
+        r = rcptcheck.Receipt("capture.rcpt")
+        r.file_bytes["capture.hid"] = data
+        r.signed = [("hid", "%s %d 1" % (hashlib.sha256(data).hexdigest(), len(data)))]
+        before = r.ok
+        with mock.patch("builtins.open", side_effect=AssertionError("reopened captured HID")):
+            rcptcheck.join_journal(r)
+        check("capture %s: actual captured digest checked" % name,
+              (("hid", "capture.hid") in r.digest_checked, r.digest_bad), (True, {}))
+        check("capture %s: cannot become journal OK" % name, r.journal, "FAULT")
+        check("capture %s: quality refusal is not an angle accusation" % name,
+              (cvar + " capture unavailable" in r.journal_detail,
+               "YAW IDENTITY BROKEN" in r.journal_detail or
+               "PITCH IDENTITY BROKEN" in r.journal_detail), (True, False))
+        check("capture %s: unproved input totals withheld" % name,
+              "legacy_presses" in r.journal_metrics, False)
+        check("capture %s: journal does not invent a signature verdict" % name,
+              (r.ok, r.faults), (before, []))
+
+
 def main():
     tests = (lambda: test_swap("view"), lambda: test_swap("hid"),
              lambda: test_swap("hid", broken_first=True), test_rec_swap,
@@ -581,7 +621,8 @@ def main():
              test_missing_view_and_io, test_selected_rec_tail_io,
              test_unsigned_sibling_io, test_parser_bytes,
              test_unavailable_angles_keep_view_faults, test_usable_angles_keep_view_faults,
-             test_signed_usable_view_faults, test_initial_clock_origin, test_retry_clock_faults)
+             test_signed_usable_view_faults, test_initial_clock_origin, test_retry_clock_faults,
+             test_unavailable_hid_capture_keeps_content_refusal)
     for test in tests:
         try:
             test()

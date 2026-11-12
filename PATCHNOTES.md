@@ -22,6 +22,9 @@
 ## next
 - Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
+### P1516 Incomplete input settings
+- Journal analysis now reports clipped settings as unavailable instead of guessing a sign or scale. Valid later settings restore comparisons; uncertain data cannot become a journal pass.
+
 ### P1515 Input-journal analysis
 - Escaped cvar values and literal backslashes no longer cause false angle-identity findings. Damaged changes report a format problem rather than reusing stale settings.
 
