@@ -63,6 +63,7 @@
 .float as_sbl;                  // a back-off counted this approach (cleared once back past 450 u)
 .float as_exair;                // the guide was in the air at its exit (it had jumped by the box's edge)
 .float as_sjmp;                 // this start has jumped
+.float as_sdk;                  // this start has replayed the guide's crouch (said once)
 .float as_smeth, as_sredo;      // the start's way (1 the guide's prestrafe replayed, else steering), and whether it was redone
 .float as_sph;                  // the start's ground phase: 0 speed (a left circle), 1 onto the line, 2 around again
 .float as_sdrop;                // ticks of the spawn's drop (as_sn2 is the out-of-box phase's own: review 2)
@@ -1586,7 +1587,11 @@ void(entity e) SV_TASAutoFrame =
 			best = as_bin[i*4+3] - 360 * floor((as_bin[i*4+3] + 180) / 360);
 			// tas_jargon_startduck: the guide's crouch too (surf_gigapede bonus 4's human ducks from 0.5 s before the jump to
 			// its board at 0.4 s; this replay carried the jump only, and every stretch-1 line skimmed or overshot)
-			if (as_bdk[i] && cvar("tas_jargon_startduck")) t = t + 2;
+			if (as_bdk[i] && cvar("tas_jargon_startduck"))
+			{
+				t = t + 2;
+				if (!e.as_sdk) { e.as_sdk = 1; SV_TASAutoNote(e, 1, sprintf("start: crouching as the guide did (his duck from t=%.3f)", as_rows[i*7])); }
+			}
 			argc_pl = tokenize(sprintf("tas next manual %.0f %.0f %.4f %.4f %.0f 1", as_bin[i*4], as_bin[i*4+1], as_bin[i*4+2], best, t));
 			SV_TASPlanCommand(e, argc_pl);
 			e.as_ri = e.as_ri + 1;
@@ -1736,7 +1741,7 @@ void(entity e) SV_TASAutoFrame =
 				if (!e.taslg_on || e.taslg_zone != e.as_szone || e.run_t_state != TS_ARMED)
 					{ SV_TASAutoStop(e, "the start could not be redone (no legal start in the box)"); return; }
 				e.as_ri = (e.as_smeth == 1) ? -1 : SV_TASAutoRest(e);
-				e.as_smeth = 0; e.as_stage = 10; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_sbl = 0; e.as_sjmp = 0;
+				e.as_smeth = 0; e.as_stage = 10; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_sbl = 0; e.as_sjmp = 0; e.as_sdk = 0;
 				return;
 			}
 			e.as_stage = 1; e.as_i = 0; e.as_try = 0; e.as_backs = 0; e.as_tprev = as_rows[s*7]; e.as_failat = -1;
@@ -2269,7 +2274,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		}
 		if (e.as_file != "") strunzone(e.as_file);
 		e.as_file = path;
-		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_sbl = 0; e.as_sjmp = 0; e.as_smeth = 0; e.as_sredo = 0;
+		e.as_on = 1; e.as_stage = 10; e.as_backs = 0; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1; e.as_sph = 0; e.as_sback = 0; e.as_sbl = 0; e.as_sjmp = 0; e.as_sdk = 0; e.as_smeth = 0; e.as_sredo = 0;
 		e.as_ctrack = nct; e.as_cleg = ncl; e.as_saved = -1; e.as_esc = 0; e.as_keepsaid = 0; e.as_cseed = 0;
 		SV_TASAutoRunSalt();
 		e.as_ri = (e.as_ctrack >= 0) ? SV_TASAutoRest(e) : -1;      // a `zone` start steers as before
