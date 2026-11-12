@@ -550,7 +550,7 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 		for (i = 0; i < jg_cn; i = i + 1)
 			if (Profile_Chip(sprintf("jg_k%g", i), at + [(i - 4 * floor(i / 4)) * (q + 6), floor(i / 4) * (row + 3), 0], [q, row, 0],
 				TASJargon_CourseLabel(i), hint, jg_cpick == i))
-				if (!running) { jg_cpick = i; jg_gat = 0; jg_kat = 0; }
+				if (jg_cpick != i) TASOptUI_Course(i);     // as the stream view: switching stops the run first
 		at_y = at_y + ceil(jg_cn / 4) * (row + 3) + hint;
 		st = 2;
 	}

@@ -2225,8 +2225,8 @@ void(entity e, float argc) SV_TASAutoCommand =
 	if (ct >= 0 && zg) { sprint(e, PRINT_HIGH, "tas autosurf: `course` picks the start itself; not with zone\n"); SV_TASAutoOptRestore(e); return; }      // onjump/onexit with a course: armed in its own box (below)
 	if (path == "route")
 	{	// the clicked route: no demo, no plan to make; from here (a running attempt, paused)
-		if (st || arm) { sprint(e, PRINT_HIGH, "tas autosurf route: from a pause on the route (the start options follow a demo)\n"); return; }
-		if (rt_n < 1) { sprint(e, PRINT_HIGH, "tas autosurf route: no points yet -- tas route add, or the tab's Add at crosshair\n"); return; }
+		if (st || arm) { sprint(e, PRINT_HIGH, "tas autosurf route: from a pause on the route (the start options follow a demo)\n"); SV_TASAutoOptRestore(e); return; }
+		if (rt_n < 1) { sprint(e, PRINT_HIGH, "tas autosurf route: no points yet -- tas route add, or the tab's Add at crosshair\n"); SV_TASAutoOptRestore(e); return; }
 		e.as_ctrack = -1; e.as_cleg = 0; e.as_saved = -1; e.as_fromstart = 0;     // no course (review A: an old one finished it at once)
 		e.as_cseed = 0; SV_TASAutoRunSalt();
 		as_nrows = 0; as_n = rt_n;
@@ -2270,7 +2270,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 	}
 	if (arm)
 	{
-		if (e.run_t_state != TS_ARMED) { sprint(e, PRINT_HIGH, "tas autosurf: onjump / onexit wait in the start box (stand in it, TAS on)\n"); SV_TASAutoOptRestore(e); strunzone(path); return; }
+		if (e.run_t_state != TS_ARMED) { sprint(e, PRINT_HIGH, "tas autosurf: onjump / onexit wait in the start box (stand in it)\n"); SV_TASAutoOptRestore(e); strunzone(path); return; }
 		if (nct >= 0 && e.run_t_armzone != e.as_szone)
 		{	// a picked course takes over from its own box only: its rows and its end are that course's (Lex: start it yourself on stream)
 			sprint(e, PRINT_HIGH, sprintf("tas autosurf: stand in %s's start box first (!r, or !s for a stage), then this again\n", SV_TASAutoCourseName(nct, ncl)));

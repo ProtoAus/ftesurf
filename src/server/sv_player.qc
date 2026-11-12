@@ -1621,8 +1621,8 @@ void(entity e, float argc) SV_TASCommand =
 		}
 	}
 	if (!strcmp(action, "contacts")) { SV_TASContactsCommand(e, argc); return; }
-	if (e.tasp_load && strcmp(action, "status") && strcmp(action, "project"))
-	{
+	if (e.tasp_load && strcmp(action, "status") && strcmp(action, "project") && !(!strcmp(action, "autosurf") && argc == 3 && argv(2) == "stop"))
+	{	// P1517 review: Jargon's stop reaches it during a Continue's load (the load plays on and pauses; the chain is off)
 		sprint(e, PRINT_HIGH, "tas: a project load is running; wait, or tas play/off to stop it\n");
 		return;
 	}
