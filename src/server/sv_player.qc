@@ -1612,6 +1612,8 @@ void(entity e, float argc) SV_TASCommand =
 		}
 		return;
 	}
+	// the Jargon panel's Continue poll reads a file: before the gates below, which answered it every 5 s mid-search (review 1528)
+	if (!strcmp(action, "autosurf") && argc == 5 && argv(2) == "saved") { SV_TASAutoCommand(e, argc); return; }
 	if (e.tsol_on)
 	{
 		if (strcmp(action,"contacts") && strcmp(action,"page2"))

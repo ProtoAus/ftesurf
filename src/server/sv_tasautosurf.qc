@@ -1039,6 +1039,7 @@ void(entity e) SV_TASAutoRegions =
 	for (f = 0; f < 2; f = f + 1)
 	{
 		d2 = (f == 0) ? dir : strcat("data/momentum/", mapname, "/", leg, "/");
+		if (f == 1 && d2 == dir) continue;      // a Momentum guide: the same folder (review 1528: every run read twice)
 		h = search_begin(strcat(d2, "*.rec"), 0, TRUE);
 		if (h < 0) continue;
 		for (b = 0; b < search_getsize(h) && nf < TAS_RGNFILES; b = b + 1)
@@ -1639,7 +1640,7 @@ float(entity e, float track, float leg, float commit) SV_TASAutoNotes =
 			else if (argv(0) == "w")
 			{
 				nw = nw + 1;
-				if (!SV_TASAutoWhole(stof(argv(2)), 1, 5)) bad = 1;
+				if (!SV_TASAutoWhole(stof(argv(2)), 1, 7)) bad = 1;     // 7: a portal (review 1528: Continue refused every plan with one)
 				else if (commit) { as_wk[i] = stof(argv(2)); as_wt[i] = stof(argv(3)); as_wo[i*3] = stof(argv(4)); as_wo[i*3+1] = stof(argv(5)); as_wo[i*3+2] = stof(argv(6)); }
 				else as_cwt[i] = stof(argv(3));
 			}
@@ -1717,10 +1718,10 @@ float(entity e) SV_TASAutoCoastPredict =
 {
 	local float i, n, ran, a, k;
 	if (!checkbuiltin(tas_rollout)) return 0;
-	if (!as_crows) as_crows = (float*)memalloc(160 * 7 * 4);
-	if (!as_cout) as_cout = (float*)memalloc(160 * 13 * 4);
+	if (!as_crows) as_crows = (float*)memalloc(400 * 7 * 4);
+	if (!as_cout) as_cout = (float*)memalloc(400 * 13 * 4);
 	if (!as_crows || !as_cout) return 0;
-	n = 160;
+	n = 400;        // stage 31's own 6 s (review 1528: 160 ticks failed an end met later)
 	for (i = 0; i < n; i = i + 1)
 	{
 		as_crows[i*7] = as_crows[i*7+1] = as_crows[i*7+2] = as_crows[i*7+5] = as_crows[i*7+6] = 0;
@@ -1749,7 +1750,7 @@ float(entity e) SV_TASAutoCoastPredict =
 	// tas_jargon_finishretry: -2, the coast neither enters the end nor meets the teleport into it. A finish search's
 	// best may be only near the end (Safe), and the coast drifted past it: "did not reach the end in 6 s", the run over
 	// (surf_tensor2 stage 1, bench fin2)
-	return SV_TASAutoRule(262144) ? -2 : 0;
+	return (SV_TASAutoRule(262144) && ran >= n) ? -2 : 0;     // a prediction that stopped short says nothing
 };
 
 // After SV_TASDemoFrame (SV_TASOptFrame): the next step of the chain once no search is running.
@@ -1890,7 +1891,8 @@ void(entity e) SV_TASAutoFrame =
 				SV_TASAutoGuide(e, 0, 0, e.v_angle_y, 0, 2);
 				return;
 			}
-			if (!e.as_sn && e.as_ri >= 0 && vlen(e.velocity) < 1 && SV_TASAutoRule(4096) && SV_TASAutoStartJumps(e.as_ri) > 1)
+			if (!e.as_sn && e.as_ri >= 0 && vlen(e.velocity) < 1 && SV_TASAutoRule(4096))
+			if (SV_TASAutoStartJumps(e.as_ri) > 1)      // nested: every operand runs, and this walks rows
 			{
 				SV_TASAutoNote(e, 1, sprintf("start: the guide hopped %.0f times in the box; one jump to the first ramp instead", SV_TASAutoStartJumps(e.as_ri)));
 				e.as_ri = -1;
@@ -2061,7 +2063,8 @@ void(entity e) SV_TASAutoFrame =
 	if (e.as_stage == 32)
 	{	// through a portal: no keys, 2 ticks a step, until the body jumps (teleported) -- 60 ticks at most, else that try failed
 		if (e.run_tas_pending || e.run_tas_replaystate == TAS_TAPE_ACTIVE || e.run_tas_replaystate == TAS_TAPE_STAGING) return;
-		if (vlen(e.origin - e.as_ptp) > 300)
+		u = [as_wn[(e.as_i - 1)*3], as_wn[(e.as_i - 1)*3+1], as_wn[(e.as_i - 1)*3+2]];      // where the guide's teleport put it
+		if (vlen(e.origin - u) <= 512)
 		{	// on from the guide's own row nearest the body past its teleport
 			best = 1000000; t = e.as_tprev;
 			for (i = 0; i < as_nrows; i = i + 1)
@@ -2071,10 +2074,13 @@ void(entity e) SV_TASAutoFrame =
 					if (d < best) { best = d; t = as_rows[i*7]; }
 				}
 			e.as_tprev = t; e.as_stage = 1;
-			SV_TASAutoNote(e, 1, sprintf("through the portal (%.0f u from the guide's landing)", best));
+			SV_TASAutoSave(e, e.as_i);
+			SV_TASAutoNote(e, 1, sprintf("through the portal (%.0f u from the guide's landing)", vlen(e.origin - u)));
 			return;
 		}
-		if (e.as_sn >= 60)
+		// a jump of 300 u in one 2-tick step is a teleport, not flight (3500 u/s is 105 u): elsewhere, so missed (review 1528:
+		// total distance from the stop passed 300 u within a few steps at speed and read as through)
+		if (e.as_sn >= 60 || (e.as_sn > 0 && vlen(e.origin - e.as_ptp) > 300))
 		{	// that try failed: tried again or backtracked, as a finish's coast that misses
 			SV_TASAutoNote(e, 1, sprintf("stretch %.0f: the portal was missed: again", e.as_i));
 			e.as_i = e.as_i - 1; e.as_tprev = as_wp[e.as_i]; e.as_try = e.as_ptry;
@@ -2082,6 +2088,7 @@ void(entity e) SV_TASAutoFrame =
 			e.as_stage = 2;
 			return;
 		}
+		e.as_ptp = e.origin;
 		SV_TASAutoGuide(e, 0, 0, e.v_angle_y, 0, 2);
 		e.as_sn = e.as_sn + 2;
 		return;
@@ -2146,7 +2153,7 @@ void(entity e) SV_TASAutoFrame =
 			if (e.as_i == as_n - 1) e.as_fintry = e.as_try;
 			s = (as_wk[e.as_i] == 7); e.as_ptry = e.as_try;
 			e.as_tprev = t; e.as_i = e.as_i + 1; e.as_try = 0;
-			SV_TASAutoSave(e, e.as_i);
+			if (!s) SV_TASAutoSave(e, e.as_i);     // a portal's is saved once through it (review 1528: Continue resumed before it)
 			if (s && e.as_i < as_n)
 			{	// a portal reached: its line stops the tick before the teleport; stepped through it, then the next stretch
 				e.as_stage = 32; e.as_sn = 0; e.as_ptp = e.origin;
@@ -2401,6 +2408,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 	local string w, path;
 	if (argc == 5 && argv(2) == "saved")
 	{
+		if (Lobby_Active()) return;     // the panel's Continue is local practice (review 1528: file opens on the Pi)
 		if (FS_TASNumber(argv(3)) && FS_TASNumber(argv(4)) && stof(argv(3)) >= 0 && stof(argv(3)) < ZONE_MAXTRACKS && stof(argv(3)) == floor(stof(argv(3)))
 		    && stof(argv(4)) >= 0 && stof(argv(4)) <= 64 && stof(argv(4)) == floor(stof(argv(4))))
 			SV_TASAutoSavedQuery(e, stof(argv(3)), stof(argv(4)));

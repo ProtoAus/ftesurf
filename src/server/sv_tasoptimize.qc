@@ -1592,15 +1592,14 @@ float(entity e, entity t, float z) SV_TASOptTeleTo =
 	if (z < 0 || z >= zone_count) return -1;
 	return (Zone_BoxInside(z, d.origin, PM_HULL_MINS, PM_HULL_MAXS) || Zone_PointInside(z, d.origin)) ? z : -1;
 };
-// a teleport whose destination lies within r of dest (a portal waypoint's: where the guide's own teleport put it)
+// a portal waypoint's: the volume that cut the line is the one the guide entered -- its box, r grown, holds the guide's
+// last row before its teleport (the target point). Its landing is not computed: landmark teleports land offset from
+// their target, others remotely, relatively or through outputs (review 1528); stage 32 checks where the body lands.
 float(entity e, entity t, vector dest, float r) SV_TASOptTeleNear =
 {
-	local entity d;
-	if (!t || (strcmp(t.classname, "trigger_teleport") && strcmp(t.classname, "trigger_momentum_teleport"))) return FALSE;
-	d = world;
-	if (t.target != "") d = find(world, targetname, t.target);
-	if (!d) return FALSE;
-	return (vlen(d.origin - dest) <= r);
+	if (!t) return FALSE;
+	return (e.topt_tgt_x >= t.absmin_x - r && e.topt_tgt_x <= t.absmax_x + r && e.topt_tgt_y >= t.absmin_y - r && e.topt_tgt_y <= t.absmax_y + r
+		&& e.topt_tgt_z >= t.absmin_z - r && e.topt_tgt_z <= t.absmax_z + r);
 };
 // 1 a teleport into the end, -1 a teleport elsewhere, 0 not a teleport that acts on this body
 float(entity e, entity t) SV_TASOptEndTele;
@@ -1703,7 +1702,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 	if (SV_TASOptEndTele(e, e.topt_cutent) == 1)
 		{ best = 0; bk = lim - 1; hit = TRUE; endhit = TRUE; }     // the tick before the teleport into the end
 	if (!endhit && e.topt_teleon && lim >= 1 && lim == ran - 1 && e.topt_rollcut == 1)
-	if (SV_TASOptTeleNear(e, e.topt_cutent, e.topt_tele, 512))
+	if (SV_TASOptTeleNear(e, e.topt_cutent, e.topt_tele, 96))
 		{ best = 0; bk = lim - 1; hit = TRUE; endhit = TRUE; }     // a portal waypoint: into the guide's own teleport, then through it
 	if (held && !endhit)
 	{	// played to its nearest approach: the coast starts there (review J); not when that is the tick before a cut, where
