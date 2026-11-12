@@ -13206,6 +13206,16 @@ that explicit distinction, not just a count. Generated/deployed VM hashes are
 also not the already-qualified runtime fixture hashes; inspect actual roles and
 keep the frozen fixture rather than copying new dats to satisfy a mistaken label.
 
+**Frame-attribution clipboard seam (lows3, 12 Nov 2026).** In the retained
+per-builtin diagnostic, `r_spikes 2` records internal data but named frame output
+is exposed by `R_FrameTime_Dump_f`: it prints then unconditionally calls
+`Sys_SaveClipboard(CBT_CLIPBOARD, out)`. No console-only argument is implemented;
+command registration says it copies. Do not invent `dump 0` or launch a long
+replay whose required attribution cannot be observed within the permitted shared
+resource scope. A blind clipboard restore can destroy a peer's newer contents.
+Full-tail Kitsune preflight stopped before runtime on that boundary: bound binary
+strings/cache metadata and historical output are NOT newly acted diagnostic data.
+
 **TAS collaboration boundaries (P1140, 31 Oct 2026).** A metadata HTTP callback
 and StartFrame are not ordinary native client-command contexts. Deferred project
 open must use the existing normal client command after its normal cooldown;

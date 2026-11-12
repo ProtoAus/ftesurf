@@ -14,6 +14,7 @@
 
 ## P1507 stable sprite draw lists -- owner check PENDING, rollout recorded in tools/p1507-sprite-drawlists.md
 - On surf_fairy with sprites and light glows enabled, lights should look and fade exactly as before. A quick normal run is enough; please report any missing, flickering or reordered lights. Automated slot-order tests and agent-inspected screenshots are not owner confirmation.
+- On your next normal surf_kitsune_css run, if the large hitch recurs, please give the spot and rough elapsed time. Correct earlier automated coverage through~35.6s did not reproduce it; the remaining tail to151.351s is not cleared. No owner observation or whole-map performance pass has been supplied yet.
 
 ## P1504 glare budget -- 12 lobbies + both installs (cs 267e9b9b) 11 Nov 12:51Z; owner check PENDING
 - surf_fairy with glows on: glows should fade in and out as before (perhaps a frame later behind a corner in the

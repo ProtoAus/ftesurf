@@ -94,10 +94,23 @@ transparent-sort/draw cost, nor a promised gain on every map/machine.
   attribution only, not FPS evidence or a causal fix. Coverage stops before the
   end of the historical survey's 1.5..36.5s window; the remaining interval and the
   rest of the 151s replay are not cleared.
+  A12Nov read-only full-tail preflight bound the correct25800cache:10,347samples,
+  -3.840..151.351s (filename151.365is not the last sample). Existing diagnostic
+  feature strings and historical named-builtin output were bound, not newly
+  executed. The retained frame-specific output calls `r_frametime_dump`, which
+  unconditionally writes the global clipboard; no console-only argument exists.
+  No coordinated clipboard interval was available within the no-overwrite scope,
+  so no five-minute arm was launched and no replacement harness/build invented.
+  **New coverage: none; tail remains untested**, not a fixed/absent QC spike or
+  GPU conclusion. An exact owner stall location or coordinated attribution is
+  needed before another safe code change is justified.
 - Native read-only review found a possible monotonic plane-side early exit in
-  `GLBE_BlendPlaneSide`. Not implemented or measured by P1507. Preserve logical
-  sort-work accounting if pursued. No safe immediate pantheon/bossfight change
-  established; do not disable effects, alter transparency or broaden P1490 reuse.
+  `GLBE_BlendPlaneSide`. Not implemented or measured by P1507. Subsequent P1511
+  implements it with unchanged logical sort-work accounting and qualified
+  dual-client delivery; see tools/p1511-plane-side.md. Its native FPS benefit
+  remains unmeasured, separate from this sprite result. No safe immediate
+  pantheon/bossfight change established; do not disable effects, alter
+  transparency or broaden P1490 reuse.
 
 ## Survey-5 follow-up
 
