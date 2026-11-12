@@ -1525,6 +1525,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	// A focused name gets typing before chat binds, not the whole TAS panel.
 	if (evtype == IE_KEYDOWN)
 		if (TASTimeline_RecipeInput(evtype, scanx, chary)) return TRUE;
+	if (TASOptUI_FieldInput(evtype, scanx, chary)) return TRUE;     // the Jargon panel's X Y Z fields
 	if (Chat_InputEvent(evtype, scanx, chary, devid))
 		return TRUE;
 
@@ -1875,6 +1876,7 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 		if (Chat_Paste(chary)) return TRUE;
 		if (ZoneEdit_Paste(chary)) return TRUE;
 		if (TASTimeline_RecipeInput(IE_KEYDOWN,0,chary)) return TRUE;
+		if (TASOptUI_FieldPaste(chary)) return TRUE;
 		if (Profile_Paste(chary)) return TRUE;
 		Av_Paste(chary);
 		return TRUE;
@@ -2622,6 +2624,9 @@ float(string cmd) CSQC_ConsoleCommand =
 				else TASOptUI_Go(tsline);
 			}
 		}
+		else if (cmdargc >= 3 && !strcmp(argv(1), "jargon") && (argv(2) == "start" || argv(2) == "mode" || argv(2) == "set" ||
+		         argv(2) == "air" || argv(2) == "del" || argv(2) == "undo" || argv(2) == "redo" || argv(2) == "list"))
+			TASOptUI_Verb(cmdargc);     // the Jargon panel's own functions (cl_tasoptui.qc)
 		else if (cmdargc >= 2 && !strcmp(argv(1), "jargon"))       // P1449: Jargon is autosurf's name in the menus
 		{
 			tsline = "";

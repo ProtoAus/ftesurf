@@ -294,7 +294,10 @@ void() TASJargon_RequestPlan =
 {
 	if (jg_pick >= jg_gn) return;
 	localcmd(sprintf("tas autosurf %s plan%s%s\n", jg_gp[jg_pick], TASJargon_CourseWords(), TASJargon_Airs() ? " air" : ""));
-	jg_n = 0; jg_hover = jg_drag = -1;     // until the plan arrives: a refused one left the last course's route up (review B)
+	// another course or run: none until its plan arrives (a refused one left the last course's route up: review B); the
+	// same one (an edit's replan) keeps its points up meanwhile -- a run refuses plans, and they stayed blank (Lex)
+	if (jg_planned != jg_gp[jg_pick] || jg_plannedc != jg_cpick) jg_n = 0;
+	jg_hover = jg_drag = -1;
 	if (jg_planned != "") strunzone(jg_planned);
 	jg_planned = strzone(jg_gp[jg_pick]);
 	jg_plannedc = jg_cpick;
@@ -362,14 +365,14 @@ vector(float i, vector eye, vector fwd) TASJargon_DragPoint =
 	if (trace_fraction < 1 && trace_plane_normal * n > 0.95 && vlen(trace_endpos - q) < 96) q = trace_endpos;   // the face itself
 	return q;
 };
-var float autocvar_tas_jargon_route = 0;     // P1483 stream: the route stays drawn with the panel closed
+var float autocvar_tas_jargon_route = 1;     // Lex: the waypoints stay on     // P1483 stream: the route stays drawn with the panel closed
 
 // shown with the Jargon tab open or "Edit in world" on; each frame: the handle under the crosshair, a drag, a replan due
 void() TASJargon_Frame =
 {
 	local vector eye, fwd;
 	local float i, d, best;
-	jg_show = (jg_n > 0 && (jg_edit || (tasu_open && tasu_tab == TAS_TAB_OPTIMIZE) || autocvar_tas_jargon_route));     // route: the stream panel's
+	jg_show = (jg_n > 0 && (jg_edit || (tasu_open && tasu_tab == TAS_TAB_OPTIMIZE) || taso_state == 1 || taso_armed || autocvar_tas_jargon_route));     // route: the stream panel's
 	if (jg_replan && cltime >= jg_replan) { jg_replan = 0; TASJargon_RequestPlan(); }
 	if (!jg_edit) { jg_hover = jg_drag = -1; return; }
 	eye = getproperty(VF_ORIGIN);
@@ -505,6 +508,9 @@ void(vector a, vector b, vector col, float al) TASJargon_Seg =
 	R_PolygonVertex(b, '0.5 0 0', col, al);
 	R_EndPolygon();
 };
+var float jgw_sel = -1;           // the panel's selected waypoint
+// hovered, selected in the panel, or the one a running chain works on: its ramp lit, its handle big
+float(float i) TASJargon_Lit = { return (i == jg_hover || i == jgw_sel || (taso_state == 1 && i == taso_i)); };
 void() TASJargon_DrawWorld =
 {
 	local float i, j, s, np, h;
@@ -530,14 +536,14 @@ void() TASJargon_DrawWorld =
 			{
 				np = getsurfacenumpoints(world, s);
 				R_BeginPolygon(TOV_SHADER, 0);
-				for (j = 0; j < np; j = j + 1) R_PolygonVertex(getsurfacepoint(world, s, j) + jg_nn[i] * 0.5, '0.5 0 0', col, (i == jg_hover) ? 0.28 : 0.14);
+				for (j = 0; j < np; j = j + 1) R_PolygonVertex(getsurfacepoint(world, s, j) + jg_nn[i] * 0.5, '0.5 0 0', col, TASJargon_Lit(i) ? 0.3 : 0.14);
 				R_EndPolygon();
 				for (j = 0; j < np; j = j + 1)
 					TASJargon_Seg(getsurfacepoint(world, s, j) + jg_nn[i], getsurfacepoint(world, s, (j + 1) % np) + jg_nn[i], col, 0.85);
 			}
 		}
 		// the handle: a cube on a post (zone_edit's look), bigger under the crosshair
-		h = (i == jg_hover || i == jg_drag) ? 14 : 8;
+		h = (i == jg_drag || TASJargon_Lit(i)) ? 14 : 8;
 		p = o + '0 0 1' * h;
 		TASJargon_Seg(o, o + '0 0 56', col, 0.9);
 		for (j = 0; j < 4; j = j + 1)

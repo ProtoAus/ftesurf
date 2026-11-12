@@ -31,7 +31,7 @@ var float autocvar_tas_viz_style = 1;
 // P1483 (Lex: demo Jargon on stream): tas_viz_cam 2, a chase view behind the body while Jargon runs. taso_state is the
 // panel's (cl_tasoptui.qc, after this file; a second declaration is the same global); taso_armed: an `onjump` waits
 // on the player's own prestrafe, the view stays theirs until the takeover; taso_endt: when the run last finished.
-float taso_state, taso_armed, taso_endt;
+float taso_state, taso_armed, taso_endt, taso_i;     // taso_i: cl_tasoptui's (cl_jargon highlights it)
 var float autocvar_tas_chase_dist = 150, autocvar_tas_chase_up = 36;
 vector tov_cprev;               // the eye last frame (the heading comes from its motion: local games predict nothing)
 float tov_cyaw, tov_cok;        // the eased heading; the chase has a previous eye
