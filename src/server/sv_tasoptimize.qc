@@ -1992,6 +1992,8 @@ void(entity e, float v) SV_TASOptResult =
 		if (e.topt_batruns)
 		{
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: %.0f batches on the worker threads (%.0f candidates there)\n", e.topt_batruns, e.topt_batworkers));
+			if (cvar("tas_opt_report"))     // the bench's measurement lines, not every player's console
+			{
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: efficiency: %.2f s searching, %.2f s inside the batches, %.2f s preparing them; ",
 				gettime(1) - e.topt_tstart, e.topt_trol, e.topt_tpref - e.topt_trol));
 			sprint(e, PRINT_HIGH, sprintf("%.0f ticks rolled, %.0f thrown away by a second pass, %.0f left after volume cuts, %.0f scored inside the tube\n",
@@ -2000,6 +2002,7 @@ void(entity e, float v) SV_TASOptResult =
 				e.topt_mapbefore, e.topt_mapafter, e.topt_mapcut ? " (those not rolled again)" : ""));
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: frames: %.0f server frames worked in, %.2f s of work in them, %.2f s between them\n",
 				e.topt_nfr, e.topt_twork, gettime(1) - e.topt_tstart - e.topt_twork));
+			}
 		}
 		if (e.topt_tube > 0)
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: %.0f candidates left the tube (%.0f u round the demo's path) and scored as cut there\n",
