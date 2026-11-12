@@ -9,6 +9,7 @@
 */
 #define JG_MAX 64
 float jg_n, jg_at;
+float jg_got;                   // rows of the plan arrived so far (its chunks overwrite the old plan's in place)
 float jg_k[JG_MAX];             // 1 a ramp to board, 2 a bhop, 3 the end, 4 a peak, 5 an air point, 6 a turn point (P1483)
 float jg_t[JG_MAX];             // the guide run's time there
 vector jg_o[JG_MAX];
@@ -317,6 +318,7 @@ void() TASJargon_PlanEvent =
 		x = readshort() / 30000; y = readshort() / 30000; z = readshort() / 30000;
 		if (i < JG_MAX) jg_nn[i] = [x, y, z];
 	}
+	jg_got = s + c;
 	jg_at = cltime;
 };
 

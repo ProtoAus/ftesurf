@@ -1503,7 +1503,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	Vote_Track(evtype, scanx);      // Patch 372: observes only -- the draft below swallows key-ups
 	MPad_Track(evtype, scanx, chary);   // Patch 390: observes only -- the draft swallows deltas
 	if (evtype == IE_KEYDOWN)
-		if (TASTimeline_RecipeRepeat(scanx, chary)) return TRUE;
+		if (TASTimeline_RecipeRepeat(scanx, chary)) { TASOptUI_FieldRepeat(scanx, chary); return TRUE; }
 	if (evtype == IE_KEYUP)
 		if (TASTimeline_RecipeInput(evtype, scanx, chary)) return TRUE;
 	if (evtype == IE_KEYUP)
@@ -1599,6 +1599,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (Results_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
 
+	if (TASOptUI_Wheel(evtype, scanx)) return TRUE;      // P1528: the Jargon waypoint list
 	if (TASUI_Input(evtype, scanx, chary, devid)) return TRUE;
 	if (WPU_Input(evtype, scanx, chary, devid)) return TRUE;
 	if (av_open)
