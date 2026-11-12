@@ -28,6 +28,13 @@ vector tov_tgt;
 float tov_tgton, tov_tgtt;
 var float autocvar_tas_viz = 1;
 var float autocvar_tas_viz_style = 1;
+// P1483 (Lex: demo Jargon on stream): tas_viz_cam 2, a chase view behind the body while Jargon runs. taso_state is the
+// panel's (cl_tasoptui.qc, after this file; a second declaration is the same global); taso_armed: an `onjump` waits
+// on the player's own prestrafe, the view stays theirs until the takeover; taso_endt: when the run last finished.
+float taso_state, taso_armed, taso_endt;
+var float autocvar_tas_chase_dist = 150, autocvar_tas_chase_up = 36;
+vector tov_cprev;               // the eye last frame (the heading comes from its motion: local games predict nothing)
+float tov_cyaw, tov_cok;        // the eased heading; the chase has a previous eye
 
 // The first point as floats, the rest as 4-unit shorts from it (SV_TASOptVizWrite).
 vector(float i, vector p0) TASOptViz_Point =
@@ -338,6 +345,7 @@ float tov_mindist;          // gl_mindist before the camera's render (0: not cha
 entity tov_body;
 float() TASOptViz_CamOn =
 {
+	if (autocvar_tas_viz_cam == 2) return (taso_state == 1 && !taso_armed) || (taso_state == 2 && cltime - taso_endt < 4);
 	if (!autocvar_tas_viz_cam || !tov_tgton || cltime - tov_tgtt > 120) return FALSE;
 	if (cltime - tov_lastev > 3) return FALSE;      // stopped, TAS off: no lines for 3 s, the view is the player's (review)
 	return !tov_final;          // the played line arrived: it rides, first person
@@ -351,6 +359,31 @@ void() TASOptViz_Cam =
 	{	// a frame raised it and never put it back (a QC error between here and AfterScene): put it back now (review)
 		if (fabs(cvar("gl_mindist") - autocvar_tas_viz_nearset) < 0.01) cvar_set("gl_mindist", ftos(autocvar_tas_viz_nearkeep));
 		cvar_set("tas_viz_nearset", "0");
+	}
+	if (autocvar_tas_viz_cam == 2)
+	{	// the chase: behind the body along its eased heading, pulled in short of walls (VF_ORIGIN is the eye here)
+		if (!TASOptViz_CamOn()) { tov_cok = 0; return; }
+		o = getproperty(VF_ORIGIN);
+		h = getproperty(VF_ANGLES);
+		if (!tov_cok) { tov_cprev = o; tov_cyaw = h_y; tov_cok = 1; }
+		f = (o - tov_cprev) / max(0.001, frametime);
+		tov_cprev = o;
+		if (vlen([f_x, f_y, 0]) > 100 && vlen(f) < 20000)       // moving, not a teleport
+		{
+			y = vectoyaw([f_x, f_y, 0]) - tov_cyaw; y = y - 360 * floor((y + 180) / 360);
+			tov_cyaw = tov_cyaw + y * bound(0, frametime * 2.8, 1);      // eased, ~0.25 s half-life
+		}
+		makevectors([0, tov_cyaw, 0]);
+		f = o + '0 0 8';
+		cam = f - v_forward * autocvar_tas_chase_dist + '0 0 1' * autocvar_tas_chase_up;
+		traceline(f, cam, MOVE_NOMONSTERS, world);
+		if (trace_fraction < 1) cam = f + (trace_endpos - f) * 0.85;
+		h = vectoangles(f - cam);
+		h_x = 0 - h_x;
+		setproperty(VF_ORIGIN, cam);
+		setproperty(VF_ANGLES, h);
+		tov_camo = cam; tov_cama = h; tov_camf = cltime;
+		return;
 	}
 	if (!TASOptViz_CamOn()) return;
 	d = vlen(tov_tgt - tov_start);
@@ -386,12 +419,12 @@ void() TASOptViz_Body =
 {
 	local vector feet, h;
 	if (!TASOptViz_CamOn()) return;
-	feet = (pmove_org != '0 0 0') ? pmove_org : tov_start;
-	h = tov_tgt - feet;
+	if (autocvar_tas_viz_cam == 2) { feet = getproperty(VF_ORIGIN) - '0 0 1' * getstatf(STAT_VIEWHEIGHT); h = [0, tov_cyaw, 0]; }
+	else { feet = (pmove_org != '0 0 0') ? pmove_org : tov_start; h = [0, vectoyaw(tov_tgt - feet), 0]; }
 	if (!tov_body) { tov_body = spawn(); tov_body.solid = SOLID_NOT; }
 	setmodel(tov_body, Ghost_Model());
 	setorigin(tov_body, feet);
-	tov_body.angles = [0, vectoyaw(h), 0];
+	tov_body.angles = h;
 	tov_body.alpha = 1;
 	tov_body.colormod = '1 1 1';
 	Av_GhostDress(tov_body);

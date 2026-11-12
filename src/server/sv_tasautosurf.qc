@@ -1745,7 +1745,7 @@ void(entity e) SV_TASAutoFrame =
 		{
 			s = SV_TASAutoPlan(e, -1);
 			if (s < 0 || as_n < 1) { SV_TASAutoStop(e, "out of the start box off the demo's route (not within 400 u)"); return; }
-			if (!e.as_sredo && e.as_ctrack >= 0 && cvar("tas_jargon_startfix") && vlen([e.velocity_x, e.velocity_y, 0]) < 0.6 * vlen([as_rows[s*7+4], as_rows[s*7+5], 0]))
+			if (!e.as_sredo && !e.as_nolegal && e.as_ctrack >= 0 && cvar("tas_jargon_startfix") && vlen([e.velocity_x, e.velocity_y, 0]) < 0.6 * vlen([as_rows[s*7+4], as_rows[s*7+5], 0]))
 			if (e.as_smeth == 1 || SV_TASAutoRest(e) >= 0)
 			{	// out of the box far slower than the guide there: the other way, once (surf_anubis stage 1 left at 76 u/s
 				// from the guide's replayed prestrafe and every stretch-1 line moved away from the ramp, bench f1)
@@ -2257,7 +2257,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 	e.as_exd = normalize([as_rows[i*7+4], as_rows[i*7+5], 0]);
 	if (e.as_exd == '0 0 0') e.as_exd = '1 0 0';
 	nct = -1; ncl = 0;
-	if (!zg && !arm && (st || pl || ct >= 0))
+	if (!zg && (!arm || ct >= 0) && (st || pl || ct >= 0))
 	{	// P1478: a start or preview without `zone`, or a picked course: the course decides the box and the rows. The chain's
 		// course is set where it really starts (a refused start left the stopped chain's redo without one: review A)
 		if (!SV_TASAutoCourse(e, ct, cl)) { SV_TASAutoOptRestore(e); strunzone(path); return; }
@@ -2268,10 +2268,15 @@ void(entity e, float argc) SV_TASAutoCommand =
 	if (arm)
 	{
 		if (e.run_t_state != TS_ARMED) { sprint(e, PRINT_HIGH, "tas autosurf: onjump / onexit wait in the start box (stand in it, TAS on)\n"); strunzone(path); return; }
+		if (nct >= 0 && e.run_t_armzone != e.as_szone)
+		{	// a picked course takes over from its own box only: its rows and its end are that course's (Lex: start it yourself on stream)
+			sprint(e, PRINT_HIGH, sprintf("tas autosurf: stand in %s's start box first (!r, or !s for a stage), then this again\n", SV_TASAutoCourseName(nct, ncl)));
+			strunzone(path); return;
+		}
 		if (e.as_file != "") strunzone(e.as_file);
 		e.as_file = path;
 		e.as_on = 1; e.as_stage = 20; e.as_arm = arm; e.as_nolegal = 1; e.as_backs = 0; e.as_sair = -1; e.as_sn2 = 0;
-		e.as_ctrack = -1; e.as_cleg = 0; e.as_saved = -1; e.as_esc = 0; e.as_fromstart = 0; e.as_cseed = 0;
+		e.as_ctrack = nct; e.as_cleg = ncl; e.as_saved = -1; e.as_esc = 0; e.as_fromstart = 0; e.as_cseed = 0;   // a course: to its end
 		SV_TASAutoRunSalt();
 		e.as_lastground = (e.flags & FL_ONGROUND) ? 1 : 0;
 		SV_TASAutoNote(e, 1, (arm == 2) ? "armed: prestrafe and jump -- I take over at your jump" : "armed: prestrafe out of the box -- I take over at its edge");

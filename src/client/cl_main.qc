@@ -2106,7 +2106,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		RG_DrawBodies();            // P746: capture/state still advances above.
 	LOD_OverviewFrame(worldonly);   // P1345: retain authored LOD visibility without effects predraws.
 	Prox_Frame();                   // P810: before addentities/Prox_Delta, even in the overview.
-	addentities(MASK_ENGINE | MASK_VIEWMODEL);
+	addentities(TASOptViz_CamOn() ? MASK_ENGINE : (MASK_ENGINE | MASK_VIEWMODEL));     // P1483: no hands under a third-person Jargon camera
 	VM_Frame();                    // P1348: nonvisual preference/profile sync stays active.
 	if (worldonly)
 		WP_OverviewFrame();         // discard hidden bursts, recoil and inspect events.
@@ -2167,6 +2167,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// was not readable when WorldLoaded ran (Patch 207's ordering wart).
 	Trig_Frame();
 
+	TASOptUI_Frame();               // P1483: a start queued behind a stop (cl_tasoptui.qc)
 	TASOptViz_Cam();                // P1449: tas_viz_cam -- before anything reads the view
 	Spec_Trace();                   // Patch 385: what is actually drawn
 	Scores_LinesFrame();            // Patch 433: the board lines' downloads and builds
@@ -2626,6 +2627,20 @@ float(string cmd) CSQC_ConsoleCommand =
 			TASJargon_Guides();
 			if (argv(2) == "show" || !jg_n) TASJargon_RequestPlan();
 			if (argv(2) == "edit") { if (jg_fly) TASJargon_EditEnd(); else TASJargon_EditStart(); }
+		}
+		else if (cmdargc >= 3 && !strcmp(argv(1), "jargon") && (argv(2) == "go" || argv(2) == "arm" || argv(2) == "stop" || argv(2) == "play" ||
+		         argv(2) == "course" || argv(2) == "cam"))
+		{	// P1483 stream: the simple view's buttons as commands -- hotkeys, and the harness that tests them (cl_tasoptui.qc)
+			if (argv(2) == "course") { if (cmdargc == 4) TASOptUI_Course(stof(argv(3)) - 1); }
+			else if (argv(2) == "cam") { if (cmdargc == 4) cvar_set("tas_viz_cam", argv(3)); }
+			else if (argv(2) == "stop") TASOptUI_Stop();
+			else if (argv(2) == "play") { TASOptUI_Stop(); localcmd("tas play\n"); }
+			else
+			{
+				tsline = (argv(2) == "go") ? TASOptUI_GoCmd() : TASOptUI_ArmCmd();
+				if (tsline == "") print("tas jargon: no guide run for this course (turn one on in the leaderboard)\n");
+				else TASOptUI_Go(tsline);
+			}
 		}
 		else if (cmdargc >= 2 && !strcmp(argv(1), "jargon"))       // P1449: Jargon is autosurf's name in the menus
 		{

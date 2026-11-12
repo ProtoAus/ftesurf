@@ -362,13 +362,14 @@ vector(float i, vector eye, vector fwd) TASJargon_DragPoint =
 	if (trace_fraction < 1 && trace_plane_normal * n > 0.95 && vlen(trace_endpos - q) < 96) q = trace_endpos;   // the face itself
 	return q;
 };
+var float autocvar_tas_jargon_route = 0;     // P1483 stream: the route stays drawn with the panel closed
 
 // shown with the Jargon tab open or "Edit in world" on; each frame: the handle under the crosshair, a drag, a replan due
 void() TASJargon_Frame =
 {
 	local vector eye, fwd;
 	local float i, d, best;
-	jg_show = (jg_n > 0 && (jg_edit || (tasu_open && tasu_tab == TAS_TAB_OPTIMIZE)));
+	jg_show = (jg_n > 0 && (jg_edit || (tasu_open && tasu_tab == TAS_TAB_OPTIMIZE) || autocvar_tas_jargon_route));     // route: the stream panel's
 	if (jg_replan && cltime >= jg_replan) { jg_replan = 0; TASJargon_RequestPlan(); }
 	if (!jg_edit) { jg_hover = jg_drag = -1; return; }
 	eye = getproperty(VF_ORIGIN);
