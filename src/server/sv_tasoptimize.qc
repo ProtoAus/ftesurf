@@ -1630,16 +1630,17 @@ float(entity e, float ran) SV_TASOptTargetScore =
 			// (the 40% bar of his 31), slid off the bottom at vz -606 and fell to the fail teleport; all 11 humans leave
 			// it rising at vz 971-1141. A ride that ends falling, where the guide's ended rising, is no board.
 			if (e.topt_rideout && e.topt_tgtj + e.topt_rideT + 1 < e.topt_dn)
-			if (topt_dpos[(e.topt_tgtj + e.topt_rideT + 1)*3+2] - topt_dpos[(e.topt_tgtj + e.topt_rideT)*3+2] > 1.5)    // > 100 u/s up
 			{
 				eg = SV_TASOptRideAfter(e, bk, ran - 1 - bk);
+				if (topt_dpos[(e.topt_tgtj + e.topt_rideT + 1)*3+2] - topt_dpos[(e.topt_tgtj + e.topt_rideT)*3+2] > 1.5)    // he left > 100 u/s up
 				if (bk + eg + 4 < ran) if (topt_out[(bk + eg + 1)*13+5] < 0)
 				{
 					e.topt_slidn = e.topt_slidn + 1;
 					return SV_TASOptBand(TOPT_WEAK, d - 3000);
 				}
-				// rising, but which way: with the slide-offs gone stage 5's exits rose and went straight up the face (97-105
-				// deg) where every human leaves along it (36-49), and every line left the path. Off his exit heading costs.
+				// which way, rising or not: stage 5's exits went straight up the face (97-105 deg) where every human leaves
+				// along it (36-49); surf_anubis stage 1's human leaves ramp 1 after 45 ticks at 81 deg, slightly falling,
+				// and loops under it -- Lex: the bot rides the whole ramp and U-turns. Off his exit heading costs.
 				if (bk + eg + 4 < ran)
 				{
 					dh = vectoyaw([topt_dpos[(e.topt_tgtj + e.topt_rideT + 1)*3] - topt_dpos[(e.topt_tgtj + e.topt_rideT)*3],
