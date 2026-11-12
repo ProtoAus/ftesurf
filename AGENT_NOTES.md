@@ -13183,6 +13183,29 @@ or a stale frame looks the same as a live one.
 
 ## Pitfalls discovered the hard way
 
+**RGBA screenshot false equality (P1511, 12 Nov 2026).**
+`ImageChops.difference(rgba_a, rgba_b).getbbox()` can inspect only the alpha
+channel: opaque inputs produce zero alpha difference and a false `None` despite
+real RGB differences. The initial native paused-view reader made exactly this
+mistake. Direct `rgba_a.tobytes() == rgba_b.tobytes()` plus an RGB difference
+bounding box disproved its pass; the published exact-pixel claim was retracted.
+Retain the failed reader/result and correction, do not rerun arms until they
+happen to match. Render smoke, semantic helper agreement, whole-image pixel
+identity and owner visual acceptance are different claims. Paused replay time
+alone also does not freeze every HUD/effect clock.
+
+**Native clean-build input-reader roles (P1511, 12 Nov 2026).** The supported
+build can form a mixed-slash generator path from forward-slash FteRoot plus
+`\\engine`; enumerating only all-forward/all-backslash variants falsely refused
+a comment-only generated HL2 header. Preserve raw output, derive the exact
+literal from the actual script/argument, prove whole-file equality with exactly
+that one comment substitution, then restore only owned original checkout bytes;
+never normalize arbitrary source/newlines. Inventory totals may include root
+`.` while a descendants reader does not: compare typed paths/files and retain
+that explicit distinction, not just a count. Generated/deployed VM hashes are
+also not the already-qualified runtime fixture hashes; inspect actual roles and
+keep the frozen fixture rather than copying new dats to satisfy a mistaken label.
+
 **TAS collaboration boundaries (P1140, 31 Oct 2026).** A metadata HTTP callback
 and StartFrame are not ordinary native client-command contexts. Deferred project
 open must use the existing normal client command after its normal cooldown;

@@ -111,9 +111,10 @@ inferred. Generated HL2 header verification first refused a raw LF/CRLF mismatch
 a bounded whole-file comparison against exact original checkout CRLF plus the
 single generator-path comment proved the sole difference. The raw generated
 header/refusal were preserved and original checkout bytes restored. No baseline
-build was repeated. Final clean-tag Full build, gameplay and actual destination
-readbacks are still required before delivery. No recorder, evidence, movement,
-protocol or QC Build change.
+build was repeated. Those working-tree controls alone did not qualify a clean
+release image or installation; the subsequently completed clean Full, final-image
+runtime and destination readbacks are recorded below. No recorder, evidence,
+movement, protocol or QC Build change.
 
 ## Final clean-tag Full qualification
 
@@ -172,7 +173,7 @@ and ran no timing arms. There is **no measured native FPS improvement**. Do not
 turn the local64-to2work fixture into a gameplay percentage or general speedup.
 Development delivery is based on bounded semantic/work, compiler and render
 qualification; numerical/owner feel acceptance remains explicit and pending.
-Final clean-tag Full and destination checks still apply.
+The subsequently completed clean-tag Full and destination checks are recorded below.
 
 ## Delivery
 
@@ -210,7 +211,15 @@ This is not current peer P1512 VM, ranked/evidence or owner acceptance.
 
 No native Pi rollout, release or QC Build bump. Immutable Full images/raw input,
 header, dependency, warning, TLS, runtime and transaction evidence are retained in
-the owned task root; uniquely owned disposable Full source/build copy is retired
-separately only after that evidence is frozen. Numerical native FPS is still
+the owned task root. At12Nov00:10:07UTC the uniquely owned
+`engine-clean-1511` source/build copy was actually removed through ordinary
+`git worktree remove`, **no force**, after all seven source/frozen/receipt image
+hashes and retained evidence matched. Exact path/registration absence and
+unchanged frozen images/evidence/QC build files were verified afterward; published
+source/tag remain. Original source/dependency snapshot and runtime fixtures remain
+explicitly retained under `C:\FTESurf-worktrees\lows3-20261111-sol01a1cae9` for
+reproduction and pending native performance/owner checks, not unexplained scratch.
+Private preservation/rollback archives remain in the separately owned private
+root; no player-data or foreign-root cleanup occurred. Numerical native FPS is still
 **unmeasured**; see BACKLOG and lextest. Do not conflate this native work reduction
 with P1507's separate bounded fairy 0.1% improvement or promise flat worst maps.
