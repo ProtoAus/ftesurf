@@ -22,6 +22,9 @@
 ## next
 - Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
+### P1518 Input device analysis
+- Journal analysis keeps controllers, keyboards and pointers separate, avoiding false device conflicts and touchpad-report errors.
+
 ### P1516 Incomplete input settings
 - Journal analysis now reports clipped settings as unavailable instead of guessing a sign or scale. Valid later settings restore comparisons; uncertain data cannot become a journal pass.
 

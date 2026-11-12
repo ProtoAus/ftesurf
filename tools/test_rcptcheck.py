@@ -609,8 +609,46 @@ def test_unavailable_hid_capture_keeps_content_refusal():
                "YAW IDENTITY BROKEN" in r.journal_detail or
                "PITCH IDENTITY BROKEN" in r.journal_detail), (True, False))
         check("capture %s: unproved input totals withheld" % name,
-              "legacy_presses" in r.journal_metrics, False)
+              "legacy_presses" in r.journal_metrics["metrics"], False)
         check("capture %s: journal does not invent a signature verdict" % name,
+              (r.ok, r.faults), (before, []))
+
+
+def test_device_namespace_content_join():
+    import test_hidcheck as vectors
+
+    shared = [("mouse", "0", "mouse-example"), ("keyboard", "0", "keyboard-example"),
+              ("joy", "0", "joy-example")]
+    pad = [("mouse", "0", "mouse-example"), ("touchpad", "1", "pad-example"),
+           ("joy", "1", "joy-example")]
+    duplicate = [("mouse", "0", "mouse-A"), ("mouse", "0", "mouse-B")]
+    cases = (
+        ("shared native namespaces", vectors.namespace_journal(shared, pointer=0,
+                                                               joystick=0, keyboard=0), True),
+        ("joy not pad motion", vectors.namespace_journal(pad, pointer=0, joystick=1,
+                                                         pad_accepted=0), True),
+        ("real pad without acceptance", vectors.namespace_journal(pad, pointer=1, joystick=1,
+                                                                  pad_accepted=0), False),
+        ("same-namespace collision", vectors.namespace_journal(duplicate, pointer=0), False),
+    )
+    for label, text, valid in cases:
+        data = text.encode("utf-8")
+        r = rcptcheck.Receipt("namespace.rcpt")
+        r.file_bytes["namespace.hid"] = data
+        r.signed = [("hid", "%s %d 1" % (hashlib.sha256(data).hexdigest(), len(data)))]
+        before = r.ok
+        with mock.patch("builtins.open", side_effect=AssertionError("reopened namespace capture")):
+            rcptcheck.join_journal(r)
+        check("namespace %s: captured bytes actually digest-checked" % label,
+              (("hid", "namespace.hid") in r.digest_checked, r.digest_bad), (True, {}))
+        check("namespace %s: content result preserves the proper namespace" % label,
+              r.journal, "OK" if valid else "FAULT")
+        metrics = r.journal_metrics["metrics"]
+        check("namespace %s: existing allowlisted view metrics still acted" % label,
+              (metrics.get("view_records"), metrics.get("identity_yaw_mouse_frames")), (20, 19))
+        check("namespace %s: healthy counter control or actual fault withholding" % label,
+              metrics.get("legacy_presses"), 0 if valid else None)
+        check("namespace %s: no signature/rank verdict invented" % label,
               (r.ok, r.faults), (before, []))
 
 
@@ -622,7 +660,8 @@ def main():
              test_unsigned_sibling_io, test_parser_bytes,
              test_unavailable_angles_keep_view_faults, test_usable_angles_keep_view_faults,
              test_signed_usable_view_faults, test_initial_clock_origin, test_retry_clock_faults,
-             test_unavailable_hid_capture_keeps_content_refusal)
+             test_unavailable_hid_capture_keeps_content_refusal,
+             test_device_namespace_content_join)
     for test in tests:
         try:
             test()

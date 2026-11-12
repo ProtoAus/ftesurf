@@ -173,6 +173,12 @@ class Journal:
         self._adv(us)
         self.lines.append("d %d %g %g" % (us, dx, dy))
 
+    def joyaxis(self, axis, value, us=0, dev=0):
+        """A tagged joystick-axis record; its ID is not a pointer identity."""
+        self._adv(us)
+        self.lines.append("j %d %d %d %g" % (us, dev, axis, value))
+        self.events += 1
+
     def abspos(self, x, y, us=0, dev=0):
         """An 'a' record. A window holding one cannot be joined: the engine
         derives a delta from successive absolute positions, so those counts
@@ -835,6 +841,113 @@ def case_pre309_journal():
 
 
 MOUSE0 = ("mouse", "0", "\\?\HID#VID_DEAD&PID_BEEF")
+
+
+def namespace_journal(devices, pointer=None, joystick=None, keyboard=None,
+                      pad_accepted=None):
+    devices = list(devices)
+    if any(t in ("tablet", "xtest") for t, _d, _n in devices):
+        devices.append(("keyboard", "-", "x11"))
+    j = Journal(rawkbds=1 if keyboard is not None else 0, devices=devices)
+    if any(t == "touchpad" for t, _d, _n in devices):
+        j.lines.insert(j.lines.index("begin"), "rawpads 1")
+    yaw = 0.0
+    for i in range(20):
+        j.frame(8600 + i)
+        if pointer is not None:
+            j.mouse(4, 0, dev=pointer)
+            yaw += j.k * 4
+        if joystick is not None:
+            j.joyaxis(0, 0.5, dev=joystick)
+        if keyboard is not None:
+            j.key(True, 101, prev=0, dev=keyboard)
+            j.key(False, 101, prev=1, dev=keyboard)
+        j.view(4 if pointer is not None else 0, 0, 10.0, yaw)
+        if pad_accepted:
+            j.pad(1, 7)
+    return j.end(touchpad=pad_accepted,
+                 padreports=pad_accepted * 7 if pad_accepted is not None else None)
+
+
+def case_device_id_namespaces():
+    for keyboard, joystick in ((True, False), (False, True), (True, True)):
+        devices = [("mouse", "0", "mouse-example")]
+        if keyboard:
+            devices.append(("keyboard", "0", "keyboard-example"))
+        if joystick:
+            devices.append(("joy", "0", "joy-example"))
+        r = run(namespace_journal(devices, pointer=0,
+                                  keyboard=0 if keyboard else None,
+                                  joystick=0 if joystick else None))
+        check(r.ok, "native independent namespace ID0 is valid: %s %s" % (devices, r.faults[:1]))
+        check(r.info.get("events") == 20 + 40 * keyboard + 20 * joystick and
+              r.info.get("identity_yaw_mouse_frames") == 19,
+              "shared namespace control actually records/compares both streams")
+        if joystick:
+            check(r.info.get("joystick_axis_events") == 20,
+                  "shared ID does not erase the joystick's tagged records")
+
+    for first, second in (("mouse", "mouse"), ("mouse", "touchpad"),
+                          ("tablet", "mouse"), ("tablet", "xtest"),
+                          ("joy", "joy"), ("keyboard", "keyboard")):
+        devices = [(first, "0", "device-A"), (second, "0", "device-B")]
+        r = run(namespace_journal(devices,
+                                  pointer=0 if first in ("mouse", "tablet") else None,
+                                  joystick=0 if first == "joy" else None,
+                                  keyboard=0 if first == "keyboard" else None,
+                                  pad_accepted=20 if second == "touchpad" else None))
+        check(has_fault(r, "claimed by two devices"),
+              "CONTROL same-namespace conflicting names still fault: %s/%s" % (first, second))
+
+    for event, declared in (("pointer", "keyboard"), ("joystick", "mouse"),
+                            ("keyboard", "mouse")):
+        args = {event: 7}
+        r = run(namespace_journal([(declared, "7", "other-namespace")], **args))
+        wording = {"pointer": "20 pointer events", "joystick": "20 joystick axis events",
+                   "keyboard": "40 key events"}[event]
+        check(has_note(r, "devid 7 produced " + wording),
+              "another namespace cannot claim an otherwise unaccounted %s stream" % event)
+        check(not has_fault(r, "claimed by two devices"),
+              "unavailable source stays a note, not a fabricated namespace collision")
+
+
+def case_legacy_controller_keys_are_not_keyboard_identity():
+    for dev in (7, 8):
+        j = Journal(rawkbds=0, devices=[MOUSE0, ("joy", "7", "joy-example")])
+        j.frame(8650)
+        j.key(True, 188, prev=0, dev=dev)  # native K_JOY4, not a mouse key
+        j.view(0, 0, 10.0, 0.0)
+        r = run(j.end())
+        check(r.ok, "legacy controller keys do not invent a file fault")
+        if dev == 7:
+            check("not available" in r.info.get("key_attribution", "") and
+                  not has_note(r, "does not match the engine"),
+                  "known joystick ID is not an impossible legacy keyboard or raw-key proof")
+        else:
+            check(has_note(r, "raw-key identity is unavailable") and
+                  not has_note(r, "does not match the engine"),
+                  "CONTROL unclaimed key remains unavailable, not an invented engine mismatch")
+
+
+def case_joystick_does_not_spend_touchpad_budget():
+    devices = [("mouse", "0", "mouse-example"), ("touchpad", "1", "pad-example"),
+               ("joy", "1", "joy-example")]
+    for pointer, accepted, should_pass in ((0, 0, True), (1, 20, True), (1, 0, False)):
+        r = run(namespace_journal(devices, pointer=pointer, joystick=1,
+                                  pad_accepted=accepted))
+        check(r.ok == should_pass, "joy1/pad1 separate; pointer%d accepted%d: %s" %
+              (pointer, accepted, r.faults[:1]))
+        check(r.info.get("joystick_axis_events") == 20 and
+              r.info.get("identity_yaw_mouse_frames") == 19,
+              "pad budget test actually processes20axis and20mouse records")
+        check(not has_fault(r, "claimed by two devices"),
+              "joy1 and pad1 are not a duplicate pointer identity")
+        if accepted:
+            check(r.info.get("touchpad_events") == 20,
+                  "exactly20pad motion records, not40 including unrelated axes")
+        if not should_pass:
+            check(has_fault(r, "20 pointer events carry the touchpad's devid"),
+                  "CONTROL real pad motion still exceeds zero accepted reports")
 
 
 def case_key_devid_is_not_the_mouse():
@@ -2570,6 +2683,8 @@ def main():
                case_legacy_reopened_midrun, case_pre307_journal,
                case_autorepeat_separated, case_orphan_release,
                case_release_everything_not_orphan, case_pre309_journal,
+               case_device_id_namespaces, case_legacy_controller_keys_are_not_keyboard_identity,
+               case_joystick_does_not_spend_touchpad_budget,
                case_key_devid_is_not_the_mouse, case_pointer_devid_still_unclaimed,
                case_key_devid_unclaimed_when_raw_is_live,
                case_render_all_default, case_render_nondefault,

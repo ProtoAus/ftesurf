@@ -158,6 +158,9 @@ WINDOWS_PSEUDO = {"system", "di", "di7"}
 PSEUDO_DEVICES = WINDOWS_PSEUDO | {"x11", "dga", "wayland"}
 # Patch 387: an X11 XTEST slave, listed but never counted as hardware.
 PSEUDO_TYPES = {"xtest"}
+# These classes route m/a records into the pointer array. Keyboard and joy IDs
+# are allocated independently, even when the numbers happen to be equal.
+POINTER_TYPES = {"mouse", "touchpad", "tablet", "xtest"}
 # Patch 387: only a Linux backend enumerates `keyboard - "x11"|"wayland"`.
 NONWIN_KEYBOARDS = {"x11", "wayland"}
 # K_MOUSE1-5, K_MWHEELDOWN/UP, K_MOUSE6-10 (engine client/keys.h).
@@ -250,6 +253,14 @@ def _identity_capture_unknown(name, token, capacity):
     while i < len(value) and value[i] in digits:
         i += 1
     return i == len(value)
+
+
+def _device_namespace(dtype):
+    if dtype in POINTER_TYPES:
+        return "pointer"
+    if dtype == "joy":
+        return "joystick"
+    return dtype
 
 
 def parse_dev_line(line):
@@ -675,7 +686,8 @@ def check_hid(path, verbose=False, *, data=None):
     # devid -> event count, for the attribution check below.  SPLIT BY CLASS,
     # and that split is a bug fix rather than tidiness -- see the device section.
     # A key event's devid is not a device identity at all on the legacy path.
-    devids_used = {}        # pointer devices: m / a / j
+    devids_used = {}        # pointer devices: m / a, never j
+    devids_joy = {}         # independent joystick namespace: j
     devids_key = {}         # keyboards: + / - / x
     devids_btn = {}         # Patch 468: raw mouse buttons, by their pointer's devid
     devids_btnplus = {}     # ...and the presses among them
@@ -995,7 +1007,9 @@ def check_hid(path, verbose=False, *, data=None):
                 # Patch 387: on Linux a mouse button carries its pointer's devid
                 # (Xwayland: buttons from xwayland-pointer, motion from the
                 # relative one), so it is attributed as a pointer event.
-                if nonwin and keynum in MOUSE_KEYS:
+                if kind == "j":
+                    devids_joy[d] = devids_joy.get(d, 0) + 1
+                elif nonwin and keynum in MOUSE_KEYS:
                     devids_used[d] = devids_used.get(d, 0) + 1
                 elif kind in ("+", "-") and keynum in MOUSE_KEYS:
                     # Patch 468: a raw mouse button (the pad's taps, a second
@@ -1576,6 +1590,9 @@ def check_hid(path, verbose=False, *, data=None):
 
     # ---- devices (engine Patch 303) ----------------------------------------
     #
+    if devids_joy:
+        r.info["joystick_axis_events"] = sum(devids_joy.values())
+
     # A pre-303 file has no tables at all.  That is reported and never faulted:
     # the question simply cannot be asked of those files, and "absent" must not
     # be allowed to read as "no devices found".
@@ -1602,17 +1619,19 @@ def check_hid(path, verbose=False, *, data=None):
         for idx, (dtype, did, name) in enumerate(real):
             r.info["device[%d]" % idx] = "%-8s devid %-5s %s" % (dtype, did, name)
 
-        # A devid claimed by two devices makes EVERY attribution in the file
-        # ambiguous, so this one is a fault rather than a note.
+        # Native allocators are per namespace: keyboard0, mouse0 and joy0
+        # coexist. Conflicts matter only within the actual event namespace.
         claimed = {}
         for dtype, did, name in devmaps:
             if did in ("-", "unset"):
                 continue
-            if did in claimed and claimed[did] != name:
-                r.fault("devid %s is claimed by two devices (%r and %r) -- no "
-                        "event in this file can be attributed to either"
-                        % (did, claimed[did], name))
-            claimed[did] = name
+            namespace = _device_namespace(dtype)
+            key = (namespace, did)
+            if key in claimed and claimed[key] != name:
+                r.fault("devid %s is claimed by two devices in the %s namespace "
+                        "(%r and %r) -- those events cannot be uniquely attributed"
+                        % (did, namespace, claimed[key], name))
+            claimed[key] = name
 
         # THE CHECK THE TABLE EXISTS FOR: an event carrying a devid that no
         # device accounts for.  A NOTE and not a fault -- a device unplugged
@@ -1655,10 +1674,15 @@ def check_hid(path, verbose=False, *, data=None):
         for did, n in sorted(pointer_counts.items()):
             if wl_seat and did == 0:
                 continue
-            if str(did) not in claimed:
+            if ("pointer", str(did)) not in claimed:
                 r.note("devid %d produced %d pointer events but no device in "
-                       "the table claims it -- it was unplugged mid-run, or "
-                       "the file is not describing its own hardware." % (did, n))
+                       "the table claims it (pointer namespace) -- it was unplugged "
+                       "mid-run, or the table cannot establish its identity." % (did, n))
+        for did, n in sorted(devids_joy.items()):
+            if ("joystick", str(did)) not in claimed:
+                r.note("devid %d produced %d joystick axis events but no device "
+                       "in the joystick namespace claims it -- it was unplugged "
+                       "mid-run, or the table cannot establish its identity." % (did, n))
 
         # The keyboard side, asked correctly.
         try:
@@ -1675,9 +1699,9 @@ def check_hid(path, verbose=False, *, data=None):
                 # Enumeration does not establish registration or a raw-key identity.
                 # Legacy input still uses constant devid 0, not a device identity.
                 for did, n in sorted(devids_key.items()):
-                    if did != 0 and str(did) not in claimed:
+                    if did != 0 and ("keyboard", str(did)) not in claimed:
                         r.note("devid %d produced %d key events but no device "
-                               "in the table claims it. rawkbds %d counts "
+                               "in the table claims it (keyboard namespace). rawkbds %d counts "
                                "enumerated/bound keyboards and does not prove "
                                "successful registration; this header alone "
                                "cannot establish raw-key identity." % (did, n, kbds_live))
@@ -1692,17 +1716,20 @@ def check_hid(path, verbose=False, *, data=None):
                 # K_MOUSE1 + j for j >= 6, which keys.h names K_MWHEELUP and
                 # K_JOY1..3, so a 7-button mouse writes exactly that shape.
                 pointer_ids = set(int(did) for dtype, did, name in devmaps
-                                  if dtype in ("mouse", "touchpad") and did.isdigit())
-                if set(devids_key) - {0} - pointer_ids:
-                    r.note("key events carry devid(s) other than 0 although raw "
-                           "keyboard was not bound -- the legacy path dispatches "
-                           "a hardcoded 0, so this file does not match the "
-                           "engine it claims to come from.")
+                                  if dtype in POINTER_TYPES and did.isdigit())
+                joy_ids = set(int(did) for dtype, did, name in devmaps
+                              if dtype == "joy" and did.isdigit())
+                if set(devids_key) - {0} - pointer_ids - joy_ids:
+                    r.note("key events carry devid(s) other than 0 with no "
+                           "closing-table identity. Legacy keyboard input uses "
+                           "a hardcoded 0, but non-keyboard devices can supply "
+                           "keys or disappear mid-run; raw-key identity is unavailable.")
                 else:
                     r.info["key_attribution"] = (
-                        "not available -- raw keyboard is not bound, so every "
-                        "key event carries a hardcoded devid 0 that names no "
-                        "device (and is NOT the mouse that may hold devid 0)")
+                        "not available -- raw keyboard is not bound, so legacy "
+                        "keyboard events carry a hardcoded devid 0 that names no "
+                        "device (and is NOT the mouse that may hold devid 0). "
+                        "Pointer/controller key IDs do not establish raw-key identity.")
 
         # The two tables disagreeing means the device set changed mid-run.
         before = set((d[0], d[2]) for d in devs)

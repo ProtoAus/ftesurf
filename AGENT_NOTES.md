@@ -1,5 +1,33 @@
 # AGENT_NOTES.md
 
+## P1518 input IDs are namespace-local; inspect the actual metric wrapper (12 Nov 2026)
+
+Native pointer, keyboard and joystick allocators search separate arrays. All
+three can legitimately assign0. Touchpad/tablet/XTest use the pointer namespace,
+not a separate license to reuse a pointer ID. Preserve same-namespace conflicting
+identity faults; do not let a keyboard/controller table claim pointer records.
+`j` axis events are not `m`/`a` motion and must not consume the pad acceptance
+counter. Literal native allocation5row control0/0/0 through2/1/1, zero warnings;
+old reader570checks20fail, subject Windows/ARM570/0. Actual CLI healthy arms change
+from fault to OK; same-namespace and true zero-accepted-pad controls still fault.
+These are input bookkeeping, NOT hardware attestation or calibrated human input.
+
+Receipt metrics are `{version, metrics, exclusions}`: testing a counter against
+the outer wrapper silently tests absence. Corrected the P1516 withholding fixture
+and paired it with healthy measured-zero controls inside `metrics`. Windows408/0;
+ARM4actual captured-byte joins act, but full ARM receipt suite was NOT run (flat
+HID stage has no backend test_sweep fixture). Copy only actual pure-reader supports
+for that smoke, not a new backend/test framework. Keep source module hashes.
+
+Required reader949/0;751existing input hashes unchanged. The supported REC main
+pairs existing sidecars; actual568REC sweep retains349REC/7VIEW faulty reports.
+A custom standalone-view comparison instead read5faulty and3changed lists; the
+follow-up incorrectly assumed every view had a recording. Both are retained
+caller failures, not changed product faults. Use the existing paired entrypoint;
+136HID retain3faulty/identical fault lists. No capture, wire, signature verdict,
+rank, native pin/tag, QC Build or historical regrading change. Full scope in
+`tools/p1518-hid-namespaces.md`; source qualification is not review/deployment.
+
 ## P1516 captured text is not automatically an effective constant (12 Nov 2026)
 
 - Literal COM_QuotedString plus native Q_atoi/Q_atof proves different effective
