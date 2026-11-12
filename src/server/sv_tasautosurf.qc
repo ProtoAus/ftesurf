@@ -1314,6 +1314,10 @@ float(float i) SV_TASAutoIsMoved =
 	return FALSE;
 };
 
+string(float i) SV_TASAutoMovedNote =
+{
+	return sprintf(" -- waypoint %.0f is one you moved, and Jargon could not reach it: Undo, or move it nearer the guide's place", i + 1);
+};
 void(entity e) SV_TASAutoLink =
 {
 	local float i, h, argc, r, q, fz, fz2, zq, zd, zl;
@@ -2263,10 +2267,14 @@ void(entity e) SV_TASAutoFrame =
 			e.as_tprev = as_wp[t]; e.as_goal = as_ws[t]; e.as_backhead = -1; e.as_backfail = 0; e.as_stage = 3;
 			return;
 		}
+		// a stretch the player moved says so (Lex: after moving the first waypoint the run "refused to start" -- it ran,
+		// and could not reach the moved point: panel test panel1, stage 1 stuck at stretch 1)
+		t = (e.as_failmax > e.as_i) ? e.as_failmax : e.as_i;
 		if (e.as_failmax > e.as_i)     // the furthest stretch that failed, not only the one the backtracks ended on (review 8-9)
-			SV_TASAutoStop(e, sprintf("stuck at stretch %.0f of %.0f after %.0f backtracks (stretch %.0f failed last)",
-				e.as_failmax + 1, as_n, e.as_backs, e.as_i + 1));
-		else SV_TASAutoStop(e, sprintf("stuck at stretch %.0f of %.0f after %.0f backtracks", e.as_i + 1, as_n, e.as_backs));
+			SV_TASAutoStop(e, sprintf("stuck at stretch %.0f of %.0f after %.0f backtracks (stretch %.0f failed last)%s",
+				e.as_failmax + 1, as_n, e.as_backs, e.as_i + 1, SV_TASAutoIsMoved(t) ? SV_TASAutoMovedNote(t) : ""));
+		else SV_TASAutoStop(e, sprintf("stuck at stretch %.0f of %.0f after %.0f backtracks%s", e.as_i + 1, as_n, e.as_backs,
+			SV_TASAutoIsMoved(t) ? SV_TASAutoMovedNote(t) : ""));
 		return;
 	}
 	if (e.as_stage == 3)
@@ -2296,10 +2304,37 @@ void(entity e) SV_TASToolsDisconnect =
 	if (topt_busy == e) topt_busy = world;
 };
 
+// the panel's Continue (`tas autosurf saved T L`): a course's saved run, read here -- CSQC may not open data/tasproj/
+// (the engine refuses it, and the panel's 2-s poll printed the refusal each time) -- and sent as an event, not a line
+void(entity e, float ct, float cl) SV_TASAutoSavedQuery =
+{
+	local float fh, i, c, k, n;
+	k = n = 0;
+	fh = fopen(SV_TASAutoSidePath(strcat("jg_", FS_LegDir(ct, cl))), FILE_READ);
+	if (fh >= 0)
+	{
+		for (i = 0; i < 12; i = i + 1)
+		{
+			c = tokenize(fgets(fh));
+			if (argv(0) == "at" && c >= 3) { k = stof(argv(1)); n = stof(argv(2)); break; }
+		}
+		fclose(fh);
+	}
+	WriteByte(MSG_MULTICAST, SVC_CGAMEPACKET); WriteByte(MSG_MULTICAST, TAS_EV_JSAVED);
+	WriteByte(MSG_MULTICAST, ct); WriteByte(MSG_MULTICAST, cl); WriteShort(MSG_MULTICAST, bound(0, k, 999)); WriteShort(MSG_MULTICAST, bound(0, n, 999));
+	msg_entity = e; multicast(e.origin, MULTICAST_ONE_R);
+};
 void(entity e, float argc) SV_TASAutoCommand =
 {
 	local float i, s, n, st, flip, arm, pl, ct, cl, zg, nct, ncl;
 	local string w, path;
+	if (argc == 5 && argv(2) == "saved")
+	{
+		if (FS_TASNumber(argv(3)) && FS_TASNumber(argv(4)) && stof(argv(3)) >= 0 && stof(argv(3)) < ZONE_MAXTRACKS && stof(argv(3)) == floor(stof(argv(3)))
+		    && stof(argv(4)) >= 0 && stof(argv(4)) <= 64 && stof(argv(4)) == floor(stof(argv(4))))
+			SV_TASAutoSavedQuery(e, stof(argv(3)), stof(argv(4)));
+		return;
+	}
 	if (argc >= 5 && argv(2) == "continue")
 	{
 		if (Lobby_Active()) { sprint(e, PRINT_HIGH, "tas autosurf: a local practice tool; not on lobby servers\n"); return; }

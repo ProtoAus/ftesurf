@@ -642,7 +642,7 @@ void(float argc) TASOptUI_Verb =
 	{
 		for (i = 0; i < jg_n; i = i + 1)
 			{ a = jg_o[i]; print(sprintf("tas jargon: waypoint %g %s t=%.3f %.1f %.1f %.1f%s\n", i + 1, TASOptUI_WpKind(jg_k[i]), jg_t[i], a_x, a_y, a_z, jg_mv[i] ? " moved" : "")); }
-		print(sprintf("tas jargon: %g waypoints, %g edits to undo\n", jg_n, jgu_top));
+		print(sprintf("tas jargon: %g waypoints, %g edits to undo; saved run: %g of %g\n", jg_n, jgu_top, jg_knext, jg_kof));
 		return;
 	}
 	i = stof(argv(3)) - 1;

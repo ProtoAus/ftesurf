@@ -268,9 +268,10 @@ float jg_klearn;                // P1483: stretches of this course with a learne
 var float jg_kc = -1;
 void() TASJargon_Saved =
 {
-	local float fh, i, c;
+	local float fh, i;
 	if (cltime < jg_kat && jg_kc == jg_cpick) return;
-	jg_kat = cltime + 2; jg_kc = jg_cpick; jg_knext = jg_kof = 0;
+	if (jg_kc != jg_cpick) jg_knext = jg_kof = 0;      // another course: none until its answer (TASJargon_SavedEvent)
+	jg_kat = cltime + 5; jg_kc = jg_cpick;
 	if (jg_cpick >= jg_cn) return;
 	jg_klearn = 0;
 	fh = fopen(sprintf("data/jargon/%s/%s.prior", zone_mapname, FS_LegDir(jg_ct[jg_cpick], jg_cl[jg_cpick])), FILE_READ);
@@ -279,14 +280,14 @@ void() TASJargon_Saved =
 		for (i = 0; i < 70; i = i + 1) if (substring(fgets(fh), 0, 2) == "p ") jg_klearn = jg_klearn + 1;
 		fclose(fh);
 	}
-	fh = fopen(sprintf("data/tasproj/%s/jg_%s.jargon", zone_mapname, FS_LegDir(jg_ct[jg_cpick], jg_cl[jg_cpick])), FILE_READ);
-	if (fh < 0) return;
-	for (i = 0; i < 12; i = i + 1)
-	{
-		c = tokenize(fgets(fh));
-		if (argv(0) == "at" && c >= 3) { jg_knext = stof(argv(1)); jg_kof = stof(argv(2)); break; }
-	}
-	fclose(fh);
+	// the saved run is the server's to read: CSQC may not open data/tasproj/ (each refusal printed, every 2 s)
+	localcmd(sprintf("cmd tas autosurf saved %g %g\n", jg_ct[jg_cpick], jg_cl[jg_cpick]));
+};
+void() TASJargon_SavedEvent =
+{
+	local float ct, cl, k, n;
+	ct = readbyte(); cl = readbyte(); k = readshort(); n = readshort();
+	if (jg_cpick < jg_cn && ct == jg_ct[jg_cpick] && cl == jg_cl[jg_cpick]) { jg_knext = k; jg_kof = n; }
 };
 
 var float jg_plannedc = -1;         // the course the shown plan is of
