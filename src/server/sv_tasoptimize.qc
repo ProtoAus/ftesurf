@@ -1008,6 +1008,7 @@ float topt_bat_map[TOPT_BATMAX];
 // and in the prefetch around it; ticks the workers rolled, the pass-1 ticks a second pass threw away, the ticks left
 // after the volume cut (SV_TASOptRoll) and inside the target score's window (its tube cut)
 .float topt_trol, topt_tpref, topt_tkran, topt_tkre, topt_tkvol, topt_tkuse;
+.float topt_nfr, topt_twork;     // server frames the search worked in, and the seconds it worked in them (the rest: between)
 // slices copied by index: memcpy from &ptr[i] read the wrong candidates (rig tlow2: every candidate of a search
 // scored as the demo's own line left the tube at tick 45; the same QC with one rollout at a time made the board)
 void(float *dst, float doff, float *src, float soff, float count) SV_TASOptCopy =
@@ -1981,6 +1982,8 @@ void(entity e, float v) SV_TASOptResult =
 				e.topt_tkran, e.topt_tkre, e.topt_tkvol, e.topt_tkuse));
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: maps that moved: %.0f before the line's volume cut, %.0f only after it%s\n",
 				e.topt_mapbefore, e.topt_mapafter, e.topt_mapcut ? " (those not rolled again)" : ""));
+			sprint(e, PRINT_HIGH, sprintf("tas optimize: frames: %.0f server frames worked in, %.2f s of work in them, %.2f s between them\n",
+				e.topt_nfr, e.topt_twork, gettime(1) - e.topt_tstart - e.topt_twork));
 		}
 		if (e.topt_tube > 0)
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: %.0f candidates left the tube (%.0f u round the demo's path) and scored as cut there\n",
@@ -2710,7 +2713,7 @@ void(entity e) SV_TASDemoFrame;
 float topt_frtime, topt_frstart;  // the server frame the search budget counts in, and its wall-clock start
 void(entity e) SV_TASOptFrame =
 {
-	local float head, k, v, t0v;
+	local float head, k, v, t0v, tc0;
 	SV_TASDemoFrame(e);             // P1449
 	SV_TASAutoFrame(e);             // P1449: an autosurf's next stretch, between its searches
 	if (e.topt_on || e.tdem_on || e.as_on) topt_busyt = time;   // the chain holds the guard across its rewinds, armed too (it owns as_rows)
@@ -2791,8 +2794,9 @@ void(entity e) SV_TASOptFrame =
 		// rate-limited drawing sent one best line, and everything else on the server waited (9 Nov).
 		// A frame is marked by the server's clock changing (gettime(0) is realtime, gettime(1) another clock:
 		// their difference measures nothing), its start by gettime(1) at its first call.
-		if (time != topt_frtime) { topt_frtime = time; topt_frstart = gettime(1); }
+		if (time != topt_frtime) { topt_frtime = time; topt_frstart = gettime(1); e.topt_nfr = e.topt_nfr + 1; }
 		if (gettime(1) - topt_frstart > TOPT_FRAMEBUDGET) return;
+		tc0 = gettime(1);
 		for (k = 0; k < 256 && (k == 0 || gettime(1) - topt_frstart < TOPT_FRAMEBUDGET) && e.topt_on && e.topt_phase != 3; k = k + 1)
 		{	// P1449: ~40 ms of rollouts a call, not a tick count (a follow candidate rolls up to 12 times to
 			// its fixed point; calls come with the client's packets, a few a second from an unfocused window)
@@ -2818,6 +2822,7 @@ void(entity e) SV_TASOptFrame =
 			if (e.topt_bestv > t0v) SV_TASOptVizSend(e, 5, e.topt_rollran);     // P1449: topt_out is still this one's
 			else SV_TASOptVizSend(e, (v >= TOPT_REACH) ? 2 : ((v == -1) ? 3 : 1), e.topt_rollran);
 		}
+		e.topt_twork = e.topt_twork + gettime(1) - tc0;
 		SV_TASOptVizFlush(e);
 		if (e.topt_on && e.topt_phase == 3 && e.topt_bestv < 0)
 			SV_TASOptStop(e, sprintf("all %.0f candidates met a trigger, touch or carrier QC acts on (or stopped early): nothing to play", e.topt_evals));
@@ -3354,7 +3359,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_ebatch = (e.topt_efol && (mode & 64) && kn && checkbuiltin(tas_rollout_batch) && cvar("sv_tas_threads") > 1);
 	e.topt_batgen = 0; e.topt_batruns = e.topt_batworkers = 0;
 	e.topt_trol = e.topt_tpref = e.topt_tkran = e.topt_tkre = e.topt_tkvol = e.topt_tkuse = 0;
-	e.topt_mapbefore = e.topt_mapafter = 0; e.topt_mapcut = cvar("tas_opt_mapcut");
+	e.topt_mapbefore = e.topt_mapafter = 0; e.topt_mapcut = cvar("tas_opt_mapcut"); e.topt_nfr = e.topt_twork = 0;
 	if (kn && i < 0)
 	{
 		SV_TASOptStop(e, SV_TASRollWhy(i));
