@@ -2222,6 +2222,21 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		if (!worldonly) Ov_Draw(scr);         // P1439: env_screenoverlay, under env_fade
 		if (!worldonly) MapMsg_DrawFade(scr); // P870: no map effects over the overview
 
+		// The 2D lines -- replay path (BUILD 43; hud_watch_path_mode gives it to this or the world-depth drawer), P433's
+		// world lines, trails, Jargon's -- go UNDER the HUD and every panel (Lex: they covered it). A 2D polygon batch is drawn
+		// by the next 2D call or at the frame's end (cl_screen.c:2896); cl_hudcache.qc:153 flushes it before switching target.
+		if (!worldonly)
+		{
+			if (rec_wt_on)
+				Watch_Path2D();
+			Scores_LinesDraw(); // P433: deferred world lines, before their labels.
+			Trail_Draw();
+			RG_DrawLines();
+			TASOptViz_Draw2D();
+			TASJargon_Draw2D();
+			LineGraph_WorldLabels();
+		}
+
 		/*
 		  Patch 270.  NM_Frame samples the engine's received-delta counters and
 		  closes a one-second window; NM_Draw prints it.  Sampling is OUTSIDE the
@@ -2282,41 +2297,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		  what runs before it.
 		*/
 		Chat_Draw(scr);
-
-		/*
-		  BUILD 43: the replay's path AGAIN, and this is not a duplicate.
-		  hud_watch_path_mode picks which of the two drawers does the work and
-		  the other returns immediately, so exactly one of these two calls ever
-		  draws anything.
-
-		  The screen-space one has to be after renderscene, because that is what
-		  2D means -- and the cost of being there is that it cannot be occluded
-		  by the world, which is the trade the essay at Watch_PathMode spells out.
-
-		  AFTER HUD_Draw, and the reason is mechanical rather than aesthetic.  A
-		  2D CSQC polygon is not drawn when it is submitted: R_BeginPolygon sets
-		  R2D_Flush and the batch is drawn when some later 2D draw call flushes
-		  it (pr_csqc.c:1671-1678, CSQC_PolyFlush's twod branch at :1605-1622).
-		  Sitting after the HUD guarantees there is such a call.  Before it there
-		  may not be, and rather than reason about which of Timer_Draw's or
-		  Watch_Draw's first primitive would do the flushing, this takes the
-		  position where the question does not arise.
-
-		  It is still before Timer_Draw and the replay chrome, so the panels you
-		  actually read stay on top of the line.
-		*/
-		if (!worldonly)
-		{
-			if (rec_wt_on)
-				Watch_Path2D();
-			Scores_LinesDraw(); // P433: deferred world lines, before their labels.
-			Trail_Draw();
-			RG_DrawLines();
-			TASOptViz_Draw2D();
-			TASJargon_Draw2D();
-			LineGraph_WorldLabels();
-		}
-		Line_FrameEnd();
+		Line_FrameEnd();                // the 2D lines draw before HUD_Draw (above)
 
 		/*
 		  Build 54.  The inspector's labels, and they are here for exactly the
