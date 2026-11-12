@@ -1677,6 +1677,9 @@ float(entity e) SV_TASAutoCoastPredict =
 	e.topt_endz = k; e.topt_endtrack = (k >= 0) ? -1 : e.as_ctrack;
 	for (i = 0; i < ran; i = i + 1)
 	{
+		if (cvar("tas_jargon_finishretry"))      // a zone box end: the hull swept into it, as the finish search tests it
+		if (SV_TASOptInEnd(e, (i > 0) ? [as_cout[i*13-13], as_cout[i*13-12], as_cout[i*13-11]] : e.origin,
+		    [as_cout[i*13], as_cout[i*13+1], as_cout[i*13+2]])) return i + 1;
 		a = as_cout[i*13 + 12];
 		if (!a) continue;
 		k = SV_TASOptEndTele(e, edict_num(fabs(a)));
@@ -1685,13 +1688,16 @@ float(entity e) SV_TASAutoCoastPredict =
 		if (strcmp(edict_num(fabs(a)).classname, "trigger_teleport") && strcmp(edict_num(fabs(a)).classname, "trigger_momentum_teleport"))
 			return 0;       // another volume: QC acts there, the prediction ends
 	}
-	return 0;
+	// tas_jargon_finishretry: -2, the coast neither enters the end nor meets the teleport into it. A finish search's
+	// best may be only near the end (Safe), and the coast drifted past it: "did not reach the end in 6 s", the run over
+	// (surf_tensor2 stage 1, bench fin2)
+	return cvar("tas_jargon_finishretry") ? -2 : 0;
 };
 
 // After SV_TASDemoFrame (SV_TASOptFrame): the next step of the chain once no search is running.
 void(entity e) SV_TASAutoFrame =
 {
-	local float head, i, best, d, t, s, along, lat, herr, ee, ph, argc_pl, rd;
+	local float head, i, best, d, t, s, along, lat, herr, ee, ph, argc_pl, rd, cp;
 	local vector u, cr, cl, nn;
 	// The TAS timeline (rewinds, edits, every tool here) begins with the running attempt, so a start box's
 	// prestrafe and jump stay the player's: paused on the first running tick, autosurf takes the fall to the
@@ -1992,9 +1998,13 @@ void(entity e) SV_TASAutoFrame =
 			SV_TASAutoNote(e, 2, sprintf("finished the route (%.0f stretches, %.0f backtracks); the run did not reach the end in 6 s", as_n, e.as_backs));
 			return;
 		}
-		if (!e.as_sn && SV_TASAutoCoastPredict(e) < 0)
-		{	// the coast would fall into a teleport that is not the end: the last stretch failed, tried again or backtracked
-			SV_TASAutoNote(e, 1, sprintf("stretch %.0f: from where it ends, the run would fall into a teleport, not the end: again", as_n));
+		cp = 0;
+		if (!e.as_sn) cp = SV_TASAutoCoastPredict(e);
+		if (!e.as_sn && cp < 0)
+		{	// the coast would fall into a teleport that is not the end (or miss the end: -2): the last stretch failed, tried
+			// again or backtracked
+			SV_TASAutoNote(e, 1, sprintf("stretch %.0f: from where it ends, the run would %s: again", as_n,
+				(cp == -2) ? "coast past the end" : "fall into a teleport, not the end"));
 			e.as_i = as_n - 1; e.as_tprev = as_wp[as_n - 1];    // the reach had moved it to its own end (rig t2chain9: no rows left)
 			e.as_try = e.as_fintry;     // that try failed: the next searches longer, the last backtracks (bench p14)
 			e.topt_outcome = 1; e.topt_lowneed = e.topt_earlycut = e.topt_trigcut = 0; e.topt_over = e.topt_briefn = 0;
