@@ -388,10 +388,26 @@ void(float back) SV_TASAutoPlanCopy =
 };
 void(float a, float b) SV_TASAutoTurn =
 {
-	local float j, c, tot;
+	local float j, c, tot, ab, sg, pg, last;
 	if (as_rows[b*7] - as_rows[a*7] < 0.6 - 0.0001) return;
-	tot = 0;
-	for (j = a + 1; j < b; j = j + 1) tot = tot + SV_TASAutoHeadD(j);     // row b boards: its clip is the ramp's
+	tot = 0; ab = 0;
+	for (j = a + 1; j < b; j = j + 1) { c = SV_TASAutoHeadD(j); tot = tot + c; ab = ab + fabs(c); }     // row b boards: its clip is the ramp's
+	if (ab >= 180 && cvar("tas_jargon_zigzag"))
+	{	// a zig-zag: the turns cancel, so the net turn below never reaches 90 (surf_anubis stage 2's maze: 886 deg in 3.9 s,
+		// six reversals, and its one long stretch died on the walls ~1 s in every try). A point at each sustained reversal
+		// of the guide's turn (a 4-row sum past 2 deg each way), 0.25 s or more from the flight's ends and the last point.
+		pg = 0; last = a;
+		for (j = a + 3; j < b - 2; j = j + 1)
+		{
+			c = SV_TASAutoHeadD(j - 2) + SV_TASAutoHeadD(j - 1) + SV_TASAutoHeadD(j) + SV_TASAutoHeadD(j + 1);
+			sg = (c > 2) ? 1 : ((c < -2) ? -1 : 0);
+			if (sg && pg && sg != pg)
+			if (as_rows[j*7] - as_rows[last*7] >= 0.25 - 0.0001 && as_rows[b*7] - as_rows[j*7] >= 0.25 - 0.0001)
+			if (as_tpn < TAS_ASMAX) { as_tpj[as_tpn] = j; as_tpr[as_tpn] = TAS_AIRR; as_tpn = as_tpn + 1; last = j; }
+			if (sg) pg = sg;
+		}
+		return;
+	}
 	if (fabs(tot) < 90) return;
 	c = 0;
 	for (j = a + 1; j < b; j = j + 1)
