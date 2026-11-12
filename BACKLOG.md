@@ -74,6 +74,27 @@ Resolved by P1483 (drop from the P1478 list): the end teleport now scores as the
 runs, 0:12.825 and 0:12.330, the guide 12.570); the search is deterministic from one state with a seed (stage 2 run 0
 gave 0:12.825 and 5 backtracks on two builds).
 
+## Jargon -- leftovers of P1528 (13 Nov)
+
+- Site: the start's own crouch (test cvar tas_jargon_startduck). Copied by time after Jargon's jump, it made tensor2
+  stage 1's stretch 1 unreachable (A/B 13 Nov, one run an arm; Jargon jumps 54 u before the guide's exit, so its unduck
+  lands elsewhere). Lead: copy it by place -- crouched while over the box's edge, standing once the feet clear it.
+  Falsifier: with it on, tensor2 stage 1 reaches stretch 1 and no course in the broad set loses a stretch.
+- Site: SV_TASAutoCoastPredict / stage 31. A prediction the engine cuts short (water, a ladder) now returns 0, and a coast
+  that then misses ends the chain after 400 ticks ("did not reach the end in 6 s") with no retry. Falsifier: a finish
+  over water whose first coast misses is retried.
+- Site: stage 32 (portals). A guide that lands inside a second teleport -- both fire in one 2-tick step -- reads as missed
+  (the body lands far from the first one's landing). Falsifier: a chained-teleport stage passes its portal.
+- Site: SV_TASOptTeleNear. The cut trigger's box grown 96 u misses a guide that rose into its underside faster than
+  ~2270 u/s, and a teleport fired late by an output. Falsifier: such a portal scores as reached.
+- Site: the start. Stage 13 (the guide's own prestrafe) never sets as_sjmp, so rule 524288's edge re-jump can add a second
+  jump; the redo (as_sredo) keeps its second attempt even when slower than the first. Falsifier: a start that worked
+  before the redo still works after it.
+- Site: the panel's number field. Held Enter or Backspace repeats into the next field clicked (the shared key tracker's
+  state 2 does not say which field owns a key). Falsifier: a held key reaches only the field it was pressed in.
+- Known, not a regression: tensor2 stage 1's stretch 1 at the panel's effort -- the first tries end in the teleport
+  ~257 u short on every build; the second effort step boards it (A/B arm C: 3 misses).
+
 ## Timer zones built from map triggers -- leftovers of P1461 (10 Nov)
 
 - Map data, needs a zone file (zoners): surf_loweffort2_css writes zone_number 5 on two stage triggers ~10,000 u apart and no 6, so stage 6 never splits and its box arms "stage 5"; surf_oompa2 (`timer_start` 2,803 u from `rs_1_end`), surf_angelinaaa (start 695 128 u above end 691) and surf_hope_css carry unlabelled second start/end pairs that still time as main runs; surf_devs_ksf has no start and surf_spooky_css no end. Live boards held no ranked/community row on any of them (10 Nov). Falsifier: `zone_list` after a zone file lands shows one start/end per track.
