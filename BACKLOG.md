@@ -1844,16 +1844,20 @@ From the two independent reviews of 28 Oct. Every case stays TAS-flagged; none r
 - 28 Oct: generation 74e060d7 carries P984's zonefit (live 06:32Z); remove this
   once a mapwatch run (cron 23 */6) shows the falsifier above.
 
-## hidcheck: leftisright values the journal cannot carry exactly (P982 review 2)
+## hidcheck: long cvar values the legacy journal cannot carry exactly
 
-- Sites: engine client/in_generic.c journals cvar strings through COM_QuotedString
-  (header qval[64] cut at 61 chars, 'c' quoted[128] at 125); tools/hidcheck.py
-  _unquote_pair is not its inverse for values holding '"', CR/LF (escaped form)
-  or '\' (plain form), and the cut changes long values. hidcheck then takes a
-  different .ival than the engine: a player who sets such an absurd leftisright
-  is falsely flagged on every mouse frame. Never a pass or a blind.
-- Fix options: journal .ival beside the string (engine), or decode the escaped
-  form and widen the buffers. Falsifier: leftisright "1\"" and "0"*61+"1".
+- P1515 fixes default-form escaping/plain backslashes and quoted whitespace;
+  that is NOT recovery of a producer-clipped suffix.
+- Sites: engine client/in_generic.c COM_QuotedString header qval[64] (plain
+  payload61bytes), change quoted[128] (125bytes). tools/hidcheck.py can still
+  derive a different .ival from a clipped value and falsely blame angle identity.
+  Falsifier: actual leftisright "0"*61+"1", observed header prefix allzero, while
+  actual movement is mirrored. Plain/escaped boundary cases differ by capacity.
+- Need an exact effective-value/complete-capture proof or explicit unavailable
+  result that does not become either an angle accusation OR an unproved pass.
+  Larger fixed buffers alone do not solve arbitrary cvar length. No new recorded
+  field or historical regrade is assumed. Non-default dpcompat_console encoding
+  is also unrecorded and is not claimed by the default-form decoder.
 
 ## r_mirrorworld: HUD elements that draw world sides (P982)
 

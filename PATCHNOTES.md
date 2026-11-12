@@ -22,6 +22,9 @@
 ## next
 - Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
+### P1515 Input-journal analysis
+- Escaped cvar values and literal backslashes no longer cause false angle-identity findings. Damaged changes report a format problem rather than reusing stale settings.
+
 ### P1514 Practice-run gravity attribution
 - Clear airborne water-jump moves now count proven use of retained gravity toward the existing practice-run policy, without changing movement.
 

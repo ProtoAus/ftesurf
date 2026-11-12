@@ -2147,6 +2147,93 @@ def case_leftisright_sign():
                   % (r.faults[:1] or "none"))
 
 
+# Literal native COM_QuotedString output, independently checked by the
+# production C helper. Plain quotes do NOT give backslashes escape semantics.
+CVAR_QUOTE_CASES = (
+    ('1"', r'\"1\""', True),
+    ('1\r', r'\"1\r"', True),
+    ('1\n"', r'\"1\n\""', True),
+    ('1\\', '"1\\"', True),
+    ('\\1', '"\\1"', False),
+    ('  1', '"  1"', False),
+    ('1  2', '"1  2"', True),
+    ("'$\n", r'\"\'\$\n"', True),
+)
+
+
+def case_cvar_quote_codec():
+    for value, wire, _flip in CVAR_QUOTE_CASES:
+        got = hidcheck._unquote_pair(wire + ' "0"')
+        check(got == (value, "0"),
+              "native quoted cvar decoded exactly: %r -> %r" % (value, got))
+
+
+def case_cvar_quote_identity():
+    for value, wire, flip in CVAR_QUOTE_CASES:
+        for change in (False, True):
+            for correct in (True, False):
+                j = Journal(inputcvars=[("leftisright", "0", "0")])
+                if not change:
+                    j.lines = [l.replace('input leftisright "0" "0"',
+                                         'input leftisright ' + wire + ' "0"')
+                               for l in j.lines]
+                yaw = 0.0
+                for i in range(30):
+                    j.frame(8100 + i)
+                    j.mouse(3, 0)
+                    if change and i == 12:
+                        j.lines.append('c 0 leftisright ' + wire)
+                    active = not change or i >= 12
+                    mirrored = (flip if correct else not flip) if active else False
+                    yaw += (-j.k if mirrored else j.k) * 3
+                    j.view(3, 0, 10.0, yaw)
+                r = run(j.end())
+                label = "%r %s" % (value, "change" if change else "header")
+                if correct:
+                    check(r.ok and r.info.get("identity", "").startswith("exact"),
+                          "native quote legitimate angles exact %s: %s" % (label, r.faults[:1]))
+                    check(r.info.get("identity_judged", 0) > 0 and
+                          r.info.get("identity_yaw_mouse_frames", 0) > 0,
+                          "native quote mouse identity actually judged %s" % label)
+                else:
+                    check(has_fault(r, "YAW IDENTITY BROKEN"),
+                          "CONTROL native quote wrong sign still faults %s: %s" % (label, r.faults[:1]))
+
+
+def case_cvar_quote_malformed():
+    for wire in ('"1', r'\"1\q"', '"1"extra'):
+        for change in (False, True):
+            j = Journal(inputcvars=[("leftisright", "0", "0")])
+            if change:
+                j.lines.append('c 0 leftisright ' + wire)
+            else:
+                j.lines = [l.replace('input leftisright "0" "0"',
+                                     'input leftisright ' + wire + ' "0"')
+                           for l in j.lines]
+            r = run(j.end())
+            check(has_fault(r, "malformed") and has_fault(r, "quoted cvar"),
+                  "malformed native quoted cvar is a format fault, not a crash: %r" % wire)
+    # A malformed change invalidates the known value until the next valid one;
+    # leaving the old value active would turn format loss into false attribution.
+    j = Journal(inputcvars=[("leftisright", "0", "0")])
+    yaw = 0.0
+    for i in range(30):
+        j.frame(8200 + i)
+        j.mouse(3, 0)
+        if i == 12:
+            j.lines.append('c 0 leftisright "1')
+        if i == 20:
+            j.cvarchange("leftisright", "1")
+        yaw += (-j.k if i >= 12 else j.k) * 3
+        j.view(3, 0, 10.0, yaw)
+    r = run(j.end())
+    check(has_fault(r, "malformed quoted cvar") and not has_fault(r, "YAW IDENTITY BROKEN"),
+          "lost change is a format fault, not a stale-sign accusation")
+    check(r.info.get("identity_yaw_judged") == 21 and
+          r.info.get("identity_yaw_exclusions", {}).get("profile") == 8,
+          "only eight unknown transitions excluded; valid change resumes actual judging")
+
+
 def case_leftisright_engine_parse():
     """The sign is leftisright's .ival (Q_atoi), so no value blinds the check
     and none the engine reads as 0 flips it: "abc", "0.5" and " 1" are all 0."""
@@ -2385,7 +2472,8 @@ def main():
                case_pitch_pre305_silent, case_teleport_is_unresolved,
                case_teleport_at_the_clamp_is_unresolved, case_no_frame_markers,
                case_cvar_change_followed, case_leftisright_sign,
-               case_leftisright_engine_parse):
+               case_leftisright_engine_parse, case_cvar_quote_codec,
+               case_cvar_quote_identity, case_cvar_quote_malformed):
         print("%s:" % fn.__name__)
         fn()
         print("")

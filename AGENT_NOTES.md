@@ -1,5 +1,26 @@
 # AGENT_NOTES.md
 
+## P1515 native quoted cvars are two different codecs (12 Nov 2026)
+
+- Current hidcheck used a manual quote parser, not shlex; reread the actual
+  held source before describing it. Default COM_QuotedString uses literal
+  backslashes inside plain quotes, but a backslash+quote prefix enables C-style
+  escapes. Validate fixtures with the actual literal C encoder, not a Python
+  encoder proving itself. Native16rows/0warnings; HID378/0 Windows/ARM; old
+  reader32new-test failures. The separate legacy truncation issue remains OPEN.
+- Use maxsplit to retain the original quoted payload, not split/join: whitespace
+  inside a cvar is data. Bad quoted changes invalidate their known constant until
+  valid replacement; a format fault must not become a stale-sign accusation.
+  Actual8unknown/21judged transition control proves recovery.
+- A clean hidcheck CLI is terse unless verbose; missing info fields are not
+  evidence that the checker failed to act. Retain exit/stdout/stderr before
+  reader assertions, then reparse rather than repeat passed CLI arms. Exact
+  unit/API coverage and actual CLI accept/refuse are distinct claims.
+- Literal gcc probes need the supported UCRT PATH/TMP environment too; empty
+  diagnostic output alone is not a native receipt. No native producer change,
+  capture expansion or policy authority follows from these reader controls.
+  Public status/limits: tools/p1515-hid-quotes.md.
+
 ## P1514 water-jump gravity controls (12 Nov 2026 UTC)
 
 - A positive assist at FullWalkMove entry still moves when its timer expires or

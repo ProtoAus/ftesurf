@@ -168,33 +168,48 @@ MOUSE_KEYS = set(range(178, 185)) | set(range(265, 270))
 PAD_BUTTONS = set(range(178, 183))
 
 
-def _unquote_pair(rest):
-    """'"1" "0"' -> ('1', '0').  The writer quotes with COM_QuotedString because
-    a cvar value can contain spaces, so this cannot just be split()."""
+def _unquote_pair(rest, *, require_pair=False):
+    """Decode COM_QuotedString's default plain or backslash-prefixed form.
+
+    Only the prefixed form interprets escapes; plain backslashes are literal.
+    Native legacy truncation cannot be reconstructed by decoding these tokens.
+    """
+    escapes = {"n": "\n", "r": "\r", "t": "\t", "'": "'",
+               '"': '"', "\\": "\\", "$": "$"}
     out = []
     i = 0
-    while len(out) < 2 and i < len(rest):
-        while i < len(rest) and rest[i] == " ":
-            i += 1
-        if i < len(rest) and rest[i] == '"':
-            j = i + 1
-            buf = []
-            while j < len(rest) and rest[j] != '"':
-                if rest[j] == "\\" and j + 1 < len(rest):
-                    j += 1
-                buf.append(rest[j])
-                j += 1
-            out.append("".join(buf))
-            i = j + 1
-        else:
-            j = rest.find(" ", i)
-            if j < 0:
-                j = len(rest)
-            out.append(rest[i:j])
-            i = j
     while len(out) < 2:
-        out.append("")
-    return out[0], out[1]
+        while i < len(rest) and rest[i].isspace():
+            i += 1
+        if i == len(rest):
+            break
+        escaped = rest.startswith('\\"', i)
+        if escaped or rest[i] == '"':
+            i += 2 if escaped else 1
+            buf = []
+            while i < len(rest) and rest[i] != '"':
+                ch = rest[i]
+                i += 1
+                if escaped and ch == "\\":
+                    if i == len(rest) or rest[i] not in escapes:
+                        raise ValueError("incomplete or unknown escape")
+                    ch = escapes[rest[i]]
+                    i += 1
+                buf.append(ch)
+            if i == len(rest):
+                raise ValueError("missing closing quote")
+            i += 1
+            if i < len(rest) and not rest[i].isspace():
+                raise ValueError("characters after closing quote")
+            out.append("".join(buf))
+        else:
+            j = i
+            while i < len(rest) and not rest[i].isspace():
+                i += 1
+            out.append(rest[j:i])
+    if require_pair and len(out) != 2:
+        raise ValueError("missing value or default")
+    return tuple((out + ["", ""])[:2])
 
 
 def parse_dev_line(line):
@@ -423,13 +438,17 @@ def check_hid(path, verbose=False, *, data=None):
             # key, because the two answer different questions -- what the player
             # could SEE, versus what their counts BECAME -- and a reader must be
             # able to tell them apart without a table of its own.
-            rp = lines[i].split(None, 3)
-            if len(rp) < 4:
+            rp = lines[i].split(None, 2)
+            if len(rp) < 3:
                 r.fault("malformed %r line: %r" % (parts[0], lines[i]))
             else:
-                val, dfl = _unquote_pair(rp[2] + " " + rp[3])
-                (rendercvars if parts[0] == "render"
-                 else inputcvars).append((rp[1], val, dfl))
+                try:
+                    val, dfl = _unquote_pair(rp[2], require_pair=True)
+                except ValueError as exc:
+                    r.fault("malformed quoted cvar in %r header: %s" % (parts[0], exc))
+                else:
+                    (rendercvars if parts[0] == "render"
+                     else inputcvars).append((rp[1], val, dfl))
             i += 1
             continue
         if parts[0] == "dev":
@@ -851,7 +870,15 @@ def check_hid(path, verbose=False, *, data=None):
                 saw_p = True
         elif kind == "c":
             # Patch 310: a render-integrity cvar changed mid-journal.
-            nm, val = tok[2], _unquote_pair(" ".join(tok[3:]))[0]
+            nm = tok[2]
+            try:
+                val = _unquote_pair(lines[lineno].split(None, 3)[3])[0]
+            except ValueError as exc:
+                r.fault("line %d: malformed quoted cvar: %s" % (lineno + 1, exc))
+                if nm in IDENTITY_CVARS:
+                    # Unknown after this change; never reuse a stale scale/sign.
+                    idover = dict(idover, **{nm: None})
+                continue
             cvar_changes.append((nm, val))
             if nm in IDENTITY_CVARS:
                 idover = dict(idover, **{nm: val})    # new dict: earlier views keep theirs
