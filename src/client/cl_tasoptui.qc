@@ -405,7 +405,6 @@ void() TASOptUI_Target =
 
 // P1449: Jargon's panel, three steps (Lex, 10 Nov: "too many options ... more human"): a guide run, its route (drawn and
 // edited in the world, cl_jargon.qc), then surf it -- the old tube/look/tries/backs knots are one Effort choice.
-var float taso_effort = 1;      // 0 quick, 1 normal, 2 thorough
 // P1483 (Lex: demo it on stream, and it must not get stuck when you reset or switch stages): the simple view by default;
 // any start while one runs stops it first and fires once the server says it stopped (TASOptUI_Frame).
 string taso_pend;
@@ -432,15 +431,168 @@ void() TASOptUI_Frame =
 };
 var float autocvar_tas_jargon_wide = 0;     // P1476: flights weave wider (Lex: no flip a tick) -- needs an engine with it
 var float autocvar_tas_jargon_spots = 0;    // 1: each board tries 5 spots on its ramp (`spots`); 2: the best of 4 lines (`beam`, P1483)
+// ---- Options (Lex, 13 Nov: "are they editable? can we edit them in the tas menu") ----
+// The words a Start, Arm or Continue sends, as settings; the defaults send what the panel always sent (Normal + low +
+// safe). Behaviour rules are tas_jargon_off bits (the server's; a local game shares the cvar).
+var float autocvar_tas_jargon_effort = 1;     // 0 quick, 1 normal, 2 thorough (taso_effort before the one-panel rewrite)
+var float autocvar_tas_jargon_polish = 0;
+var float autocvar_tas_jargon_tube = 300;
+var float autocvar_tas_jargon_low = 1;
+var float autocvar_tas_jargon_endany = 1;
+var float autocvar_tas_jargon_exp = 0;        // the experiments' words, a bit each (TASOptUI_ExpWord)
+float jgo_open;
+#define JGO_RULES 7
+#define JGO_EXP 11
+float(float i) TASOptUI_RuleBits =
+{
+	if (i == 0) return 8192; if (i == 1) return 4096; if (i == 2) return 524288; if (i == 3) return 1048576;
+	if (i == 4) return 49152; if (i == 5) return 458752; if (i == 6) return 256;
+	return 0;
+};
+string(float i) TASOptUI_RuleName =
+{
+	if (i == 0) return "Through portals"; if (i == 1) return "One jump off the start"; if (i == 2) return "Line up at a bad angle";
+	if (i == 3) return "Copy the human's crouch"; if (i == 4) return "Strict boarding"; if (i == 5) return "Finish fixes";
+	return "Learn from my attempts";
+};
+string(float i) TASOptUI_RuleTip =
+{
+	if (i == 0) return "A teleport the guide took between stages is flown into and through, so a full run goes on to the next stage.";
+	if (i == 1) return "One jump off the start platform toward the first ramp, even where the guide bhopped off it.";
+	if (i == 2) return "Walks to where the guide stood; at the box's exit more than 30 degrees off the guide's line, backs off and lines up again.";
+	if (i == 3) return "Crouches where the human crouched, from any demo (KSF replays always gave it).";
+	if (i == 4) return "A board counts only on the guide's ramp face, not a near-twin one beside it, and only after a flight, not a slide onto it.";
+	if (i == 5) return "The finish searches past the guide's last frame, aims inside the end zone, and retries a coast that misses.";
+	return "Starts from what worked on this course in earlier attempts. Off: every run from scratch.";
+};
+string(float i) TASOptUI_ExpWord =
+{
+	if (i == 0) return "spots"; if (i == 1) return "regions"; if (i == 2) return "apex"; if (i == 3) return "join";
+	if (i == 4) return "wide"; if (i == 5) return "tight"; if (i == 6) return "free"; if (i == 7) return "catch";
+	if (i == 8) return "parallel"; if (i == 9) return "launch";
+	return "turns";
+};
+string(float i) TASOptUI_ExpName =
+{
+	if (i == 0) return "Board spots"; if (i == 1) return "Human windows"; if (i == 2) return "Peak split"; if (i == 3) return "Join hops";
+	if (i == 4) return "Wide weave"; if (i == 5) return "Tight turns"; if (i == 6) return "Free turns"; if (i == 7) return "Catch";
+	if (i == 8) return "Parallel boards"; if (i == 9) return "Launch points";
+	return "Turn points";
+};
+string(float i) TASOptUI_ExpTip =
+{
+	if (i == 0) return "Tries several boarding places along each ramp, each judged on the ramp after it.";
+	if (i == 1) return "Aims anywhere the humans in your demos boarded each ramp (3 or more runs of the course).";
+	if (i == 2) return "Splits each long flight at its peak: the launch, then the flight on its own.";
+	if (i == 3) return "A run of platform hops is one search, so the first hop can set up the next.";
+	if (i == 4) return "Its lines weave wider in the air.";
+	if (i == 5) return "May copy the guide's hardest turns past the usual limit (tech sections).";
+	if (i == 6) return "No limit on how hard it turns; energy decides.";
+	if (i == 7) return "Strafes wider before each board.";
+	if (i == 8) return "Judges a board by the heading it arrives with too.";
+	if (i == 9) return "The guide's leave from each ramp becomes an air point.";
+	return "An air point halfway through each big turn in the air.";
+};
+float(float b) TASOptUI_RuleOn = { return !(cvar("tas_jargon_off") & b); };
+void(float b, float on) TASOptUI_RuleSet =
+{
+	local float v;
+	v = cvar("tas_jargon_off");
+	v = on ? (v - (v & b)) : (v | b);
+	cvar_set("tas_jargon_off", sprintf("%.0f", v));      // %.0f: ftos may print a large one in exponent form
+};
+// a label over a row of choices
+void(vector at, string s, float hint) TASOptUI_OptHead = { sui_text(at, [hint, hint], s, SUI_THEME_DIM, 1, 0); };
+float(vector at, float width, float hint, float row) TASOptUI_DrawOptions =
+{
+	local float i, b, third, half, q, tsc, on;
+	local string id;
+	third = (width - 12) / 3; half = (width - 6) / 2; q = (width - 18) / 4; tsc = max(1, hint / 7);
+	sui_text(at, [hint, hint], "Used from the next Start, Arm or Continue. Hover a choice for what it does.", SUI_THEME_MUTED, 1, 0);
+	at_y = at_y + hint * 1.6;
+	TASOptUI_OptHead(at, "How hard it tries", hint); at_y = at_y + hint * 1.5;
+	for (i = 0; i < 3; i = i + 1)
+	{
+		id = sprintf("jgo_e%g", i);
+		if (Profile_Chip(id, at + [i * (third + 6), 0, 0], [third, row, 0], (i == 0) ? "Quick" : ((i == 1) ? "Normal" : "Thorough"), hint,
+			autocvar_tas_jargon_effort == i))
+			cvar_set("tas_jargon_effort", ftos(i));
+		sui_tooltip_for(id, (i == 0) ? "One try a ramp before it goes back: fastest, gives up soonest."
+			: ((i == 1) ? "Two tries a ramp, with extra control over each ride's dip and flick. The default."
+			: "Three tries a ramp, every ramp polished, up to 30 goes back. Slow."), tsc);
+	}
+	at_y = at_y + row + 3;
+	if (Profile_Chip("jgo_pol", at, [width, row, 0], "Polish every ramp", hint, autocvar_tas_jargon_polish || autocvar_tas_jargon_effort == 2))
+		cvar_set("tas_jargon_polish", autocvar_tas_jargon_polish ? "0" : "1");
+	sui_tooltip_for("jgo_pol", "Each ramp is searched until it carries 99% of the human's energy there (or its last try). Thorough always does.", tsc);
+	at_y = at_y + row + hint;
+	TASOptUI_OptHead(at, "Path: how far its lines may stray from the guide's", hint); at_y = at_y + hint * 1.5;
+	for (i = 0; i < 4; i = i + 1)
+	{
+		b = (i == 0) ? 150 : ((i == 1) ? 300 : ((i == 2) ? 600 : 1200));
+		id = sprintf("jgo_t%g", i);
+		if (Profile_Chip(id, at + [i * (q + 6), 0, 0], [q, row, 0], (i == 0) ? "Narrow" : ((i == 1) ? "Normal" : ((i == 2) ? "Wide" : "Free")), hint,
+			autocvar_tas_jargon_tube == b))
+			cvar_set("tas_jargon_tube", ftos(b));
+		sui_tooltip_for(id, sprintf("Lines stay within %g u of the guide's path. Narrower copies the guide; wider lets it find its own line.", b), tsc);
+	}
+	at_y = at_y + row + hint;
+	TASOptUI_OptHead(at, "Boarding", hint); TASOptUI_OptHead(at + [half + 6, 0, 0], "Finish", hint); at_y = at_y + hint * 1.5;
+	if (Profile_Chip("jgo_b1", at, [(half - 6) / 2, row, 0], "Guide's spot", hint, autocvar_tas_jargon_low)) cvar_set("tas_jargon_low", "1");
+	sui_tooltip_for("jgo_b1", "A board past the guide's spot along the ramp, above it or far below it costs a line score.", tsc);
+	if (Profile_Chip("jgo_b0", at + [(half + 6) / 2, 0, 0], [(half - 6) / 2, row, 0], "Anywhere", hint, !autocvar_tas_jargon_low)) cvar_set("tas_jargon_low", "0");
+	sui_tooltip_for("jgo_b0", "Any board on the ramp's face counts the same.", tsc);
+	if (Profile_Chip("jgo_f1", at + [half + 6, 0, 0], [(half - 6) / 2, row, 0], "End zone", hint, autocvar_tas_jargon_endany)) cvar_set("tas_jargon_endany", "1");
+	sui_tooltip_for("jgo_f1", "The finish aims at the nearest way into the end zone.", tsc);
+	if (Profile_Chip("jgo_f0", at + [half + 6 + (half + 6) / 2, 0, 0], [(half - 6) / 2, row, 0], "Guide's way in", hint, !autocvar_tas_jargon_endany))
+		cvar_set("tas_jargon_endany", "0");
+	sui_tooltip_for("jgo_f0", "The finish follows the guide's own way into the end.", tsc);
+	at_y = at_y + row + hint;
+	TASOptUI_OptHead(at, "Behaviour (on by default)", hint); at_y = at_y + hint * 1.5;
+	for (i = 0; i < JGO_RULES; i = i + 1)
+	{
+		id = sprintf("jgo_r%g", i); b = TASOptUI_RuleBits(i); on = TASOptUI_RuleOn(b);
+		if (Profile_Chip(id, at + [(i & 1) * (half + 6), floor(i / 2) * (row + 3), 0], [half, row, 0], TASOptUI_RuleName(i), hint, on))
+			TASOptUI_RuleSet(b, !on);
+		sui_tooltip_for(id, TASOptUI_RuleTip(i), tsc);
+	}
+	at_y = at_y + ceil(JGO_RULES / 2) * (row + 3) + hint;
+	TASOptUI_OptHead(at, "Experiments (off by default, not proven better)", hint); at_y = at_y + hint * 1.5;
+	b = 1;
+	for (i = 0; i < JGO_EXP; i = i + 1)
+	{
+		id = sprintf("jgo_x%g", i); on = (autocvar_tas_jargon_exp & b) ? TRUE : FALSE;
+		if (Profile_Chip(id, at + [(i - 4 * floor(i / 4)) * (q + 6), floor(i / 4) * (row + 3), 0], [q, row, 0], TASOptUI_ExpName(i), hint, on))
+			cvar_set("tas_jargon_exp", sprintf("%.0f", on ? (autocvar_tas_jargon_exp - b) : (autocvar_tas_jargon_exp | b)));
+		sui_tooltip_for(id, TASOptUI_ExpTip(i), tsc);
+		b = b * 2;
+	}
+	at_y = at_y + ceil(JGO_EXP / 4) * (row + 3);
+	return at_y;
+};
 string() TASOptUI_Effort =
 {
-	if (taso_effort == 0) return " tries 1 rideknots low";
-	if (taso_effort == 2) return " tries 3 rideknots polish low backs 30";
-	return " tries 2 rideknots low";
+	if (autocvar_tas_jargon_effort == 0) return " tries 1 rideknots";
+	if (autocvar_tas_jargon_effort == 2) return " tries 3 rideknots backs 30";
+	return " tries 2 rideknots";
+};
+string() TASOptUI_Exps =
+{
+	local float i, b;
+	local string s;
+	s = ""; b = 1;
+	for (i = 0; i < JGO_EXP; i = i + 1) { if (autocvar_tas_jargon_exp & b) s = strcat(s, " ", TASOptUI_ExpWord(i)); b = b * 2; }
+	return s;
 };
 // the stream view's commands, built once for its buttons and `tas jargon go | arm` (hotkeys, the harness): "" when the
 // picked course has no guide run
-string() TASOptUI_DemoWords = { return strcat(TASOptUI_Effort(), " safe", TASJargon_Airs() ? " air" : "", (TASJargon_CourseWords() != "") ? " finish" : ""); };
+string() TASOptUI_DemoWords =
+{
+	local string s;
+	s = strcat(TASOptUI_Effort(), (autocvar_tas_jargon_polish || autocvar_tas_jargon_effort == 2) ? " polish" : "", autocvar_tas_jargon_low ? " low" : "",
+		(autocvar_tas_jargon_tube != 300) ? sprintf(" tube %.0f", bound(50, autocvar_tas_jargon_tube, 2000)) : "");
+	return strcat(s, autocvar_tas_jargon_endany ? " safe" : "", TASJargon_Airs() ? " air" : "", (TASJargon_CourseWords() != "") ? " finish" : "", TASOptUI_Exps());
+};
 string() TASOptUI_GoCmd =
 {
 	jg_gat = 0; TASJargon_Guides();
@@ -837,6 +989,7 @@ void(float argc) TASOptUI_Verb =
 	if (w == "undo") { TASOptUI_WpUndo(TRUE); return; }
 	if (w == "redo") { TASOptUI_WpUndo(FALSE); return; }
 	if (w == "guide") { if (argc == 4) TASOptUI_GuidePick(stof(argv(3)) - 1); return; }
+	if (w == "options") { if (argc == 4) { if (jgf_on) TASOptUI_FieldCommit(); jgo_open = (stof(argv(3)) != 0); } print(sprintf("tas jargon: options %g, words%s\n", jgo_open, TASOptUI_DemoWords())); return; }
 	if (w == "drop") { if (argc == 4) { jgd_open = bound(0, floor(stof(argv(3))), 2); jgd_scroll = '0 0 0'; print(sprintf("tas jargon: dropdown %g\n", jgd_open)); } return; }
 	if (w == "guides")
 	{
@@ -940,6 +1093,13 @@ void(vector at, float width, float tsz, float hint, float row, float running, st
 	if (Profile_Chip("jgs_c2", at + [third + 6, 0, 0], chip3, "Chase", hint, autocvar_tas_viz_cam == 2)) cvar_set("tas_viz_cam", "2");
 	if (Profile_Chip("jgs_c1", at + [2 * (third + 6), 0, 0], chip3, "Overview", hint, autocvar_tas_viz_cam == 1)) cvar_set("tas_viz_cam", "1");
 	at_y = at_y + row + hint;
+	// the lower half: the waypoints, or the options
+	if (Profile_Chip("jgl_w", at, [half, row, 0], "Waypoints", hint, !jgo_open)) jgo_open = 0;
+	if (Profile_Chip("jgl_o", at + [half + 6, 0, 0], [half, row, 0], "Options", hint, jgo_open)) { if (jgf_on) TASOptUI_FieldCommit(); jgo_open = 1; }
+	at_y = at_y + row + hint;
+	if (jgo_open) at_y = TASOptUI_DrawOptions(at, width, hint, row);
+	else
+	{
 	// the waypoints: in order, X Y Z typed (Enter sets one, Esc leaves it), the selected one lit in the world
 	sui_text(at, [hint, hint], (jg_n > 0) ? sprintf("Waypoints (%g): click X, Y or Z to type it, Enter to set", jg_n)
 		: "Waypoints: planning...", SUI_THEME_DIM, 1, 0);
@@ -1002,6 +1162,7 @@ void(vector at, float width, float tsz, float hint, float row, float running, st
 		if (cltime >= jgp_resetask) jgp_resetask = cltime + 3;      // twice: it moves every guide point back
 		else { jgp_resetask = 0; TASOptUI_Reset(); }
 	}
+	}       // the waypoints
 	at_y = at_y + row + hint;
 	if (Profile_Chip("jgs_l1", at, [half, row, 0], "Search lines", hint, cvar("tas_viz"))) cvar_set("tas_viz", cvar("tas_viz") ? "0" : "1");
 	if (Profile_Chip("jgs_l2", at + [half + 6, 0, 0], [half, row, 0], "Thinking panel", hint, autocvar_tas_searchpanel))
