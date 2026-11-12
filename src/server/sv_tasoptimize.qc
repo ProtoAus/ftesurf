@@ -3242,9 +3242,11 @@ void(entity e, float argc) SV_TASOptCommand =
 		sprint(e, PRINT_HIGH, sprintf("tas optimize: aim steers to the tas target (set one) and takes up to %.0f knots\n", TOPT_KMAX - ((mode & 256) ? 3 : 2)));
 		return;
 	}
-	if (mode > 0 && (mode & 64) && e.topt_dn < n)
+	// up to 64 ticks past the demo's last row hold that row (the row builders take min(row, topt_dn - 1), the tube is free
+	// there): autosurf's finish may come later than the guide's (tas_jargon_finishpast)
+	if (mode > 0 && (mode & 64) && (e.topt_dn < 16 || e.topt_dn + 64 < n))
 	{
-		sprint(e, PRINT_HIGH, sprintf("tas optimize: demo needs %.0f rows from `tas demorows` (%.0f loaded)\n", n, e.topt_dn));
+		sprint(e, PRINT_HIGH, sprintf("tas optimize: demo needs %.0f rows from `tas demorows` (%.0f loaded; 64 past its end may hold the last)\n", n, e.topt_dn));
 		return;
 	}
 	if (mode > 0 && (mode & 16) && !fast)
