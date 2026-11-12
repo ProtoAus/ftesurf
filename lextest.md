@@ -1,5 +1,9 @@
 # lextest.md — things waiting on a human
 
+## P1517 selected-side transparent sorting -- owner check PENDING; rollout in tools/p1517-plane-selected.md
+- After the native client update, take a normal surf_fairy run with glass, water, flowers and sprites enabled. Please report new flicker, missing surfaces or visibly wrong layering with the spot/time. Finite/native compiler controls and acting renderer smoke are not owner confirmation; the automated paused-camera comparison was not qualified.
+- Please say whether the heavy spots feel unchanged, smoother or worse. Subjective feel is not a measured0.1% percentage; controlled frame-tail measurement remains separate.
+
 ## P1511 ambiguous-plane sorting -- BOTH Windows clients12Nov00:04UTC; owner check PENDING
 - After the native client update, take one normal surf_fairy run with water, glass and sprites enabled. They should draw in the same order without new flicker or missing surfaces; report the spot/time if not. Agent-inspected paused views and real replay smoke pass, not pixel equality or owner confirmation of every frame; an earlier alpha-only image-reader false pass was corrected.
 - Native FPS gain has NOT been measured: the normal quiet gate remained occupied. Please say whether the heavy spots feel unchanged, smoother or worse; do not turn subjective feel into a measured 0.1% percentage. P1507's separate bounded sprite A/B is recorded in its own report.
@@ -14,7 +18,7 @@
 
 ## P1507 stable sprite draw lists -- owner check PENDING, rollout recorded in tools/p1507-sprite-drawlists.md
 - On surf_fairy with sprites and light glows enabled, lights should look and fade exactly as before. A quick normal run is enough; please report any missing, flickering or reordered lights. Automated slot-order tests and agent-inspected screenshots are not owner confirmation.
-- On your next normal surf_kitsune_css run, if the large hitch recurs, please give the spot and rough elapsed time. Correct earlier automated coverage through~35.6s did not reproduce it; the remaining tail to151.351s is not cleared. No owner observation or whole-map performance pass has been supplied yet.
+- On your next normal surf_kitsune_css run, if the large hitch recurs, please give the spot and rough elapsed time. A later full warm and diagnostic pass each reached151.351s without reproducing the earlier spontaneous hitch; the largest captured interval was a diagnostic status-printing control, not a gameplay fix. This is not owner observation or a whole-map performance pass.
 
 ## P1504 glare budget -- 12 lobbies + both installs (cs 267e9b9b) 11 Nov 12:51Z; owner check PENDING
 - surf_fairy with glows on: glows should fade in and out as before (perhaps a frame later behind a corner in the

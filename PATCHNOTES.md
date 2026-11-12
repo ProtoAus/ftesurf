@@ -25,6 +25,9 @@
 ### P1518 Input device analysis
 - Journal analysis keeps controllers, keyboards and pointers separate, avoiding false device conflicts and touchpad-report errors.
 
+### P1517 Less transparent-surface sorting work
+- Transparent-surface sorting does less CPU bookkeeping when a face stays on one side, without cutting visual effects.
+
 ### P1516 Incomplete input settings
 - Journal analysis now reports clipped settings as unavailable instead of guessing a sign or scale. Valid later settings restore comparisons; uncertain data cannot become a journal pass.
 

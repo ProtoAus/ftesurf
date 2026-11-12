@@ -6251,6 +6251,30 @@ SURFD_BOARD_URL stays legacy in this prep, and Steam realm is origin-only while
 return_to is path-sensitive. No public/canonical switch follows from local mocks.
 Commands, both-platform controls, findings and remaining gates: tools/p707sitepaths.md.
 
+### P1517 native image identity and diagnostic-control costs (12 Nov 2026)
+
+An incremental native invocation can re-strip a dedicated `.db` into `.exe`
+even when make reports the `.db` up to date (`engine/Makefile` `_out-rel`). An
+unchanged source/object set therefore does not promise identical final PE bytes.
+Compare actual deltas/section bytes and exact timestamp/checksum fields; never
+normalize arbitrary binary regions or infer unchanged `.db` bytes from mtime.
+For a client-only A/B with unchanged headers/flags, common immutable qualified
+server/plugin images are a stronger control than silently swapping re-linked
+nonclient actors. Preserve the original whole-image refusal and actual producer
+reason, not just a newly passing manifest.
+
+`replay status` is itself CSQC work: Watch_Status prints28lines. One full Kitsune
+diagnostic captured a155.65ms endpoint interval dominated by that requested
+control, not spontaneous gameplay. Snapshot timing data BEFORE the endpoint
+status read, then verify actual coverage from the reader; do not omit the reader
+or label its console cost a game-code fix. Original spontaneous stalls remaining
+unreproduced are not globally cleared. `r_blendtrace` prints at most128commands:
+a capped moving list can still prove acting sort metadata, but complete-list
+comparison requires a genuinely untruncated matched scene. Different playback
+clocks/paused states never establish pixel/order equality. Prefer finite/source
+proof plus an acting real-render smoke over growing a camera harness; leave
+manual visual acceptance and measured frame benefit explicit.
+
 ## Run and test
 
 - **P1513 uploader settings/Flask fixtures (11 Nov 2026).** Optional run-length
