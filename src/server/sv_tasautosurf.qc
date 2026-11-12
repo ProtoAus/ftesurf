@@ -110,6 +110,10 @@ float as_prs[TAS_ASMAX], as_prkd[TAS_ASMAX], as_prk[TAS_ASMAX * TOPT_KMAX], as_p
 float as_prp[TOPT_KMAX], as_prpkd, as_prpi, as_prpsh;  // the last reach's line, kept as its stretch's prior once the next reaches
 // P1483: the older repair rules, each switched off by a bit of tas_jargon_off for the benchmark (P1478 tools/jgbench.py)
 float(float b) SV_TASAutoRule = { return !(cvar("tas_jargon_off") & b); };
+// on by default since 13 Nov (tas_jargon_off turns each off): 4096 one jump off the start platform, 8192 portal waypoints,
+// 16384 near-twin faces told apart (bench twin1: surf_tensor2 stage 6 from stretch 4 to 7), 32768 a board counts after a
+// flight, 65536 a finish's horizon 60 ticks past the guide's last row, 131072 a finish aimed inside its end box, 262144 a
+// coast past the end is a failed finish (fin3: tensor2 stage 1's seed 0 from "did not reach the end" to 0:10.905)
 .float as_fromstart;            // the chain began at the course's start box (a Start or a Continue): only these autosave
 .float as_savedold, as_keepsaid; // a saved run of this course that got further (its stretch), and the note that kept it said
 .float as_savedoldt;            // ...its last reached waypoint's guide time: plans differ (turn points, options), times do not (review H)
@@ -1418,10 +1422,10 @@ void(entity e) SV_TASAutoLink =
 	// tas_jargon_finishpast: the finish may come later than the guide's. Capped at the demo's last row, a line slower than
 	// the guide at the end ran out short of the zone (surf_sandtrap2 b4: "reached" at tick 116 of 116, 34-67 u off, every
 	// try); past it the line holds the last row's command (the tube is free there)
-	if (as_wk[i] == 3 && cvar("tas_jargon_finishpast")) h = min(min(TOPT_HMAX, h), e.topt_dn + 60);  // tas optimize takes 64 past
+	if (as_wk[i] == 3 && SV_TASAutoRule(65536)) h = min(min(TOPT_HMAX, h), e.topt_dn + 60);  // tas optimize takes 64 past
 	else h = min(h, e.topt_dn);
 	}
-	if (as_wk[i] == 3 && e.as_ctrack >= 0 && cvar("tas_jargon_finishin"))
+	if (as_wk[i] == 3 && e.as_ctrack >= 0 && SV_TASAutoRule(131072))
 	{	// tas_jargon_finishin: the guide's last row is where its HULL first met the end box, so its origin can lie outside
 		// it (surf_sandtrap2 b4: 11.8 u) and lines aimed there pass the edge into the pit. Aim at the nearest point of an end
 		// box where the hull sits wholly inside it, 16 u in. The search's own end (a stage's: the next stage's zone), and only
@@ -1441,7 +1445,7 @@ void(entity e) SV_TASAutoLink =
 	}
 	if (n == '0 0 0') argc = tokenize(sprintf("tas target %.1f %.1f %.1f %.0f", o_x, o_y, o_z, r));
 	else argc = tokenize(strcat(sprintf("tas target %.1f %.1f %.1f %.0f %.4f %.4f %.4f", o_x, o_y, o_z, r, n_x, n_y, n_z),
-		(as_wk[i] == 1 && cvar("tas_jargon_twins")) ? SV_TASAutoTwins(i) : ""));      // sprintf takes 8 arguments
+		(as_wk[i] == 1 && SV_TASAutoRule(16384)) ? SV_TASAutoTwins(i) : ""));      // sprintf takes 8 arguments
 	e.topt_tgton = 0;
 	SV_TASTargetCommand(e, argc);
 	if (!e.topt_tgton) { SV_TASAutoStop(e, "this stretch's target was refused"); return; }
@@ -1476,7 +1480,7 @@ void(entity e) SV_TASAutoLink =
 	if (as_wk[i] == 1 && e.as_parallel) ps = strcat(ps, " boarddir");
 	if (as_wk[i] == 1 && cvar("tas_jargon_kind23")) ps = strcat(ps, " kind23");     // boards on brush-entity and curved ramps (test)
 	if (as_wk[i] == 1 && cvar("tas_jargon_rideout")) ps = strcat(ps, " rideout");      // boards judged by how their ride ends (test)
-	if (as_wk[i] == 1 && cvar("tas_jargon_landed")) ps = strcat(ps, " landed");      // a board counts after a flight, not a slide on (test)
+	if (as_wk[i] == 1 && SV_TASAutoRule(32768)) ps = strcat(ps, " landed");      // a board counts after a flight, not a slide on (test)
 	if (as_wk[i] == 1 && cvar("tas_jargon_boardway")) ps = strcat(ps, " boardway");  // ...and travelling the guide's way along the ramp (test)
 	if (as_wk[i] == 1 && e.as_region)
 	{	// the board's penalties begin at the human spread's far edge and lowest point, not the guide's own (a moved target too)
@@ -1731,7 +1735,7 @@ float(entity e) SV_TASAutoCoastPredict =
 	e.topt_endz = k; e.topt_endtrack = (k >= 0) ? -1 : e.as_ctrack;
 	for (i = 0; i < ran; i = i + 1)
 	{
-		if (cvar("tas_jargon_finishretry"))      // a zone box end: the hull swept into it, as the finish search tests it
+		if (SV_TASAutoRule(262144))      // a zone box end: the hull swept into it, as the finish search tests it
 		if (SV_TASOptInEnd(e, (i > 0) ? [as_cout[i*13-13], as_cout[i*13-12], as_cout[i*13-11]] : e.origin,
 		    [as_cout[i*13], as_cout[i*13+1], as_cout[i*13+2]])) return i + 1;
 		a = as_cout[i*13 + 12];
@@ -1745,7 +1749,7 @@ float(entity e) SV_TASAutoCoastPredict =
 	// tas_jargon_finishretry: -2, the coast neither enters the end nor meets the teleport into it. A finish search's
 	// best may be only near the end (Safe), and the coast drifted past it: "did not reach the end in 6 s", the run over
 	// (surf_tensor2 stage 1, bench fin2)
-	return cvar("tas_jargon_finishretry") ? -2 : 0;
+	return SV_TASAutoRule(262144) ? -2 : 0;
 };
 
 // After SV_TASDemoFrame (SV_TASOptFrame): the next step of the chain once no search is running.
