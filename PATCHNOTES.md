@@ -22,6 +22,9 @@
 ## next
 - Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
+### P1524 Input-model quality
+- Unusable input settings no longer produce false angle findings or clean comparisons. Native observation abstains, and analysis keeps unavailable measurements separate from genuine contradictions.
+
 ### P1523 Observation quality
 - Unusable recorded view data no longer produces clean comparisons. Analysis now distinguishes records that were read from measurements it could actually check.
 

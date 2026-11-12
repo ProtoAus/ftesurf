@@ -734,6 +734,42 @@ def test_observer_numeric_content_join():
                   (True, False))
 
 
+def test_model_numeric_content_join():
+    import test_hidcheck as vectors
+
+    cases = [("finite", vectors.model_constant_journal(), True),
+             ("Native scientific-prefix1", vectors.model_constant_journal(
+                 "m_pitch", "1e999", change=True), True)]
+    cases += [(label, text, False) for label, text in vectors.model_constant_bad_cases()]
+    for label, text, valid in cases:
+        data = text.encode("utf-8")
+        r = rcptcheck.Receipt("model.rcpt")
+        r.file_bytes["model.hid"] = data
+        r.signed = [("hid", "%s %d 1" % (hashlib.sha256(data).hexdigest(), len(data)))]
+        before = r.ok
+        with mock.patch("builtins.open", side_effect=AssertionError("reopened model capture")):
+            rcptcheck.join_journal(r)
+        check("model %s: actual cached digest checked" % label,
+              (("hid", "model.hid") in r.digest_checked, r.digest_bad), (True, {}))
+        check("model %s: quality is not clean content" % label,
+              r.journal, "OK" if valid else "FAULT")
+        metrics = r.journal_metrics["metrics"]
+        check("model %s: read records vs actual comparisons" % label,
+              (metrics.get("view_records"), metrics.get("identity_judged")),
+              (20, 19 if valid else None))
+        check("model %s: independent counts join ACTS" % label,
+              (metrics.get("join_checked"), metrics.get("join_broke")), (19, 0))
+        check("model %s: unproved input total absent, not zero" % label,
+              metrics.get("legacy_presses"), 0 if valid else None)
+        check("model %s: signature status remains independent" % label,
+              (r.ok, r.faults), (before, []))
+        if not valid:
+            check("model %s: quality refusal is not an angle/count accusation" % label,
+                  ("unusable numeric input-model" in r.journal_detail,
+                   "IDENTITY BROKEN" in r.journal_detail or "COUNTS JOIN BROKEN" in r.journal_detail),
+                  (True, False))
+
+
 def main():
     tests = (lambda: test_swap("view"), lambda: test_swap("hid"),
              lambda: test_swap("hid", broken_first=True), test_rec_swap,
@@ -744,7 +780,7 @@ def main():
              test_signed_usable_view_faults, test_initial_clock_origin, test_retry_clock_faults,
              test_unavailable_hid_capture_keeps_content_refusal,
              test_device_namespace_content_join, test_pointer_coordinate_content_join,
-             test_observer_numeric_content_join)
+             test_observer_numeric_content_join, test_model_numeric_content_join)
     for test in tests:
         try:
             test()

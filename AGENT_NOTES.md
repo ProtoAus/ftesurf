@@ -1,5 +1,40 @@
 # AGENT_NOTES.md
 
+## P1524 unusable equations can both accuse and pass (12 Nov 2026)
+
+Literal native model10arms: sixNaN constant/term contexts29BAD, finite gain
+overflow29clean; subject29skip/0governed/0bad, finite29clean/nonlinear29skip/real
+finite contradiction29BAD remain,30views each/0compilerwarnings. Prior300native
+finite motion/camera/callback/view rows identical. This is minimal declared
+context, NOT a full pipeline/hardware, whole-domain or native vulnerability audit.
+Actual cached-reader14initial controls:4NaN headers+finite-header overflow5falseOK.
+NativeQ_atof stops at e:1e999 is1, NOT infinity; sensitivity/myaw then genuinely
+contradict finite motion, mpitch1 atdy0 is validOK. Raw nan isNative0, not NaN.
+Correct that prediction BEFORE product work, preserve failed assumptions. Model
+constants/products are nativefloat32; nonfinite/unrepresentable arithmetic is
+unavailable, never healthy0, surviving partial comparisons or angle/count guilt.
+Unknown clipped filter terms are NOT0; optional legacyNone remains unavailable.
+Windows HID878/receipt618/reader949 allpass;136samebyteHID3faulty identical,
+568REC automatic pairedVIEW356faulty unchanged/751hashes stable. FullNoDeploy
+3VM0warnings/native74existing/zeroNEW, no wire/capture/cutoff/policy/Build change.
+Independent review/deploy/genuine inputs remain; tools/p1524-model-constants.md.
+
+P1524 build isolation pitfall: an SDK bundle can contain a WRITABLE ODE build
+cache, even in an owned frozen root. A whole-directory 'read-only input' junction
+was WRONG: Full build succeeded but guard detected161changed generated cache
+files. Preserve own after-bytes, restore ONLY verified own changes from matching
+before-hashes, verify all1399original paths/bytes. Then copy ONLY37root pure
+library/header inputs (~4.3MB), link6pure header dirs read-only and generate a
+fresh real OWN ODE cache from its source archive. Do not copy/link configured
+object/CMake caches or repeat a failed topology with a new name. Corrected
+supported build/full subject leave all1399frozen inputs unchanged. Initial
+private wrapper syntax/header-spelling failures are retained, not product passes.
+Read the native ledger explicitly as UTF8 on Windows: implicit cp1252 can fail
+deep in its history. Critical commit/tag/push commands must be in a fail-closed
+transaction (checked subprocesses/set-e); a failed guard does NOT authorize the
+following shell command. Inspect any already-created unpublished commit and
+retain/rerun all missing guards before promotion, never waive the failed step.
+
 ## P1523 float conversion did not prove usable observer arithmetic (12 Nov 2026)
 
 Actual13reader/cached-consumer controls: all8NaN terms (six v/two d) retained

@@ -1019,6 +1019,71 @@ def case_observer_numeric_quality():
                   "already-invalid view cannot silently keep a partial baseline")
 
 
+def model_constant_journal(name=None, value=None, change=False, late=False, text=None):
+    if text is None:
+        text = namespace_journal([("mouse", "0", "mouse-example")], pointer=0)
+    if name is None:
+        return text
+    if change:
+        before, after = (text.rsplit("v 30", 1) if late else text.split("v 30", 1))
+        return before + 'c 0 %s "%s"\nv 30' % (name, value) + after
+    lines = text.splitlines()
+    found = [i for i, line in enumerate(lines) if line.startswith(name + " ")]
+    assert len(found) == 1
+    lines[found[0]] = name + " " + value
+    return "\n".join(lines) + "\n"
+
+
+def model_constant_bad_cases():
+    cases = [("header " + name, model_constant_journal(name, "nan"))
+             for name in ("sensitivity", "sensitivityscale", "m_yaw", "m_pitch")]
+    cases.append(("unrepresentable header", model_constant_journal("m_yaw", "1e308")))
+    product = model_constant_journal("sensitivity", "3.4e38",
+                                     text=model_constant_journal("m_yaw", "3.4e38"))
+    cases.append(("finite native gain overflow", product))
+    cases.append(("finite native prediction overflow", model_constant_journal("m_yaw", "3e38")))
+    for name in ("sensitivity", "m_yaw", "m_pitch"):
+        cases.append(("complete captured " + name,
+                      model_constant_journal(name, "9" * 50, change=True)))
+    cases.append(("late unusable model", model_constant_journal("m_pitch", "9" * 50,
+                                                              change=True, late=True)))
+    return cases
+
+
+def case_model_numeric_quality():
+    for label, text in model_constant_bad_cases():
+        r = run(text)
+        check(not r.ok and has_fault(r, "unusable numeric input-model"),
+              "numeric model quality is refused: " + label)
+        check(r.info.get("view_records") == 20 and r.info.get("events") == 20,
+              "model validator actually consumed declared stream: " + label)
+        check("identity_judged" not in r.info and "deg_per_count" not in r.info,
+              "unusable model is not a surviving partial comparison: " + label)
+        check(r.info.get("identity_yaw_exclusions") == {"reader_profile_gate": 20} and
+              r.info.get("identity_pitch_exclusions") == {"reader_profile_gate": 20},
+              "whole unavailable identity partition is explicit: " + label)
+        check(r.info.get("join_checked") == 19 and r.info.get("join_broke") == 0,
+              "independent finite counts join still ACTS: " + label)
+        check(not any("IDENTITY BROKEN" in f or "COUNTS JOIN BROKEN" in f for f in r.faults),
+              "unusable model is not angle/count guilt: " + label)
+
+    for text in (model_constant_journal(),
+                 model_constant_journal("m_pitch", "1e999", change=True)):
+        r = run(text)
+        check(r.ok and r.info.get("identity_yaw_mouse_frames") == 19,
+              "CONTROL finite/native scientific-prefix1 with held pitch actually judges19")
+    for name, value, change in (("sensitivity", "nan", True),
+                                 ("m_yaw", "0", False), ("m_filter", "1", False)):
+        r = run(model_constant_journal(name, value, change))
+        check(r.ok and "identity_judged" not in r.info and bool(r.info.get("identity_blind")),
+              "CONTROL NativeQ_atof0/zero/nonlinear is BLIND, not corrupt data")
+    for name in ("sensitivity", "m_yaw"):
+        r = run(model_constant_journal(name, "1e999", change=True))
+        check(not r.ok and has_fault(r, "IDENTITY BROKEN") and
+              not has_fault(r, "unusable numeric input-model"),
+              "CONTROL NativeQ_atof scientific-prefix1 is a genuine finite contradiction")
+
+
 def pointer_coordinate_journal(kind, x, y, profile=False):
     text = namespace_journal([("mouse", "0", "mouse-example")], pointer=0)
     text = text.replace("m 0 0 4 0", "%s 0 0 %s %s" % (kind, x, y))
@@ -2916,7 +2981,8 @@ def main():
                case_cvar_quote_identity, case_cvar_quote_malformed,
                case_leftisright_capture_boundary, case_float_capture_boundary,
                case_controller_profile_is_not_a_keyboard_turn,
-               case_pointer_coordinate_quality, case_observer_numeric_quality):
+               case_pointer_coordinate_quality, case_observer_numeric_quality,
+               case_model_numeric_quality):
         print("%s:" % fn.__name__)
         fn()
         print("")

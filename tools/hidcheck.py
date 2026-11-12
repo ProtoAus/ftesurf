@@ -76,6 +76,7 @@ import glob
 import io
 import math
 import os
+import struct
 import sys
 
 SURFDIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -2120,31 +2121,52 @@ def check_identity(r, head, views, controller=False, unavailable=False):
         return
 
     k = -myaw * sens * scale
-    r.info["deg_per_count"] = abs(k)
+    if math.isfinite(k):
+        r.info["deg_per_count"] = abs(k)
 
-    # Each frame's (yaw k, pitch k, filtered): the header's constants with any
-    # 'c' change in force applied, so a mid-run `sensitivity` is followed rather
-    # than accused.  A value that does not parse makes the frame abstain.
+    # Native cvar.value and model arithmetic are float32. Unknown captured
+    # prefixes/legacy terms remain None; unusable numeric values are not zero.
     cache = {}
+    model_bad = [False]
+
+    def model_float(value):
+        if value is None:
+            return None
+        try:
+            value = struct.unpack("=f", struct.pack("=f", value))[0]
+        except (OverflowError, struct.error):
+            model_bad[0] = True
+            return None
+        if not math.isfinite(value):
+            model_bad[0] = True
+            return None
+        return value
 
     def consts(v):
         ov = v[8]
         if id(ov) not in cache:
             def num(name, dflt=None):
                 if name in ov:
-                    return q_atof(ov[name])
+                    return model_float(q_atof(ov[name]))
                 s = head.get(name, dflt)
-                return None if s is None else float(s)
+                try:
+                    return None if s is None else model_float(float(s))
+                except ValueError:
+                    model_bad[0] = True
+                    return None
             try:
-                s_ = num("sensitivity") * scale
-                mp = num("m_pitch")
-                # .ival, as the engine tests it (Q_atoi), never a float: "abc"
-                # must not blind the check nor "0.5" flip it.
-                lir = ov["leftisright"] if "leftisright" in ov else head.get("leftisright", "0")
-                flip = -1.0 if q_atoi(lir) else 1.0
-                cache[id(ov)] = (-num("m_yaw") * s_ * flip,
-                                 None if mp is None else mp * s_,
-                                 bool(num("m_filter", "0") or num("m_accel", "0")))
+                mf, ma = num("m_filter", "0"), num("m_accel", "0")
+                if mf is None or ma is None or mf or ma:
+                    cache[id(ov)] = (None, None, True)
+                else:
+                    s_ = model_float(num("sensitivity") * model_float(scale))
+                    mp = num("m_pitch")
+                    # .ival uses Q_atoi, not Python float-string semantics.
+                    lir = ov["leftisright"] if "leftisright" in ov else head.get("leftisright", "0")
+                    flip = -1.0 if q_atoi(lir) else 1.0
+                    cache[id(ov)] = (model_float(-num("m_yaw") * s_) * flip,
+                                     None if mp is None else model_float(mp * s_),
+                                     False)
             except (TypeError, ValueError):
                 cache[id(ov)] = (None, None, True)
         return cache[id(ov)]
@@ -2168,6 +2190,35 @@ def check_identity(r, head, views, controller=False, unavailable=False):
                "the look mapping or initial persistent axis state needed to "
                "reconstruct controller turn. The angle identity is NOT checked; "
                "this is not a clean-angle verdict.")
+        return
+
+    # Preflight the model before publishing ANY surviving comparison. A late
+    # unusable gain/product must not leave a healthy partial identity behind.
+    for v in views:
+        consts(v)
+    if not model_bad[0]:
+        for v in views:
+            ky, kp, filtered = consts(v)
+            if filtered or v[3] & (VF_STRAFE_X | VF_FREE):
+                continue
+            for gain, delta, term in ((ky, v[1], v[7]),
+                                      (None if v[3] & VF_STRAFE_Y else kp,
+                                       v[2], v[6])):
+                if not gain or term is None:
+                    continue
+                delta, term = model_float(delta), model_float(term)
+                if delta is not None and term is not None:
+                    product = model_float(gain * delta)
+                    if product is not None:
+                        model_float(product + term)
+    if model_bad[0]:
+        r.fault("unusable numeric input-model constants or arithmetic; "
+                "angle identity unavailable")
+        r.info.pop("deg_per_count", None)
+        y_excl["reader_profile_gate"] = p_excl["reader_profile_gate"] = len(views)
+        r.info["identity_blind"] = "unusable numeric input model"
+        r.note("no clean-angle or angle/count judgement is made from an "
+               "unusable numeric model; independent counts joins are separate.")
         return
 
     if all(consts(v)[2] for v in views):
