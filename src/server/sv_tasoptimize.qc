@@ -199,6 +199,12 @@ float topt_dmap[TOPT_HMAX];       // demo search: the demo row each tick takes i
 // every line of a search was rolled twice (surf_sandtrap2 bonus 4: half of all rolled ticks thrown away, every search)
 float topt_wmap[TOPT_HMAX], topt_wmapn;
 .float topt_wmapon;
+// tas_opt_mapcut: a line's second roll only when its map moves more than 2 rows BEFORE its prediction ends at a volume
+// (a teleport: SV_TASOptRoll cuts there and nothing reads past it). SV_TASOptDemoMap counts moves before topt_dmaplim
+// (0: all) and keeps the first moved tick; a search counts second rolls by where that tick lies
+float topt_dmaplim, topt_dmapfirst;
+.float topt_mapcut, topt_mapbefore, topt_mapafter;
+float(entity e, float ran) SV_TASOptVolCut;
 float topt_ride[TOPT_HMAX];       // curve search without a demo: a ride tick's side into its ramp (+1 left, -1 right, 0 none)
 // tick i's contact normal facing up: the engine counts a ramp by fabs(nz) (pm_source.c, a displacement's winding can
 // face down) and passes the normal as wound (review 8-9)
@@ -757,7 +763,7 @@ float(entity e, float ran) SV_TASOptDemoMap =
 {
 	local float i, j, m, d, d2, ch;
 	local vector p;
-	j = 0; ch = FALSE;
+	j = 0; ch = FALSE; topt_dmapfirst = -1;
 	for (i = 1; i < e.topt_n; i = i + 1)
 	{
 		if (i - 1 < ran)
@@ -774,7 +780,11 @@ float(entity e, float ran) SV_TASOptDemoMap =
 		}
 		else
 			m = min(topt_dmap[i-1] + 1, e.topt_dn - 1);
-		if (fabs(m - topt_dmap[i]) > 2) ch = TRUE;
+		if (fabs(m - topt_dmap[i]) > 2)
+		{
+			if (topt_dmapfirst < 0) topt_dmapfirst = i;
+			if (!topt_dmaplim || i < topt_dmaplim) ch = TRUE;
+		}
 		topt_dmap[i] = m;
 	}
 	return ch;
@@ -854,7 +864,7 @@ void(entity e) SV_TASOptDemoRows =
 
 float(entity e) SV_TASOptDemoRoll =
 {
-	local float i, d, k, off, j, ran, pass;
+	local float i, d, k, off, j, ran, pass, vc, ch;
 	if (e.topt_efol)
 	{	// the demo's own command each tick plus the curve, applied by the engine from the body's velocity:
 		// its technique (side switches included) on this run's state, so drift does not compound. Rolled
@@ -874,7 +884,13 @@ float(entity e) SV_TASOptDemoRoll =
 		else
 			ran = tas_rollout(e, topt_rows, e.topt_n, topt_out);
 		SV_NoColPost(e);
-		if (ran < 1 || pass > 0 || !SV_TASOptDemoMap(e, ran)) break;
+		if (ran < 1 || pass > 0) break;
+		vc = SV_TASOptVolCut(e, ran);
+		topt_dmaplim = e.topt_mapcut ? vc + 2 : 0;
+		ch = SV_TASOptDemoMap(e, ran);
+		topt_dmaplim = 0;
+		if (topt_dmapfirst >= 0) { if (topt_dmapfirst > vc + 2) e.topt_mapafter = e.topt_mapafter + 1; else e.topt_mapbefore = e.topt_mapbefore + 1; }
+		if (!ch) break;
 		}
 		return ran;
 	}
@@ -1019,7 +1035,7 @@ float(entity e, float m, float *rows, float *out, float *par) SV_TASOptBatchRoll
 };
 void(entity e) SV_TASOptBatchPrefetch =
 {
-	local float c, j, i, count, m, n, ran, r, kidx0, tp, ch;
+	local float c, j, i, count, m, n, ran, r, kidx0, tp, ch, vc;
 	tp = gettime(1);
 	n = e.topt_n;
 	if (!topt_bat_rows)
@@ -1062,7 +1078,11 @@ void(entity e) SV_TASOptBatchPrefetch =
 		if (ran < 1) { for (i = 0; i < n; i = i + 1) topt_bat_dm[c * n + i] = topt_dmap[i]; continue; }
 		for (j = 0; j < e.topt_kd; j = j + 1) topt_kcur[j] = topt_bat_kcur[c * TOPT_KMAX + j];
 		SV_TASOptCopy(topt_out, 0, topt_bat_out, c * n * 13, n * 13);
+		vc = SV_TASOptVolCut(e, ran);
+		topt_dmaplim = e.topt_mapcut ? vc + 2 : 0;
 		ch = SV_TASOptDemoMap(e, ran);
+		topt_dmaplim = 0;
+		if (topt_dmapfirst >= 0) { if (topt_dmapfirst > vc + 2) e.topt_mapafter = e.topt_mapafter + 1; else e.topt_mapbefore = e.topt_mapbefore + 1; }
 		for (i = 0; i < n; i = i + 1) topt_bat_dm[c * n + i] = topt_dmap[i];
 		if (!ch) continue;
 		e.topt_tkre = e.topt_tkre + ran;
@@ -1154,6 +1174,20 @@ float(entity e, float r, float y, float f) SV_TASOptRoll =
 		}
 	}
 	if (held) e.topt_tkvol = e.topt_tkvol + max(0, ran);
+	return ran;
+};
+// where SV_TASOptRoll would cut these outputs at a volume QC acts on (a teleport), or ran
+float(entity e, float ran) SV_TASOptVolCut =
+{
+	local float i, a;
+	SV_TASOptSimStart(e);
+	for (i = 0; i < ran; i = i + 1)
+	{
+		a = topt_out[i*13 + 12];
+		if (!a && topt_simpend != "") { topt_simname = topt_simpend; topt_simpend = ""; }
+		if (a && !SV_TASOptVolumeEnds(e, edict_num(fabs(a)))) a = 0;
+		if (a) return (a < 0) ? i : i + 1;
+	}
 	return ran;
 };
 
@@ -1945,6 +1979,8 @@ void(entity e, float v) SV_TASOptResult =
 				gettime(1) - e.topt_tstart, e.topt_trol, e.topt_tpref - e.topt_trol));
 			sprint(e, PRINT_HIGH, sprintf("%.0f ticks rolled, %.0f thrown away by a second pass, %.0f left after volume cuts, %.0f scored inside the tube\n",
 				e.topt_tkran, e.topt_tkre, e.topt_tkvol, e.topt_tkuse));
+			sprint(e, PRINT_HIGH, sprintf("tas optimize: maps that moved: %.0f before the line's volume cut, %.0f only after it%s\n",
+				e.topt_mapbefore, e.topt_mapafter, e.topt_mapcut ? " (those not rolled again)" : ""));
 		}
 		if (e.topt_tube > 0)
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: %.0f candidates left the tube (%.0f u round the demo's path) and scored as cut there\n",
@@ -3318,6 +3354,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_ebatch = (e.topt_efol && (mode & 64) && kn && checkbuiltin(tas_rollout_batch) && cvar("sv_tas_threads") > 1);
 	e.topt_batgen = 0; e.topt_batruns = e.topt_batworkers = 0;
 	e.topt_trol = e.topt_tpref = e.topt_tkran = e.topt_tkre = e.topt_tkvol = e.topt_tkuse = 0;
+	e.topt_mapbefore = e.topt_mapafter = 0; e.topt_mapcut = cvar("tas_opt_mapcut");
 	if (kn && i < 0)
 	{
 		SV_TASOptStop(e, SV_TASRollWhy(i));
