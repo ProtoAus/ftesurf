@@ -70,6 +70,9 @@
                                 // a hard, speed-losing turn pays (Lex: let it strafe at any speed, reward speed gain)
 .float topt_rideout;            // `rideout`: a board whose ride ends falling where the guide's ended rising is weak
 .float topt_slidn;              // ...how many boards a search scored so (the report)
+.float topt_exdirn;             // ...and how many rising exits left over TOPT_EXITTOL off the guide's exit heading
+#define TOPT_EXITTOL 20         // `rideout`: degrees free between a ride's exit heading and the guide's off that ramp
+#define TOPT_EXITDIR 8          // ...score lost per degree beyond (stage 5's ramp-3 exits: 97-105 deg against his 36)
 .float topt_kind23;             // `kind23`: a board on a brush entity's ramp (2) or a curved/seamed ramp (3) counts, within TOPT_K23R
 #define TOPT_K23R 300            // ...no normal to check there, so nearer the point instead (surf_sandtrap2 b4's first ramp: 78 u off, never counted)
 .float topt_boarddir;           // `boarddir`: a board is judged by its arrival heading too (Lex: fly into the ramp parallel)
@@ -1635,6 +1638,16 @@ float(entity e, float ran) SV_TASOptTargetScore =
 					e.topt_slidn = e.topt_slidn + 1;
 					return SV_TASOptBand(TOPT_WEAK, d - 3000);
 				}
+				// rising, but which way: with the slide-offs gone stage 5's exits rose and went straight up the face (97-105
+				// deg) where every human leaves along it (36-49), and every line left the path. Off his exit heading costs.
+				if (bk + eg + 4 < ran)
+				{
+					dh = vectoyaw([topt_dpos[(e.topt_tgtj + e.topt_rideT + 1)*3] - topt_dpos[(e.topt_tgtj + e.topt_rideT)*3],
+						topt_dpos[(e.topt_tgtj + e.topt_rideT + 1)*3+1] - topt_dpos[(e.topt_tgtj + e.topt_rideT)*3+1], 0])
+						- vectoyaw([topt_out[(bk + eg + 1)*13+3], topt_out[(bk + eg + 1)*13+4], 0]);
+					dh = fabs(dh - 360 * floor((dh + 180) / 360));
+					if (dh > TOPT_EXITTOL) { e.topt_exdirn = e.topt_exdirn + 1; d = d - TOPT_EXITDIR * (dh - TOPT_EXITTOL); }
+				}
 			}
 		}
 		if (e.topt_emin > 0 && e.topt_cande < e.topt_emin)
@@ -1844,7 +1857,8 @@ void(entity e, float v) SV_TASOptResult =
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: %.0f candidates touched a wall%s (%.0f a tick off their score)\n", e.topt_wallhit,
 				e.topt_ewall ? "" : " in flight", TOPT_WALLPEN));
 		if (e.topt_rideout)
-			sprint(e, PRINT_HIGH, sprintf("tas optimize: %.0f boards left their ramp falling where the guide left it rising, and scored as weak\n", e.topt_slidn));
+			sprint(e, PRINT_HIGH, sprintf("tas optimize: %.0f boards left their ramp falling where the guide left it rising, and scored as weak; %.0f left it over %.0f deg off his exit heading\n",
+				e.topt_slidn, e.topt_exdirn, TOPT_EXITTOL));
 		if (e.topt_boarddir)
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: %.0f boards arrived over %.0f deg off the guide's heading there (%.0f a degree off their score)\n",
 				e.topt_bdirn, TOPT_BOARDTOL, TOPT_BOARDDIR));
@@ -3156,7 +3170,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_mode = mode; e.topt_fk = fk; e.topt_srch = 0; e.topt_besty = 0; e.topt_bestf = 0; e.topt_bestp = 12;
 	e.topt_pfoff = fixp; e.topt_pfon = 0;
 	e.topt_kn = kn; e.topt_kgen = -1; e.topt_kidx = 0; e.topt_wok = e.topt_bok = 0; e.topt_vizt = 0;   // vizt before the clear below
-	e.topt_efol = 0; e.topt_tube = tube; e.topt_tubeex = (slack > 0) ? slack : 0; e.topt_tubeout = e.topt_wallhit = e.topt_bdirn = e.topt_slidn = 0; e.topt_hop = hop; e.topt_look = look; e.topt_pace = pace; e.topt_emin = emin; e.topt_weakn = 0; e.topt_cegen = gens ? gens : TOPT_CEGEN; e.topt_cestall = stall ? stall : TOPT_CESTALL; e.topt_low = low; e.topt_edgeok = edgeok; e.topt_edgen = 0; e.topt_earlycut = 0; e.topt_lowneed = 0; e.topt_airdir = airdir; e.topt_lookw = (lookw > 0) ? lookw : 0; e.topt_catch = (catch > 0) ? catch : 0; e.topt_flick = (flick > 0) ? flick : 0; e.topt_endsafe = 0; e.topt_hardq = hardq; e.topt_boarddir = boarddir; e.topt_kind23 = kind23; e.topt_freeq = freeq; e.topt_rideout = rideout;
+	e.topt_efol = 0; e.topt_tube = tube; e.topt_tubeex = (slack > 0) ? slack : 0; e.topt_tubeout = e.topt_wallhit = e.topt_bdirn = e.topt_slidn = e.topt_exdirn = 0; e.topt_hop = hop; e.topt_look = look; e.topt_pace = pace; e.topt_emin = emin; e.topt_weakn = 0; e.topt_cegen = gens ? gens : TOPT_CEGEN; e.topt_cestall = stall ? stall : TOPT_CESTALL; e.topt_low = low; e.topt_edgeok = edgeok; e.topt_edgen = 0; e.topt_earlycut = 0; e.topt_lowneed = 0; e.topt_airdir = airdir; e.topt_lookw = (lookw > 0) ? lookw : 0; e.topt_catch = (catch > 0) ? catch : 0; e.topt_flick = (flick > 0) ? flick : 0; e.topt_endsafe = 0; e.topt_hardq = hardq; e.topt_boarddir = boarddir; e.topt_kind23 = kind23; e.topt_freeq = freeq; e.topt_rideout = rideout;
 	e.topt_rideT = ride; e.topt_briefn = 0; e.topt_leadmin = leadmin; e.topt_over = 0;
 	e.topt_tgtj = 0;
 	if (tube)
