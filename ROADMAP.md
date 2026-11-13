@@ -1,5 +1,20 @@
 # ROADMAP.md — maps, demos, run lines and rewind
 
+## JARGON useful final-ramp entries — requested13Nov2026, UNRESOLVED
+
+Lex wants earlier edge-side boarding that reduces impact without sacrificing the
+room to descend, turn, climb and leave upward toward the end platform, especially
+on surf_tensor2 stage2. Energy at contact, a one-tick skim, maximum vertical speed
+or a near-end target alone is not acceptance; the resulting trajectory must work.
+
+P1541 fixes search-state/elite correctness, not this physical path-quality goal.
+The tested joint-horizon and localized native-contact-window prototypes did not
+beat the matched12.450s control and were removed. Details and failed outcomes:
+`tools/p1541-jargon-search.md`. Do not resurrect them as accepted improvements or
+infer optimality/unreachability from failed searches. A future launch-aware
+handoff/value design remains unbuilt and must earn its own acting, same-budget
+comparison plus a small owner check of the actual ramp and platform behavior.
+
 ## Optional GoldSrc/HL2 movement profiles — requested 11 Nov 2026, UNBUILT
 
 Lex wants a NEW selectable GoldSrc HL1 profile, including duckrolls and the

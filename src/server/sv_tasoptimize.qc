@@ -2517,6 +2517,16 @@ float(float r) SV_TASOptArcRank =
 	return -1;
 };
 
+void(entity e) SV_TASOptCurveReset =
+{
+	local float j;
+	for (j = 0; j < e.topt_kd; j = j + 1)
+	{
+		topt_kbest[j] = 0;
+		topt_kmean[j] = 0;
+		topt_ksig[j] = SV_TASOptSig0(e, j);
+	}
+};
 void(entity e) SV_TASOptCurveNext =
 {
 	local float j, u, g, c;
@@ -2705,7 +2715,7 @@ void(entity e, float v) SV_TASOptCurveResult =
 	{
 		pick = -1; bv = -1000000000;
 		for (i = 0; i < TOPT_CEPOP; i = i + 1)
-			if (!topt_kel[i] && topt_kval[i] > bv) { bv = topt_kval[i]; pick = i; }
+			if (!topt_kel[i] && topt_kval[i] != -1 && topt_kval[i] > bv) { bv = topt_kval[i]; pick = i; }
 		if (pick >= 0) topt_kel[pick] = 1;
 	}
 	for (j = 0; j < e.topt_kd; j = j + 1)
@@ -3432,6 +3442,7 @@ void(entity e, float argc) SV_TASOptCommand =
 	{
 		e.topt_elead = 1; e.topt_kleadj = e.topt_kd; e.topt_kd = e.topt_kd + 1;
 	}
+	SV_TASOptCurveReset(e); // no incumbent yet: an all-invalid grid must not inherit another search's best
 	e.topt_bestr2 = -1; e.topt_bests = 0.5;
 	e.topt_mo = e.origin; e.topt_mv = e.velocity; e.topt_kwiden = 0;
 	e.topt_endz = (endz >= 0) ? endz : -1; e.topt_endtrack = (endtr >= 0) ? endtr : -1; e.topt_startz = (startz >= 0) ? startz : -1; e.topt_startz2 = (startz2 >= 0) ? startz2 : -1;

@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1541 JARGON ramp behavior — characterization PENDING, not a path-quality fix
+- Owner's observation during testing (13 Nov; arm not identified): tensor2 stage2 often boards the short last ramp late/deep on the face. A useful line gets low early enough to retain room to turn, climb and leave upward toward the end platform; merely reaching the ramp with energy is insufficient. This is qualitative design input, not new-build acceptance or measured speed/impact evidence.
+- P1541 retains only search-state and invalid-elite correctness fixes. The joint and boarding-window experiments did not beat the control and were removed; no new option or improved boarding/launch is claimed. Delivery of the retained correction is still pending.
+- A small owner check can characterize the remaining goal: watch one final-ramp approach and report whether it has early stable entry, room for the climb, and a genuine platform arrival rather than a skim/fall/end-trigger shortcut. A short clip or failed location is enough; no player data/config reset is requested. Unit checks and timer finish do not substitute for observing this behavior. The requested physical improvement remains in ROADMAP.
+
 ## P1531 Jargon take over, live edits, options -- LIVE 13 Nov 01:47Z: 12 lobbies + both installs qw 3fb10353 / cs 3a52a7c9, codes.txt 129; owner check PENDING
 - Jargon tab: pick "When I press", Arm in any start box, surf a ramp or two, press Take over now (or bind a key to tas jargon takeover). The console says "took over" and Jargon goes on from there, in the stage you are in.
 - While Jargon runs, type a new X for a waypoint ahead, or add an air point: the console says Jargon aims there, or takes the air point at the next waypoint.

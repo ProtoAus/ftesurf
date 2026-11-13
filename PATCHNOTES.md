@@ -21,6 +21,10 @@
 
 ## next
 
+### P1541 Jargon search initialization
+- Jargon starts each search with clean fallback steering instead of carrying values from an earlier failed search.
+- Rejected trial paths no longer distort its search updates; useful negatively scored trials are still considered.
+
 ### P1540 Recording summaries
 - Recording summaries keep supported captured-prefix rates even when closing metadata is malformed. Whole-run timing remains unavailable where it cannot be established.
 
