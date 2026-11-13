@@ -1,0 +1,3 @@
+# P1498 claim — compiler include-path entry bounds (pi.dev c66e)
+
+Reserved after inspecting both fetched origins, patch headings, untracked test names and the published P1497 peer claim. Correct only the two destination extents in the existing compiler include-path insertion; keep the table limit, search order and existing truncation refusal. Private source-bound controls and actual compiler smoke qualified; full native/plugins/QC initial build passed. No new capture/default/scoring/enforcement or recorder/reader semantics. Product source, final clean build and deployment provenance follow; this reservation alone is not delivered code.

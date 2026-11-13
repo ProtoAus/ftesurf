@@ -212,6 +212,7 @@
 #define TAS_EV_OPTVIZ 56     // P1449: tas optimize's candidate paths, drawn only (cl_tasoptviz.qc)
 #define TAS_EV_AUTOSURF 57   // P1449: tas autosurf's state for the Optimizer tab (cl_tasoptui.qc)
 #define TAS_EV_SEARCH 58     // P1449: a curve search's progress for the search panel (cl_tasoptui.qc TASSearch_Draw)
+#define TAS_EV_JSAVED 60     // the Jargon panel's Continue: a course's saved run (track, leg, stretch, of)
 #define TAS_EV_JPLAN 59      // P1449: Jargon's route from a guide run (tas autosurf <demo> plan), drawn and edited (cl_jargon.qc)
 #define TAS_CONTACT_ROWS 4
 #define TAS_CONTACT_MAX 4096
@@ -608,6 +609,7 @@
 #define STAT_FS_SLSAVETICK     115  // its saved visual cutoff, independent of the current row
 #define STAT_FS_SLLEAD         117  // P1437: atomic E seq/slop/ticks/tag; loaded L seq/id/origin/aim/duck prefix
 #define STAT_FS_SLCURID        208  // P1384: the cursor save's folder number; its travel starts on the press
+#define STAT_FS_TASKEYS        209  // the keys (FSI_*) of the command a TAS tape or Jargon played, + 65536 while they drive the body
 #define STAT_FS_PIN            111  // Patch 477: the rewind's open serial while its pin is held, -serial once refused or let go, else 0
 // Patch 753: what a predicted warp op will do (cl_warpop.qc, SV_WarpOpPublish).
 #define STAT_FS_WOPR           120  // + 121, 122 -- `!r`'s destination

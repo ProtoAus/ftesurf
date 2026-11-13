@@ -318,6 +318,8 @@ Check 'notes: next beside its own version throws' { Throws { Notes "## next`n###
 Check 'notes: non-ASCII throws' { Throws { Notes "## next`n### P5 x`n- caf$([char]0xE9)`n" } '*printable ASCII*' }
 Check 'notes: a caret throws' { Throws { Notes "## next`n### P5 x`n- ^1red`n" } '*no ^*' }
 Check 'notes: a point before a patch throws' { Throws { Notes "## next`n- z`n" } '*point before any patch*' }
+Check 'notes: a wrapped point throws' { Throws { Notes "## next`n### P5 x`n- z`n  more`n" } '*each point is one line*' }
+Check 'notes: an indented comment before any patch is fine' { (Notes "<!--`n  a note`n-->`n## next`n### P5 x`n- z`n").releases.Count -eq 1 }
 Check 'notes: a patch before a release throws' { Throws { Notes "### P5 x`n- z`n" } '*before any release*' }
 Check 'notes: a release without a date throws' { Throws { Notes "## next`n### P5 x`n- z`n## 0.1.2`n### P4 y`n- z`n" } "*expected '## next'*" }
 Check 'notes: a patch without a number throws' { Throws { Notes "## next`n### Five x`n- z`n" } '*### P<number>*' }

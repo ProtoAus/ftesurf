@@ -164,7 +164,8 @@ class JournalSnapshots(unittest.TestCase):
                     self.assertEqual(h.info['identity_judged'], 5)
                     self.assertEqual(r.journal, 'FAULT')
                     self.assertEqual({k: v for k, v in r.journal_metrics['metrics'].items()
-                                      if k in INPUT_METRICS}, {'kbdobserve': 1})
+                                      if k in INPUT_METRICS},
+                                     {'kbdobserve': 1, 'legacy_keys_partial': True})
 
     def test_input_snapshot_types_and_bounds(self):
         for key in ('legacy_keys', 'kbd_nohandle', 'legacy_presses', 'kbdobserve_changes'):

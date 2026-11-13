@@ -296,7 +296,7 @@ float() WarpOp_Charge;
 
 void(string c) SaveLoc_Cmd =
 {
-	local float holding, key, rep, upwait, t0;
+	local float holding, key, rep, upwait, t0, preview;
 	if (numclientseats == 1 && LT_StatsAreMine() && getstatf(STAT_FS_TSRETURN) > 0)
 		return; // no new deferred/fallback load can cross the clean-return fence
 	if (Trail_Request(c))
@@ -304,7 +304,6 @@ void(string c) SaveLoc_Cmd =
 	if (substring(c, 0, 3) == "sl_")
 	{
 		SaveLoc_Resync();
-		rec_sl_sent = rec_sl_sent + 1;
 		if (c != "sl_hold" && c != "sl_holdoff")
 			WarpOp_Charge();        // Patch 759: SV_SaveLocRate's charge, mirrored
 	}
@@ -316,12 +315,24 @@ void(string c) SaveLoc_Cmd =
 	{
 		holding = rec_sl_holding; key = rec_sl_holdkey; rep = rec_sl_holdrep;
 		upwait = rec_sl_upwait; t0 = rec_sl_holdt0;     // P1227 review 1: a key let go stays let go
+		// Only an immediate load owns the preview made by this press.
+		preview = (!strcmp(c, "sl_load") && !Trail_RequestDispatching() && rec_sl_pv_on);
 		SaveLoc_LoadContext();
+		rec_sl_pv_on = preview;
 		if (Trail_RequestDispatching() && holding)
 		{
 			rec_sl_holding = TRUE; rec_sl_holdkey = key; rec_sl_holdrep = rep;
 			rec_sl_upwait = upwait; rec_sl_holdt0 = t0;
 		}
+	}
+	// Context cleanup can send holdoff and resync the counter down. Count in send order.
+	if (!strcmp(substring(c, 0, 3), "sl_"))
+	{
+		SaveLoc_Resync();
+		rec_sl_sent = rec_sl_sent + 1;
+		if (!strcmp(c, "sl_load"))
+		if (rec_sl_pv_on)
+			rec_sl_pv_ack = rec_sl_sent;
 	}
 	c = Trail_Command(c);
 	localcmd(strcat("cmd ", c, "\n"));
@@ -334,6 +345,8 @@ void() SaveLoc_PredictLoad =
 	local vector o;
 
 	rec_sl_pv_on = FALSE;
+	if (Trail_RequestBusy())
+		return;                     // deferred older loads must not inherit a new preview
 	if (!cvar("cl_slpredict"))
 		return;
 	SaveLoc_Resync();
@@ -645,7 +658,6 @@ void(float scan) SaveLoc_LoadKey =
 		SaveLoc_PredictLoad();          // queued saves can change the selected row
 	SaveLoc_Cmd("sl_load");
 	SaveLoc_Cmd("sl_hold");
-	rec_sl_pv_ack = rec_sl_sent;
 	rec_sl_holdack = Trail_RequestBusy() ? 0 : rec_sl_sent; // set again on deferred hold send
 	rec_sl_holdackat = 0;
 	rec_sl_holding  = TRUE;

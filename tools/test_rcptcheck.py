@@ -574,6 +574,235 @@ def test_retry_clock_faults():
               (r.angles, bool(r.faults)), (expected, expected == "FAULT"))
 
 
+def test_unavailable_hid_capture_keeps_content_refusal():
+    import test_hidcheck as vectors
+
+    samples = []
+    cases = vectors.leftisright_capture_cases(64)
+    for name, _value, wire, integer, _opaque in (cases[0], cases[1], cases[4], cases[5]):
+        j = vectors.Journal(inputcvars=[("leftisright", "0", "0")])
+        j.lines = [line.replace('input leftisright "0" "0"',
+                                'input leftisright ' + wire + ' "0"') for line in j.lines]
+        yaw = 0.0
+        for i in range(30):
+            j.frame(8400 + i)
+            j.mouse(3, 0)
+            yaw += (-j.k if integer else j.k) * 3
+            j.view(3, 0, 10.0, yaw)
+        samples.append((name, j.end().encode("utf-8"), "leftisright"))
+    for cvar in ("sensitivity", "m_yaw", "m_pitch", "m_filter", "m_accel"):
+        for label, _value, wire, numeric, _opaque in vectors.float_capture_cases()[:4]:
+            data = vectors.float_capture_journal(cvar, wire, numeric).encode("utf-8")
+            samples.append((cvar + " " + label, data, cvar))
+    for name, data, cvar in samples:
+        r = rcptcheck.Receipt("capture.rcpt")
+        r.file_bytes["capture.hid"] = data
+        r.signed = [("hid", "%s %d 1" % (hashlib.sha256(data).hexdigest(), len(data)))]
+        before = r.ok
+        with mock.patch("builtins.open", side_effect=AssertionError("reopened captured HID")):
+            rcptcheck.join_journal(r)
+        check("capture %s: actual captured digest checked" % name,
+              (("hid", "capture.hid") in r.digest_checked, r.digest_bad), (True, {}))
+        check("capture %s: cannot become journal OK" % name, r.journal, "FAULT")
+        check("capture %s: quality refusal is not an angle accusation" % name,
+              (cvar + " capture unavailable" in r.journal_detail,
+               "YAW IDENTITY BROKEN" in r.journal_detail or
+               "PITCH IDENTITY BROKEN" in r.journal_detail), (True, False))
+        check("capture %s: unproved input totals withheld" % name,
+              "legacy_presses" in r.journal_metrics["metrics"], False)
+        check("capture %s: journal does not invent a signature verdict" % name,
+              (r.ok, r.faults), (before, []))
+
+
+def test_device_namespace_content_join():
+    import test_hidcheck as vectors
+
+    shared = [("mouse", "0", "mouse-example"), ("keyboard", "0", "keyboard-example"),
+              ("joy", "0", "joy-example")]
+    pad = [("mouse", "0", "mouse-example"), ("touchpad", "1", "pad-example"),
+           ("joy", "1", "joy-example")]
+    duplicate = [("mouse", "0", "mouse-A"), ("mouse", "0", "mouse-B")]
+    cases = (
+        ("plain mouse control", vectors.namespace_journal([("mouse", "0", "mouse-example")],
+                                                         pointer=0), True, False),
+        ("shared native namespaces", vectors.namespace_journal(shared, pointer=0,
+                                                               joystick=0, keyboard=0), True, True),
+        ("joy not pad motion", vectors.namespace_journal(pad, pointer=0, joystick=1,
+                                                         pad_accepted=0), True, True),
+        ("real pad without acceptance", vectors.namespace_journal(pad, pointer=1, joystick=1,
+                                                                  pad_accepted=0), False, True),
+        ("same-namespace collision", vectors.namespace_journal(duplicate, pointer=0), False, False),
+    )
+    for label, text, valid, controller in cases:
+        data = text.encode("utf-8")
+        r = rcptcheck.Receipt("namespace.rcpt")
+        r.file_bytes["namespace.hid"] = data
+        r.signed = [("hid", "%s %d 1" % (hashlib.sha256(data).hexdigest(), len(data)))]
+        before = r.ok
+        with mock.patch("builtins.open", side_effect=AssertionError("reopened namespace capture")):
+            rcptcheck.join_journal(r)
+        check("namespace %s: captured bytes actually digest-checked" % label,
+              (("hid", "namespace.hid") in r.digest_checked, r.digest_bad), (True, {}))
+        check("namespace %s: content result preserves the proper namespace" % label,
+              r.journal, ("BLIND" if controller else "OK") if valid else "FAULT")
+        metrics = r.journal_metrics["metrics"]
+        check("namespace %s: views consumed without inventing controller judgement" % label,
+              (metrics.get("view_records"), metrics.get("identity_yaw_mouse_frames")),
+              (20, None if controller else 19))
+        check("namespace %s: healthy counter control or actual fault withholding" % label,
+              metrics.get("legacy_presses"), 0 if valid else None)
+        check("namespace %s: no signature/rank verdict invented" % label,
+              (r.ok, r.faults), (before, []))
+
+
+def test_pointer_coordinate_content_join():
+    import test_hidcheck as vectors
+
+    cases = [("finite relative", vectors.pointer_coordinate_journal("m", "4", "0"), True, 19),
+             ("finite absolute", vectors.pointer_coordinate_journal("a", "-4.5", "0.125"), True, 0)]
+    for kind in ("m", "a"):
+        for x, y in (("broken", "0"), ("4", "nan"), ("1e999", "0")):
+            cases.append(("%s %s/%s" % (kind, x, y),
+                          vectors.pointer_coordinate_journal(kind, x, y), False, None))
+    cases.append(("finite samples overflow the sum",
+                  vectors.pointer_sum_journal(1e308), False, None))
+    controller = vectors.namespace_journal([("mouse", "0", "mouse-example"),
+                                            ("joy", "0", "controller-example")],
+                                           pointer=0, joystick=0)
+    cases.append(("controller does not hide bad pointer data",
+                  controller.replace("m 0 0 4 0", "m 0 0 nan 0"), False, None))
+    for label, text, valid, joined in cases:
+        data = text.encode("utf-8")
+        r = rcptcheck.Receipt("pointer.rcpt")
+        r.file_bytes["pointer.hid"] = data
+        r.signed = [("hid", "%s %d 1" % (hashlib.sha256(data).hexdigest(), len(data)))]
+        before = r.ok
+        with mock.patch("builtins.open", side_effect=AssertionError("reopened pointer capture")):
+            rcptcheck.join_journal(r)
+        check("pointer %s: actual captured digest checked" % label,
+              (("hid", "pointer.hid") in r.digest_checked, r.digest_bad), (True, {}))
+        check("pointer %s: known quality/valid content result" % label,
+              r.journal, "OK" if valid else "FAULT")
+        metrics = r.journal_metrics["metrics"]
+        check("pointer %s: consumed views without fabricated join" % label,
+              (metrics.get("view_records"), metrics.get("join_checked")), (20, joined))
+        check("pointer %s: valid zero retained, unavailable total withheld" % label,
+              metrics.get("legacy_presses"), 0 if valid else None)
+        if not valid:
+            check("pointer %s: quality is not angle/count accusation" % label,
+                  ("pointer coordinates" in r.journal_detail,
+                   "IDENTITY BROKEN" in r.journal_detail or "COUNTS JOIN BROKEN" in r.journal_detail),
+                  (True, False))
+        check("pointer %s: signature/rank status remains independent" % label,
+              (r.ok, r.faults), (before, []))
+
+
+def test_observer_numeric_content_join():
+    import test_hidcheck as vectors
+
+    cases = [("finite view", vectors.observer_value_journal("v", 2, "4"), True, 19),
+             ("finite raw", vectors.observer_value_journal("d", 2, "4"), True, 19)]
+    for kind, columns in (("v", (2, 3, 5, 6, 7, 8)), ("d", (2, 3))):
+        for column in columns:
+            cases.append(("%s column%d" % (kind, column),
+                          vectors.observer_value_journal(kind, column, "nan", once=True),
+                          False, None if kind == "v" else 19))
+    for label, text, valid, judged in cases:
+        data = text.encode("utf-8")
+        r = rcptcheck.Receipt("observer.rcpt")
+        r.file_bytes["observer.hid"] = data
+        r.signed = [("hid", "%s %d 1" % (hashlib.sha256(data).hexdigest(), len(data)))]
+        before = r.ok
+        with mock.patch("builtins.open", side_effect=AssertionError("reopened observer capture")):
+            rcptcheck.join_journal(r)
+        check("observer %s: actual captured digest checked" % label,
+              (("hid", "observer.hid") in r.digest_checked, r.digest_bad), (True, {}))
+        check("observer %s: quality is not a clean content result" % label,
+              r.journal, "OK" if valid else "FAULT")
+        metrics = r.journal_metrics["metrics"]
+        check("observer %s: descriptions vs actual angle availability" % label,
+              (metrics.get("view_records"), metrics.get("identity_judged")), (20, judged))
+        check("observer %s: unavailable join/input is absent not zero" % label,
+              (metrics.get("join_checked"), metrics.get("legacy_presses")),
+              (19, 0) if valid else (None, None))
+        check("observer %s: signature/rank remains independent" % label,
+              (r.ok, r.faults), (before, []))
+        if not valid:
+            check("observer %s: quality is not an angle/count accusation" % label,
+                  ("non-finite" in r.journal_detail,
+                   "IDENTITY BROKEN" in r.journal_detail or "COUNTS JOIN BROKEN" in r.journal_detail),
+                  (True, False))
+
+
+def test_model_numeric_content_join():
+    import test_hidcheck as vectors
+
+    cases = [("finite", vectors.model_constant_journal(), True),
+             ("Native scientific-prefix1", vectors.model_constant_journal(
+                 "m_pitch", "1e999", change=True), True)]
+    cases += [(label, text, False) for label, text in vectors.model_constant_bad_cases()]
+    cases += [(label, text, False) for label, text in vectors.native_byte_cases()]
+    for label, text, valid in cases:
+        data = text.encode("utf-8")
+        r = rcptcheck.Receipt("model.rcpt")
+        r.file_bytes["model.hid"] = data
+        r.signed = [("hid", "%s %d 1" % (hashlib.sha256(data).hexdigest(), len(data)))]
+        before = r.ok
+        with mock.patch("builtins.open", side_effect=AssertionError("reopened model capture")):
+            rcptcheck.join_journal(r)
+        check("model %s: actual cached digest checked" % label,
+              (("hid", "model.hid") in r.digest_checked, r.digest_bad), (True, {}))
+        check("model %s: quality is not clean content" % label,
+              r.journal, "OK" if valid else "FAULT")
+        metrics = r.journal_metrics["metrics"]
+        check("model %s: read records vs actual comparisons" % label,
+              (metrics.get("view_records"), metrics.get("identity_judged")),
+              (20, 19 if valid else None))
+        check("model %s: independent counts join ACTS" % label,
+              (metrics.get("join_checked"), metrics.get("join_broke")), (19, 0))
+        check("model %s: unproved input total absent, not zero" % label,
+              metrics.get("legacy_presses"), 0 if valid else None)
+        check("model %s: signature status remains independent" % label,
+              (r.ok, r.faults), (before, []))
+        if not valid:
+            check("model %s: quality refusal is not an angle/count accusation" % label,
+                  ("unusable numeric input-model" in r.journal_detail,
+                   "IDENTITY BROKEN" in r.journal_detail or "COUNTS JOIN BROKEN" in r.journal_detail),
+                  (True, False))
+
+
+def test_clock_content_join():
+    import test_hidcheck as vectors
+
+    cases = [("finite", vectors.model_constant_journal(), False, True)]
+    cases += [(label, text, header, False)
+              for label, text, header in vectors.clock_quality_cases()]
+    for label, text, header, valid in cases:
+        data = text.encode("utf-8")
+        r = rcptcheck.Receipt("clock.rcpt")
+        r.file_bytes["clock.hid"] = data
+        r.signed = [("hid", "%s %d 1" % (hashlib.sha256(data).hexdigest(), len(data)))]
+        before = r.ok
+        with mock.patch("builtins.open", side_effect=AssertionError("reopened clock capture")):
+            rcptcheck.join_journal(r)
+        check("clock %s: actual captured digest checked" % label,
+              (("hid", "clock.hid") in r.digest_checked, r.digest_bad), (True, {}))
+        check("clock %s: unusable timing is not clean content" % label,
+              r.journal, "OK" if valid else "FAULT")
+        metrics = r.journal_metrics["metrics"]
+        check("clock %s: parser acted at declared stage" % label,
+              metrics.get("view_records"), None if header else 20)
+        check("clock %s: independent finite identity remains separate" % label,
+              metrics.get("identity_judged"), None if header else 19)
+        check("clock %s: unproved input total absent, not zero" % label,
+              metrics.get("legacy_presses"), 0 if valid else None)
+        check("clock %s: signature status unchanged by content quality" % label,
+              (r.ok, r.faults), (before, []))
+        check("clock %s: not an angle/count accusation" % label,
+              "IDENTITY BROKEN" in r.journal_detail or "COUNTS JOIN BROKEN" in r.journal_detail,
+              False)
+
+
 def main():
     tests = (lambda: test_swap("view"), lambda: test_swap("hid"),
              lambda: test_swap("hid", broken_first=True), test_rec_swap,
@@ -581,7 +810,11 @@ def main():
              test_missing_view_and_io, test_selected_rec_tail_io,
              test_unsigned_sibling_io, test_parser_bytes,
              test_unavailable_angles_keep_view_faults, test_usable_angles_keep_view_faults,
-             test_signed_usable_view_faults, test_initial_clock_origin, test_retry_clock_faults)
+             test_signed_usable_view_faults, test_initial_clock_origin, test_retry_clock_faults,
+             test_unavailable_hid_capture_keeps_content_refusal,
+             test_device_namespace_content_join, test_pointer_coordinate_content_join,
+             test_observer_numeric_content_join, test_model_numeric_content_join,
+             test_clock_content_join)
     for test in tests:
         try:
             test()

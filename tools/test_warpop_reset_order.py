@@ -1,4 +1,6 @@
 """CPU QC controls for ordered reset/hold cancellation. No network/UpdateView claim.
+--plain-load runs production console/sender/FIFO/Camera with injected stats and
+render-property/localcmd sinks; modern admission and non-subject services doubled.
 Runs production Frame/InputFrame/ACK and server WOP dispatch in a dedicated QC VM.
 Engine/stat/preview and server zone/hold services are explicit test doubles.
 --control uses the inspected pre-fix source for an acting red control.
@@ -11,15 +13,22 @@ p.add_argument('--control', action='store_true')
 p.add_argument('--no-reset-backstop', action='store_true', help='acting negative: omit reset terminal handling')
 p.add_argument('--rewind-only', action='store_true', help='targeted production rewind handoff controls')
 p.add_argument('--no-rewind-handoff', action='store_true', help='acting negative: omit adoption cancellation')
+p.add_argument('--plain-load', action='store_true', help='production plain-load sender, FIFO and render-only camera controls')
+p.add_argument('--no-preview-ack', action='store_true', help='acting negative: bind preview to old ACK zero')
+p.add_argument('--baseline-ref', help='read actual plain-load production helpers from this Git ref; unchanged subject assertions may fail')
 a=p.parse_args()
+assert not a.no_preview_ack or a.plain_load
+assert not a.baseline_ref or (a.plain_load and not a.control and not a.no_preview_ack)
 root=Path(__file__).resolve().parents[1]
 OUT=a.out.resolve(); assert not OUT.exists(); (OUT/'src').mkdir(parents=True); (OUT/'ftesurf/maps').mkdir(parents=True)
 def source(path):
+    if a.baseline_ref:
+        return subprocess.check_output(['git','-C',str(root),'show',a.baseline_ref+':'+path]).decode('utf-8')
     if a.control:
         return subprocess.check_output(['git','-C',str(root),'show','02e58218:'+path]).decode()
     return (root/path).read_text()
 def function(text,name):
-    m=re.search(r'(?ms)^(?:void|float)\([^\n]*\) '+name+r' =(?:\n\{.*?^\};| \{[^\n]*\};)', text)
+    m=re.search(r'(?ms)^(?:void|float|string)\([^\n]*\) '+name+r' =(?:\n\{.*?^\};| \{[^\n]*\};)', text)
     assert m,name
     return m.group()
 w=source('src/client/cl_warpop.qc'); s=source('src/client/cl_saveloc.qc')
@@ -306,6 +315,145 @@ if a.rewind_only:
     end=tests.index('bprint(2,sprintf("RESET RESULT',start)
     allocation=tests[tests.index('self=spawn();',start):tests.index('Setup();',start)]
     tests=tests[:start]+fixture+'\nvoid() worldspawn = {\n'+allocation+'RewindTests();\n'+tests[end:]
+if a.plain_load:
+    assert not (a.control or a.rewind_only or a.no_reset_backstop or a.no_rewind_handoff)
+    if a.no_preview_ack:
+        anchor='\t\t\trec_sl_pv_ack = rec_sl_sent;'
+        assert s.count(anchor)==1
+        s=s.replace(anchor,'\t\t\trec_sl_pv_ack = 0; // acting negative')
+    constants='\n'.join(l for l in (root/'src/shared/sh_defs.qc').read_text().splitlines() if re.match(r'#define (STAT_FS_|SL_TOKRATE)',l))
+    constants+='\n'+ '\n'.join(l for l in s.splitlines() if l.startswith(('#define SL_', '#define FS_SL_ARMTIME')))
+    prefix=r'''
+#pragma noref 1
+#define getstatf TestStat
+#define cvar TestCvar
+#define localcmd TestLocalCmd
+#define setproperty TestProperty
+#define serverkeyfloat TestHeight
+#define VF_ORIGIN 1
+#define VF_ANGLES 2
+#define PM_VIEW_OFS '0 0 22'
+#define PM_DUCK_VIEW_OFS '0 0 12'
+float cltime, numclientseats, rec_wt_on, rec_gh_on, rec_wt_open;
+float rec_sl_sent, rec_sl_ackseen, rec_sl_pv_on, rec_sl_pv_ack, rec_sl_pv_t0, rec_sl_pv_ackat;
+vector rec_sl_pv_org, rec_sl_pv_ang, rec_gh_bodyorg;
+float rec_sl_holding, rec_sl_holdkey, rec_sl_holdrep, rec_sl_upwait, rec_sl_holdt0, rec_sl_holdack, rec_sl_holdackat;
+float rec_sl_holdseen, rec_sl_wophold, rec_sl_pred, rec_sl_leadans, rec_sl_leadhad, rec_sl_heldstep, rec_sl_leadt0;
+float rec_sl_refkey, rec_sl_refseen, rec_sl_armdel, rec_sl_holdang_ok;
+float rw_on, rw_ack, rw_cd, rw_dir, rw_leave, tr_cur_on;
+float tr_rep_raw, tr_rep_tick, tr_rep_end, tr_rep_ack, tr_rep_go, tr_on, tr_nsamp, tr_cur_t, tr_lastt;
+float tr_saveack, tr_req_wait, tr_ticket, tr_timedgo_ack, tr_go_visual_t;
+float test_ack, test_saveack, test_return, test_spec, test_mine, test_predict, test_modern;
+float test_sends, test_loads, test_holdoffs, test_draws, checks, failures;
+float wop_tok, wop_tokt;
+float test_loadsent, test_loadack, test_loadpv;
+string test_order;
+float(float st) TestStat = {
+ if(st==STAT_FS_SLACK) return test_ack;
+ if(st==STAT_FS_SLSAVEACK) return test_saveack;
+ if(st==STAT_FS_TSRETURN) return test_return;
+ if(st==STAT_FS_SAVECOUNT || st==STAT_FS_SAVEINDEX) return 1;
+ if(st==STAT_FS_SLORG) return 100;
+ return 0;
+};
+float(string c) TestCvar = { return test_predict; };
+float() LT_StatsAreMine = { return test_mine; };
+float() Spec_Active = { return test_spec; };
+float(string c) TestHeight = { return 22; };
+void(float prop, vector value) TestProperty = {
+ Check(prop==VF_ORIGIN || prop==VF_ANGLES,"render properties only");
+ if(prop==VF_ORIGIN) { test_draws+=1; Check(value=='100 0 22',"saved eye rendered"); }
+};
+void(string c) TestLocalCmd = {
+ test_sends+=1; test_order=strcat(test_order,c);
+ if(c=="cmd sl_load\n") { test_loads+=1; test_loadsent=rec_sl_sent; test_loadack=rec_sl_pv_ack; test_loadpv=rec_sl_pv_on; }
+ if(c=="cmd sl_holdoff\n") test_holdoffs+=1;
+};
+float() WarpOp_Charge;
+float() WarpOp_Load = { return test_modern; }; // modern admission boundary; existing normal mode runs real WOP
+float() WarpOp_LoadLead = { return 0; };
+float() WarpOp_Release = { return 0; };
+void() SaveLead_Clear = {};
+float() SaveLead_Camera = { return 0; };
+void(vector org, vector ang) SaveLead_Press = {};
+void() Watch_Stop = { rec_wt_open=0; };
+void() Trail_ReplayClear = {};
+void() Trail_RewindPrefix = {};
+string() SaveLoc_SaveCommand = { return "sl_save"; };
+float() Rewind_Waiting = { return rw_on; };
+float() SaveLoc_RunLocked = { return 0; };
+void(float k) SaveLoc_Refuse = {};
+void() SaveLoc_KeyUp = {};
+void(string c, float rep) SaveLoc_Step = { SaveLoc_Cmd(c); };
+void() Rewind_Abandon;
+void() SaveLoc_Release;
+void(float scan) SaveLoc_LoadKey;
+void(float ok, string label) Check = { checks+=1; if(!ok) { failures+=1; bprint(2,strcat("RESET FAIL: ",label,"\n")); } };
+'''
+    prefix='void(float ok, string label) Check;\nvoid(string c) SaveLoc_Cmd;\n'+prefix
+    tr=source('src/client/cl_trailrequest.qc')
+    helpers=function(w,'WarpOp_Charge')+chr(10)+tr[:tr.index('void() Trail_SaveAnswerFrame')]
+    helpers+='\n'+function(tr,'Trail_RequestFrame')
+    helpers+='\n'+function(source('src/client/cl_trailreplay.qc'),'Trail_Command')
+    helpers+='\n'+function(rw,'Rewind_Abandon')+'\n'+function(rw,'SaveLoc_LoadContext')
+    for name in ('SaveLoc_Resync','SaveLoc_Cmd','SaveLoc_PredictLoad','SaveLoc_Camera','SaveLoc_LeadLatch','SaveLoc_LoadKey','SaveLoc_Release','SaveLoc_Console'):
+        helpers+='\n'+function(s,name)
+    tests=r'''
+void() Setup = {
+ Trail_RequestReset();
+ test_ack=test_saveack=test_return=test_spec=test_modern=0; test_mine=test_predict=1;
+ rec_sl_sent=rec_sl_ackseen=rec_sl_pv_on=rec_sl_pv_ack=rec_sl_pv_ackat=0;
+ rec_sl_holding=rec_sl_holdkey=rec_sl_wophold=rec_sl_upwait=0;
+ rw_on=rw_cd=rw_ack=rec_wt_on=rec_gh_on=rec_wt_open=0;
+ test_sends=test_loads=test_holdoffs=test_draws=0; test_order="";
+ wop_tok=SL_TOKRATE; wop_tokt=10;
+ tr_ticket=tr_saveack=0; numclientseats=1; cltime=10; rec_gh_bodyorg='0 0 22';
+};
+void() Plain = { tokenize("sl_load"); Check(SaveLoc_Console(),"actual console consumed load"); };
+void() WaitPreview = {
+ cltime=10.01; SaveLoc_Camera(); cltime=10.17; SaveLoc_Camera(); cltime=10.29; SaveLoc_Camera();
+ Check(rec_sl_pv_on && !rec_sl_pv_ackat && test_draws==3,"pre-reply WAIT beyond 150ms");
+};
+void() worldspawn = {
+ local float i;
+ Setup(); Plain();
+ Check(test_loads==1 && test_loadsent==1 && test_loadack==1 && test_loadpv,"actual plain send owns target");
+ WaitPreview();
+ test_ack=1; cltime=10.3; SaveLoc_Camera(); Check(rec_sl_pv_on && rec_sl_pv_ackat==cltime,"own ACK starts refusal settle");
+ cltime=10.46; SaveLoc_Camera(); Check(!rec_sl_pv_on,"refusal settles after own ACK");
+ Setup(); Plain(); test_ack=1; rec_gh_bodyorg='100 0 22'; cltime=10.3; SaveLoc_Camera(); Check(!rec_sl_pv_on,"arrival ends preview");
+ Setup(); Plain(); cltime=11.51; SaveLoc_Camera(); Check(!rec_sl_pv_on,"lost reply timeout");
+ Setup(); Plain(); Plain(); Check(test_loads==2 && !rec_sl_pv_on,"second in-flight load dispatches without stale preview");
+ Setup(); SaveLoc_Cmd("sl_save"); Plain();
+ Check(test_loads==0 && !rec_sl_pv_on && tr_req_n==1,"busy load queues without preview");
+ test_saveack=tr_req_wait+1; Trail_RequestFrame(); Check(!test_loads,"wrong save ticket cannot dispatch");
+ test_saveack=tr_req_wait; test_ack=1; cltime=10.3; Trail_RequestFrame();
+ Check(test_loads==1 && test_loadsent==2 && !test_loadpv && !rec_sl_pv_on,"deferred actual dispatch has no stolen preview");
+ Setup(); SaveLoc_Cmd("sl_save"); for(i=0;i<TR_REQUESTS;i+=1) Plain(); Plain();
+ Check(tr_req_n==TR_REQUESTS && !test_loads && !rec_sl_pv_on,"full queue drops intent without prediction");
+ test_saveack=tr_req_wait; test_ack=1; Trail_RequestFrame(); Check(test_loads==TR_REQUESTS,"full FIFO still dispatches admitted loads");
+ Setup(); SaveLoc_Cmd("sl_save"); Plain(); rec_sl_pv_on=1; Trail_RequestFrame(); Check(!test_loads,"older queued load waits even with stale preview"); rec_sl_pv_on=0; Trail_RequestReset(); Trail_RequestFrame(); Check(!test_loads && !rec_sl_pv_on,"discarded queue never predicts or sends");
+ Setup(); rw_on=1; Plain();
+ Check(test_order=="cmd rec_watch 0 void\ncmd sl_holdoff\ncmd sl_load\n" && test_loadsent==2 && test_loadack==2,"nested context counts actual send order");
+ WaitPreview();
+ Setup(); rec_sl_sent=rec_sl_ackseen=8; Plain(); Check(test_loadsent==1 && test_loadack==1,"downward reset before actual send");
+ Setup(); test_ack=7; Plain(); Check(test_loadsent==8 && test_loadack==8,"raw ACK advance before actual send");
+ Setup(); rec_sl_holding=1; rec_sl_holdkey=50; rw_on=1; Plain();
+ Check(!rec_sl_holding && test_holdoffs==1 && test_loadack==2 && rec_sl_pv_on,"same-frame hold release retains new render preview");
+ Setup(); SaveLoc_LoadKey(50); Check(test_loads==1 && rec_sl_pv_ack==1 && rec_sl_holdack==2 && rec_sl_holding,"fallback load target excludes trailing hold");
+ Check(wop_tok==SL_TOKRATE-1,"fallback charges load exactly once not hold");
+ Setup(); test_modern=1; SaveLoc_LoadKey(50); Check(!test_sends && rec_sl_wophold && !rec_sl_pv_on,"modern route remains separate");
+ Setup(); wop_tok=0; Plain(); Check(test_loads==1 && wop_tok==0,"empty budget still dispatches real load for server refusal");
+ Setup(); test_return=1; Plain(); Check(!test_loads && !rec_sl_sent,"clean-return fence blocks actual send");
+ Setup(); test_spec=1; Plain(); Check(test_loads==1 && !rec_sl_pv_on,"spectator no preview");
+ Setup(); test_mine=0; Plain(); Check(test_loads==1 && !rec_sl_pv_on,"foreign stats no preview");
+ bprint(2,sprintf("RESET RESULT checks=%g failures=%g\n",checks,failures));
+};
+void() main={}; void() StartFrame={}; void() SetNewParms={}; void() SetChangeParms={};
+void() ClientConnect={}; void() PutClientInServer={}; void() ClientDisconnect={}; void() ClientKill={};
+void() PlayerPreThink={}; void() PlayerPostThink={}; void() SpectatorConnect={}; void() SpectatorThink={}; void() SpectatorDisconnect={};
+'''
+
 shutil.copy2(root/'src/defs/sv_defs.qc',OUT/'src/defs.qc')
 (OUT/'src/test.qc').write_text(constants+'\n'+prefix+helpers+tests)
 (OUT/'src/progs.src').write_text('../ftesurf/qwprogs.dat\ndefs.qc\ntest.qc\n')
@@ -324,14 +472,29 @@ with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as probe: probe.bind(('127.
 command=['C:/FTEQuake/fteqwsv64.exe','-manifest',str(OUT/'default.fmf'),'-basedir',str(OUT),'-port','27601','+exec','unit.cfg']
 with (OUT/'process.log').open('wb') as log:
     proc=subprocess.Popen(command,cwd=OUT,stdout=log,stderr=subprocess.STDOUT)
-    (OUT/'owned-pid.json').write_text(json.dumps({'pid':proc.pid}))
+    (OUT/'owned-pid.json').write_text(json.dumps({'pid':proc.pid,'argv':command,'cwd':str(OUT),'exe_sha256':hashlib.sha256(Path(command[0]).read_bytes()).hexdigest()}))
     try: code=proc.wait(timeout=30)
     except subprocess.TimeoutExpired: proc.terminate(); proc.wait(timeout=10); raise
 logs=b'\n'.join(f.read_bytes() for f in (OUT/'ftesurf').rglob('*.log'))+(OUT/'process.log').read_bytes()
 (OUT/'combined.log').write_bytes(logs)
 results=re.findall(rb'RESET RESULT checks=(\d+) failures=(\d+)',logs)
+paths=('src/client/cl_saveloc.qc','src/client/cl_trailrequest.qc','src/client/cl_rewind.qc','src/client/cl_warpop.qc')
+source_ref=a.baseline_ref or ('02e58218' if a.control else None)
+source_hashes={path:hashlib.sha256(subprocess.check_output(['git','-C',str(root),'show',source_ref+':'+path]) if source_ref else (root/path).read_bytes()).hexdigest() for path in paths}
+(OUT/'inputs.json').write_text(json.dumps({'plain_load':a.plain_load,'no_preview_ack':a.no_preview_ack,'baseline_ref':a.baseline_ref,'control':a.control,'no_reset_backstop':a.no_reset_backstop,'rewind_only':a.rewind_only,'no_rewind_handoff':a.no_rewind_handoff,'source_sha256':source_hashes,'helper_sha256':hashlib.sha256(helpers.encode()).hexdigest(),'result':str(results)},indent=2))
 assert code==0 and results, (code,logs)
-if a.rewind_only:
+if a.plain_load:
+    expected=(56,9) if a.no_preview_ack else (71,0)
+    assert all((int(n),int(f))==expected for n,f in results),results
+    if a.no_preview_ack:
+        assert {line.split(b'RESET FAIL: ',1)[1] for line in logs.splitlines() if b'RESET FAIL: ' in line}=={
+            b'actual plain send owns target', b'pre-reply WAIT beyond 150ms',
+            b'own ACK starts refusal settle', b'nested context counts actual send order',
+            b'downward reset before actual send', b'raw ACK advance before actual send',
+            b'same-frame hold release retains new render preview',
+            b'fallback load target excludes trailing hold',
+        }
+elif a.rewind_only:
     expected=4 if a.no_rewind_handoff else 0
     assert all(int(n)==36 and int(f)==expected for n,f in results),results
     if a.no_rewind_handoff:
@@ -352,5 +515,4 @@ elif a.no_reset_backstop:
         b'uncarried refused fallback eventually releases old hold',
     }, labels
 else: assert all(int(n)==100 and int(f)==0 for n,f in results),results
-(OUT/'inputs.json').write_text(json.dumps({'control':a.control,'no_reset_backstop':a.no_reset_backstop,'rewind_only':a.rewind_only,'no_rewind_handoff':a.no_rewind_handoff,'helper_sha256':hashlib.sha256(helpers.encode()).hexdigest(),'result':str(results)},indent=2))
-print('Acting QC checks/failures:',results[0],'; synthetic300ms ACK delay, NOT network or camera acceptance')
+print('Acting QC checks/failures:',results[0],'; synthetic300ms ACK delay, NOT network or camera acceptance' if a.plain_load else '; extracted CPU controls, NOT full client or network acceptance')

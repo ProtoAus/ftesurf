@@ -263,6 +263,50 @@ Rig runs (root C:/FTESurf-worktrees/jargon-courses-1111a, driver tools/p1478_cou
 - The search is not deterministic from one state: stretch 1's first search from the same replayed start gave 1130,
   1130 and 1092 u/s in three runs (t2chain2-4).
 
+## P1483: Jargon search -- benchmark, end reach, fixes; what helped and what did not (ftesurf-16, 11 Nov)
+
+Lex: the path search is sometimes suboptimal; optimise it, let it learn, drop the fixes that hurt. Root
+C:/FTESurf-worktrees/jargon-courses-1111a (tools/jgbench.py = tools/p1483_bench.py, tools/jgcompare.py, tools/jgturns.py).
+
+Benchmark: three courses (surf_tensor2 stage 2 / stage 5, surf_shape bonus 1), two seeded runs each, 25 min a run,
+pinned binaries (client 7930cc92, server a801824e patch-1484, plugin 8204a248); the subject's own lines graded
+(finish line, furthest "stretch N reached", the plan's "N stretches ahead"), a crashed server stops the arm. The search
+is deterministic with a seed: stage 2 run 0 gave 0:12.825 and 5 backtracks on two builds. The cap is wall-clock, so a
+run near it lands either side when a peer loads the CPU (stage 2 run 1: 1265 s finish once, the cap twice).
+
+Kept (the shipped defaults):
+- A course's end is the finish's reach: entering the end box (swept) or the teleport into it scores above every reach
+  and stops the search early; a near-end reach is held and ranked by its nearest approach (not energy: every 400 u line
+  tied and none was pulled in, p13), and played to that approach (review J).
+- Each visit to the finish gets its tries (a chain-wide coast counter had cut every visit after the second to one
+  30-generation search, p14). Stage 2: 2 of 2 finished (0:12.825, 0:12.330; the replay 12.570), was 1 of 2.
+- Seeded RNG (fresh per Start/Continue unless tas_jargon_seed is set), Continue saves compared by guide time, priors
+  per ramp (offered as one grid candidate), the archive + `play K` + `beam` (opt-in), a fall diagnosed only into the
+  course's own start/stage box, the crash fix (a `||` guard read topt_arco[-3], p10: two reviews missed it).
+
+Tried and not kept (measured):
+- Turn points (an air point halfway through each >= 90-degree air turn; 311/337 guides have one by tools/jgturns.py,
+  an upper bound): stage 5 stopped one board earlier with them (3/10 vs the plain plan's 3/7 at the 7.61 board), even
+  with the heading scored (`airdir`). Opt-in `turns`.
+- Launch points (the guide's leave from each ramp, from Lex's account of stage 5: board ramp 1 far right and low, a
+  low flicked launch, a swoop into ramp 2 faster than an optimal turn): 3/12 and 5/12, no further than the plain plan.
+  Not merged (branch p1483-launch).
+- The turn command's clamp raised 120 -> 240 (stage 5's guide turns 4.4 degrees a tick at 1800 u/s, 138; 239/337
+  guides need > 120 somewhere): stage 5 got less far, 2/7 in both runs. Reverted.
+- The lookahead weight 0.01 -> 0.1 (Lex: making the ramp beats falling off it): stage 5 3/7, the same; fewer
+  backtracks (13 vs 14-19). Option `lookw` / tas_jargon_lookw.
+
+Open (BACKLOG "Jargon"): stage 5's stretch 4 (an S of hard air strafes after the 7.61 board; every line 3677 u past
+the 11.21 board -- the catch onto the ramp, not the weighting); surf_shape bonus 1's ramp-1 board (every stretch-2 line
+falls within ~14 ticks of it). NOT walls: an earlier note said wall rides; tools/bspnear.py found nothing within 24 u
+of the guide during those turns (Lex corrected it).
+
+Reviews D-K (two or three lenses each, then one per fix): every finding fixed or recorded; K on the last commits.
+Delivered 11 Nov ~20:05 local from main 46264909 (compiler b4741193, P1500's; 0 warnings): the 12 lobbies (build.ps1 -Pi from
+a clean worktree; one player on lobby 3 warned) and both installs, cs 9b89f51e / qw dc411980 (.prev 4e593c7e / 8379334d,
+.pre1483 the same pair; csprogsvers 6b36ad); tasrevd codes.txt 118 -> 119 (.pre1483). Deploy smoke on that build: stage 2
+finished 0:12.825 with 5 backtracks, the same as the reviewed branch.
+
 ## Next
 
 Point the fast energy search at a surf_null ride (the board and ride, not the drop); then horizons past one 128-tick

@@ -87,6 +87,7 @@ with mock.patch.object(sweep, 'similarity_step', return_value=(0,0,'')) as targe
     sweep.main(['--limit','0','--sims','0','--sims-seconds','0.25','--sims-sql-steps','1234'])
     assert target.call_args.kwargs['max_seconds'] == 0.25
     assert target.call_args.kwargs['max_sql_steps'] == 1234
+    assert target.call_args.kwargs['hard_process'] is True
 print('WRAPPER_ACTED')
 '''
             result = subprocess.run([sys.executable, '-c', program], cwd=HERE, env=env,

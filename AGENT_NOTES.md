@@ -1,5 +1,232 @@
 # AGENT_NOTES.md
 
+## P1524 unusable equations can both accuse and pass (12 Nov 2026)
+
+Literal native model10arms: sixNaN constant/term contexts29BAD, finite gain
+overflow29clean; subject29skip/0governed/0bad, finite29clean/nonlinear29skip/real
+finite contradiction29BAD remain,30views each/0compilerwarnings. Prior300native
+finite motion/camera/callback/view rows identical. This is minimal declared
+context, NOT a full pipeline/hardware, whole-domain or native vulnerability audit.
+Actual cached-reader14initial controls:4NaN headers+finite-header overflow5falseOK.
+NativeQ_atof stops at e:1e999 is1, NOT infinity; sensitivity/myaw then genuinely
+contradict finite motion, mpitch1 atdy0 is validOK. Raw nan isNative0, not NaN.
+Correct that prediction BEFORE product work, preserve failed assumptions. Model
+constants/products are nativefloat32; nonfinite/unrepresentable arithmetic is
+unavailable, never healthy0, surviving partial comparisons or angle/count guilt.
+Unknown clipped filter terms are NOT0; optional legacyNone remains unavailable.
+Windows HID878/receipt618/reader949 allpass;136samebyteHID3faulty identical,
+568REC automatic pairedVIEW356faulty unchanged/751hashes stable. FullNoDeploy
+3VM0warnings/native74existing/zeroNEW, no wire/capture/cutoff/policy/Build change.
+Independent review/deploy/genuine inputs remain; tools/p1524-model-constants.md.
+
+P1524 build isolation pitfall: an SDK bundle can contain a WRITABLE ODE build
+cache, even in an owned frozen root. A whole-directory 'read-only input' junction
+was WRONG: Full build succeeded but guard detected161changed generated cache
+files. Preserve own after-bytes, restore ONLY verified own changes from matching
+before-hashes, verify all1399original paths/bytes. Then copy ONLY37root pure
+library/header inputs (~4.3MB), link6pure header dirs read-only and generate a
+fresh real OWN ODE cache from its source archive. Do not copy/link configured
+object/CMake caches or repeat a failed topology with a new name. Corrected
+supported build/full subject leave all1399frozen inputs unchanged. Initial
+private wrapper syntax/header-spelling failures are retained, not product passes.
+Read the native ledger explicitly as UTF8 on Windows: implicit cp1252 can fail
+deep in its history. Critical commit/tag/push commands must be in a fail-closed
+transaction (checked subprocesses/set-e); a failed guard does NOT authorize the
+following shell command. Inspect any already-created unpublished commit and
+retain/rerun all missing guards before promotion, never waive the failed step.
+
+## P1523 float conversion did not prove usable observer arithmetic (12 Nov 2026)
+
+Actual13reader/cached-consumer controls: all8NaN terms (six v/two d) retained
+contentOK, finite2judge/join19, lexical/contradiction2FAULT/controllerBLIND. Digest
+checked/no-reopen/signature-status independence ACTED, no signature verification
+or hardware claim. Validate finite observed numeric terms; keep descriptions vs
+measurements separate. A bad v can poison next baseline, so both-axis profile
+exclusions and raw-target join unavailable; bad d never means absent/equal, but
+independent finite view arithmetic still judges19. Legacy optional None is NOT
+bad numeric data. Existing malformed observer width/time/value must also not
+retain partial comparisons. Refuse data quality, not angle/count guilt. Windows
+HID805/receipt529/reader949 allpass;136HID3faulty identical lists/568REC automatic
+pairedVIEW356faulty/751hashes unchanged. NaN-only proof, no infinity-loop/native
+attack/audit demonstration; not whole-parser/constants/hardware calibration.
+No native code/pin/tag or Build change, no deployment/review grant implied.
+`tools/p1523-observer-values.md`; keep required reviews/genuine input explicit.
+
+## P1522 pointer numeric conversion was not a catch-all fault (12 Nov 2026)
+
+Trace actual parser and consumer, not comments: m conversion swallowed ValueError,
+a coordinates were never converted, NaN compared as an unbroken join.11coupled
+controls showed5bad numeric payloads contentOK/19judgments/healthy0, finite2OK,
+shape/clock/view4FAULT with real captured digest/no-reopen checks. Width was
+already validated; initial missing-width prediction was FALSE. Both coordinates
+must be finite locals BEFORE a window changes; finite individual values also
+need finite next sums. These are data-quality refusals, not angle guilt. Withhold
+whole join after unusable pointer source rather than publish partial/NaN metrics;
+existing receipt quality handling withholds unproved input totals, not signature
+status. Preserve signed/fractional data, absolute unjoinability, controllerBLIND
+and real finite contradiction controls. A large binary64 closure fixture is NOT
+native float32/hardware provenance. Windows714HID/471receipt/949reader allpass;
+136HID3faulty identical;568REC automatic pairedVIEW356faulty/751hashes unchanged.
+First candidate omitted GLOBAL math import and actually crashed: retain failure,
+fix dependency, test actual bodies. Blank Python LSP never proved runtime clean.
+Native code/pin/tag and Build89 unchanged; review/deployment still pending.
+`tools/p1522-pointer-coordinates.md`; no whole-parser or deferred audit claim.
+
+## P1521 a keyboard tap does not capture later controller turn (12 Nov 2026)
+
+Trace the actual view order: CL_AdjustAngles is tapped BEFORE IN_MoveJoystick;
+controller changes are absent from v's keyboard-turn terms. Literal native
+arithmetic reproduced29/29 false angle failures. Preserve those column meanings:
+mark actual primary-view accumulator changes for the live observer's existing
+abstention; reset on begin AND both quiet/normal view paths. Source/zero/unmapped/
+null/other-seat controls must prove unaffected frames still judge. Actual native
+view functions300rows retain120parent motion rows; quiet-reset/next-frame acted,
+whole begin lifecycle and hardware remain unqualified. Offline tables/axis events
+lack mappings and initial persistent axis state, so report both axes unsupported,
+not healthy zero. Assigned tables without axis messages are still insufficient;
+unassigned slots without axis messages preserve actual mouse judgement. The
+receipt consumer must retain BLIND rather than manufacture OK. HID606/receipt413/
+reader949 all pass on Windows;136HID/751paired corpus inputs unchanged, fault lists
+unchanged. Full native/QC NoDeploy passes,74baseline/subject native warnings,
+zero QC/new warnings. No independent review/deployment/human pass is implied.
+`tools/p1521-controller-identity.md` records the bounded context and unknowns.
+
+Large existing REC argument sets exceed Windows CreateProcess's command limit.
+Use the supported reccheck.main in-process with the SAME relative REC arguments
+and automatic paired VIEW behavior, as qualified for P1518; do not invent an
+unpaired corpus parser. The final568REC sweep retains356faulty reports. Keep
+failed callers distinct from product faults; never print raw private corpus rows.
+
+## P1518 input IDs are namespace-local; inspect the actual metric wrapper (12 Nov 2026)
+
+Native pointer, keyboard and joystick allocators search separate arrays. All
+three can legitimately assign0. Touchpad/tablet/XTest use the pointer namespace,
+not a separate license to reuse a pointer ID. Preserve same-namespace conflicting
+identity faults; do not let a keyboard/controller table claim pointer records.
+`j` axis events are not `m`/`a` motion and must not consume the pad acceptance
+counter. Literal native allocation5row control0/0/0 through2/1/1, zero warnings;
+old reader570checks20fail, subject Windows/ARM570/0. Actual CLI healthy arms change
+from fault to OK; same-namespace and true zero-accepted-pad controls still fault.
+These are input bookkeeping, NOT hardware attestation or calibrated human input.
+
+Receipt metrics are `{version, metrics, exclusions}`: testing a counter against
+the outer wrapper silently tests absence. Corrected the P1516 withholding fixture
+and paired it with healthy measured-zero controls inside `metrics`. Windows408/0;
+ARM4actual captured-byte joins act, but full ARM receipt suite was NOT run (flat
+HID stage has no backend test_sweep fixture). Copy only actual pure-reader supports
+for that smoke, not a new backend/test framework. Keep source module hashes.
+
+Required reader949/0;751existing input hashes unchanged. The supported REC main
+pairs existing sidecars; actual568REC sweep retains349REC/7VIEW faulty reports.
+A custom standalone-view comparison instead read5faulty and3changed lists; the
+follow-up incorrectly assumed every view had a recording. Both are retained
+caller failures, not changed product faults. Use the existing paired entrypoint;
+136HID retain3faulty/identical fault lists. No capture, wire, signature verdict,
+rank, native pin/tag, QC Build or historical regrading change. Full scope in
+`tools/p1518-hid-namespaces.md`; source qualification is not review/deployment.
+
+## P1516 captured text is not automatically an effective constant (12 Nov 2026)
+
+- Literal COM_QuotedString plus native Q_atoi/Q_atof proves different effective
+  values can share one boundary token. Count encoded bytes, including codec
+  prefix/escapes; escaped output can stop one byte before the plain limit.
+  Twenty integer/five float rows ACT. Do not call a recovered prefix complete.
+- An observed terminator/character already establishes the effective prefix;
+  preserve those comparisons instead of blanket silence for long settings.
+  Ambiguous identity constants are data-quality faults with unknown comparison
+  state until replacement, not angle accusations OR journal OK. Typed scalar
+  header scales are distinct from redundant clipped text; only header leftisright
+  lacks that typed value. Existing non-linear mode exclusions remain unchanged.
+- Receipt journal-content status is deliberately independent from receipt
+  signature verdict. Actual captured-digest joins must preserve that separation;
+  no claim that this diagnostic invents rank/promote authority. Source matches
+  Windows/ARM HID535/0, receipt388/0, reader949/0; original corpus unchanged.
+- Respect the signed native yaw convention in synthetic float fixtures (minus
+  yaw, plus pitch). The first added float vector used plus yaw and failed25
+  checks for the wrong reason. Retain it, then run corrected535fixtures against
+  the actual published parent:92fail, subject0. Do not claim the bad vector's
+  failures as a product finding. Public limits: tools/p1516-hid-capture.md.
+
+## P1515 native quoted cvars are two different codecs (12 Nov 2026)
+
+- Current hidcheck used a manual quote parser, not shlex; reread the actual
+  held source before describing it. Default COM_QuotedString uses literal
+  backslashes inside plain quotes, but a backslash+quote prefix enables C-style
+  escapes. Validate fixtures with the actual literal C encoder, not a Python
+  encoder proving itself. Native16rows/0warnings; HID378/0 Windows/ARM; old
+  reader32new-test failures. The separate legacy truncation issue remains OPEN.
+- Use maxsplit to retain the original quoted payload, not split/join: whitespace
+  inside a cvar is data. Bad quoted changes invalidate their known constant until
+  valid replacement; a format fault must not become a stale-sign accusation.
+  Actual8unknown/21judged transition control proves recovery.
+- A clean hidcheck CLI is terse unless verbose; missing info fields are not
+  evidence that the checker failed to act. Retain exit/stdout/stderr before
+  reader assertions, then reparse rather than repeat passed CLI arms. Exact
+  unit/API coverage and actual CLI accept/refuse are distinct claims.
+- Literal gcc probes need the supported UCRT PATH/TMP environment too; empty
+  diagnostic output alone is not a native receipt. No native producer change,
+  capture expansion or policy authority follows from these reader controls.
+  Public status/limits: tools/p1515-hid-quotes.md.
+
+## P1514 water-jump gravity controls (12 Nov 2026 UTC)
+
+- A positive assist at FullWalkMove entry still moves when its timer expires or
+  shallow water ends DURING that command. Test the actual early-return mover,
+  not just the numeric gravity helper or post-tick remaining time. New bounded
+  use proof is not complete retained-state coverage; delivery remains separate.
+- Pin fixslopes/fixedges in a synthetic landing fixture. A standable ground probe
+  is not proof that CategorizePosition accepted landing: the initial fixture
+  found a flat plane but remained airborne under inherited edge rules. Preserve
+  that failure; the corrected fixture disables those rules explicitly and proves
+  landing acted. Final-fixture old runtime misses exactly4 use signals on ARM;
+  subject passes1690/0 on Windows/ARM, including82 new checks and whole-body parity.
+- Windows server color output can use WriteConsole instead of redirected stdout;
+  zero captured bytes is NOT a successful CLI receipt. Explicit sys_colorconsole0
+  produces retained real stdout. Linux strips those color tags; count actual
+  plain ok lines, not Windows caret markup. Reparse retained output, do not rerun
+  successful native arms solely for a receipt reader.
+- The canonical dependency cache was empty; the documented prior pacing cache
+  contained the required codec headers. Borrow it read-only via owned junctions,
+  hash all1399 dependency files before/after, and Full after the initial partial
+  build. No codec disablement, canonical native-object copy or install writes.
+- Reader949 exceeded a90-second wrapper limit; retain its interrupted log and
+  finish the unchanged script with adequate time rather than changing coverage.
+  Same568REC183VIEW hashes/results and existing349/7 faulty counts are unchanged.
+  Public provenance/limits: tools/p1514-waterjump-gravity.md.
+
+## P1502 sidecar reader compatibility is a rollback gate (11 Nov 2026 UTC)
+
+- Matching runtime count/SQL schema does not prove sidecar-reader compatibility.
+  The legacy four-field Beta reader knew131 selected IDs in the canonical base
+  but only2 after the typed178-row staged projection:129 existing ID bindings
+  lost,47 native names refused. This was an acting component counterexample,
+  not a missing-file search or a live data mutation.
+- Keep an independent compatible reader, not the new scoped-import subject, in
+  the relevant fallback. The exact public P1496 reader plus the same existing
+  serving guards reads all178 selected tuples; the P1502 primary agrees. Preserve
+  all177 unselected literal lines per sidecar and every semantic field. Producer
+  headers are not appended data rows; original unselected comments stay literal.
+- Public source recipes: `tools/p1502-mapwatch-fetch85.md`. The primary patch's
+  mapmanifest adjacency is P1502-only context, so standard apply correctly refuses
+  on P1496. A separate context-only three-hunk reader patch preserves that failed
+  apply and reproduces the independently derived raw artifact with standard Git.
+- Matched native POSIX suites pass for each exact85-file family; a DrvFS511
+  refusal is not regraded as Linux. Staged-reader proof is not canonical merge,
+  live current-DATA/fallback fitness, a fresh full census or installation consent.
+
+## P1502 source-artifact patches inherit global autocrlf (11 Nov 2026 UTC)
+
+- Standard `git apply --no-index` outside the source checkout still inherited
+  Windows global autocrlf. The three-hunk fetch85 mapwatch artifact was177538
+  CRLF bytes, not the expected173959 LF bytes; raw checksum correctly refused.
+- Fix the producing seam, not the evidence: use `git -c core.autocrlf=false
+  -c core.eol=lf apply --no-index`, with `--check` first and the output-directory
+  parent as `GIT_CEILING_DIRECTORIES`. The exact generated SHA256 then matches
+  the independently reviewed artifact. Keep the original CRLF refusal; do not
+  normalize a previously qualified payload or weaken raw hash comparisons.
+- Recipe: `tools/p1502-mapwatch-fetch85.md`. This is a one-file source artifact,
+  not a deployed generation, POSIX qualification or a new native/QC Build.
+
 ## P1424 a new .hid record kind must not move the clock (8 Nov 2026; ftesurf-b9)
 
 - hidcheck skips an unknown record kind BEFORE adding its dt to the running clock,
@@ -6121,7 +6348,73 @@ SURFD_BOARD_URL stays legacy in this prep, and Steam realm is origin-only while
 return_to is path-sensitive. No public/canonical switch follows from local mocks.
 Commands, both-platform controls, findings and remaining gates: tools/p707sitepaths.md.
 
+### P1517 native image identity and diagnostic-control costs (12 Nov 2026)
+
+An incremental native invocation can re-strip a dedicated `.db` into `.exe`
+even when make reports the `.db` up to date (`engine/Makefile` `_out-rel`). An
+unchanged source/object set therefore does not promise identical final PE bytes.
+Compare actual deltas/section bytes and exact timestamp/checksum fields; never
+normalize arbitrary binary regions or infer unchanged `.db` bytes from mtime.
+For a client-only A/B with unchanged headers/flags, common immutable qualified
+server/plugin images are a stronger control than silently swapping re-linked
+nonclient actors. Preserve the original whole-image refusal and actual producer
+reason, not just a newly passing manifest.
+
+`replay status` is itself CSQC work: Watch_Status prints28lines. One full Kitsune
+diagnostic captured a155.65ms endpoint interval dominated by that requested
+control, not spontaneous gameplay. Snapshot timing data BEFORE the endpoint
+status read, then verify actual coverage from the reader; do not omit the reader
+or label its console cost a game-code fix. Original spontaneous stalls remaining
+unreproduced are not globally cleared. `r_blendtrace` prints at most128commands:
+a capped moving list can still prove acting sort metadata, but complete-list
+comparison requires a genuinely untruncated matched scene. Different playback
+clocks/paused states never establish pixel/order equality. Prefer finite/source
+proof plus an acting real-render smoke over growing a camera harness; leave
+manual visual acceptance and measured frame benefit explicit. `r_blendtrace`
+arms the NEXT rendered frame: a console echo marker does not imply that trace
+is already in the log. Reuse the existing bounded next-frame reader, then check
+actual replay time; native memo spelling is `ALPHATRACE memo hits 0`. Retain a
+premature-reader failure, correct that seam rather than rebuild the renderer,
+and keep new evidence exclusive inside the same owned attempt directory.
+
+P1517 shared-rig measurement (owner explicitly requested timing beside peers):
+`exec fullfx.cfg; exec psv_lex.cfg` is NOT full-FX: the latter sets BOTH
+`vbsp_sprites 0` and `vbsp_lightglow 0`. Set both1AFTERexec and verify actual
+effective readback. Earlier smoke claims without that control stay limited.
+A43second wall wait reached only41.2–41.7replayseconds while warming; bound a
+small actual-clock completion instead of relabeling warm coverage or accepting
+an unmatched run. Eight full-FX warmed ABBA/BAAB runs retained every accepted
+sample and showed NOdemonstratedgain; details in tools/p1517-fairy-timing.md.
+Aggregate means of per-run tail FPS are NOT inverses of aggregate meanms or
+pooledglobalpercentiles. Each0.1%tail had7–10frames; sharedload and block changes
+preclude a precise causalregression/significance claim. Do not cherry-pick the
+last+7.1%pair. Resource surveys during a run include OWN client/server: subtract
+the actual Actor ProcessIds before calling a count foreign. Preserve preliminary
+mislabelled analysis rather than silently rewrite it. Owner-authorized shared
+measurements are valid bounded observations, not quiet/portable acceptance.
+
 ## Run and test
+
+- **P1513 uploader settings/Flask fixtures (11 Nov 2026).** Optional run-length
+  admission uses the existing app `setting()` loader, not only `os.environ`:
+  real `surfd.env` and OS-precedence arms must ACT on the actual application.
+  Both coefficients are explicit; counted signed ticks are not wall/parked time,
+  so absent policy must preserve legacy behavior rather than invent a default.
+  In Flask2.2 a fabricated `Flask(__name__ + '.budget')` fixture import name fails
+  before the route acts when `__main__` is not a package; `Flask(__name__)` works
+  on both supported generations. Keep that original ARM infrastructure failure;
+  the corrected actual Windows17/17 and ARM17/17 are not its regrading.
+
+### Replay benchmark acceptance (P1507 continuation, 11 Nov 2026)
+
+Replay IDs are global: a successful `replay online <id>` open can be a different
+map, then stop at the next frame. Require live `replay status` map/path and clock
+advancement, not an `opened` substring or dump markers alone. `replay seek` uses
+seconds; `waitms` uses milliseconds. conbridge `send --wait` returns a marker
+match, NOT the intervening QC output; read the actual client log after that
+barrier (or use the log command). The failed wrong-map/static-spawn diagnostic
+and marker-parser refusal are retained in tools/p1507-sprite-drawlists.md;
+neither was accepted as replay performance evidence.
 
 - **SQLite refusal controls on Python3.10 (10 Nov 2026).** Initialize only the
   fixture's empty collector schema before refusing owner setup. Do not assume
@@ -6997,6 +7290,19 @@ must require42checks and exact8baseline labels, and catch unnumbered warnings.
   re-derives its tables, `--compare` replays the frames through a Python model).
 
 ## Anti-cheat and run evidence
+
+**P1498 compiler-entry bounds and native stamp qualification (11 Nov 2026).**
+Pass the selected entry's extent to both string operations, not the surrounding
+aggregate; preserve the exact supported boundary and existing warning/refusal.
+Source-bound controls can suppress an old unsafe operation before writing while
+still proving that the corrected function acts. Capture required production
+macro declarations too; missing fixture context is not a product failure.
+Use the supported build entrypoint with its original environment: prepending
+MSYS tools in the outer shell can select the wrong Git before native revision
+capture and falsely stamp clean source dirty. Restore Windows Git ordering,
+rebuild the changed revision macros fully, inspect actual `--version`, and do
+not promote the refused candidate. Record installed hashes and actual compiler
+behavior separately from source review. See `tools/p1498-compiler-includes.md`.
 
 **P1491 selected-peer work must follow the owned pass's remaining allowance
 (11 Nov 2026).** A one-pair collector still selected up to200 peers. With201 valid
@@ -9170,6 +9476,16 @@ See `tools/OFFRAMP_CONTACT.md`; private diagnostic builds NEVER ship.
 
 ## Rewind (Patch 477)
 
+**P1512 ordinary-load preview ACK ownership (11 Nov 2026 UTC).** `Trail_Request`
+is admission, not proof of actual send: it may defer or reject. Bind a preview's
+ACK and count its command only at the actual sender, after context cleanup that
+can conditionally send holdoff/resync. Plain console `sl_load` is not the modern
+WarpOp/key path. Do not claim LoadContext universally clears preview/counters;
+that is conditional re-entry. The actual FIFO has8 slots. Existing plain-load
+CPU control71/0 versus actual prepatch56/9 (8 labels), plus normal100/0 and
+rewind36/0, is production-function logic proof, not network/framebuffer/body or
+Mark acceptance. See tools/p1512-save-preview.md; human checks stay in lextest.md.
+
 P1372 controlled warm-save finding (7 Nov): a positive saved clock does NOT prove
 recording reattached. Frozen P1366 ACTED on STREAM, kept its positive clock, then
 reported recording0 after load; the complete selected-row metadata subject kept
@@ -10474,6 +10790,33 @@ script rather than passing it as an argument, where `ps` would show it.
   we already hold for the same run.
 
 ## Pi operations (public lobbies)
+
+- **P1510 contained worker leases (11 Nov 2026).** Python's default
+  `Popen(close_fds=True)` also drops deliberately inheritable admission/candidate
+  leases. A waiting parent is not sufficient lifetime ownership: an actual ARM
+  P1509 comparison stayed blocked while an exclusive drain probe succeeded after
+  that parent released its own descriptor. Preserve already-inheritable leases
+  through this POSIX prlimit/exec seam; ordinary CLOEXEC handles remain private.
+  Fixed17/17 includes exact child lease inode/inheritability, child-only lock
+  contention, private-FD exclusion and successful drain after exit. This is not
+  parent-death recovery: a lost parent may leave a lease holder, so closure must
+  fail closed rather than claim bounded orphan cleanup. Source publication,
+  independent review and guarded-generation/live acceptance remain distinct.
+  See `tools/p1510-simcheck-lease.md`; never rerun a healthy activation to turn
+  the isolated fixture into a production-qualification claim.
+
+- **Retained ops paths and caller scope (11 Nov, playerfix).** The successful
+  private recorder/boundary observers were retained PRIVATE ops dependencies,
+  not `tools/pi-recorder-parts.py`/`pi-boundary.py` in the public checkout. A Git
+  diff of two nonexistent paths returns empty: NOT proof of unchanged source.
+  Locate the actual last-working owned inputs and hash-bind verified copies.
+  The existing Pi block uses `$remote` for its parsed hash table; an outer caller
+  using that name lost its postflight path AFTER a successful swap/restart.
+  Namespace caller variables (`$FleetTaskPath`), preserve the original failure,
+  then run only read-only postflight; NEVER redeploy to repair an observer.
+  Full serverinfo can encode BOTH CSQC checksum and size as hex: parse base0.
+  Playerfix217payload/metadata rows and all on/off-box members verified exact;
+  public aggregate delivery receipt: tools/playerfix-20261111-delivery.md.
 
 - **Private JSON modes and kernel read-only mounts are separate (10 Nov 2026).**
   A staged controller manifest at0400 failed the unchanged CLI's private-JSON0600
@@ -13078,6 +13421,39 @@ a failing gfxcapture hangs with no frames, so kill it on a timeout. The view mus
 or a stale frame looks the same as a live one.
 
 ## Pitfalls discovered the hard way
+
+**RGBA screenshot false equality (P1511, 12 Nov 2026).**
+`ImageChops.difference(rgba_a, rgba_b).getbbox()` can inspect only the alpha
+channel: opaque inputs produce zero alpha difference and a false `None` despite
+real RGB differences. The initial native paused-view reader made exactly this
+mistake. Direct `rgba_a.tobytes() == rgba_b.tobytes()` plus an RGB difference
+bounding box disproved its pass; the published exact-pixel claim was retracted.
+Retain the failed reader/result and correction, do not rerun arms until they
+happen to match. Render smoke, semantic helper agreement, whole-image pixel
+identity and owner visual acceptance are different claims. Paused replay time
+alone also does not freeze every HUD/effect clock.
+
+**Native clean-build input-reader roles (P1511, 12 Nov 2026).** The supported
+build can form a mixed-slash generator path from forward-slash FteRoot plus
+`\\engine`; enumerating only all-forward/all-backslash variants falsely refused
+a comment-only generated HL2 header. Preserve raw output, derive the exact
+literal from the actual script/argument, prove whole-file equality with exactly
+that one comment substitution, then restore only owned original checkout bytes;
+never normalize arbitrary source/newlines. Inventory totals may include root
+`.` while a descendants reader does not: compare typed paths/files and retain
+that explicit distinction, not just a count. Generated/deployed VM hashes are
+also not the already-qualified runtime fixture hashes; inspect actual roles and
+keep the frozen fixture rather than copying new dats to satisfy a mistaken label.
+
+**Frame-attribution clipboard seam (lows3, 12 Nov 2026).** In the retained
+per-builtin diagnostic, `r_spikes 2` records internal data but named frame output
+is exposed by `R_FrameTime_Dump_f`: it prints then unconditionally calls
+`Sys_SaveClipboard(CBT_CLIPBOARD, out)`. No console-only argument is implemented;
+command registration says it copies. Do not invent `dump 0` or launch a long
+replay whose required attribution cannot be observed within the permitted shared
+resource scope. A blind clipboard restore can destroy a peer's newer contents.
+Full-tail Kitsune preflight stopped before runtime on that boundary: bound binary
+strings/cache metadata and historical output are NOT newly acted diagnostic data.
 
 **TAS collaboration boundaries (P1140, 31 Oct 2026).** A metadata HTTP callback
 and StartFrame are not ordinary native client-command contexts. Deferred project

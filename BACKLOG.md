@@ -1,16 +1,115 @@
 # BACKLOG.md
 
+- Worst-map attribution / `surf_kitsune_css` main25800 (12 Nov): later actual full warm AND diagnostic passes each reached the cached replay's last sample151.351s without reproducing the earlier spontaneous large QC hitch. A diagnostic-only console-output seam avoided the global clipboard; original blocked preflight remains history. Largest captured155.65ms endpoint interval was requested Watch_Status printing28lines, not a gameplay fix. Falsifier: owner exact stall spot/time or a coordinated quiet full-replay attribution that actually reproduces the spontaneous hitch, with actual0/end/map controls and timing snapshot BEFORE endpoint status. Shared-rig diagnostics do not clear the old hitch globally, establish a GPU/CPU root or justify speculative GC/QC changes.
+
+- Native P1517 performance follow-up / `GLBE_BlendPlaneSide` (12 Nov): owner explicitly authorized shared-rig measurement. Eight warmed full-FX Fairy ABBA/BAAB runs,4/build, show NOdemonstratedgain: meanavg295.4->267.2FPS(-9.5%),1%122.3->99.8(-18.4%),0.1%95.2->78.6(-17.4%). Mirroredblockavg+0.5%,0.1%-6.8%; substantialshared-load/runvariation prevents precise causal-regression or significance claims. Allacceptedruns retained/independentlyrecomputed; tools/p1517-fairy-timing.md/tsv. Scope is matched diagnostic P1517-only versusP1511, not allpatches/plainproduction timing; P1511's own native gain remains separate/unmeasured. Falsifier: reproducible same-cohort frame-tail benefit or actual hot-path regression attribution before a performance-win claim; min/max instructions2->0 alone is not enough. No automatic rollback/redeploy authorized by these numbers. P1507's earlier bounded sprite result and ownerfeel remain separate.
+
+- Release tests / `src/release/test_releaselib.ps1` (13 Nov): "template: three blocks" and "template: own-folder note, chmod only with Linux (P857)" fail on main's code (112 passed, 2 failed; 114 and 2 with the wrapped-point checks added); page.template.html now has 2 LINUX-BEGIN/END pairs, last changed by P1401. The 0.1.45 page rendered and was verified byte for byte, so the test is likely stale. Falsifier: decide from P1401 which block count is intended and make the suite pass.
+
+- Engine test coverage / `tools/test_gl_blend_planes.py` (11 Nov): the default full suite still asserts the old three-argument `GLBE_BlendPlaneSort` call, while production at engine `a85713fb` uses the fourth memo-site argument; it stops at that source anchor before compiling. The memo-aware context also needs adapting, not merely suppressing that assertion. Falsifier: default suite builds/runs its normal/fast geometry and mutation controls against the current sorter/memo interface. An isolated pure plane-side equivalence/work test is NOT a pass for that full suite.
+
 - Knife skin black after map change (11 Nov, cl_weapon/cl_viewmodel material/model lifetime): equip intent/cold missing-model retry P1495 is verified only by source-bound helpers; no black-render root reproduced. Need exact knife+finish+hands+sleeve and small owner before/after-map observation or coordinated quiet graphics interval. Falsifier: same combo/material selection and shared light cache across map change, actual pixels/state and representative material families; do not add per-frame lightmap work or infer a visual/performance pass from compile success.
 
 - bhop_bunnyrace checkpoint position/movement (11 Nov): no reproduced checkpoint-body root. Actual checkpoint callback writes stats/receipt, not body; authored teleports nearby already preserve velocity by default. Falsifier: exact first crossing/video on the known build, body position/velocity immediately before/after, with saveloc idle vs held/repeated at high ping. Distinguish checkpoint callback from nearby authored teleport and save/reset prediction; do not remove teleports or invent a velocity fix.
 - kz_bhop_avantura online platform resets (11 Nov): P1492 corrects retained previous-block lifecycle in non-lobby mode only; the lobby's per-player branch was already different and unchanged. Falsifier: same exact BSP and A-air-B-air-A route under lobby and local settings, including LandingLimit1 vs repeated A and ordinary ground. Keep any remaining online reset report separate from the verified local counter fix.
 
-## Jargon courses -- leftovers of P1478 (11 Nov)
+## Survey 5 stutter maps after P1504 (11 Nov; survey 5 = 39 of 60 maps on the live builds, artifacts/survey5)
 
-- Site: SV_TASAutoLink board stretches (sv_tasautosurf.qc). surf_shape bonus 1 (KSF x, ksfmoves 0): stretch 1 boards ramp 1 350-375 u from the guide's point (board radius 800) and every stretch-2 candidate is cut within 3 ticks (a trigger), so the chain backtracks between them until its budget and both effort steps run out (rigs shape2/shape3). Falsifier: the same one-click start reaches stretch 3.
-- Site: the end of a course that is a trigger_teleport into the next box (surf_tensor2 stage 2). The optimizer scores a rollout cut by that teleport as a miss, so the finish target is a 400 u reach and the predicted coast does the rest; when the coast meets another teleport the last stretch is retried. A rollout cut by the course's own end teleport could count as the reach. Falsifier: a stage-2 one-click run ends "finished stage 2" without a "would fall into a teleport" retry.
-- Site: TAS_ASMAX (64 points a route). surf_tensor2's main course has more; the panel says so and stages work. Falsifier: a 64+ ramp main course finishes from one Start.
-- Site: the curve search is not deterministic from one state (stretch 1 from the same replayed start: 1130, 1130, 1092 u/s in rigs t2chain2-4). Falsifier: two searches from one paused state print the same best.
+- surf_bossfight (warm 0.1% 196): its slow spot (replay ~1.8 s, the brickhouse start) is GPU-bound -- "Transparent
+  & effects" 4.6 ms of a 6.2 ms frame; r_drawentities 3 (no alias models) -> 0.12 ms. ~300 blended batches of window
+  props (windowtall1.mdl {pi_window.vmt: $translucent AND $alphatest, Source also draws it translucent;
+  poorwindowsman*.mdl blinds_04_bossfight.vmt $translucent). Content cost at fullfx + MSAA 4, not an engine fault.
+  Levers: the vertexlit program's per-fragment cost on blended models; MSAA's share untested (vid_restart).
+- surf_fairy (warm 0.1% 129, r_blendsort 2): the sort fails often in motion; P1490's memo matches only the exact
+  face set. Loosening it is NOT safe: of the sorts a memo rejected only on face set, many then SUCCEEDED (e.g. 271 ok
+  vs 11 fail in one 2 s window) -- a looser key would draw sortable frames unsorted. Failing sorts cost ~0.3-0.4 ms
+  vs ~0.03 ms a success. Diag: engine branch diag-blendmotion (BLENDSTATS, r_blendstats 1), artifacts/blendq.py.
+  Its CSQC (players' default sprites/glows) is ~1.8 ms a frame avg, half of it Sprite_Draw (glare 0.40, sky 0.20).
+- surf_joutsenlaulu (warm 0.1% 209): a broad tail (render ~3 ms, CSQC ~1.8); its two 6-7 ms spikes named trivial QC
+  (Scores_LinesOn 1.6 ms, Font_Px 2 ms) in consecutive frames -- system stalls, not code.
+- Diag recipe: the engine diag with per-builtin r_spikes 2 (cherry-pick f0b9ba03c) + LOWS2_EXTRA="r_spikes 2".
+
+## First-play leftovers after P1501 (11 Nov)
+
+- surf_fairy's FIRST frame after spawn is ~2 s in both builds: input/net ~1.2 s (largest bucket "network") and
+  "hl2 props" ~0.6 s (P1364's prop light solve, hl2_lt_prewarm 3000 ms). It is the frame right after the loading
+  screen; moving it behind the screen would make the first seconds clean. orgrimmar's is 135-145 ms.
+- The sun glare's material (Sun_LoadForMap, default sprites/light_glow02_add_noz) registers on first sight, so its
+  program's base permutation compiles mid-run once per map with an env_sun (surf_tendies, ~15 s in). A per-map list
+  of late-registered polygon shaders, re-registered through PR_R_PolygonShader at the next activation, would close
+  it for every CSQC material; shaderforname registers with the skin generator, not the polygon one.
+- HUD UI shaders (sui_*, hc_*, gfx/ui/roundmask) register after activation but reuse existing programs: 0 compiles.
+- Diag build with LATECOMPILE/LATESHADER logging: engine branch diag-latecompile (local), lows2 artifacts
+  latecompile.py (warm list + launch cfg swap) and spawn2.py (load time, post-spawn frames).
+
+## Game-code (CSQC) baseline -- after P1497/P1499 (11 Nov)
+
+- Unprofiled in-motion r_budget A/B (artifacts/abq.py in the lows2 root: one session, a board replay restarted per
+  variant, the 10-20 s window): surf_fairy at Lex's settings CSQC 1.37 ms of a 3.9 ms frame before; sky test 0.34,
+  mouse pad 0.15. profile_csqc (rank only, it inflates small calls) puts the replay viewer (MPad, Watch_*, Line_*)
+  at 0.4-0.5 ms -- replays only, but the survey measures replays, so its CSQC share overstates live play.
+- Left: HUD_Draw ~0.13 ms, _sui_round_draw ~0.08 (rounded panels), Fx_Draw ~0.10 on fairy (real arc work),
+  CSQC_PredictPlayerMove ~0.06 (live). No single item over 0.15 ms after these two.
+- P1497 trade: hold 128 is ~30% staler in the in-view verdict census than 16 (two sessions; run spread 16-104).
+  A smarter re-test (one that knows how near the occluding edge is) would get the saving without the staleness.
+
+## Jargon -- leftovers of P1478 and P1483 (11 Nov)
+
+- Site: the stretch after surf_tensor2 stage 5's 7.61 board (an S of hard air strafes, ~4 degrees a tick at 1480 u/s,
+  8.05-11.21 s of the stotty guide). Every line flies on, 3677 u past the 11.21 board, try after try (bench p16, both
+  runs; 3 of 7). Not walls: tools/bspnear.py finds nothing within 24 u of the guide during the turns. Tested and
+  falsified: the turn command's 120 clamp (raised to 240, stage 5 got less far, 2 of 7 in both runs -- reverted);
+  turn points (opt-in `turns`: with them the run stopped one board earlier). Leads not tried: more knots where the
+  guide's heading changes fast (curve 12 over 3.15 s is a knot every ~17 ticks, the S's first swing lasts ~40).
+  Falsifier: stage 5 passes stretch 4 from one Start.
+- Site: SV_TASAutoLink board stretches. surf_shape bonus 1 (KSF x): stretch 1 boards ramp 1 off the guide's point and
+  every stretch-2 line falls into a trigger within ~14 ticks of the board (bench p16: stuck at stretch 2 in all four
+  runs, both effort steps spent). Falsifier: the same one-click start reaches stretch 3.
+- Site: TAS_ASMAX (64 points a route). surf_tensor2's main course has more; the panel says so and stages work.
+  Falsifier: a 64+ ramp main course finishes from one Start.
+- Site: `turns` (opt-in turn points, P1483). On stage 5 the board after the first turn point arrived where the next ramp
+  could not be made, even with heading scored (`airdir`). Falsifier: a course that finishes with `turns` and not without.
+
+Resolved by P1483 (drop from the P1478 list): the end teleport now scores as the reach (stage 2 finished in both bench
+runs, 0:12.825 and 0:12.330, the guide 12.570); the search is deterministic from one state with a seed (stage 2 run 0
+gave 0:12.825 and 5 backtracks on two builds).
+
+## Jargon -- leftovers of P1531 (13 Nov)
+
+- Site: the live and Continue replans call SV_TASAutoBacks, whose SV_TASAutoPriorLoad drops prior entries with no
+  stretch in the from-here plan; the next SV_TASAutoPriorKeep rewrites the .prior file without the ramps before the
+  replan point (takeover and from-here chains did this before P1531). Falsifier: a replan keeps every earlier prior.
+- Site: a stage chain inside a full run (a takeover in stage 2..N-1) reports run_t_split, measured from the full run's
+  start, as "finished stage k in". Falsifier: the note gives the stage's own time.
+- Site: redo by demo time takes the first waypoint at that time (a board and an air point on one demo row); the airsig
+  sums cannot see moves that cancel out. Both rare.
+- Site: jgp1531's K3 walk (+forward from the box) leaves it on the second try about half the time; the client's own
+  "leave the start box first" answers the first. A walk on the guide's exit heading would make it deterministic.
+
+## Jargon -- leftovers of P1528 (13 Nov)
+
+- Site: copying the human's crouch (test cvars tas_jargon_startduck, tas_jargon_rowkeys), both off. The start's copy,
+  timed from Jargon's own jump, made tensor2 stage 1's stretch 1 unreachable (A/B 13 Nov, one run an arm; Jargon jumps
+  54 u before the guide's exit). The search's copy (the demo rows' duck bits) cost surf_colin_blaster_69000's first
+  portal: 0 of 3 runs through with it, 2 of 2 without (the board before it ended 120 u off and every line fell into the
+  void trigger under the portal); tensor2 stage 1 was alike either way. Lead: crouch by place, not time -- crouched
+  while over a lip or under a roof the guide crouched at, standing once clear. Lex's cases: tensor2 stage 1's start
+  (kenos crouch-jumps 9 ticks), colin_blaster bonus 4 (a crouch under a roof). Falsifier: with it on, those pass and
+  colin_blaster's first portal still does.
+- Site: SV_TASAutoCoastPredict / stage 31. A prediction the engine cuts short (water, a ladder) now returns 0, and a coast
+  that then misses ends the chain after 400 ticks ("did not reach the end in 6 s") with no retry. Falsifier: a finish
+  over water whose first coast misses is retried.
+- Site: stage 32 (portals). A guide that lands inside a second teleport -- both fire in one 2-tick step -- reads as missed
+  (the body lands far from the first one's landing). Falsifier: a chained-teleport stage passes its portal.
+- Site: SV_TASOptTeleNear. The cut trigger's box grown 96 u misses a guide that rose into its underside faster than
+  ~2270 u/s, and a teleport fired late by an output. Falsifier: such a portal scores as reached.
+- Site: the start. Stage 13 (the guide's own prestrafe) never sets as_sjmp, so rule 524288's edge re-jump can add a second
+  jump; the redo (as_sredo) keeps its second attempt even when slower than the first. Falsifier: a start that worked
+  before the redo still works after it.
+- Site: the panel's number field. Held Enter or Backspace repeats into the next field clicked (the shared key tracker's
+  state 2 does not say which field owns a key). Falsifier: a held key reaches only the field it was pressed in.
+- Known, not a regression: tensor2 stage 1's stretch 1 at the panel's effort -- the first tries end in the teleport
+  ~257 u short on every build; the second effort step boards it (A/B arm C: 3 misses).
 
 ## Timer zones built from map triggers -- leftovers of P1461 (10 Nov)
 
@@ -1782,16 +1881,23 @@ From the two independent reviews of 28 Oct. Every case stays TAS-flagged; none r
 - 28 Oct: generation 74e060d7 carries P984's zonefit (live 06:32Z); remove this
   once a mapwatch run (cron 23 */6) shows the falsifier above.
 
-## hidcheck: leftisright values the journal cannot carry exactly (P982 review 2)
+## HID journal: complete cvar capture and non-default console codec
 
-- Sites: engine client/in_generic.c journals cvar strings through COM_QuotedString
-  (header qval[64] cut at 61 chars, 'c' quoted[128] at 125); tools/hidcheck.py
-  _unquote_pair is not its inverse for values holding '"', CR/LF (escaped form)
-  or '\' (plain form), and the cut changes long values. hidcheck then takes a
-  different .ival than the engine: a player who sets such an absurd leftisright
-  is falsely flagged on every mouse frame. Never a pass or a blind.
-- Fix options: journal .ival beside the string (engine), or decode the escaped
-  form and widen the buffers. Falsifier: leftisright "1\"" and "0"*61+"1".
+- P1515 fixes default-form escaping/plain backslashes and quoted whitespace.
+  P1516 prevents false angle findings/unproved journal OK from legacy clipped
+  identity constants, with explicit unavailable-data refusal and later recovery.
+  Neither reconstructs missing producer text.
+- Sites: engine client/in_generic.c COM_QuotedString header qval[64] (plain
+  payload61bytes), change quoted[128] (125bytes) still lose suffixes. A future
+  producer needs complete-capture/effective-value proof, not larger guessed
+  fixed buffers. Falsifier: actual leftisright "0"*61+"1" and whole61zeros
+  produce identical header tokens but different native effective values.
+  Current expected result: capture-unavailable content fault, not an angle
+  accusation or journal OK; valid replacements resume exact known windows.
+- Full text/effective capture remains unavailable for original legacy files.
+  Larger fixed buffers alone do not solve arbitrary cvar length. No new recorded
+  field or historical regrade is assumed. Non-default dpcompat_console encoding
+  is also unrecorded and is not claimed by the default-form decoder.
 
 ## r_mirrorworld: HUD elements that draw world sides (P982)
 

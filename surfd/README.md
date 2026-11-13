@@ -402,7 +402,8 @@ GET /health
     `PUBLIC_HOST`, so it adds no new trust surface: with trust unconfigured,
     behaviour is unchanged. Safe because nothing proxies to 8084 — verify that
     before putting surfd behind nginx, or every request becomes "trusted".
-  * Request body capped at 16 KiB.
+  * Normal request bodies capped at 16 KiB; the signed `/api/hid` journal route
+    alone allows its 1024-byte header plus at most 64 MiB.
   * Strings stripped of control characters and truncated to 64 -- except the
     map name, which is **refused** when it is too long rather than trimmed.
     It is the board key, and trimming an identifier to fit merges two
@@ -414,6 +415,29 @@ GET /health
     150 players on every leg to reach it.
   * A board page returns at most 200 rows (default 50). An over-large `limit`
     is clamped rather than refused.
+
+### Optional journal run-length allowance
+
+`SURFD_HID_BASE_BYTES` (integer0..67108864) and
+`SURFD_HID_BYTES_PER_TICK` (integer1..67108864) must BOTH be explicitly configured
+to enable a run-length allowance. They use the normal setting loader:
+environment first, then `surfd.env`. Neither present keeps legacy64MiB behavior;
+partial, empty or noncanonical/out-of-range policy fails startup rather than
+silently ignoring an operator's cap. Policy is captured at route registration.
+
+After upload signature and receipt/run/nonce/hash/size authentication, body bytes
+must fit `min(67108864, base + positive_signed_counted_ticks * bytes_per_tick)`.
+Excess returns413 before body consumption or temporary creation; unavailable
+signed clock returns503, not a player fault. Existing evidence is never removed
+or replaced. Absolute/rate/signature/hash/no-replace controls remain unchanged.
+
+No production coefficient/floor is recommended or activated. Counted ticks are
+NOT wall time and may exclude viewing/parked intervals: explicitly choose policy
+for that overhead before enabling it. This does not bound proxy-buffered bytes,
+aggregate storage or retention. No new recording fields, consent, verdict,
+score, reread or native/QC change. `python surfd/test_hidupload.py -v` exercises
+actual application settings as well as boundary/header-only/preservation controls;
+see `tools/p1513-hid-run-budget.md`.
 
 ## Admin panel (/admin)
 
@@ -720,10 +744,38 @@ elapsed admission cooperatively (default 10 seconds). Zero disables; elapsed
 CLI values must be finite and nonnegative. Source, peer and pair limits require
 exact integers in 0..9223372036854775807 before optional loading or queries;
 negative SQLite LIMIT values are never used as an unlimited-work shortcut.
-In-flight loading, comparison and
-normal database writes can finish after the deadline; this is not a hard timeout,
-overall memory/scan bound or fair scheduler. The CLI retains its existing
-import-time database initialization even for rejected arguments.
+In-flight loading, comparison and normal database writes can finish after this
+cooperative deadline. Direct callable APIs retain that behavior. Normal cron
+additionally contains its similarity phase in a child of the existing `sweep.py`
+entrypoint, using Linux `/usr/bin/prlimit` before Python/bootstrap starts:
+512 MiB virtual address space, 12 CPU seconds, and a parent wait no longer than
+15 seconds or the cooperative allowance plus five seconds, whichever is smaller.
+The parent kills and reaps only its owned worker on timeout, then continues the
+badge-gating phase. Unsupported containment abstains; there is no unbounded
+fallback. Pair counters are unknown on termination, not a measured zero; already
+committed store-only rows and interrupted-source recovery remain intact.
+
+The child must inherit actual OS limits and opens only an existing database at
+this exact schema version. Its requested native SQLite lock wait applies from the
+initial read-only schema probe through RW startup, not only after opening the
+connection; ordinary callers retain their existing 5000ms default. Its private
+import mode does not rerun migrations,
+account/ranking policy or initialize a new database. Normal cron retains its
+existing import-time initialization, including for rejected normal arguments.
+The worker request/result are byte-bounded, and a raw uncontained worker launch
+refuses before importing the app. No new dispatcher target, field, capture,
+threshold, verdict or ranking policy is introduced.
+
+These are process address-space/CPU/admission controls, not a measured total RSS,
+fairness or full-fleet guarantee. Process startup and kernel-uninterruptible I/O
+or reaping cannot have an unconditional wall deadline. The worker preserves the
+guard's explicitly inheritable lifetime leases through exec; normal CLOEXEC
+handles remain private. Its admission lease must remain held until it exits,
+never released around an orphan writer. Parent loss can leave a lease holder;
+closure must fail closed, not claim bounded orphan cleanup. Run
+`python surfd/test_simcheck_process.py` on Linux for the acted comparison,
+child-only lease/after-exit drain, blocked-work/reap and allocation controls;
+other systems explicitly skip the Linux-only arms rather than claiming passes.
 
 `--sims-sql-steps` defaults to 1,000,000 SQLite VM instructions across selected
 collector reads; zero disables collection. Source cursor/pending and peer cursor/

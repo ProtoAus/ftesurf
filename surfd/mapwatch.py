@@ -136,6 +136,7 @@ import re
 import shutil
 import signal
 import sqlite3
+import stat
 import struct
 import sys
 import time
@@ -155,6 +156,7 @@ if not logging.getLogger("surfd").handlers:
 
 import surfd as S       # noqa: E402
 import zonefit          # noqa: E402
+import mapmanifest      # noqa: E402
 import tascontent       # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -2302,7 +2304,7 @@ def zone_bytes(text, doc, want):
     return (canon, False) if len(canon) <= MAX_ZONE_BYTES else None
 
 
-def zone_fetch(pacer, r):
+def zone_fetch(pacer, r, scoped=False):
     """-> (the zone bytes of approved map `r`, whether they hash to zoneHash,
     None), or (None, False, why) when the reply's zones are neither that nor
     fit to be taken without it.  Raises Refused -- also for a reply with no
@@ -2313,6 +2315,11 @@ def zone_fetch(pacer, r):
     except (ValueError, RecursionError):
         doc = None
     cv = doc.get("currentVersion") if isinstance(doc, dict) else None
+    if scoped and (not isinstance(doc, dict) or not public_asset_status(doc.get("status"))
+                   or doc.get("id") != r["id"] or str(doc.get("name", "")).lower() != r["name"].lower()
+                   or not isinstance(cv, dict) or str(cv.get("bspHash", "")).lower() != r["sha"]
+                   or str(cv.get("zoneHash", "")).lower() != r["zh"]):
+        raise LocalFault("scope conflicts with the map's current public identity")
     # P1093: a Beta row is a line from a PC's cache, maybe days old.  Its zones
     # (and a build swap waiting on them) are taken only while the map's own
     # reply still names that build; otherwise the line is stale, not the map --
@@ -2508,10 +2515,129 @@ def be_small():
         pass
 
 
+def public_asset_status(value):
+    # Same 0/3 policy as tools/mapmeta; tools are not runtime dependencies.
+    return type(value) is int and value in (0, 3)
+
+
+def admission_scope(path):
+    """Private operator whitelist, not a replacement source catalogue."""
+    if path is None:
+        return None
+    with open(path, "rb") as fh:
+        raw = fh.read(4 * 1024 * 1024 + 1)
+    try:
+        doc = json.loads(raw) if len(raw) <= 4 * 1024 * 1024 else None
+        rows = doc["maps"] if isinstance(doc, dict) else None
+        if not isinstance(rows, list) or not rows:
+            raise ValueError()
+        out, ids = {}, set()
+        for r in rows:
+            n, mid, sha, zh = r["name"], r["id"], r["sha1"], r["zone_sha1"]
+            if (not isinstance(n, str) or not NAME_OK.fullmatch(n) or n != n.lower()
+                    or n in out or type(mid) is not int or mid <= 0 or mid in ids
+                    or not public_asset_status(r["status"])
+                    or not isinstance(sha, str) or not HEX40.fullmatch(sha)
+                    or not isinstance(zh, str) or not HEX40.fullmatch(zh)):
+                raise ValueError()
+            source = r.get("source_file")
+            if source is not None and (not isinstance(source, str) or not os.path.isabs(source)):
+                raise ValueError()
+            out[n] = {"id": mid, "sha": sha, "zh": zh, "source_file": source}
+            ids.add(mid)
+        return out
+    except (KeyError, TypeError, ValueError):
+        raise LocalFault("invalid public admission scope")
+
+
+def source_signature(path):
+    s = os.lstat(path)
+    if not stat.S_ISREG(s.st_mode) or (hasattr(os, "geteuid") and
+            (s.st_uid != os.geteuid() or s.st_mode & 0o022)):
+        raise LocalFault("scope source is not operator-owned regular data")
+    return (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
+
+
+def scoped_copy(source, part, expected, signature):
+    """Revalidate a staged candidate; existing admission gates still publish it."""
+    if source_signature(source) != signature or signature[2] > MAX_MAP_BYTES:
+        raise LocalFault("scope source changed or exceeds the map cap")
+    h, total, created = hashlib.sha1(), 0, False
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+    try:
+        with os.fdopen(os.open(source, flags), "rb") as src, open(part, "xb") as dst:
+            created = True
+            while True:
+                b = src.read(1 << 16)
+                if not b:
+                    break
+                if total == 0 and b[:4] != b"VBSP":
+                    raise LocalFault("scope source is not a VBSP")
+                total += len(b)
+                if total > MAX_MAP_BYTES:
+                    raise LocalFault("scope source exceeds the map cap")
+                h.update(b)
+                dst.write(b)
+        if total < 4 or h.hexdigest() != expected or source_signature(source) != signature:
+            raise LocalFault("scope source changed or does not match its identity")
+    except BaseException:
+        if created:
+            _rm(part)
+        raise
+    return "ok", h.hexdigest(), total
+
+
+def validate_scope(scope, scope_path, maps, mom, extra, names, read, previous, old_dl_path):
+    if "mom" not in read or "ksf" not in read:
+        raise LocalFault("scope requires both complete source censuses")
+    if (not isinstance(previous, dict) or not isinstance(previous.get("maps"), dict)
+            or not isinstance(previous.get("momnames"), list)):
+        raise LocalFault("scope requires an existing catalogue to preserve")
+    try:
+        mapmanifest.read_list(old_dl_path)
+    except ValueError:
+        raise LocalFault("scope requires a valid existing download list")
+    root = os.path.realpath(os.path.dirname(os.path.abspath(scope_path)))
+    for n, pinned in scope.items():
+        r = mom.get(n) if n in names else extra.get(n)
+        if (not r or (r["id"], r["sha"], r["zh"]) !=
+                (pinned["id"], pinned["sha"], pinned["zh"])):
+            raise LocalFault("scope identity conflicts with the complete source reading")
+        source = pinned["source_file"]
+        if source is None:
+            continue
+        canonical = os.path.abspath(os.path.join(maps, n + ".bsp"))
+        candidate = os.path.abspath(source)
+        try:
+            inside = os.path.commonpath((root, candidate)) == root
+        except ValueError:
+            inside = False
+        if (os.path.realpath(source) != candidate or
+                (not inside and candidate != canonical)):
+            raise LocalFault("scope source is outside the operator stage or matching body")
+        signature = source_signature(source)
+        if signature[2] > MAX_MAP_BYTES:
+            raise LocalFault("scope source exceeds the map cap")
+        h, total = hashlib.sha1(), 4
+        with open(source, "rb") as fh:
+            magic = fh.read(4)
+            h.update(magic)
+            for b in iter(lambda: fh.read(1 << 16), b""):
+                total += len(b)
+                if total > MAX_MAP_BYTES:
+                    raise LocalFault("scope source exceeds the map cap")
+                h.update(b)
+        if (magic != b"VBSP" or
+                h.hexdigest() != pinned["sha"] or source_signature(source) != signature):
+            raise LocalFault("scope source does not match its pinned public build")
+        pinned["signature"] = signature
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--maps", default=S.MAPS_DIR)
+    ap.add_argument("--scope", help="Private public-identity whitelist; full censuses still run")
     ap.add_argument("--state", default=os.path.join(S.DATA_DIR, "mapwatch"))
     ap.add_argument("--tracks", default=S.MOMTRACKS_PATH,
                     help="momtracks.tsv, rewritten from Momentum's list (P1117)")
@@ -2554,6 +2680,15 @@ def main():
 
 
 def run(a):
+    scope_path = getattr(a, "scope", None)
+    scope = admission_scope(scope_path)
+    def selected(k):
+        return scope is None or k in scope
+
+    def selected_state(k):
+        fields = k.split(":")
+        return selected(fields[1] if len(fields) > 1 and fields[0] in ("z", "v") else fields[0])
+
     now = int(time.time())
     deadline = now + RUN_SECONDS
     sp = os.path.join(a.state, "state.json")
@@ -2568,19 +2703,20 @@ def run(a):
     later = table("later")                  # key -> [strikes, when, why]
     back = table("back")                    # key -> when its host last refused on it
     for k in [k for k, w in later.items()
-              if not (isinstance(w, list) and len(w) == 3 and type(w[0]) is int
+              if selected_state(k) and not (isinstance(w, list) and len(w) == 3 and type(w[0]) is int
                       and type(w[1]) in (int, float) and math.isfinite(w[1])
                       and isinstance(w[2], str))]:
         del later[k]
-    for k in [k for k, t in back.items() if type(t) not in (int, float) or not math.isfinite(t)]:
+    for k in [k for k, t in back.items() if selected_state(k) and
+              (type(t) not in (int, float) or not math.isfinite(t))]:
         del back[k]
-    for k in [k for k, w in later.items() if now - w[1] > 2 * RETRY_DAYS * 86400]:
+    for k in [k for k, w in later.items() if selected_state(k) and now - w[1] > 2 * RETRY_DAYS * 86400]:
         del later[k]                        # the file left the lists long ago
-    for k in [k for k, t in back.items() if now - t > RETRY_DAYS * 86400]:
+    for k in [k for k, t in back.items() if selected_state(k) and now - t > RETRY_DAYS * 86400]:
         del back[k]
     # A zone file struck for its hash alone is asked for again: 664 takes it.
     # A zone file struck for its hash alone, before 664, is asked for again.
-    for k in [k for k, w in later.items() if k.startswith("z:") and w[2].startswith("zonehash")]:
+    for k in [k for k, w in later.items() if selected_state(k) and k.startswith("z:") and w[2].startswith("zonehash")]:
         del later[k]
     # <state>/approved.json (the module docstring): zone key -> the SHA1 of the
     # zones a person approved for it.  Read here, never written.
@@ -2645,6 +2781,16 @@ def run(a):
     for k in list(extra):
         if k in names:
             del extra[k]            # approved since the PC last listed it
+    previous, old_dl = None, None
+    if scope is not None:
+        previous = _load(cp)
+        try:
+            with open(os.path.join(a.state, "mapdl.txt"), "rb") as fh:
+                old_dl = fh.read(8 * 1024 * 1024 + 1)
+        except OSError:
+            raise LocalFault("scope requires an existing download list")
+        validate_scope(scope, scope_path, a.maps, mom, extra, names, read, previous,
+                       os.path.join(a.state, "mapdl.txt"))
     inv, odd = inventory(a.maps)
     held = set(inv) | odd
     print("lists: momentum %d approved, %d beta (%d bad line(s)), ksf %d; library %d"
@@ -2663,7 +2809,7 @@ def run(a):
     # DIFFERENT: held, and not the build Momentum publishes.
     diff, unread = [], 0
     for k in sorted(set(mom) | set(extra)):
-        if k in inv:
+        if selected(k) and k in inv:
             h = file_sha1(os.path.join(a.maps, inv[k] + ".bsp"), hashes)
             if h is None:
                 unread += 1
@@ -2688,7 +2834,7 @@ def run(a):
                    or (r["src"] == "beta" and r["id"] and r["zh"] and "mom" in read
                        and skey(r) not in stale_lines)]
                   if a.updates else [])
-    todo = [r for r in todo if not waiting(skey(r))]
+    todo = [r for r in todo if selected(r["name"].lower()) and not waiting(skey(r))]
     todo.sort(key=lambda r: back.get(skey(r), 0))      # stable: a refused file goes last
     if not a.go:
         for r in todo[:max(0, a.max)]:
@@ -2699,7 +2845,8 @@ def run(a):
         print("\nDRY RUN -- nothing fetched.  Pass --go.")
         return 0
 
-    sweep_leftovers(a.maps, a.state, a.site_zones)
+    if scope is None:
+        sweep_leftovers(a.maps, a.state, a.site_zones)
     os.makedirs(os.path.join(a.state, "tmp"), exist_ok=True)
     tally, took, fresh, back_again = {}, [], set(), []
     gets = {"n": 0, "bytes": 0}
@@ -2797,7 +2944,11 @@ def run(a):
         ztried.add(k)
         unv.pop(k, None)
         try:
-            raw, hashed, why = zone_fetch(pacer, r)
+            raw, hashed, why = zone_fetch(pacer, r, scoped=scope is not None)
+        except LocalFault:
+            if scope is not None:
+                raise
+            raw, hashed, why = None, False, "zoneshape"
         except Refused as e:
             if e.code == 404:
                 again(zkey, "HTTP 404")
@@ -2975,8 +3126,17 @@ def run(a):
                     count("its zones cannot be had: build left")
                     _save(sp, st)
                     continue
+        if scope is not None and raw is None:
+            raw = zone_ask(key, r, zkey)
+            if raw is None:
+                count("its scoped identity/zones cannot be had: build left")
+                continue
         part = os.path.join(a.maps, ".mapwatch.%s.part" % name)
-        if host == "cdn":
+        if scope is not None and scope[key]["source_file"] is not None:
+            pinned = scope[key]
+            got = take(host, skey(r), lambda: scoped_copy(
+                pinned["source_file"], part, r["sha"], pinned["signature"]))
+        elif host == "cdn":
             got = take(host, skey(r),
                        lambda: download(r["url"], part, r["sha"], magic=b"VBSP"))
         else:
@@ -3034,7 +3194,8 @@ def run(a):
             if (r["src"] in ("mom", "beta") and r["zh"] and r["id"] and key not in zidx and "api" not in dead
                     and (r["src"] == "mom" or "mom" in read)
                     and not waiting(zkey) and unplayed(key) and quiet(key)):
-                raw = zone_ask(key, r, zkey)
+                if raw is None:
+                    raw = zone_ask(key, r, zkey)
                 if (raw is not None and zone_fits(key, raw, final, zkey)
                         and quiet(key) and unplayed(key, True) and quiet(key)):
                     zone_put(key, raw, False)
@@ -3055,10 +3216,10 @@ def run(a):
     # compared with the archive like any other candidate, never written over.
     same, made = table("same"), table("made")
     foreign = table("foreign")                  # a _css file that was NOT the archive
-    for kv in [kv for kv in made if kv not in inv
-               or file_sha1(os.path.join(a.maps, inv[kv] + ".bsp"), hashes) != made[kv]]:
+    for kv in [kv for kv in made if selected(kv) and (kv not in inv
+               or file_sha1(os.path.join(a.maps, inv[kv] + ".bsp"), hashes) != made[kv])]:
         del made[kv]
-    if a.variants > 0 and "ksf" in read:
+    if scope is None and a.variants > 0 and "ksf" in read:
         prio = wanted(now)
         listed = set(ksf) | set(mom) | set(extra) | names
         cands = sorted((k for k in ksf
@@ -3122,7 +3283,7 @@ def run(a):
                     if r["id"] and r["zh"] and k not in zsrc and skey(r) not in stale_lines)
     for k in sorted(zsrc, key=lambda k: (back.get("z:%s:%s" % (k, (zsrc[k]["zh"] or "")[:12]), 0), k)):
         r = zsrc[k]
-        if k not in inv or not r["zh"] or k in ztried:
+        if not selected(k) or k not in inv or not r["zh"] or k in ztried:
             continue
         zkey = "z:%s:%s" % (k, r["zh"][:12])
         if file_sha1(os.path.join(a.maps, inv[k] + ".bsp"), hashes) != r["sha"]:
@@ -3210,7 +3371,7 @@ def run(a):
                 return t[:-len(suf) - 1]
         return None
 
-    for t in sorted(inv):
+    for t in (sorted(inv) if scope is None else []):
         d = donor_of(t)
         if (d is None or (d not in mom and d not in extra) or d not in inv or zidx.get(d) not in donors
                 or t in names or t in extra or t in local):
@@ -3298,7 +3459,7 @@ def run(a):
         else:
             count("one arrived meanwhile: left", zw)
         _save(sp, st)
-    for t in [t for t in given if t not in inv]:
+    for t in [t for t in given if selected(t) and t not in inv]:
         del given[t]
     # What clients fetch (cl_zonedl.qc): every published zone file held, where
     # the site has none of that name in any spelling.  Never over a file there.
@@ -3329,25 +3490,35 @@ def run(a):
                        "ktier": ksf[k]["tier"], "of": inv[k]}
     link_ports(cat, inv, names | set(extra))
     if "mom" in read:
-        approvals(a, st, appr, now, deadline, pacer, dead, lambda: _save(sp, st))
+        if scope is None:
+            approvals(a, st, appr, now, deadline, pacer, dead, lambda: _save(sp, st))
         # P1253: held Beta maps' boards, each from its own reply.
         asked = st.get("betaboards") if isinstance(st.get("betaboards"), dict) else {}
         asked = {k: v for k, v in asked.items() if isinstance(v, dict) and type(v.get("id")) is int}
         st["betaboards"] = asked
         if extra:                           # an unread Beta list forgets nothing
-            for k in [k for k in asked if k not in extra]:
+            for k in [k for k in asked if selected(k) and k not in extra]:
                 del asked[k]
         beta = {}
         if "api" not in dead and time.time() < deadline:
-            beta, why = beta_boards(pacer, extra, inv, asked, a.tracks, now, deadline)
+            beta, why = beta_boards(pacer, {k: r for k, r in extra.items() if selected(k)},
+                                    inv, asked, a.tracks, now, deadline)
             if why:
                 dead["api"] = why
                 print("  api refused (%s): nothing more is asked of it this run" % why)
             print("  beta boards: %d map(s) answered with boards" % len(beta))
         # P1117: momwatch/momfetch crawl only the boards this file names.
-        n, changed = write_tracks(a.tracks, {**mom, **beta}, inv)
+        n, changed = write_tracks(a.tracks, {k: r for k, r in {**mom, **beta}.items()
+                                            if selected(k)}, inv)
         print("  momtracks: %d map(s), %d new or changed" % (n, changed))
-    if len(read) == 2:
+    if scope is not None:
+        cat = {**{k: v for k, v in previous["maps"].items() if not selected(k)},
+               **{k: v for k, v in cat.items() if selected(k)}}
+        saved = dict(previous, at=now, maps=cat,
+                     momnames=sorted({n for n in previous["momnames"] if not selected(n)} |
+                                     {n for n in names if selected(n)}))
+        _save(cp, saved)
+    elif len(read) == 2:
         _save(cp, {"at": now, "maps": cat, "momnames": sorted(names)})
     else:
         # One list unread: the last whole reading stands, plus what is new now.
@@ -3363,10 +3534,17 @@ def run(a):
     today = time.strftime("%Y-%m-%d", time.gmtime(now))
     if boot:
         seen.update({k: [today, "bootstrap"] for k in inv})
-    rows = list_rows(a.maps, inv, cat, seen, today,
+    rows = list_rows(a.maps, {k: v for k, v in inv.items() if selected(k)}, cat, seen, today,
                      time.strftime("%Y-%m-%d", time.gmtime(now - NEW_DAYS * 86400)))
-    for k in [k for k in seen if k not in inv]:
+    for k in [k for k in seen if selected(k) and k not in inv]:
         del seen[k]
+    if scope is not None:
+        retained = []
+        for ln in old_dl.decode("utf-8").splitlines():
+            fields = ln.split()
+            if fields and fields[0] == "dl" and not selected(fields[1].lower()):
+                retained.append(ln)
+        rows = sorted(retained + rows, key=lambda ln: ln.split()[1].lower())
     tmp = os.path.join(a.state, "mapdl.txt.tmp")
     with io.open(tmp, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("FTESURF-MAPDL 1\n# written by surfd/mapwatch.py at %d -- do not edit\n"

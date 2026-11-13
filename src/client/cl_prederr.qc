@@ -410,8 +410,8 @@ void() PE_Frame =
 		else if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report") && n >= 9 && PE_Expected(s))
 			PE_Note(sprintf("not reported: %s, which is not predicted", pe_exp_why));
 		else if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report")
-		         && (rec_gh_on || Spec_Active() || rec_wt_on || rw_on))
-			PE_Note("not reported: ghost, spectating, watching or rewinding (nothing is predicted)");
+		         && (rec_gh_on || Spec_Active() || rec_wt_on || rw_on || taso_state == 1 || getstatf(STAT_FS_TASPAUSE) == 1))
+			PE_Note("not reported: ghost, spectating, watching, rewinding, TAS or Jargon (nothing is predicted)");     // P1483: a takeover's pause, on stream
 		else if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report") && n >= 9
 		         && PE_ServerTele(srv, pred))
 			PE_Note("not reported: a teleport only the server runs (its trigger is filtered or gated)");

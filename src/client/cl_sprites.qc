@@ -167,6 +167,10 @@ float  spr_mat[SPR_MAX];                // index into the table above
 float  spr_kind[SPR_MAX];
 float  spr_add[SPR_MAX];                // SPRA_*, and every value but NONE is truthy
 float  spr_n;
+// Stable material-major draw lists; the extra head is the env_lightglow pass.
+float *spr_drawhead;
+float *spr_drawnext;
+float  spr_drawdirty;
 /*
   BUILD 58.  How many sprites the Source dimming was applied to, and it is a
   GLOBAL holding LAST frame's count rather than a local, because the census that
@@ -263,6 +267,8 @@ float  spr_skyburst;                    // tests left at 4x after a jump
 float  spr_skycarry;                    // P1422: the fraction of a ray left from the last frame
 float  spr_glowext;                     // P1422: the largest glow's half-diagonal at GLOW_OVERLAYDIST
 vector *spr_skyat;                      // P1242: the eye each sprite then beam was last traced from
+float *spr_skythr;                      // P1497: how far the eye may move before it is traced again
+// both: sprite i at i, beam j at SPR_MAX + j (P1497 review: beams at spr_n + j read a neighbour's when spr_n grew)
 float  spr_skysolidgen, spr_skysolidseen; // P1242: bumped by cl_portal.qc when a door's collision changes
 float  spr_skyhid;                      // skipped last frame (vbsp_sprite_debug)
 
@@ -970,6 +976,7 @@ void(vector org, vector ang, float kind, float mat, float scale,
 	}
 
 	spr_n = spr_n + 1;
+	spr_drawdirty = TRUE;
 };
 
 /*
@@ -1073,6 +1080,7 @@ void(vector org, vector ang, float hw, float hh, vector col, float alpha,
 	spr_up[i] = '0 0 0';
 
 	spr_n = spr_n + 1;
+	spr_drawdirty = TRUE;
 	vbsp_glow_n = vbsp_glow_n + 1;
 };
 
@@ -1684,6 +1692,7 @@ void() Sprite_LoadForMap =
 	*/
 	Sprite_LoadOccluders();
 	spr_n = beam_n = beam_spot_n = 0;
+	spr_drawdirty = TRUE;
 	spr_glowext = 0;
 	if (spr_under)
 		for (mat = 0; mat < SPR_MAX; mat = mat + 1)
@@ -2316,6 +2325,7 @@ void() Sprite_Glare =
 	// BUILD 59: the view cull.
 	local float  visits, docull, tanx, maxdist, slope, glowcos, zc;
 	local float  tn, tcapped;               // P1488: rays at the last clock check; the time budget stopped the loop
+	local float  tv, oldep, forced;          // P1504: visits at the last clock check; a bailed visit's undo
 	local vector fwd;
 	// BUILD 60: the adaptive rays, and the measured sweep.
 	local float  adapt, docorners, had, m, wrapped;
@@ -2571,12 +2581,16 @@ void() Sprite_Glare =
 	spr_gforce = 0;
 	spr_grays = 0;
 	tn = 0;
+	tv = 0;
 	tcapped = FALSE;
 	while (n < budget && visits < vmax && spr_n > 0)
 	{
-		if (n > tn)
+		// P1504: and every 16 visits -- the culled glows between traced ones cost no rays but their QC still ran
+		// the loop 0.5-0.8 ms past the budget on surf_fairy (players' default glows)
+		if (n > tn || visits >= tv + 16)
 		{	// P1488: asked once per traced glow, before the cursor moves, so the next glow is first next frame
 			tn = n;
+			tv = visits;
 			if (Sprite_TraceOver(1))
 			{
 				tcapped = TRUE;
@@ -2775,7 +2789,9 @@ void() Sprite_Glare =
 		*/
 		had = spr_gtraced[i];                   // 0 = this is its first ever answer
 		spr_gtraced[i] = had + 1;               // one visit; never reset, see the decl
+		oldep = spr_gep[i];
 		spr_gep[i] = spr_gepoch;
+		forced = FALSE;
 
 		docorners = (rays > 1);
 		if (docorners && !hits && adapt > 0 && had >= 1 && spr_gvis[i] <= 0)	// P1373: a stale -1 too
@@ -2783,7 +2799,10 @@ void() Sprite_Glare =
 			// due when count == index (mod adapt+1).  `m` is set once per frame.
 			if ((spr_gtraced[i] - floor(spr_gtraced[i] / m) * m)
 			    == (i - floor(i / m) * m))
+			{
 				spr_gforce = spr_gforce + 1;    // owed a re-check: fall through to five
+				forced = TRUE;
+			}
 			else
 			{
 				docorners = FALSE;              // centre blocked, and it was blocked before
@@ -2801,6 +2820,24 @@ void() Sprite_Glare =
 		*/
 		if (docorners)
 		{
+			// P1504: four more rays (~100-180 us each on surf_fairy), so the budget is asked again: one check a glow let
+			// a frame trace ~0.9 ms past it. Over, the visit is undone (its count, epoch and owed re-check) and the glow
+			// is first next frame with its last answer. A frame's first glow always finishes (n > 1; review: without
+			// it a frame the sky test left near the budget rewound the same glow every frame and the sweep stalled).
+			if (n > 1 && Sprite_TraceOver(1))
+			{
+				spr_gtraced[i] = had;
+				spr_gep[i] = oldep;
+				if (forced)
+					spr_gforce = spr_gforce - 1;
+				visits = visits - 1;
+				spr_gnext = i;
+				if (i == spr_n - 1)
+					wrapped = FALSE;    // its sweep did not finish
+				tcapped = TRUE;
+				spr_tcapg = spr_tcapg + 1;
+				break;
+			}
 			off = back * 0.70710678;    // GlowProxySize * sqrt(2)/2
 
 			n = n + 4;
@@ -2978,6 +3015,10 @@ float(vector eye, vector p, float st) Sprite_SkyTest =
 // is traced again only once the eye is 16 units from where it was last traced; with fewer sprites
 // than vbsp_sprite_skyrays every one was traced every frame (surf_garden, 17: ~0.45 ms a frame).
 // Rays still cap the traces a frame, and at most 256 are looked at a frame.
+// P1497: that distance doubles each time a trace confirms the verdict, up to vbsp_sprite_skyhold units and
+// 1/32 of the way to the sprite (within 512 units it stays 16); a changed verdict resets it; skyhold 16 is
+// the old rule. surf_fairy at Lex's settings re-traced 38 far beams ~3,600 times a second with not one change;
+// hold 128 took its CSQC from 1.32 to 1.10 ms a frame, with in-view verdicts no staler than 16 within noise.
 // P1422: vbsp_sprite_skyrays is rays per 60th of a second, never more a frame than before (a per-frame count
 // traced 14,000 a second at 220 fps: surf_fairy 222 fps, 338 with the test off), and a sprite out of view or
 // past vbsp_sprite_dist spends none -- it draws nothing whatever its verdict (Sprite_ConeTan's cone, margin 1.25;
@@ -2987,11 +3028,13 @@ float(vector eye, vector p, float st) Sprite_SkyTest =
 // call per visit cost ~4% on surf_fairy.
 void(vector eye) Sprite_SkyTick =
 {
-	local float i, k, n, rays, look, st, tanx, maxdist, slope, glowcos, zc, burst;
+	local float i, k, n, rays, look, st, nst, tanx, maxdist, slope, glowcos, zc, burst, hold;
 	local vector d, fwd;
+	local float k2, slot;
 
 	n = spr_n + beam_n;
 	burst = FALSE;
+	hold = bound(16, cvar("vbsp_sprite_skyhold"), 256);	// P1497; at most the 256-unit jump that starts a burst
 	if (vlen(eye - spr_skyeye) > 256)
 		spr_skyburst = n;
 	spr_skyeye = eye;
@@ -3011,13 +3054,15 @@ void(vector eye) Sprite_SkyTick =
 	}
 	if (!spr_skyat)
 		spr_skyat = memalloc(sizeof(vector) * (SPR_MAX + BEAM_MAX));
+	if (!spr_skythr)
+		spr_skythr = memalloc(sizeof(float) * (SPR_MAX + BEAM_MAX));
 	// A portal door opened, closed or was rebuilt: the traces can end elsewhere with the eye still.
 	// Every one is due again (its verdict kept until it is traced) and the burst settles them.
 	if (spr_skysolidseen != spr_skysolidgen)
 	{
 		spr_skysolidseen = spr_skysolidgen;
 		for (k = 0; k < n; k = k + 1)
-			spr_skyat[k] = '1000000 1000000 1000000';   // far from any eye
+			spr_skyat[(k < spr_n) ? k : SPR_MAX + k - spr_n] = '1000000 1000000 1000000';   // far from any eye
 		spr_skyburst = n;
 		rays = rays * 4;
 	}
@@ -3028,6 +3073,7 @@ void(vector eye) Sprite_SkyTick =
 			spr_skynext = 0;
 		i = spr_skynext;
 		spr_skynext = spr_skynext + 1;
+		slot = (i < spr_n) ? i : SPR_MAX + i - spr_n;
 		if (i < spr_n)
 			st = spr_sky[i];
 		else
@@ -3036,8 +3082,9 @@ void(vector eye) Sprite_SkyTick =
 			continue;
 		if (st != SKY_UNTESTED)
 		{
-			d = eye - spr_skyat[i];
-			if (d * d < 256)
+			d = eye - spr_skyat[slot];
+			k2 = min(spr_skythr[slot], hold);
+			if (d * d < k2 * k2)
 				continue;
 		}
 		// P1422: an untested sprite is drawn, so every one gets a first verdict wherever it is
@@ -3070,21 +3117,31 @@ void(vector eye) Sprite_SkyTick =
 			spr_tcaps = spr_tcaps + 1;
 			break;
 		}
-		spr_skyat[i] = eye;
+		spr_skyat[slot] = eye;
 		rays = rays - 1;
 		if (i < spr_n)
-			spr_sky[i] = Sprite_SkyTest(eye, spr_org[i], st);
+		{
+			d = spr_org[i];
+			spr_sky[i] = nst = Sprite_SkyTest(eye, d, st);
+		}
 		else
-			beam_sky[i - spr_n] = Sprite_SkyTest(eye, beam_org[i - spr_n], st);
+		{
+			d = beam_org[i - spr_n];
+			beam_sky[i - spr_n] = nst = Sprite_SkyTest(eye, d, st);
+		}
+		if (nst == st)	// P1497
+			spr_skythr[slot] = min(spr_skythr[slot] * 2, hold, max(16, vlen(d - eye) / 32));
+		else
+			spr_skythr[slot] = 16;
 	}
 };
 
 // P1422 vbsp_sprite_debug: the sprites within 30 degrees of the view axis (on screen whatever the view test says):
-// how many are hidden behind the sky, how many verdicts were traced 16+ units from this eye (or never), and how many
+// how many are hidden behind the sky, how many verdicts were traced past their hold from this eye (or never), and how many
 // a fresh trace contradicts on drawn-or-hidden. Settled, the last must be 0 with the cull on and off.
 string(vector eye, vector fwd) Sprite_SkyAxisCensus =
 {
-	local float i, n, behind, stale, wrong, st;
+	local float i, n, behind, stale, wrong, st, hd;
 	local vector d;
 	n = 0;
 	behind = 0;
@@ -3103,12 +3160,13 @@ string(vector eye, vector fwd) Sprite_SkyAxisCensus =
 			continue;
 		if (st == SKY_BEHIND)
 			behind = behind + 1;
-		if (st == SKY_UNTESTED || !spr_skyat)
+		if (st == SKY_UNTESTED || !spr_skyat || !spr_skythr)
 			stale = stale + 1;
 		else
 		{
 			d = eye - spr_skyat[i];
-			if (d * d >= 256)
+			hd = min(spr_skythr[i], bound(16, cvar("vbsp_sprite_skyhold"), 256));
+			if (d * d >= hd * hd)
 				stale = stale + 1;
 		}
 		if ((Sprite_SkyTest(eye, spr_org[i], st) == SKY_BEHIND) != (st == SKY_BEHIND))
@@ -3118,9 +3176,34 @@ string(vector eye, vector fwd) Sprite_SkyAxisCensus =
 	               n, behind, stale, wrong, Sprite_ConeTan(1.25, fwd), cvar("vbsp_sprite_skycull"));
 };
 
+// Reverse insertion preserves ascending slot order within every original pass.
+// Rebuild after loads/adds, including a template reusing a slot with a new material.
+void() Sprite_DrawLists =
+{
+	local float i, m;
+
+	if (!spr_drawhead)
+	{
+		spr_drawhead = memalloc(sizeof(float) * (SPRMAT_MAX + 1));
+		spr_drawnext = memalloc(sizeof(float) * SPR_MAX);
+	}
+	for (m = 0; m <= SPRMAT_MAX; m = m + 1)
+		spr_drawhead[m] = -1;
+	for (i = spr_n - 1; i >= 0; i = i - 1)
+	{
+		if (spr_kind[i] == SPRK_GLOW)
+			m = SPRMAT_MAX;
+		else
+			m = spr_mat[i];
+		spr_drawnext[i] = spr_drawhead[m];
+		spr_drawhead[m] = i;
+	}
+	spr_drawdirty = FALSE;
+};
+
 void() Sprite_Draw =
 {
-	local float  i, m, maxdist, drawn, dbg, mo;
+	local float  i, m, maxdist, drawn, dbg, mo, orientmode;
 	local vector eye, fwd, vright, vpright, vpup, r, u, dd;
 	local vector a, b, c, d, side, mid;
 	local float  flags, glare, useglare, useglare_on, underon, ub;
@@ -3179,6 +3262,8 @@ void() Sprite_Draw =
 	if (!spr_n && !beam_n && !fx_n && !xp_live && !wt_n && !sh_busy && !gib_live)
 		return;
 
+	if (spr_drawdirty || !spr_drawhead)
+		Sprite_DrawLists();
 	eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
 	fwd = v_forward;
@@ -3329,27 +3414,23 @@ void() Sprite_Draw =
 	// already printed it, so what it printed is last frame's finished total.
 	spr_dim_n = 0;
 	spr_under_n = 0;
+	orientmode = cvar("vbsp_sprite_orient");
 
 	for (m = 0; m < sprmat_n; m = m + 1)
 	{
 		if (sprmat_w[m] <= 0)
 			continue;
 
-		/*
-		  BUILD 55: once per material, not per sprite -- the loop is already
-		  material-major, so the cvar lookup costs at most 34 hash probes a frame
-		  on the library's worst map and buys a live A/B with no reload.
-		  2 (or anything else) = what the material said.
-		*/
+		// One live orientation snapshot for every batch; 2/other = material.
 		mo = sprmat_orient[m];
-		if (cvar("vbsp_sprite_orient") == 0)
+		if (orientmode == 0)
 			mo = SPRO_UPRIGHT;
-		else if (cvar("vbsp_sprite_orient") == 1)
+		else if (orientmode == 1)
 			mo = SPRO_PARALLEL;
 
-		for (i = 0; i < spr_n; i = i + 1)
+		for (i = spr_drawhead[m]; i >= 0; i = spr_drawnext[i])
 		{
-			if (spr_mat[i] != m || spr_hide[i])
+			if (spr_hide[i])
 				continue;
 			if (skyon && spr_sky[i] == SKY_BEHIND)
 			{
@@ -3542,10 +3623,8 @@ void() Sprite_Draw =
 	  this line.
 	===========================================================================
 	*/
-	for (i = 0; i < spr_n; i = i + 1)
+	for (i = spr_drawhead[SPRMAT_MAX]; i >= 0; i = spr_drawnext[i])
 	{
-		if (spr_kind[i] != SPRK_GLOW)
-			continue;
 		if (skyon && spr_sky[i] == SKY_BEHIND)
 		{
 			skyhid = skyhid + 1;

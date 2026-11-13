@@ -862,33 +862,45 @@ def _harden_db_files():
 WAL_LIMIT = 16 * 1024 * 1024
 
 
-def _refuse_newer_schema(conn):
+def _refuse_newer_schema(conn, *, current_only=False):
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version > SCHEMA_VERSION:
         raise RuntimeError("database schema %d is newer than this surfd (%d)"
                            % (version, SCHEMA_VERSION))
+    if current_only and version != SCHEMA_VERSION:
+        raise RuntimeError("worker requires database schema %d, found %d"
+                           % (SCHEMA_VERSION, version))
 
 
-def connect():
+def connect(*, existing_only=False, busy_timeout_ms=5000):
+    if type(busy_timeout_ms) is not int or not 0 <= busy_timeout_ms <= 2147483647:
+        raise ValueError("busy_timeout_ms must be an integer in 0..2147483647")
+    timeout = busy_timeout_ms / 1000.0
     probe = conn = None
     try:
-        if DB_PATH != ":memory:" and os.path.exists(DB_PATH):
+        uri = None
+        if DB_PATH != ":memory:" and (os.path.exists(DB_PATH) or existing_only):
             # An RW read/close can checkpoint an ahead WAL before refusal.
             uri = Path(DB_PATH).resolve().as_uri()
             if not uri.startswith("file:///"):
                 uri = "file:////" + uri[len("file://"):]  # UNC, empty authority
-            probe = sqlite3.connect(uri + "?mode=ro", uri=True, timeout=5.0)
+            probe = sqlite3.connect(uri + "?mode=ro", uri=True, timeout=timeout)
             probe.execute("BEGIN")
-            _refuse_newer_schema(probe)
-        conn = sqlite3.connect(DB_PATH, timeout=5.0)
-        _refuse_newer_schema(conn)
+            _refuse_newer_schema(probe, current_only=existing_only)
+        if existing_only:
+            if uri is None:
+                raise RuntimeError("worker requires an existing on-disk database")
+            conn = sqlite3.connect(uri + "?mode=rw", uri=True, timeout=timeout)
+        else:
+            conn = sqlite3.connect(DB_PATH, timeout=timeout)
+        _refuse_newer_schema(conn, current_only=existing_only)
         if probe is not None:
             probe.close()  # release before a supported DELETE -> WAL switch
             probe = None
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
-        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute("PRAGMA busy_timeout=%d" % busy_timeout_ms)
         # P1175: with an idle holder the last close no longer deletes the WAL, so a burst's
         # size would stay; the commit that restarts the log trims it to this.
         conn.execute("PRAGMA journal_size_limit=%d" % WAL_LIMIT)
@@ -1176,6 +1188,13 @@ def migrate():
     now: a v1 database upgraded by a v2 binary runs step 2 only, and a jump to
     SCHEMA_VERSION would stamp a fresh database as 2 having run step 1 alone.
     """
+    # A contained comparison inherits already initialized DATA. Repeating the
+    # migration body also repeats account/ranking policy, not store-only work.
+    if os.environ.get("_SURFD_SIMILARITY_WORKER") == "1":
+        import simcheck
+        if sys.argv[1:] != ["--similarity-worker"] or not simcheck.process_limits_present():
+            raise RuntimeError("invalid contained similarity worker import")
+        return
     conn = connect()
     try:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
@@ -7988,7 +8007,7 @@ social.register(app, types.SimpleNamespace(
     story_who=story_who))
 
 hidupload.register(app, types.SimpleNamespace(
-    log=log, clock=lambda: time.time(), rate_ok=rate_ok, rate_key=rate_key,
+    setting=setting, log=log, clock=lambda: time.time(), rate_ok=rate_ok, rate_key=rate_key,
     fail=lambda message, code: fail(code, message), evidence=lambda: EVIDENCE_DIR),
     tools=setting("SURFD_TOOLS") or os.path.join(
         setting("SURFD_GAME") or "/srv/nvme/ftesurf-server/game", "tools"))

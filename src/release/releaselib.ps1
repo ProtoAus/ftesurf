@@ -332,6 +332,8 @@ function ConvertFrom-PatchNotes ([string]$Text, [string]$Version, [string]$Date,
     foreach ($line in ($Text -split "`r?`n")) {
         $n++
         $isRel = $line.StartsWith('## '); $isPat = $line.StartsWith('### '); $isPt = $line.StartsWith('- ')
+        # A wrapped point's indented tail used to be skipped: 0.1.38's P1237/P1233 and 0.1.45's P1483 published cut mid-sentence.
+        if ($pat -and $line -match '^\s+\S') { throw "patch notes line ${n}: an indented line carries a point on -- each point is one line (split it at a sentence end)" }
         if (-not ($isRel -or $isPat -or $isPt)) { continue }
         if ($line -cmatch '[^\x20-\x7E]' -or $line.Contains('^')) { throw "patch notes line ${n}: printable ASCII only, and no ^" }
         if ($isRel) {

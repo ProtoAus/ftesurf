@@ -1,0 +1,35 @@
+--- a/surfd/mapwatch.py
++++ b/surfd/mapwatch.py
+@@ -157,7 +157,6 @@
+ import surfd as S       # noqa: E402
+ import zonefit          # noqa: E402
+ import mapmanifest      # noqa: E402
+-import tascontent       # noqa: E402
+ 
+ if hasattr(sys.stdout, "reconfigure"):
+     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+@@ -2026,8 +2025,11 @@
+ 
+ 
+ def content_publication():
+-    path = S.setting('SURFD_TAS_CONTENT_LEASE', '')
+-    return tascontent.publication(path) if path else contextlib.nullcontext()
++    # P1234: main's tascontent lease (P1172) is not in this closure. Unset on the Pi, where
++    # it was always this nullcontext; a configured lease refuses rather than going unfenced.
++    if S.setting('SURFD_TAS_CONTENT_LEASE', ''):
++        raise SystemExit('SURFD_TAS_CONTENT_LEASE is set, but this mapwatch has no tascontent')
++    return contextlib.nullcontext()
+ 
+ 
+ def publish(part, final, fresh):
+@@ -2659,6 +2661,10 @@
+                     help="replace a build or zone file that differs from the published one")
+     ap.add_argument("--go", action="store_true", help="fetch; else a plan")
+     a = ap.parse_args()
++    if S.setting('SURFD_TAS_CONTENT_LEASE', ''):
++        # P1234: before any download; content_publication() refuses too, as a backstop.
++        print("SURFD_TAS_CONTENT_LEASE is set, but this mapwatch has no tascontent: nothing run")
++        return 2
+ 
+     lock = take_lock(a.state)
+     if lock is None:

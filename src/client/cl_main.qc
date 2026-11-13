@@ -564,6 +564,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	// P1422: per 60th of a second, at most that many a frame.
 	registercvar("vbsp_sprite_skyrays", "64", CVAR_ARCHIVE);
 	registercvar("vbsp_sprite_skycull", "1");	// P1422: 0 = sky-test sprites out of view too (before P1422)
+	registercvar("vbsp_sprite_skyhold", "128");	// P1497: units a confirmed sky verdict may wait (16 = before P1497)
 	// One-frame dump of the material table and the cull result; clears itself,
 	// same idiom as zone_debug.
 	registercvar("vbsp_sprite_debug", "0");
@@ -1502,7 +1503,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	Vote_Track(evtype, scanx);      // Patch 372: observes only -- the draft below swallows key-ups
 	MPad_Track(evtype, scanx, chary);   // Patch 390: observes only -- the draft swallows deltas
 	if (evtype == IE_KEYDOWN)
-		if (TASTimeline_RecipeRepeat(scanx, chary)) return TRUE;
+		if (TASTimeline_RecipeRepeat(scanx, chary)) { TASOptUI_FieldRepeat(scanx, chary); return TRUE; }
 	if (evtype == IE_KEYUP)
 		if (TASTimeline_RecipeInput(evtype, scanx, chary)) return TRUE;
 	if (evtype == IE_KEYUP)
@@ -1524,6 +1525,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	// A focused name gets typing before chat binds, not the whole TAS panel.
 	if (evtype == IE_KEYDOWN)
 		if (TASTimeline_RecipeInput(evtype, scanx, chary)) return TRUE;
+	if (TASOptUI_FieldInput(evtype, scanx, chary)) return TRUE;     // the Jargon panel's X Y Z fields
 	if (Chat_InputEvent(evtype, scanx, chary, devid))
 		return TRUE;
 
@@ -1597,6 +1599,8 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (Results_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
 
+	if (TASOptUI_Wheel(evtype, scanx)) return TRUE;      // P1528: the Jargon waypoint list
+	if (TASOptUI_DropKey(evtype, scanx)) return TRUE;    // P1528: Esc closes an open Jargon dropdown
 	if (TASUI_Input(evtype, scanx, chary, devid)) return TRUE;
 	if (WPU_Input(evtype, scanx, chary, devid)) return TRUE;
 	if (av_open)
@@ -1874,6 +1878,7 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 		if (Chat_Paste(chary)) return TRUE;
 		if (ZoneEdit_Paste(chary)) return TRUE;
 		if (TASTimeline_RecipeInput(IE_KEYDOWN,0,chary)) return TRUE;
+		if (TASOptUI_FieldPaste(chary)) return TRUE;
 		if (Profile_Paste(chary)) return TRUE;
 		Av_Paste(chary);
 		return TRUE;
@@ -2105,7 +2110,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		RG_DrawBodies();            // P746: capture/state still advances above.
 	LOD_OverviewFrame(worldonly);   // P1345: retain authored LOD visibility without effects predraws.
 	Prox_Frame();                   // P810: before addentities/Prox_Delta, even in the overview.
-	addentities(MASK_ENGINE | MASK_VIEWMODEL);
+	addentities(TASOptViz_CamOn() ? MASK_ENGINE : (MASK_ENGINE | MASK_VIEWMODEL));     // P1483: no hands under a third-person Jargon camera
 	VM_Frame();                    // P1348: nonvisual preference/profile sync stays active.
 	if (worldonly)
 		WP_OverviewFrame();         // discard hidden bursts, recoil and inspect events.
@@ -2166,6 +2171,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// was not readable when WorldLoaded ran (Patch 207's ordering wart).
 	Trig_Frame();
 
+	TASOptUI_Frame();               // P1483: a start queued behind a stop (cl_tasoptui.qc)
 	TASOptViz_Cam();                // P1449: tas_viz_cam -- before anything reads the view
 	Spec_Trace();                   // Patch 385: what is actually drawn
 	Scores_LinesFrame();            // Patch 433: the board lines' downloads and builds
@@ -2219,6 +2225,23 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		sui_style_hud(scr);
 		if (!worldonly) Ov_Draw(scr);         // P1439: env_screenoverlay, under env_fade
 		if (!worldonly) MapMsg_DrawFade(scr); // P870: no map effects over the overview
+
+		// The 2D lines -- replay path (BUILD 43; hud_watch_path_mode gives it to this or the world-depth drawer), P433's
+		// world lines, trails, Jargon's -- and their labels (Line_FrameEnd) go UNDER the HUD and every panel (Lex: they covered
+		// it). A 2D polygon batch is drawn by the next 2D call or setproperty (PF_R_SetViewFlag), else at the end of
+		// SCR_DrawTwoDimensional. Mark energies read last frame's zero on the frame it moves (HUD_Draw's anchor/jump refs).
+		if (!worldonly)
+		{
+			if (rec_wt_on)
+				Watch_Path2D();
+			Scores_LinesDraw(); // P433: deferred world lines, before their labels.
+			Trail_Draw();
+			RG_DrawLines();
+			TASOptViz_Draw2D();
+			TASJargon_Draw2D();
+			LineGraph_WorldLabels();
+		}
+		Line_FrameEnd();
 
 		/*
 		  Patch 270.  NM_Frame samples the engine's received-delta counters and
@@ -2282,46 +2305,9 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		Chat_Draw(scr);
 
 		/*
-		  BUILD 43: the replay's path AGAIN, and this is not a duplicate.
-		  hud_watch_path_mode picks which of the two drawers does the work and
-		  the other returns immediately, so exactly one of these two calls ever
-		  draws anything.
-
-		  The screen-space one has to be after renderscene, because that is what
-		  2D means -- and the cost of being there is that it cannot be occluded
-		  by the world, which is the trade the essay at Watch_PathMode spells out.
-
-		  AFTER HUD_Draw, and the reason is mechanical rather than aesthetic.  A
-		  2D CSQC polygon is not drawn when it is submitted: R_BeginPolygon sets
-		  R2D_Flush and the batch is drawn when some later 2D draw call flushes
-		  it (pr_csqc.c:1671-1678, CSQC_PolyFlush's twod branch at :1605-1622).
-		  Sitting after the HUD guarantees there is such a call.  Before it there
-		  may not be, and rather than reason about which of Timer_Draw's or
-		  Watch_Draw's first primitive would do the flushing, this takes the
-		  position where the question does not arise.
-
-		  It is still before Timer_Draw and the replay chrome, so the panels you
-		  actually read stay on top of the line.
-		*/
-		if (!worldonly)
-		{
-			if (rec_wt_on)
-				Watch_Path2D();
-			Scores_LinesDraw(); // P433: deferred world lines, before their labels.
-			Trail_Draw();
-			RG_DrawLines();
-			TASOptViz_Draw2D();
-			TASJargon_Draw2D();
-			LineGraph_WorldLabels();
-		}
-		Line_FrameEnd();
-
-		/*
-		  Build 54.  The inspector's labels, and they are here for exactly the
-		  reason the block above gives: they are 2D, so they have to be after
-		  renderscene, and after HUD_Draw so that a later 2D call is guaranteed to
-		  flush the batch.  Their positions were projected in Ev_Draw, before
-		  renderscene, while the view matrix was set.
+		  Build 54.  The inspector's labels: 2D, so after renderscene.  Their
+		  positions were projected in Ev_Draw, before renderscene, while the view
+		  matrix was set.
 		*/
 		if (!worldonly)
 		{
@@ -2593,7 +2579,7 @@ float(string cmd) CSQC_ConsoleCommand =
 			else
 				localcmd(sprintf("p%g cmd tas seed%s\n", tsseat + 1, tsline));
 		}
-		else if (cmdargc >= 3 && cmdargc <= 24 && !strcmp(argv(1), "autosurf"))  // P1449: a path, then known words and numbers
+		else if (cmdargc >= 3 && cmdargc <= 48 && !strcmp(argv(1), "autosurf"))  // P1449: a path, then known words and numbers (P1531: 48)
 		{
 			tsline = argv(2);
 			for (tsi = 0; tsi < strlen(tsline); tsi = tsi + 1)
@@ -2606,8 +2592,8 @@ float(string cmd) CSQC_ConsoleCommand =
 			tsline = strcat(" ", tsline);
 			for (tsi = 3; tsi < cmdargc; tsi = tsi + 1)
 				if (argv(tsi) == "tube" || argv(tsi) == "look" || argv(tsi) == "tries" || argv(tsi) == "backs" || argv(tsi) == "nohop" || argv(tsi) == "join" || argv(tsi) == "rideknots" || argv(tsi) == "polish" || argv(tsi) == "low" || argv(tsi) == "apex" || argv(tsi) == "air" || argv(tsi) == "plan" || argv(tsi) == "wide" || argv(tsi) == "spots" || argv(tsi) == "pace" || argv(tsi) == "emin" || argv(tsi) == "start" || argv(tsi) == "zone" ||
-				    argv(tsi) == "sg" || argv(tsi) == "sy" || argv(tsi) == "sright" || argv(tsi) == "sflip" || argv(tsi) == "onjump" || argv(tsi) == "onexit" ||
-				    argv(tsi) == "finish" || argv(tsi) == "course" || FS_TASNumber(argv(tsi)))
+				    argv(tsi) == "sg" || argv(tsi) == "sy" || argv(tsi) == "sright" || argv(tsi) == "sflip" || argv(tsi) == "onjump" || argv(tsi) == "onexit" || argv(tsi) == "onkey" || argv(tsi) == "here" ||
+				    argv(tsi) == "finish" || argv(tsi) == "course" || argv(tsi) == "beam" || argv(tsi) == "turns" || argv(tsi) == "catch" || argv(tsi) == "safe" || argv(tsi) == "tight" || argv(tsi) == "parallel" || argv(tsi) == "free" || argv(tsi) == "launch" || argv(tsi) == "regions" || FS_TASNumber(argv(tsi)))
 					tsline = strcat(tsline, " ", argv(tsi));
 				else tsline = " !";
 			if (strstrofs(tsline, "!") >= 0)
@@ -2626,6 +2612,24 @@ float(string cmd) CSQC_ConsoleCommand =
 			if (argv(2) == "show" || !jg_n) TASJargon_RequestPlan();
 			if (argv(2) == "edit") { if (jg_fly) TASJargon_EditEnd(); else TASJargon_EditStart(); }
 		}
+		else if (cmdargc >= 3 && !strcmp(argv(1), "jargon") && (argv(2) == "go" || argv(2) == "arm" || argv(2) == "stop" || argv(2) == "play" ||
+		         argv(2) == "course" || argv(2) == "cam"))
+		{	// P1483 stream: the simple view's buttons as commands -- hotkeys, and the harness that tests them (cl_tasoptui.qc)
+			if (argv(2) == "course") { if (cmdargc == 4) TASOptUI_Course(stof(argv(3)) - 1); }
+			else if (argv(2) == "cam") { if (cmdargc == 4) cvar_set("tas_viz_cam", argv(3)); }
+			else if (argv(2) == "stop") TASOptUI_Stop(1);
+			else if (argv(2) == "play") { TASOptUI_Stop(1); localcmd("tas play\n"); }
+			else
+			{
+				tsline = (argv(2) == "go") ? TASOptUI_GoCmd() : TASOptUI_ArmCmd();
+				if (tsline == "") print("tas jargon: no guide run for this course (turn one on in the leaderboard)\n");
+				else TASOptUI_Go(tsline);
+			}
+		}
+		else if (cmdargc >= 3 && !strcmp(argv(1), "jargon") && (argv(2) == "start" || argv(2) == "mode" || argv(2) == "set" ||
+		         argv(2) == "air" || argv(2) == "del" || argv(2) == "undo" || argv(2) == "redo" || argv(2) == "list" ||
+		         argv(2) == "field" || argv(2) == "guide" || argv(2) == "guides" || argv(2) == "drop" || argv(2) == "options" || argv(2) == "takeover" || argv(2) == "redofrom"))
+			TASOptUI_Verb(cmdargc);     // the Jargon panel's own functions (cl_tasoptui.qc)
 		else if (cmdargc >= 2 && !strcmp(argv(1), "jargon"))       // P1449: Jargon is autosurf's name in the menus
 		{
 			tsline = "";

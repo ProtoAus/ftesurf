@@ -462,15 +462,21 @@ def cron(tools, sims=10):
 
 
 nsims = lambda: conn3.execute("SELECT COUNT(*) FROM sims").fetchone()[0]
-WHY3 = ("nothing to verify similarity skipped: no recsim.py found (tried: %s)"
-        % os.path.join(EMPTY3, "census", "recsim.py"))
+CONTAINED = sys.platform == "linux" and os.access("/usr/bin/prlimit", os.X_OK)
+WHY3 = (("nothing to verify similarity skipped: no recsim.py found (tried: %s)"
+         % os.path.join(EMPTY3, "census", "recsim.py")) if CONTAINED else
+        "nothing to verify similarity containment unavailable; no unbounded fallback")
 check("no recsim, cron tick 1: it finishes and its line says why", cron(EMPTY3), (0, WHY3))
 check("...tick 2 says it again (a new process each tick)", cron(EMPTY3), (0, WHY3))
 check("...and no pair was stored", nsims(), 0)
 check("--sims 0 disables the step: nothing said", cron(EMPTY3, sims=0), (0, "nothing to verify"))
 rc3, line3 = cron(os.path.join(REPO, "tools"))
-check("CONTROL: the same tick with recsim deployed stores the pair",
-      (rc3, line3.startswith("nothing to verify sims +1 "), nsims()), (0, True, 1))
+if CONTAINED:
+    check("CONTROL: the same contained tick with recsim deployed stores the pair",
+          (rc3, line3.startswith("nothing to verify sims +1 "), nsims()), (0, True, 1))
+else:
+    check("CONTROL: unsupported containment reports unavailable and stores no pair",
+          (rc3, line3, nsims()), (0, WHY3, 0))
 
 print("\n--- 9a. owner setup failure is unavailable, not a silent tick ---")
 

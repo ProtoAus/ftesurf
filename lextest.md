@@ -1,5 +1,79 @@
 # lextest.md — things waiting on a human
 
+## P1531 Jargon take over, live edits, options -- LIVE 13 Nov 01:47Z: 12 lobbies + both installs qw 3fb10353 / cs 3a52a7c9, codes.txt 129; owner check PENDING
+- Jargon tab: pick "When I press", Arm in any start box, surf a ramp or two, press Take over now (or bind a key to tas jargon takeover). The console says "took over" and Jargon goes on from there, in the stage you are in.
+- While Jargon runs, type a new X for a waypoint ahead, or add an air point: the console says Jargon aims there, or takes the air point at the next waypoint.
+- Options (the switch above the waypoint table): try Thorough or a wider path, then Start; hover a choice for what it does.
+- Known: Take over needs the guide's route within 400 u of where you are; Redo from a waypoint needs that waypoint reached in Jargon's last run.
+
+## P1528 Jargon panel, portals, starts -- LIVE 12 Nov 22:13Z: 12 lobbies + both installs qw 9693e177 / cs 2bfa1db8, codes.txt 128; owner check PENDING
+- TAS panel, Jargon tab: pick a stage in Course and a run in Guide run. In the waypoint table click a number, type, Enter: the row gets a * and the route moves. Pick a row, + Air point, type its numbers; Delete air point; Undo, Redo; Reset asks twice.
+- Arm with "At my jump" or "When I leave the start zone", or pick "It starts by itself" and Start. The keys display should show Jargon's keys while it drives. Stop, then Back to playing.
+- surf_colin_blaster_69000, main course: Jargon should go through each stage's end portal ("through the portal" in the console).
+- Known: copying the human's crouch stays off, at the start (tas_jargon_startduck: tensor2 stage 1's first ramp became unreachable) and in the search (tas_jargon_rowkeys: colin_blaster's first portal, 0 of 3 runs through with it, 2 of 2 without). Copied by time, a crouch lands where Jargon is, not where the human was.
+
+## P1520 lines under the HUD -- LIVE 12 Nov 09:20Z: 12 lobbies + both installs qw aff0f1eb / cs 5f4536d3, codes.txt 127; owner check PENDING
+- Watch a replay with its path on, or let Jargon run with Route and Search lines on (Jargon tab, Lines). The speedometer, strafe bar, Jargon's panel, chat and the boarding window should now cover the lines and their numbers, not the other way round.
+- Known: on the one frame your energy zero moves (leaving the start, a jump), the energy numbers on the lines can read the previous frame's zero.
+
+## P1521 controller-turn observation -- NOT deployed; owner check PENDING after reviewed deployment
+- If a real controller is available, record one short normal controller turn and one mouse-only turn with the same settings. Controls should feel unchanged; report any new input/analysis warnings. Keep the original captures for comparison; no reset or deletion is requested.
+- This is not yet a human pass or calibrated input classification. Literal-function controls and a full isolated Windows build do not replace actual controller/full-game acceptance. Independent reviews and deployment must happen first; tools/p1521-controller-identity.md.
+
+## P1519 Jargon stream view -- LIVE 12 Nov 04:41Z: 12 lobbies + both installs cs c4772add / qw 7c80108b, codes.txt 126; owner check PENDING
+- Open the TAS panel (Jargon tab, simple view). Pick a stage, press "Jargon surfs ...", try Chase. Switch stage mid-run, Stop, Back to playing: nothing should stick. Hotkeys: e.g. bind F5 "tas jargon go"
+- "I start it": stand in that stage's start box (!r, or !s N), press it, prestrafe and jump; Jargon takes over at your jump. Outside the box it says which box and arms nothing (your run is not marked TAS)
+- The start and crouch fixes stay OFF by default until the broad bench reports: in a local game, `set tas_jargon_startfix 1; set tas_jargon_rowkeys 1; set tas_jargon_startduck 1` (they took surf_sandtrap2 bonus 4 to a finish)
+
+## P1517 selected-side transparent sorting -- owner check PENDING; both Windows clients deployed12Nov05:02Z
+- After the native client update, take a normal surf_fairy run with glass, water, flowers and sprites enabled. Please report new flicker, missing surfaces or visibly wrong layering with the spot/time. Finite/native compiler controls and acting renderer smoke are not owner confirmation; the automated paused-camera comparison was not qualified.
+- Please say whether the heavy spots feel unchanged, smoother or worse. Subjective feel is not a measured0.1% percentage; controlled frame-tail measurement remains separate.
+
+## P1511 ambiguous-plane sorting -- BOTH Windows clients12Nov00:04UTC; owner check PENDING
+- After the native client update, take one normal surf_fairy run with water, glass and sprites enabled. They should draw in the same order without new flicker or missing surfaces; report the spot/time if not. Agent-inspected paused views and real replay smoke pass, not pixel equality or owner confirmation of every frame; an earlier alpha-only image-reader false pass was corrected.
+- Native FPS gain has NOT been measured: the normal quiet gate remained occupied. Please say whether the heavy spots feel unchanged, smoother or worse; do not turn subjective feel into a measured 0.1% percentage. P1507's separate bounded sprite A/B is recorded in its own report.
+
+## P1512 ordinary save-load view preview -- owner check PENDING
+- Start a fresh standalone map/session, or reconnect to the updated lobby, then try the normal load binding and plain console `sl_load` several times with prediction enabled. Does the view stay at the saved spot until the load reply, without the old early snap? A queued load may wait without a new preview; it must still load normally.
+- This fixes a demonstrated render-preview ACK issue, not a proven cause of Mark's body/jitter/crash report. His exact bind, map, complete prediction-error text and retest after this P1512 QC rollout are still pending. The HUD displays the local game/menu release version, not this QC patch number; do not use it as proof that P1512 CSQC loaded. Keep the P1508 standalone/fail-restart comparison below; no human pass is recorded.
+
+## P1508 queued snapshot delivery -- rollout/runtime status in tools/p1508-snapshot-delivery.md; owner check PENDING
+- After the reported lobby runs P1508, use the same map, saved location and bound command: load once in place, then fail/restart/load five times. Does the view still shake, load the wrong place, freeze or return to a blank menu? Send the exact client version, bind and error/short clip if it recurs. Do not delete saves or reset configs for this check.
+- Native packet controls and physics/compatibility checks do not prove Mark's exact cause, a rare full-game exit fixed, or real high-ping camera acceptance. Earlier requested lead-in comparison remains pending unless actually reported by the owner.
+
+## P1507 stable sprite draw lists -- owner check PENDING, rollout recorded in tools/p1507-sprite-drawlists.md
+- On surf_fairy with sprites and light glows enabled, lights should look and fade exactly as before. A quick normal run is enough; please report any missing, flickering or reordered lights. Automated slot-order tests and agent-inspected screenshots are not owner confirmation.
+- On your next normal surf_kitsune_css run, if the large hitch recurs, please give the spot and rough elapsed time. A later full warm and diagnostic pass each reached151.351s without reproducing the earlier spontaneous hitch; the largest captured interval was a diagnostic status-printing control, not a gameplay fix. This is not owner observation or a whole-map performance pass.
+
+## P1504 glare budget -- 12 lobbies + both installs (cs 267e9b9b) 11 Nov 12:51Z; owner check PENDING
+- surf_fairy with glows on: glows should fade in and out as before (perhaps a frame later behind a corner in the
+  heaviest spots). `vbsp_sprite_tracems 0` turns the budget off to compare.
+
+## P1501 props load behind the loading screen -- both installs (exe 32a64a94, plugin 70b9810f) 11 Nov 09:04Z; owner check PENDING
+- First play of surf_fairy (or any prop-heavy Source map) after this update: the loading screen may take a moment
+  longer, then the first seconds should have no stutter where props come into view (your dump had a 52.83 ms
+  frame with a shader compile). Props should look exactly as before; `hl2_lt_prewarm 0` restores lazy prop loading.
+
+## P1483 Jargon search -- 12 lobbies + both installs 11 Nov ~20:05 local (cs 9b89f51e / qw dc411980, main 46264909)
+- surf_tensor2, Jargon, Course: Stage 2, "Surf Stage 2 from its start" with a stage-2 replay: it should end "finished
+  stage 2 in 0:12.x" (bench: 0:12.825 and 0:12.330 against the replay's 12.570), sometimes after trying the finish
+  again.
+- Run the same course twice with the same settings: the first stretches print the same speeds both times. Press Start
+  again after a "stuck": the speeds differ (new searches).
+- Stop a course half way (it autosaves), then Start it again and stop earlier: Continue still offers the further
+  stretch.
+- Route editor (Jargon's Edit): ramps, bhops and your own air points are handles; dim blue planned points are not.
+
+## P1497/P1499 sky-test back-off, mouse-pad trail -- 12 lobbies + both installs (cs 4e593c7e) 11 Nov; owner check PENDING
+- Maps with light shafts or sprites near the sky (surf_eternity's spotlight shafts, or surf_fairy with
+  `vbsp_sprites 1`): a shaft or sprite should still vanish behind the skybox wall. It may now show through for a
+  moment (well under a tenth of a second) when you fly past the sky's edge; `vbsp_sprite_skyhold 16` is the old
+  behaviour to compare. The mouse pad (bottom right) should look exactly as before.
+
+P1492–P1495 are deployed to both Windows installs and all12lobbies (11 Nov;
+tools/playerfix-20261111-delivery.md). The following visual/feel checks remain
+PENDING: rollout/hash/control-flow proof does not turn them into human passes.
+
 ## P1495 remembered knife / black skin — owner check PENDING
 - With a linked saved enabled combo, change map: equip should return only after setup is ready. Drop, then change map: stay unarmed until choosing a knife again. A newer gun/Drop must win even if a delayed setup/content reply arrives. Opt-out is local per install; combo remains cloud-linked.
 - Give the same knife/finish/hands/sleeve before and after a map change; please report the exact affected combo for the black case. No shader/renderer/lightmap change or actual visual/performance pass: existing shared rate-limited lighting stays unchanged. Do not claim all combinations render identically or the reported black skin fixed.

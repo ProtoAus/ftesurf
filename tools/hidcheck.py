@@ -74,7 +74,9 @@ Usage:
 import argparse
 import glob
 import io
+import math
 import os
+import struct
 import sys
 
 SURFDIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -158,6 +160,9 @@ WINDOWS_PSEUDO = {"system", "di", "di7"}
 PSEUDO_DEVICES = WINDOWS_PSEUDO | {"x11", "dga", "wayland"}
 # Patch 387: an X11 XTEST slave, listed but never counted as hardware.
 PSEUDO_TYPES = {"xtest"}
+# These classes route m/a records into the pointer array. Keyboard and joy IDs
+# are allocated independently, even when the numbers happen to be equal.
+POINTER_TYPES = {"mouse", "touchpad", "tablet", "xtest"}
 # Patch 387: only a Linux backend enumerates `keyboard - "x11"|"wayland"`.
 NONWIN_KEYBOARDS = {"x11", "wayland"}
 # K_MOUSE1-5, K_MWHEELDOWN/UP, K_MOUSE6-10 (engine client/keys.h).
@@ -168,33 +173,108 @@ MOUSE_KEYS = set(range(178, 185)) | set(range(265, 270))
 PAD_BUTTONS = set(range(178, 183))
 
 
-def _unquote_pair(rest):
-    """'"1" "0"' -> ('1', '0').  The writer quotes with COM_QuotedString because
-    a cvar value can contain spaces, so this cannot just be split()."""
+def _cvar_tokens(rest, *, require_pair=False):
+    """Decode COM_QuotedString's default plain or backslash-prefixed form.
+
+    Only the prefixed form interprets escapes; plain backslashes are literal.
+    Native legacy truncation cannot be reconstructed by decoding these tokens.
+    """
+    escapes = {"n": "\n", "r": "\r", "t": "\t", "'": "'",
+               '"': '"', "\\": "\\", "$": "$"}
     out = []
     i = 0
-    while len(out) < 2 and i < len(rest):
-        while i < len(rest) and rest[i] == " ":
-            i += 1
-        if i < len(rest) and rest[i] == '"':
-            j = i + 1
-            buf = []
-            while j < len(rest) and rest[j] != '"':
-                if rest[j] == "\\" and j + 1 < len(rest):
-                    j += 1
-                buf.append(rest[j])
-                j += 1
-            out.append("".join(buf))
-            i = j + 1
-        else:
-            j = rest.find(" ", i)
-            if j < 0:
-                j = len(rest)
-            out.append(rest[i:j])
-            i = j
     while len(out) < 2:
-        out.append("")
-    return out[0], out[1]
+        while i < len(rest) and rest[i].isspace():
+            i += 1
+        if i == len(rest):
+            break
+        start = i
+        escaped = rest.startswith('\\"', i)
+        if escaped or rest[i] == '"':
+            i += 2 if escaped else 1
+            buf = []
+            while i < len(rest) and rest[i] != '"':
+                ch = rest[i]
+                i += 1
+                if escaped and ch == "\\":
+                    if i == len(rest) or rest[i] not in escapes:
+                        raise ValueError("incomplete or unknown escape")
+                    ch = escapes[rest[i]]
+                    i += 1
+                buf.append(ch)
+            if i == len(rest):
+                raise ValueError("missing closing quote")
+            i += 1
+            if i < len(rest) and not rest[i].isspace():
+                raise ValueError("characters after closing quote")
+            out.append(("".join(buf), rest[start:i], escaped))
+        else:
+            j = i
+            while i < len(rest) and not rest[i].isspace():
+                i += 1
+            out.append((rest[j:i], rest[start:i], False))
+    if require_pair and len(out) != 2:
+        raise ValueError("missing value or default")
+    return out
+
+
+def _unquote_pair(rest, *, require_pair=False):
+    values = [token[0] for token in _cvar_tokens(rest, require_pair=require_pair)]
+    return tuple((values + ["", ""])[:2])
+
+
+def _invalidate_cvar_change(overrides, tokens):
+    """A rejected change must not leave an old angle setting in force."""
+    if len(tokens) > 1 and tokens[1] in IDENTITY_CVARS:
+        name = tokens[1]  # missing dt: the setting name shifted left
+    else:
+        name = tokens[2] if len(tokens) > 2 else None
+    if name is not None and name.lstrip("\\").startswith('"'):
+        name = None  # a quoted value in the name slot cannot identify the setting
+    names = IDENTITY_CVARS if name is None else ((name,) if name in IDENTITY_CVARS else ())
+    return dict(overrides, **dict.fromkeys(names))  # preserve earlier view snapshots
+
+
+def _identity_capture_unknown(name, token, capacity):
+    """A legacy clipped numeric prefix cannot prove an effective identity cvar.
+
+    Encoded size matters: the escaped writer can stop one byte before the plain
+    boundary. A terminator/character already seen fixes the effective value
+    independently of any missing suffix; keep those comparisons, not blanket
+    long-value silence.
+    """
+    if name not in IDENTITY_CVARS:
+        return False
+    value, wire, escaped = token
+    if not escaped and not wire.startswith('"'):
+        return False
+    if len(wire.encode("utf-8")) < capacity - (2 if escaped else 1):
+        return False
+    integer = name == "leftisright"
+    i = 0
+    if not integer:
+        while i < len(value) and value[i] == " ":
+            i += 1
+    if value[i:i + 1] == "-":
+        i += 1
+    if value[i:i + 2] in ("0x", "0X"):
+        i += 2
+        digits = "0123456789abcdefABCDEF"
+    elif value[i:i + 1] == "'":
+        return len(value) <= i + 1
+    else:
+        digits = "0123456789" if integer else "0123456789."
+    while i < len(value) and value[i] in digits:
+        i += 1
+    return i == len(value)
+
+
+def _device_namespace(dtype):
+    if dtype in POINTER_TYPES:
+        return "pointer"
+    if dtype == "joy":
+        return "joystick"
+    return dtype
 
 
 def parse_dev_line(line):
@@ -271,6 +351,9 @@ KINDS = {
     "d": 2,     # rawdx rawdy
 }
 
+BACKEND_COUNT_FIELDS = {"i": ("injected", "unenum"), "b": ("legacy_presses",),
+                        "p": ("touchpad", "touchpad_digitizer_reports", "touchpad_releases")}
+
 # 'v' flag bits.  A frame with any of these set is one the yaw identity does NOT
 # apply to, and saying which is the whole reason the column exists.
 VF_STRAFE_X = 1     # counts went to sidemove, not yaw (+strafe / lookstrafe)
@@ -282,6 +365,10 @@ VF_FREE     = 4     # the cursor was free (menu/console); counts reached neither
 # tap; the engine's own gate carries the same term (in_generic.c, the r_xflip
 # factor in IN_Journal_CheckIdentity's pred).
 IDENTITY_CVARS = ("sensitivity", "m_yaw", "m_pitch", "m_filter", "m_accel", "leftisright")
+
+
+class _NativeCharUnavailable(ValueError):
+    """The journal does not identify native char signedness or byte encoding."""
 
 
 def q_atof(s):
@@ -304,7 +391,11 @@ def q_atof(s):
             i += 1
         return val * sign
     if s[i:i + 1] == "'":
-        return sign * (ord(s[i + 1]) if i + 1 < n else 0)
+        char = ord(s[i + 1]) if i + 1 < n else 0
+        if char > 127:
+            # Native str[1] is one char byte, NOT this Unicode codepoint.
+            raise _NativeCharUnavailable("unrecorded native quoted-byte value")
+        return sign * char
     decimal, total = -1, 0
     while i < n:
         c = s[i]
@@ -357,6 +448,29 @@ EVENT_KINDS = {"m", "a", "+", "-", "x", "j"}
 TIME_EPS = 2e-6
 
 
+def _finite_clock(value):
+    value = float(value)
+    if not math.isfinite(value):
+        raise ValueError("non-finite clock")
+    return value
+
+
+def _native_unsigned_count(token):
+    value = int(token)
+    # Native closing/drop counters use %u; appended backend fields have -1 sentinels.
+    if not 0 <= value <= 0xFFFFFFFF:
+        raise ValueError("outside native unsigned count range")
+    return value
+
+
+def _native_report_delta(token):
+    value = int(token)
+    # Monotone count deltas use signed %i; backend -1 belongs to the trailer.
+    if not 0 <= value <= 0x7FFFFFFF:
+        raise ValueError("outside native non-negative report range")
+    return value
+
+
 class Report:
     def __init__(self, path):
         self.path = path
@@ -406,6 +520,7 @@ def check_hid(path, verbose=False, *, data=None):
     devs = []              # Patch 303: repeating, so a list and not `head`
     rendercvars = []       # Patch 310: (name, value, default)
     inputcvars = []        # Patch 312: (name, value, default) -- the input pipeline
+    left_capture_unknown = False
     cvar_changes = []      # Patch 310/312: (name, value), in order
     i = 1
     while i < len(lines):
@@ -423,13 +538,20 @@ def check_hid(path, verbose=False, *, data=None):
             # key, because the two answer different questions -- what the player
             # could SEE, versus what their counts BECAME -- and a reader must be
             # able to tell them apart without a table of its own.
-            rp = lines[i].split(None, 3)
-            if len(rp) < 4:
+            rp = lines[i].split(None, 2)
+            if len(rp) < 3:
                 r.fault("malformed %r line: %r" % (parts[0], lines[i]))
             else:
-                val, dfl = _unquote_pair(rp[2] + " " + rp[3])
-                (rendercvars if parts[0] == "render"
-                 else inputcvars).append((rp[1], val, dfl))
+                try:
+                    tokens = _cvar_tokens(rp[2], require_pair=True)
+                    val, dfl = tokens[0][0], tokens[1][0]
+                except ValueError as exc:
+                    r.fault("malformed quoted cvar in %r header: %s" % (parts[0], exc))
+                else:
+                    (rendercvars if parts[0] == "render"
+                     else inputcvars).append((rp[1], val, dfl))
+                    if parts[0] == "input" and rp[1] == "leftisright":
+                        left_capture_unknown |= _identity_capture_unknown("leftisright", tokens[0], 64)
             i += 1
             continue
         if parts[0] == "dev":
@@ -459,10 +581,16 @@ def check_hid(path, verbose=False, *, data=None):
 
     r.info["map"] = head["map"]
     try:
-        r.info["base"] = float(head["base"])
+        r.info["base"] = _finite_clock(head["base"])
     except ValueError:
-        r.fault("base is not a number: %r" % head["base"])
+        r.fault("base is not a finite number: %r" % head["base"])
         return r
+
+    if left_capture_unknown:
+        head["leftisright"] = None
+        r.fault("header: leftisright capture unavailable at legacy boundary; "
+                "exact identity unproved")
+        r.info["identity_capture_unavailable"] = ["leftisright"]
 
     # Patch 387: a Linux journal. Decided by the device table, not by a value a
     # Windows player can set, and never when the table holds a Windows name (a
@@ -562,9 +690,16 @@ def check_hid(path, verbose=False, *, data=None):
 
     # ---- body --------------------------------------------------------------
     clock = 0.0          # running sum of dt, seconds since base
+    bad_clock = False   # no timing measurements from unusable clock records
+    bad_boundary_clock = False  # unsupported shape withholds closure, not prefix rates
+    bad_close_time = False  # finite but contradictory whole duration
+    bad_trunc_time = False  # cap exists even if its absolute timestamp disagrees
+    prefix_clock = None     # recorded relative prefix before the closing delta
     events = 0
     frames = 0
     dropped = 0
+    bad_loss = False  # no complete loss measurement from rejected declarations
+    bad_backend_counts = set()  # unavailable whole quantities, never a subtotal/0
     hidden = 0
     injected = 0        # Patch 306: summed from the 'i' records
     unenum = 0
@@ -585,7 +720,10 @@ def check_hid(path, verbose=False, *, data=None):
     saw_prev = False
     legacy_states = []  # Patch 307: every 'g' transition, in order
     trailer = None
+    # Recognized boundaries survive unusable clocks/fields.
+    end_seen = False
     truncated = None
+    cap_seen = False
     first_f = None
     last_f = None
     seqs = []
@@ -602,11 +740,15 @@ def check_hid(path, verbose=False, *, data=None):
     j_mx = j_my = 0.0    # running sum of this window's 'm' counts
     j_nm = j_a = 0       # how many 'm' and 'a' records fell in it
     j_raw = None         # the window's 'd' record, if it had one
+    bad_pointer = False  # no complete counts join from unusable coordinates
+    bad_observers = set()  # unusable d/v arithmetic must not become measurements
+    bad_key_observer = False  # lost state/counts cannot establish whole-run coverage
     devmaps = []         # (type, id, name) -- Patch 303, the resolved table
     # devid -> event count, for the attribution check below.  SPLIT BY CLASS,
     # and that split is a bug fix rather than tidiness -- see the device section.
     # A key event's devid is not a device identity at all on the legacy path.
-    devids_used = {}        # pointer devices: m / a / j
+    devids_used = {}        # pointer devices: m / a, never j
+    devids_joy = {}         # independent joystick namespace: j
     devids_key = {}         # keyboards: + / - / x
     devids_btn = {}         # Patch 468: raw mouse buttons, by their pointer's devid
     devids_btnplus = {}     # ...and the presses among them
@@ -619,9 +761,10 @@ def check_hid(path, verbose=False, *, data=None):
         kind = tok[0]
 
         if kind == "end":
-            if trailer is not None:
+            if end_seen:
                 r.fault("line %d: a second 'end' record" % (lineno + 1))
                 continue
+            end_seen = True
             # end <dt> <abs> <events> <frames> <dropped> <hidden>
             #                                  [<injected> <unenum> [<legacybtn> [<touchpad> <padreports>]]]
             # Patch 306 appended the last two. A pre-306 file has 7 tokens and
@@ -629,29 +772,55 @@ def check_hid(path, verbose=False, *, data=None):
             # treated it as zero would report "no injection seen" about a file
             # that could not see any.
             if len(tok) not in (7, 9, 10, 12):
+                bad_boundary_clock = True
                 r.fault("line %d: 'end' has %d fields, expected 7 (pre-306), "
                         "9 (pre-307), 10 (pre-468) or 12" % (lineno + 1, len(tok)))
                 continue
             try:
                 dt = int(tok[1])
-                trailer = [float(tok[2])] + [int(x) for x in tok[3:]]
-            except ValueError:
-                r.fault("line %d: 'end' has a non-numeric field" % (lineno + 1))
+                if dt < 0:
+                    raise ValueError("negative clock delta")
+                elapsed = _finite_clock(clock + dt / 1000000.0)
+                # Every counter is validated separately; none can poison this clock.
+                pending = [_finite_clock(tok[2])] + tok[3:]
+            except (ValueError, OverflowError):
+                bad_clock = True
+                r.fault("line %d: 'end' has an unusable clock" % (lineno + 1))
                 continue
-            clock += dt / 1000000.0
+            prefix_clock = clock
+            trailer, clock = pending, elapsed
             continue
 
         if kind == "truncated":
+            # The producer emits one cap marker, before the closing trailer.
+            if end_seen:
+                r.fault("line %d: 'truncated' after 'end'" % (lineno + 1))
+                continue
+            if cap_seen:
+                r.fault("line %d: a second 'truncated' record" % (lineno + 1))
+                continue
+            cap_seen = True
             # truncated <dt> <abs>
             if len(tok) != 3:
+                bad_boundary_clock = True
                 r.fault("line %d: 'truncated' has %d fields, expected 3"
                         % (lineno + 1, len(tok)))
                 continue
             try:
-                clock += int(tok[1]) / 1000000.0
-                truncated = float(tok[2])
-            except ValueError:
-                r.fault("line %d: 'truncated' has a non-numeric field" % (lineno + 1))
+                dt = int(tok[1])
+                if dt < 0:
+                    raise ValueError("negative clock delta")
+                elapsed = _finite_clock(clock + dt / 1000000.0)
+                absolute = _finite_clock(tok[2])
+            except (ValueError, OverflowError):
+                bad_clock = True
+                r.fault("line %d: 'truncated' has an unusable clock or non-numeric field" % (lineno + 1))
+            else:
+                clock, truncated = elapsed, absolute
+                if abs(absolute - elapsed) > TIME_EPS:
+                    bad_trunc_time = True
+                    r.fault("line %d: truncation says t=%.6f but the recorded dt sum is %.6f"
+                            % (lineno + 1, absolute, elapsed))
             continue
 
         if kind == "devmap":
@@ -660,7 +829,7 @@ def check_hid(path, verbose=False, *, data=None):
             # so it is taken here rather than falling through to the dt parse
             # below -- which would read "devmap keyboard - ..." as a record whose
             # dt is the word `keyboard`.
-            if trailer is not None:
+            if end_seen:
                 r.fault("line %d: 'devmap' after 'end'" % (lineno + 1))
                 continue
             d = parse_dev_line(lines[lineno])
@@ -674,76 +843,155 @@ def check_hid(path, verbose=False, *, data=None):
             r.note("line %d: unknown record kind %r" % (lineno + 1, kind))
             continue
 
-        if trailer is not None:
+        if end_seen:
             r.fault("line %d: %r record after 'end'" % (lineno + 1, kind))
+            continue
+        if cap_seen:
+            r.fault("line %d: %r record after 'truncated'" % (lineno + 1, kind))
             continue
 
         if len(tok) < 2:
             r.fault("line %d: %r has no dt" % (lineno + 1, kind))
+            bad_backend_counts.update(BACKEND_COUNT_FIELDS.get(kind, ()))
+            if kind in ("m", "a"):
+                bad_pointer = True
+            if kind == "!":
+                bad_loss = True
+            if kind in ("y", "o"):
+                bad_key_observer = True
+            if kind == "c":
+                idover = _invalidate_cvar_change(idover, tok)
+            if kind in ("d", "v"):
+                bad_observers.add(kind)
             continue
         try:
             dt = int(tok[1])
         except ValueError:
+            bad_clock = True
             r.fault("line %d: dt is not an integer: %r" % (lineno + 1, tok[1]))
+            bad_backend_counts.update(BACKEND_COUNT_FIELDS.get(kind, ()))
+            if kind == "!":
+                bad_loss = True
+            if kind in ("y", "o"):
+                bad_key_observer = True
+            if kind == "c":
+                idover = _invalidate_cvar_change(idover, tok)
+            if kind in ("m", "a"):
+                bad_pointer = True
+            if kind in ("d", "v"):
+                bad_observers.add(kind)
             continue
         if dt < 0:
+            bad_clock = True
             r.fault("line %d: negative dt %d -- time does not run backwards"
                     % (lineno + 1, dt))
+            bad_backend_counts.update(BACKEND_COUNT_FIELDS.get(kind, ()))
+            if kind == "!":
+                bad_loss = True
+            if kind in ("y", "o"):
+                bad_key_observer = True
+            if kind == "c":
+                idover = _invalidate_cvar_change(idover, tok)
+            if kind in ("m", "a"):
+                bad_pointer = True
+            if kind in ("d", "v"):
+                bad_observers.add(kind)
             continue
         dts.append(dt)
-        clock += dt / 1000000.0
+        try:
+            clock = _finite_clock(clock + dt / 1000000.0)
+        except (ValueError, OverflowError):
+            bad_clock = True
+            r.fault("line %d: unusable clock delta; timing unavailable" % (lineno + 1))
+            # Still parse finite payloads; losing a clock is not losing counts.
 
         want = KINDS[kind]
         if want is not None and (len(tok) < 2 + want if kind == "c"
                                  else len(tok) != 2 + want):
             r.fault("line %d: %r has %d fields, expected %d"
                     % (lineno + 1, kind, len(tok), 2 + want))
+            bad_backend_counts.update(BACKEND_COUNT_FIELDS.get(kind, ()))
+            if kind == "!":
+                bad_loss = True
+            if kind in ("y", "o"):
+                bad_key_observer = True
+            if kind == "c":
+                idover = _invalidate_cvar_change(idover, tok)
+            if kind in ("m", "a"):
+                bad_pointer = True
+            if kind == "d":
+                bad_observers.add(kind)
             continue
 
-        # Patch 312: the counts join. Accumulated here, beside the 'v' snapshot it
-        # feeds, rather than down in the catch-all -- 'm' has never had its dx/dy
-        # parsed by anything before now.  'd' MUST be handled with its own
-        # `continue`: the catch-all counts every unclaimed kind as an event, and a
-        # 'd' is an annotation, so letting it fall through would inflate `events`
-        # and break the trailer agreement it has nothing to do with.
-        if kind == "m" and len(tok) == 5:
+        # Parse BOTH coordinates before changing the window. The catch-all only
+        # counts/attributes events; it cannot validate unusable pointer values.
+        if kind in ("m", "a"):
             try:
-                j_mx += float(tok[3])
-                j_my += float(tok[4])
-                j_nm += 1
+                x, y = float(tok[3]), float(tok[4])
+                if not (math.isfinite(x) and math.isfinite(y)):
+                    raise ValueError
             except ValueError:
-                pass    # the catch-all below already faults on a bad payload
-        elif kind == "a":
-            # An abs position can put counts into the view that were journalled
-            # as 'a' and never as 'm' (the engine derives a delta from successive
-            # positions), so a window holding one cannot be joined.
-            j_a += 1
+                bad_pointer = True
+                r.fault("line %d: %r pointer coordinates are non-numeric or "
+                        "non-finite; complete input is unavailable, not an "
+                        "angle accusation" % (lineno + 1, kind))
+            else:
+                if kind == "m":
+                    mx, my = j_mx + x, j_my + y
+                    if math.isfinite(mx) and math.isfinite(my):
+                        j_mx, j_my = mx, my
+                        j_nm += 1
+                    else:
+                        bad_pointer = True
+                        r.fault("line %d: pointer coordinates overflow the counts "
+                                "sum; complete input is unavailable" % (lineno + 1))
+                else:
+                    # Absolute positions are a different quantity from raw
+                    # deltas; a valid absolute window remains unjoinable.
+                    j_a += 1
         elif kind == "d":
+            # Annotation only: consume it before the catch-all event counter.
             try:
-                j_raw = (float(tok[2]), float(tok[3]))
+                raw = (float(tok[2]), float(tok[3]))
             except ValueError:
+                bad_observers.add("d")
                 r.fault("line %d: 'd' has a non-numeric field" % (lineno + 1))
+            else:
+                if all(math.isfinite(value) for value in raw):
+                    j_raw = raw
+                else:
+                    bad_observers.add("d")
+                    r.fault("line %d: non-finite raw observation; counts join "
+                            "unavailable, not a counts accusation" % (lineno + 1))
             continue
 
         if kind == "v":
             # v <dt> <dx> <dy> <flags> <pitch> <yaw>   -- engine Patch 293
             try:
                 if len(tok) not in (7, 9):
+                    bad_observers.add("v")
                     r.fault("line %d: 'v' has %d fields, expected 7 (pre-305) "
                             "or 9" % (lineno + 1, len(tok)))
                     continue
                 kp = float(tok[7]) if len(tok) == 9 else None
                 ky = float(tok[8]) if len(tok) == 9 else None
-                views.append((lineno + 1, float(tok[2]), float(tok[3]),
-                              int(tok[4]), float(tok[5]), float(tok[6]), kp, ky,
-                              idover))
+                view = (lineno + 1, float(tok[2]), float(tok[3]),
+                        int(tok[4]), float(tok[5]), float(tok[6]), kp, ky, idover)
+                views.append(view)  # descriptions, not comparative measurements
+                if any(value is not None and not math.isfinite(value)
+                       for value in view[1:3] + view[4:8]):
+                    bad_observers.add("v")
+                    r.fault("line %d: non-finite view observation; angle/counts "
+                            "comparisons unavailable, not an angle accusation"
+                            % (lineno + 1))
                 # Patch 312: close the window this 'v' ends. The expected raw is
                 # the 'd' record if the frame had one and the v's own delta if it
                 # did not -- a missing 'd' IS the claim that they are equal.
-                exp = j_raw if j_raw is not None else (float(tok[2]), float(tok[3]))
+                exp = j_raw if j_raw is not None else (view[1], view[2])
                 joins.append((lineno + 1, j_mx, j_my, exp[0], exp[1],
-                              int(tok[4]), j_nm, j_a, j_raw is not None))
+                              view[3], j_nm, j_a, j_raw is not None))
             except ValueError:
+                bad_observers.add("v")
                 r.fault("line %d: 'v' has a non-numeric field" % (lineno + 1))
             j_mx = j_my = 0.0
             j_nm = j_a = 0
@@ -753,10 +1001,11 @@ def check_hid(path, verbose=False, *, data=None):
         if kind == "f":
             frames += 1
             try:
-                abst = float(tok[2])
+                abst = _finite_clock(tok[2])
                 seq = int(tok[3])
             except ValueError:
-                r.fault("line %d: 'f' has a non-numeric field" % (lineno + 1))
+                bad_clock = True
+                r.fault("line %d: 'f' has an unusable clock or non-numeric field" % (lineno + 1))
                 continue
             seqs.append(seq)
             if first_f is None:
@@ -783,32 +1032,43 @@ def check_hid(path, verbose=False, *, data=None):
                 clock = abst
         elif kind == "!":
             try:
-                dropped += int(tok[2])
+                dropped += _native_unsigned_count(tok[2])
             except ValueError:
-                r.fault("line %d: '!' count is not a number" % (lineno + 1))
+                bad_loss = True
+                r.fault("line %d: '!' count is not a native unsigned 32-bit count" % (lineno + 1))
         elif kind == "i":
             # Patch 306. Deliberately NOT counted as an event: these reports
             # were thrown away by the backend and never became input.
-            try:
-                injected += int(tok[2])
-                unenum += int(tok[3])
+            deltas = {}
+            for name, token in zip(BACKEND_COUNT_FIELDS[kind], tok[2:]):
+                try:
+                    deltas[name] = _native_report_delta(token)
+                except ValueError:
+                    bad_backend_counts.add(name)
+                    r.fault("line %d: 'i' %s is not a usable native non-negative count"
+                            % (lineno + 1, name))
+            injected += deltas.get("injected", 0)
+            unenum += deltas.get("unenum", 0)
+            if len(deltas) == 2:
                 saw_i = True
-            except ValueError:
-                r.fault("line %d: 'i' counts are not numbers" % (lineno + 1))
         elif kind == "b":
             # Patch 307. NOT an event: the K_MOUSE1 it produced is journalled
             # separately as its own '+' record and is counted there. This line
             # says only that raw input could not vouch for that press.
             try:
-                legacybtn += int(tok[2])
-                saw_b = True
+                delta = _native_report_delta(tok[2])
             except ValueError:
-                r.fault("line %d: 'b' count is not a number" % (lineno + 1))
+                bad_backend_counts.add("legacy_presses")
+                r.fault("line %d: 'b' is not a usable native non-negative count" % (lineno + 1))
+            else:
+                legacybtn += delta
+                saw_b = True
         elif kind in ("y", "o"):
             # Patch 1424. NOT events, like 'b'. The engine writes both with dt 0
             # (an older hidcheck faults any other dt), so a nonzero one is not
             # this engine's file.
             if tok[1] != "0":
+                bad_key_observer = True
                 r.fault("line %d: %r carries dt %s; the engine writes it with dt 0"
                         % (lineno + 1, kind, tok[1]))
             try:
@@ -825,6 +1085,7 @@ def check_hid(path, verbose=False, *, data=None):
                     kbdnohandle += dn
                     saw_y = True
             except ValueError:
+                bad_key_observer = True
                 r.fault("line %d: %r counts are not non-negative numbers"
                         % (lineno + 1, kind))
         elif kind == "p":
@@ -832,27 +1093,52 @@ def check_hid(path, verbose=False, *, data=None):
             # reached the game is journalled as 'm'/'+'/'-' on the touchpad's
             # devid; this says how many reports the window let through and how
             # many digitizer reports armed it.
-            try:
-                dacc, ddig, drel = int(tok[2]), int(tok[3]), int(tok[4])
-            except (ValueError, IndexError):
-                r.fault("line %d: 'p' counts are not three numbers" % (lineno + 1))
-            else:
-                if dacc < 0 or ddig < 0 or drel < 0:
-                    r.fault("line %d: 'p' carries a negative delta; the counters "
-                            "are monotone" % (lineno + 1))
-                elif drel > dacc:
-                    # a release-admitted report counts in both, so this cannot
-                    # come from the writer
-                    r.fault("line %d: 'p' releases %d more reports than it accepts"
-                            % (lineno + 1, drel - dacc))
+            values = []
+            for name, token in zip(BACKEND_COUNT_FIELDS[kind], tok[2:]):
+                try:
+                    value = int(token)
+                    if value < 0:
+                        raise ValueError
+                except ValueError:
+                    value = None
+                    bad_backend_counts.add(name)
+                    r.fault("line %d: 'p' %s has a negative delta or non-numeric count"
+                            % (lineno + 1, name))
+                values.append(value)
+            dacc, ddig, drel = values
+            if dacc is not None and drel is not None and drel > dacc:
+                bad_backend_counts.update(("touchpad", "touchpad_releases"))
+                r.fault("line %d: 'p' releases %d more reports than it accepts"
+                        % (lineno + 1, drel - dacc))
+                dacc = drel = None
+            if dacc is not None:
                 padacc += dacc
+            if ddig is not None:
                 padrep += ddig
+            if drel is not None:
                 padrel += drel
-                saw_p = True
+            saw_p = True
         elif kind == "c":
             # Patch 310: a render-integrity cvar changed mid-journal.
-            nm, val = tok[2], _unquote_pair(" ".join(tok[3:]))[0]
+            nm = tok[2]
+            try:
+                token = _cvar_tokens(lines[lineno].split(None, 3)[3])[0]
+                val = token[0]
+            except ValueError as exc:
+                r.fault("line %d: malformed quoted cvar: %s" % (lineno + 1, exc))
+                if nm in IDENTITY_CVARS:
+                    # Unknown after this change; never reuse a stale scale/sign.
+                    idover = dict(idover, **{nm: None})
+                continue
             cvar_changes.append((nm, val))
+            if _identity_capture_unknown(nm, token, 128):
+                r.fault("line %d: %s capture unavailable at legacy boundary; "
+                        "exact identity unproved" % (lineno + 1, nm))
+                unavailable = r.info.setdefault("identity_capture_unavailable", [])
+                if nm not in unavailable:
+                    unavailable.append(nm)
+                idover = dict(idover, **{nm: None})
+                continue
             if nm in IDENTITY_CVARS:
                 idover = dict(idover, **{nm: val})    # new dict: earlier views keep theirs
         elif kind == "g":
@@ -909,7 +1195,9 @@ def check_hid(path, verbose=False, *, data=None):
                 # Patch 387: on Linux a mouse button carries its pointer's devid
                 # (Xwayland: buttons from xwayland-pointer, motion from the
                 # relative one), so it is attributed as a pointer event.
-                if nonwin and keynum in MOUSE_KEYS:
+                if kind == "j":
+                    devids_joy[d] = devids_joy.get(d, 0) + 1
+                elif nonwin and keynum in MOUSE_KEYS:
                     devids_used[d] = devids_used.get(d, 0) + 1
                 elif kind in ("+", "-") and keynum in MOUSE_KEYS:
                     # Patch 468: a raw mouse button (the pad's taps, a second
@@ -924,26 +1212,66 @@ def check_hid(path, verbose=False, *, data=None):
                     devids_used[d] = devids_used.get(d, 0) + 1
 
     # ---- trailer agreement -------------------------------------------------
-    if truncated is not None:
-        r.info["truncated_at"] = truncated
-        r.note("TRUNCATED at t=%.3f -- the journal hit in_journal_maxkb and "
-               "stops there. A truncated journal cannot audit the run it "
-               "belongs to." % truncated)
+    if cap_seen:
+        if truncated is None:
+            r.note("truncation timestamp unavailable: unusable cap marker; "
+                   "the byte cap is still known and capture is partial.")
+        elif bad_trunc_time:
+            r.note("truncation timestamp unavailable: it disagrees with the "
+                   "recorded relative clock. The byte cap is still known; a "
+                   "truncated journal cannot audit the run it belongs to.")
+        else:
+            r.info["truncated_at"] = truncated
+            r.note("TRUNCATED at t=%.3f -- the journal hit in_journal_maxkb and "
+                   "stops there. A truncated journal cannot audit the run it "
+                   "belongs to." % truncated)
 
     if trailer is None:
-        r.fault("no 'end' trailer -- the journal was never closed, so the run "
-                "it belongs to has no admissible input record")
+        if end_seen:
+            r.note("present 'end' trailer is unusable; closing measurements unavailable")
+        else:
+            r.fault("no 'end' trailer -- the journal was never closed, so the run "
+                    "it belongs to has no admissible input record")
     else:
-        t_abs, t_events, t_frames, t_dropped, t_hidden = trailer[:5]
-        t_injected = trailer[5] if len(trailer) > 5 else None
-        t_unenum = trailer[6] if len(trailer) > 6 else None
-        t_legacybtn = trailer[7] if len(trailer) > 7 else None
-        t_touchpad = trailer[8] if len(trailer) > 8 else None   # Patch 468
-        t_padreports = trailer[9] if len(trailer) > 9 else None
-        r.info["events"] = t_events
-        r.info["frames"] = t_frames
-        r.info["dropped"] = t_dropped
-        r.info["hidden"] = t_hidden
+        t_abs = trailer[0]
+        closing_counts = []
+        for name, token in zip(("events", "frames", "dropped", "hidden"), trailer[1:5]):
+            try:
+                value = _native_unsigned_count(token)
+            except ValueError:
+                value = None
+                r.fault("trailer %s count is not a native unsigned 32-bit count" % name)
+                if name == "dropped":
+                    bad_loss = True
+            closing_counts.append(value)
+            if value is not None:
+                r.info[name] = value
+        t_events, t_frames, t_dropped, t_hidden = closing_counts
+        backend_totals = []
+        for name, token in zip(("injected", "unenum", "legacy_presses", "touchpad",
+                                "touchpad_digitizer_reports"), trailer[5:]):
+            try:
+                value = int(token)
+                if value != -1:
+                    value = _native_report_delta(token)
+            except ValueError:
+                value = None
+                bad_backend_counts.add(name)
+                r.fault("trailer %s is not a usable native count or backend-1 sentinel" % name)
+            backend_totals.append(value)
+        t_injected = backend_totals[0] if len(backend_totals) > 0 else None
+        t_unenum = backend_totals[1] if len(backend_totals) > 1 else None
+        t_legacybtn = backend_totals[2] if len(backend_totals) > 2 else None
+        t_touchpad = backend_totals[3] if len(backend_totals) > 3 else None
+        t_padreports = backend_totals[4] if len(backend_totals) > 4 else None
+        for name, total, observed in (("injected", t_injected, injected),
+                                      ("unenum", t_unenum, unenum),
+                                      ("legacy_presses", t_legacybtn, legacybtn),
+                                      ("touchpad", t_touchpad, padacc),
+                                      ("touchpad_digitizer_reports", t_padreports, padrep)):
+            if total is not None and total >= 0:
+                if ((not cap_seen and total != observed) or total < observed):
+                    bad_backend_counts.add(name)
         r.info["time"] = t_abs
 
         # A TRUNCATED FILE CANNOT MATCH ITS OWN TRAILER, by construction: the
@@ -952,27 +1280,34 @@ def check_hid(path, verbose=False, *, data=None):
         # equality there would fault every truncated journal for being
         # truncated, which the 'truncated' marker already says.  What must still
         # hold is the direction -- the trailer can only be ahead.
-        if truncated is None:
-            if t_events != events:
+        if not cap_seen:
+            if t_events is not None and t_events != events:
+                r.info.pop("events", None)
                 r.fault("trailer says %d events, the file has %d"
                         % (t_events, events))
-            if t_frames != frames:
+            if t_frames is not None and t_frames != frames:
+                r.info.pop("frames", None)
                 r.fault("trailer says %d frames, the file has %d"
                         % (t_frames, frames))
         else:
-            if t_events < events:
+            if t_events is not None and t_events < events:
+                r.info.pop("events", None)
                 r.fault("trailer says %d events but the file already holds %d"
                         % (t_events, events))
-            if t_frames < frames:
+            if t_frames is not None and t_frames < frames:
+                r.info.pop("frames", None)
                 r.fault("trailer says %d frames but the file already holds %d"
                         % (t_frames, frames))
-        if truncated is None and t_hidden != hidden:
-            r.fault("trailer says %d hidden keys, the file has %d"
-                    % (t_hidden, hidden))
+        if t_hidden is not None:
+            if (not cap_seen and t_hidden != hidden) or t_hidden < hidden:
+                r.info.pop("hidden", None)
+                r.fault("trailer says %d hidden keys, the file has %d"
+                        % (t_hidden, hidden))
         # The '!' markers report drops as they are NOTICED, and the last batch
         # can arrive after the final frame marker, so the trailer is allowed to
         # be ahead of them -- but never behind.
-        if t_dropped < dropped:
+        if t_dropped is not None and t_dropped < dropped:
+            bad_loss = True
             r.fault("trailer says %d dropped, but the '!' markers already "
                     "account for %d" % (t_dropped, dropped))
         elif t_dropped:
@@ -980,9 +1315,14 @@ def check_hid(path, verbose=False, *, data=None):
                    "this journal. The file is not admissible across those gaps; "
                    "the drop time is unknown by construction." % t_dropped)
 
-        if truncated is None and abs(t_abs - clock) > TIME_EPS:
+        if not cap_seen and abs(t_abs - clock) > TIME_EPS:
+            bad_close_time = True
             r.fault("trailer says t=%.6f but the dt sum is %.6f (off by %.6f)"
                     % (t_abs, clock, t_abs - clock))
+        elif cap_seen and prefix_clock - t_abs > TIME_EPS:
+            bad_close_time = True
+            r.fault("trailer closes at t=%.6f before its recorded prefix at %.6f"
+                    % (t_abs, prefix_clock))
 
         # ---- rejected reports (engine Patch 306) ---------------------------
         #
@@ -1001,7 +1341,7 @@ def check_hid(path, verbose=False, *, data=None):
         xi_only = (nonwin and t_injected is not None and t_injected >= 0
                    and t_unenum is not None and t_unenum < 0
                    and (r.info.get("input_backend") == "X11 XInput2" or saw_i))
-        if t_injected is None:
+        if len(trailer) <= 5:
             if saw_i:
                 r.fault("'i' records are present but the trailer has no "
                         "injected totals -- the file mixes two grammars")
@@ -1009,19 +1349,32 @@ def check_hid(path, verbose=False, *, data=None):
                 r.note("no injected-report counters: this journal predates "
                        "engine Patch 306, so whether synthesized input was "
                        "REJECTED during it cannot be asked of this file.")
+        elif t_injected is None or t_unenum is None:
+            # Present-but-unusable is not old grammar or an absent backend.
+            for name, total, observed in (("injected", t_injected, injected),
+                                          ("unenum", t_unenum, unenum)):
+                if total is not None and total >= 0:
+                    r.info[name] = total
+                    if ((not cap_seen and total != observed) or total < observed):
+                        r.fault("trailer %s says %d but its recorded observations hold %d"
+                                % (name, total, observed))
+                    elif total and name not in bad_backend_counts:
+                        r.note("%d reports from the independently usable %s counter; "
+                               "the other closing field is unavailable, so a shared "
+                               "backend cause cannot be inferred." % (total, name))
         elif xi_only:
             r.info["injected"] = t_injected
             r.info["unenum"] = "not counted by this backend"
             if unenum:
                 r.fault("'i' records carry %d unenumerated reports although the "
                         "trailer says this backend does not count them" % unenum)
-            if truncated is None and t_injected != injected:
+            if not cap_seen and t_injected != injected:
                 r.fault("trailer says %d injected reports, the 'i' records "
                         "account for %d" % (t_injected, injected))
-            elif truncated is not None and t_injected < injected:
+            elif cap_seen and t_injected < injected:
                 r.fault("trailer says %d injected reports but the 'i' records "
                         "already hold %d" % (t_injected, injected))
-            if t_injected:
+            if t_injected and "injected" not in bad_backend_counts:
                 r.note("%d core XTEST reports (synthesized input: xdotool, "
                        "x11vnc, Barrier/Synergy/Input Leap, XKB MouseKeys) were "
                        "REJECTED while the pointer was grabbed. They did NOT "
@@ -1044,7 +1397,7 @@ def check_hid(path, verbose=False, *, data=None):
             # made consistently in two places. Exempted on a truncated file for
             # the same reason as events/frames above: the counters keep running
             # after the writing stops, so the trailer can only be AHEAD.
-            if truncated is None:
+            if not cap_seen:
                 if t_injected != injected:
                     r.fault("trailer says %d injected reports, the 'i' records "
                             "account for %d" % (t_injected, injected))
@@ -1067,7 +1420,7 @@ def check_hid(path, verbose=False, *, data=None):
             # tablet and macro drivers, and a laptop's own touchpad utility all
             # synthesize input legitimately. Auto-rejecting a run on this would
             # accuse a named person over their screen reader.
-            if t_injected:
+            if t_injected and "injected" not in bad_backend_counts:
                 r.note("%d synthesized input reports (no device handle) were "
                        "REJECTED by raw input during this journal. They did "
                        "NOT reach the view. This is evidence of an attempt, "
@@ -1075,7 +1428,7 @@ def check_hid(path, verbose=False, *, data=None):
                        "(remote desktop, accessibility and screen-sharing "
                        "tools all synthesize input) -- review, never auto-"
                        "reject." % t_injected)
-            if t_unenum:
+            if t_unenum and "unenum" not in bad_backend_counts:
                 r.note("%d reports came from a real device that was never "
                        "enumerated -- a mouse plugged in after startup, or an "
                        "RDP device excluded by in_rawinput_rdp. That device's "
@@ -1092,7 +1445,7 @@ def check_hid(path, verbose=False, *, data=None):
         #                        not constant over a run and a single value at
         #                        `begin` cannot describe it.
         if t_legacybtn is None:
-            if saw_b:
+            if saw_b and "legacy_presses" not in bad_backend_counts:
                 r.fault("'b' records are present but the trailer has no "
                         "legacy-button total -- the file mixes two grammars")
         elif t_legacybtn < 0:
@@ -1101,10 +1454,10 @@ def check_hid(path, verbose=False, *, data=None):
                         "the backend does not count them")
         else:
             r.info["legacy_presses"] = t_legacybtn
-            if truncated is None and t_legacybtn != legacybtn:
+            if not cap_seen and t_legacybtn != legacybtn:
                 r.fault("trailer says %d uncorroborated legacy presses, the "
                         "'b' records account for %d" % (t_legacybtn, legacybtn))
-            elif truncated is not None and t_legacybtn < legacybtn:
+            elif cap_seen and t_legacybtn < legacybtn:
                 r.fault("trailer says %d uncorroborated legacy presses but the "
                         "'b' records already hold %d" % (t_legacybtn, legacybtn))
 
@@ -1113,7 +1466,7 @@ def check_hid(path, verbose=False, *, data=None):
             # at all, so on such a machine EVERY honest click lands in this
             # count. The Patch 303 device table is what separates the two, and
             # that is a judgement for a reviewer holding both, not for this tool.
-            if t_legacybtn:
+            if t_legacybtn and "legacy_presses" not in bad_backend_counts:
                 pad_cvar = next((v for (n, v, dfl) in inputcvars
                                  if n == "in_rawinput_touchpad"), None)
                 # the state over the whole journal: the opening value, then
@@ -1127,10 +1480,7 @@ def check_hid(path, verbose=False, *, data=None):
                     else:
                         # the engine gates on the cvar's integer value, so
                         # "0.0" and a non-number are off like "0"
-                        try:
-                            pad_states.add("off" if float(v) == 0 else "on")
-                        except ValueError:
-                            pad_states.add("off")
+                        pad_states.add("off" if q_atoi(v) == 0 else "on")
                 try:
                     pads_bound = int(head.get("rawpads", "-1"))
                 except ValueError:
@@ -1182,10 +1532,15 @@ def check_hid(path, verbose=False, *, data=None):
             kbds_bound = int(head.get("rawkbds", "-1"))
         except ValueError:
             kbds_bound = -1
-        if kbdobserve == 1 and not obs_changes:
+        if bad_key_observer:
+            r.info["legacy_keys_partial"] = True
+            r.note("keyboard observation unavailable: an unusable state/count record "
+                   "cannot establish whole-journal coverage or a measured zero; "
+                   "independent angle/count checks are separate.")
+        elif kbdobserve == 1 and not obs_changes:
             r.info["legacy_keys"] = legacykeys
             r.info["kbd_nohandle"] = kbdnohandle
-            if truncated is not None:
+            if cap_seen:
                 r.info["legacy_keys_partial"] = True    # no trailer total: a floor
         elif kbdobserve is None:
             if saw_y or obs_changes:
@@ -1214,7 +1569,7 @@ def check_hid(path, verbose=False, *, data=None):
             r.note("kbdobserve %d -- legacy keys were not checked against raw "
                    "input, so an injected keystroke cannot be seen in this file"
                    % kbdobserve)
-        if legacykeys:
+        if legacykeys and not bad_key_observer:
             if kbdnohandle:
                 shape = ("%d handle-less keyboard report(s) arrived beside them, "
                          "which is what SendInput leaves" % kbdnohandle)
@@ -1228,7 +1583,7 @@ def check_hid(path, verbose=False, *, data=None):
                    "AltGr's synthesized Ctrl, and alt-tabbing back onto a held "
                    "key; otherwise this is the shape of an injected keystroke. A "
                    "NOTE, never a verdict." % (legacykeys, shape))
-        elif kbdnohandle:
+        elif kbdnohandle and not bad_key_observer:
             r.note("%d handle-less keyboard report(s) arrived, but every legacy "
                    "key press was vouched for by a keyboard device -- the "
                    "synthesized keys did not reach this window as presses"
@@ -1255,9 +1610,15 @@ def check_hid(path, verbose=False, *, data=None):
         pad_events = sum(devids_used.get(int(i), 0) for i in pad_ids)
         pad_presses = sum(devids_btnplus.get(int(i), 0) for i in pad_ids)
         if t_touchpad is None:
-            if saw_p:
+            if saw_p and "touchpad" not in bad_backend_counts:
                 r.fault("'p' records are present but the trailer has no "
                         "touchpad totals -- the file mixes two grammars")
+            if "touchpad" in bad_backend_counts:
+                if t_padreports is not None and t_padreports >= 0:
+                    r.info["touchpad_digitizer_reports"] = t_padreports
+                    if ((not cap_seen and t_padreports != padrep) or t_padreports < padrep):
+                        r.fault("trailer digitizer total says %d but 'p' observations hold %d"
+                                % (t_padreports, padrep))
         elif t_touchpad < 0:
             if saw_p:
                 r.fault("'p' records are present although the trailer says "
@@ -1266,7 +1627,7 @@ def check_hid(path, verbose=False, *, data=None):
             r.info["touchpad"] = t_touchpad
             if t_padreports is not None and t_padreports >= 0:
                 r.info["touchpad_digitizer_reports"] = t_padreports
-            elif padrep:
+            elif padrep and "touchpad_digitizer_reports" not in bad_backend_counts:
                 r.fault("'p' records carry %d digitizer reports although the "
                         "trailer says the backend does not count them" % padrep)
             pads = [d for d in devs + devmaps if d[0] == "touchpad"]
@@ -1275,7 +1636,7 @@ def check_hid(path, verbose=False, *, data=None):
                         "touchpad input but no touchpad is in the device "
                         "table -- the file is not describing its own hardware"
                         % t_touchpad)
-            if truncated is None:
+            if not cap_seen:
                 if t_touchpad != padacc:
                     r.fault("trailer says %d touchpad reports accepted, the 'p' "
                             "records account for %d" % (t_touchpad, padacc))
@@ -1291,7 +1652,7 @@ def check_hid(path, verbose=False, *, data=None):
                         and t_padreports < padrep):
                     r.fault("trailer says %d digitizer reports but the 'p' "
                             "records already hold %d" % (t_padreports, padrep))
-            if padrel:
+            if padrel and "touchpad_releases" not in bad_backend_counts:
                 r.info["touchpad_releases"] = padrel
                 if padrel > pad_presses:
                     r.note("%d report(s) were accepted as releases outside the "
@@ -1306,7 +1667,7 @@ def check_hid(path, verbose=False, *, data=None):
                 r.fault("%d pointer events carry the touchpad's devid but the "
                         "trailer says only %d handle-less reports were accepted"
                         % (pad_events, t_touchpad))
-            if t_touchpad:
+            if t_touchpad and "touchpad" not in bad_backend_counts:
                 r.info["touchpad_events"] = pad_events
                 r.note("%d handle-less mouse reports were ACCEPTED as "
                        "precision-touchpad input (a digitizer report preceded "
@@ -1490,6 +1851,9 @@ def check_hid(path, verbose=False, *, data=None):
 
     # ---- devices (engine Patch 303) ----------------------------------------
     #
+    if devids_joy:
+        r.info["joystick_axis_events"] = sum(devids_joy.values())
+
     # A pre-303 file has no tables at all.  That is reported and never faulted:
     # the question simply cannot be asked of those files, and "absent" must not
     # be allowed to read as "no devices found".
@@ -1516,17 +1880,19 @@ def check_hid(path, verbose=False, *, data=None):
         for idx, (dtype, did, name) in enumerate(real):
             r.info["device[%d]" % idx] = "%-8s devid %-5s %s" % (dtype, did, name)
 
-        # A devid claimed by two devices makes EVERY attribution in the file
-        # ambiguous, so this one is a fault rather than a note.
+        # Native allocators are per namespace: keyboard0, mouse0 and joy0
+        # coexist. Conflicts matter only within the actual event namespace.
         claimed = {}
         for dtype, did, name in devmaps:
             if did in ("-", "unset"):
                 continue
-            if did in claimed and claimed[did] != name:
-                r.fault("devid %s is claimed by two devices (%r and %r) -- no "
-                        "event in this file can be attributed to either"
-                        % (did, claimed[did], name))
-            claimed[did] = name
+            namespace = _device_namespace(dtype)
+            key = (namespace, did)
+            if key in claimed and claimed[key] != name:
+                r.fault("devid %s is claimed by two devices in the %s namespace "
+                        "(%r and %r) -- those events cannot be uniquely attributed"
+                        % (did, namespace, claimed[key], name))
+            claimed[key] = name
 
         # THE CHECK THE TABLE EXISTS FOR: an event carrying a devid that no
         # device accounts for.  A NOTE and not a fault -- a device unplugged
@@ -1569,10 +1935,15 @@ def check_hid(path, verbose=False, *, data=None):
         for did, n in sorted(pointer_counts.items()):
             if wl_seat and did == 0:
                 continue
-            if str(did) not in claimed:
+            if ("pointer", str(did)) not in claimed:
                 r.note("devid %d produced %d pointer events but no device in "
-                       "the table claims it -- it was unplugged mid-run, or "
-                       "the file is not describing its own hardware." % (did, n))
+                       "the table claims it (pointer namespace) -- it was unplugged "
+                       "mid-run, or the table cannot establish its identity." % (did, n))
+        for did, n in sorted(devids_joy.items()):
+            if ("joystick", str(did)) not in claimed:
+                r.note("devid %d produced %d joystick axis events but no device "
+                       "in the joystick namespace claims it -- it was unplugged "
+                       "mid-run, or the table cannot establish its identity." % (did, n))
 
         # The keyboard side, asked correctly.
         try:
@@ -1589,9 +1960,9 @@ def check_hid(path, verbose=False, *, data=None):
                 # Enumeration does not establish registration or a raw-key identity.
                 # Legacy input still uses constant devid 0, not a device identity.
                 for did, n in sorted(devids_key.items()):
-                    if did != 0 and str(did) not in claimed:
+                    if did != 0 and ("keyboard", str(did)) not in claimed:
                         r.note("devid %d produced %d key events but no device "
-                               "in the table claims it. rawkbds %d counts "
+                               "in the table claims it (keyboard namespace). rawkbds %d counts "
                                "enumerated/bound keyboards and does not prove "
                                "successful registration; this header alone "
                                "cannot establish raw-key identity." % (did, n, kbds_live))
@@ -1606,17 +1977,20 @@ def check_hid(path, verbose=False, *, data=None):
                 # K_MOUSE1 + j for j >= 6, which keys.h names K_MWHEELUP and
                 # K_JOY1..3, so a 7-button mouse writes exactly that shape.
                 pointer_ids = set(int(did) for dtype, did, name in devmaps
-                                  if dtype in ("mouse", "touchpad") and did.isdigit())
-                if set(devids_key) - {0} - pointer_ids:
-                    r.note("key events carry devid(s) other than 0 although raw "
-                           "keyboard was not bound -- the legacy path dispatches "
-                           "a hardcoded 0, so this file does not match the "
-                           "engine it claims to come from.")
+                                  if dtype in POINTER_TYPES and did.isdigit())
+                joy_ids = set(int(did) for dtype, did, name in devmaps
+                              if dtype == "joy" and did.isdigit())
+                if set(devids_key) - {0} - pointer_ids - joy_ids:
+                    r.note("key events carry devid(s) other than 0 with no "
+                           "closing-table identity. Legacy keyboard input uses "
+                           "a hardcoded 0, but non-keyboard devices can supply "
+                           "keys or disappear mid-run; raw-key identity is unavailable.")
                 else:
                     r.info["key_attribution"] = (
-                        "not available -- raw keyboard is not bound, so every "
-                        "key event carries a hardcoded devid 0 that names no "
-                        "device (and is NOT the mouse that may hold devid 0)")
+                        "not available -- raw keyboard is not bound, so legacy "
+                        "keyboard events carry a hardcoded devid 0 that names no "
+                        "device (and is NOT the mouse that may hold devid 0). "
+                        "Pointer/controller key IDs do not establish raw-key identity.")
 
         # The two tables disagreeing means the device set changed mid-run.
         before = set((d[0], d[2]) for d in devs)
@@ -1666,11 +2040,18 @@ def check_hid(path, verbose=False, *, data=None):
     lir = next((v for (n, v, d) in inputcvars if n == "leftisright"), None)
     if lir not in (None, "-") and "leftisright" not in head:
         idhead = dict(head, leftisright=lir)
-    check_identity(r, idhead, views)
+    controller = bool(devids_joy) or any(
+        t == "joy" and did not in ("-", "unset") for t, did, _n in devs + devmaps)
+    check_identity(r, idhead, views, controller=controller,
+                   unavailable="v" in bad_observers)
     # Patch 312, and ABOVE the same bail-out for the same reason -- plus its own:
     # the join is the one check whose most interesting subject is a file with
     # counts that reached no view at all.
-    check_counts_join(r, joins, bool(inputcvars))
+    if bad_pointer or bad_observers:
+        r.note("counts join unavailable: unusable pointer/observer data in this "
+               "journal; partial or non-finite terms are not measurements.")
+    else:
+        check_counts_join(r, joins, bool(inputcvars))
 
     # Patch 416: the run nonce, noted into the journal by the client when the
     # server issues one.  REPORTED AND NOT CHECKED, and the distinction is the
@@ -1723,6 +2104,36 @@ def check_hid(path, verbose=False, *, data=None):
         if events:
             r.info["events_per_sec"] = events / span
             r.info["events_per_frame"] = events / float(frames)
+
+    for name in sorted(bad_backend_counts):
+        r.info.pop(name, None)
+        r.note("%s count unavailable: unusable or contradictory backend observations "
+               "cannot establish a whole total or measured zero; independent "
+               "finite prefix observations are separate." % name)
+
+    if bad_loss:
+        r.info.pop("dropped", None)
+        r.note("drop count unavailable: an unusable loss declaration cannot "
+               "establish a complete total or a measured zero; independent "
+               "finite angle/count observations are separate.")
+
+    if bad_close_time:
+        r.info.pop("time", None)
+        r.note("closing duration unavailable: it contradicts the recorded "
+               "prefix clock; independently finite prefix rates and "
+               "angle/count observations are separate.")
+
+    if bad_boundary_clock:
+        for key in ("time", "truncated_at"):
+            r.info.pop(key, None)
+        r.note("boundary timing unavailable: unsupported closing record shape; "
+               "independently finite prefix rates are separate.")
+
+    if bad_clock:
+        for key in ("time", "truncated_at", "first_frame_at", "frame_rate", "events_per_sec"):
+            r.info.pop(key, None)
+        r.note("timing measurements unavailable: an unusable journal clock is "
+               "not a healthy duration or rate; finite input comparisons are separate.")
 
     if seqs:
         r.info["movesequence"] = "%d..%d" % (min(seqs), max(seqs))
@@ -1926,7 +2337,7 @@ def check_counts_join(r, joins, post312):
 # WHY THE CHECK IS SKIPPED RATHER THAN FAILED in several cases below: a check
 # that reports a fault it cannot distinguish from a configuration is worse than
 # no check, because the first false accusation is what people remember.
-def check_identity(r, head, views):
+def check_identity(r, head, views, controller=False, unavailable=False):
     if not views:
         r.info["identity_blind"] = ("no view records to judge" if "sensitivity" in head
                                     else "pre-293 journal: no recorded angle identity")
@@ -1962,31 +2373,58 @@ def check_identity(r, head, views):
         return
 
     k = -myaw * sens * scale
-    r.info["deg_per_count"] = abs(k)
+    if math.isfinite(k):
+        r.info["deg_per_count"] = abs(k)
 
-    # Each frame's (yaw k, pitch k, filtered): the header's constants with any
-    # 'c' change in force applied, so a mid-run `sensitivity` is followed rather
-    # than accused.  A value that does not parse makes the frame abstain.
+    # Native cvar.value and model arithmetic are float32. Unknown captured
+    # prefixes/legacy terms remain None; unusable numeric values are not zero.
     cache = {}
+    model_bad = [False]
+
+    def model_float(value):
+        if value is None:
+            return None
+        try:
+            value = struct.unpack("=f", struct.pack("=f", value))[0]
+        except (OverflowError, struct.error):
+            model_bad[0] = True
+            return None
+        if not math.isfinite(value):
+            model_bad[0] = True
+            return None
+        return value
 
     def consts(v):
         ov = v[8]
         if id(ov) not in cache:
             def num(name, dflt=None):
                 if name in ov:
-                    return q_atof(ov[name])
+                    try:
+                        return model_float(q_atof(ov[name]))
+                    except _NativeCharUnavailable:
+                        if name in ("m_filter", "m_accel"):
+                            return 1.0  # both native char modes are nonzero
+                        model_bad[0] = True
+                        return None
                 s = head.get(name, dflt)
-                return None if s is None else float(s)
+                try:
+                    return None if s is None else model_float(float(s))
+                except ValueError:
+                    model_bad[0] = True
+                    return None
             try:
-                s_ = num("sensitivity") * scale
-                mp = num("m_pitch")
-                # .ival, as the engine tests it (Q_atoi), never a float: "abc"
-                # must not blind the check nor "0.5" flip it.
-                lir = ov["leftisright"] if "leftisright" in ov else head.get("leftisright", "0")
-                flip = -1.0 if q_atoi(lir) else 1.0
-                cache[id(ov)] = (-num("m_yaw") * s_ * flip,
-                                 None if mp is None else mp * s_,
-                                 bool(num("m_filter", "0") or num("m_accel", "0")))
+                mf, ma = num("m_filter", "0"), num("m_accel", "0")
+                if mf is None or ma is None or mf or ma:
+                    cache[id(ov)] = (None, None, True)
+                else:
+                    s_ = model_float(num("sensitivity") * model_float(scale))
+                    mp = num("m_pitch")
+                    # .ival uses Q_atoi, not Python float-string semantics.
+                    lir = ov["leftisright"] if "leftisright" in ov else head.get("leftisright", "0")
+                    flip = -1.0 if q_atoi(lir) else 1.0
+                    cache[id(ov)] = (model_float(-num("m_yaw") * s_) * flip,
+                                     None if mp is None else model_float(mp * s_),
+                                     False)
             except (TypeError, ValueError):
                 cache[id(ov)] = (None, None, True)
         return cache[id(ov)]
@@ -1995,6 +2433,51 @@ def check_identity(r, head, views):
     # A seed is not a judged endpoint; early gates are not measured zeroes.
     y_excl = r.info["identity_yaw_exclusions"] = {}
     p_excl = r.info["identity_pitch_exclusions"] = {}
+
+    if unavailable:
+        y_excl["reader_profile_gate"] = p_excl["reader_profile_gate"] = len(views)
+        r.info["identity_blind"] = "unusable view observation"
+        r.note("angle identity unavailable: an unusable view observation can "
+               "poison the next baseline; no clean-angle judgement is made.")
+        return
+
+    if controller:
+        y_excl["reader_profile_gate"] = p_excl["reader_profile_gate"] = len(views)
+        r.info["identity_blind"] = "controller look is not in the recorded keyboard turn terms"
+        r.note("controller assignment or axis records: this file does not carry "
+               "the look mapping or initial persistent axis state needed to "
+               "reconstruct controller turn. The angle identity is NOT checked; "
+               "this is not a clean-angle verdict.")
+        return
+
+    # Preflight the model before publishing ANY surviving comparison. A late
+    # unusable gain/product must not leave a healthy partial identity behind.
+    for v in views:
+        consts(v)
+    if not model_bad[0]:
+        for v in views:
+            ky, kp, filtered = consts(v)
+            if filtered or v[3] & (VF_STRAFE_X | VF_FREE):
+                continue
+            for gain, delta, term in ((ky, v[1], v[7]),
+                                      (None if v[3] & VF_STRAFE_Y else kp,
+                                       v[2], v[6])):
+                if not gain or term is None:
+                    continue
+                delta, term = model_float(delta), model_float(term)
+                if delta is not None and term is not None:
+                    product = model_float(gain * delta)
+                    if product is not None:
+                        model_float(product + term)
+    if model_bad[0]:
+        r.fault("unusable numeric input-model constants or arithmetic; "
+                "angle identity unavailable")
+        r.info.pop("deg_per_count", None)
+        y_excl["reader_profile_gate"] = p_excl["reader_profile_gate"] = len(views)
+        r.info["identity_blind"] = "unusable numeric input model"
+        r.note("no clean-angle or angle/count judgement is made from an "
+               "unusable numeric model; independent counts joins are separate.")
+        return
 
     if all(consts(v)[2] for v in views):
         y_excl["reader_profile_gate"] = p_excl["reader_profile_gate"] = len(views)

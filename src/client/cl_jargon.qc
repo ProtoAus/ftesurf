@@ -9,7 +9,8 @@
 */
 #define JG_MAX 64
 float jg_n, jg_at;
-float jg_k[JG_MAX];             // 1 a ramp to board, 2 a bhop, 3 the end, 4 a peak, 5 an air point
+float jg_got;                   // rows of the plan arrived so far (its chunks overwrite the old plan's in place)
+float jg_k[JG_MAX];             // 1 a ramp to board, 2 a bhop, 3 the end, 4 a peak, 5 an air point, 6 a turn point (P1483)
 float jg_t[JG_MAX];             // the guide run's time there
 vector jg_o[JG_MAX];
 vector jg_nn[JG_MAX];
@@ -19,6 +20,9 @@ float jg_edit;                  // "Edit in world"
 var float jg_hover = -1, jg_drag = -1;
 vector jg_pos, jg_off, jg_from;
 float jg_m1, jg_m2, jg_far, jg_replan;
+var float jgw_sel = -1;           // the panel's selected waypoint
+float jgw_selk, jgw_selt;         // ...by what it is (cl_tasoptui.qc follows it across replans)
+vector jgw_selo;
 #define JG_GUIDES 12
 string jg_gp[JG_GUIDES];        // a guide run's file
 string jg_gl[JG_GUIDES];        // ...and its label
@@ -264,29 +268,44 @@ void() TASJargon_Guides =
 
 // The picked course's Continue, if one is saved (sv_tasautosurf.qc SV_TASAutoSave): its stretch and of, read every 2 s
 float jg_knext, jg_kof, jg_kat;
+float jg_klearn;                // P1483: stretches of this course with a learned line (data/jargon/<map>/<leg>.prior)
 var float jg_kc = -1;
 void() TASJargon_Saved =
 {
-	local float fh, i, c;
+	local float fh, i;
 	if (cltime < jg_kat && jg_kc == jg_cpick) return;
-	jg_kat = cltime + 2; jg_kc = jg_cpick; jg_knext = jg_kof = 0;
+	if (jg_kc != jg_cpick) jg_knext = jg_kof = 0;      // another course: none until its answer (TASJargon_SavedEvent)
+	jg_kat = cltime + 5; jg_kc = jg_cpick;
 	if (jg_cpick >= jg_cn) return;
-	fh = fopen(sprintf("data/tasproj/%s/jg_%s.jargon", zone_mapname, FS_LegDir(jg_ct[jg_cpick], jg_cl[jg_cpick])), FILE_READ);
-	if (fh < 0) return;
-	for (i = 0; i < 12; i = i + 1)
+	jg_klearn = 0;
+	fh = fopen(sprintf("data/jargon/%s/%s.prior", zone_mapname, FS_LegDir(jg_ct[jg_cpick], jg_cl[jg_cpick])), FILE_READ);
+	if (fh >= 0)
 	{
-		c = tokenize(fgets(fh));
-		if (argv(0) == "at" && c >= 3) { jg_knext = stof(argv(1)); jg_kof = stof(argv(2)); break; }
+		for (i = 0; i < 70; i = i + 1) if (substring(fgets(fh), 0, 2) == "p ") jg_klearn = jg_klearn + 1;
+		fclose(fh);
 	}
-	fclose(fh);
+	// the saved run is the server's to read: CSQC may not open data/tasproj/ (each refusal printed, every 2 s)
+	localcmd(sprintf("cmd tas autosurf saved %g %g\n", jg_ct[jg_cpick], jg_cl[jg_cpick]));
+};
+void() TASJargon_SavedEvent =
+{
+	local float ct, cl, k, n;
+	ct = readbyte(); cl = readbyte(); k = readshort(); n = readshort();
+	if (jg_cpick < jg_cn && ct == jg_ct[jg_cpick] && cl == jg_cl[jg_cpick]) { jg_knext = k; jg_kof = n; }
 };
 
 var float jg_plannedc = -1;         // the course the shown plan is of
 void() TASJargon_RequestPlan =
 {
+	local float x;
 	if (jg_pick >= jg_gn) return;
-	localcmd(sprintf("tas autosurf %s plan%s%s\n", jg_gp[jg_pick], TASJargon_CourseWords(), TASJargon_Airs() ? " air" : ""));
-	jg_n = 0; jg_hover = jg_drag = -1;     // until the plan arrives: a refused one left the last course's route up (review B)
+	x = cvar("tas_jargon_exp");     // the panel's experiments: apex, join, launch and turns shape the plan (cl_tasoptui.qc)
+	localcmd(sprintf("tas autosurf %s plan%s%s%s\n", jg_gp[jg_pick], TASJargon_CourseWords(), TASJargon_Airs() ? " air" : "",
+		strcat((x & 4) ? " apex" : "", (x & 8) ? " join" : "", (x & 512) ? " launch" : "", (x & 1024) ? " turns" : "")));
+	// another course or run: none until its plan arrives (a refused one left the last course's route up: review B); the
+	// same one (an edit's replan) keeps its points up meanwhile -- a run refuses plans, and they stayed blank (Lex)
+	if (jg_planned != jg_gp[jg_pick] || jg_plannedc != jg_cpick) jg_n = 0;
+	jg_hover = jg_drag = -1;
 	if (jg_planned != "") strunzone(jg_planned);
 	jg_planned = strzone(jg_gp[jg_pick]);
 	jg_plannedc = jg_cpick;
@@ -305,6 +324,7 @@ void() TASJargon_PlanEvent =
 		x = readshort() / 30000; y = readshort() / 30000; z = readshort() / 30000;
 		if (i < JG_MAX) jg_nn[i] = [x, y, z];
 	}
+	jg_got = s + c;
 	jg_at = cltime;
 };
 
@@ -314,6 +334,7 @@ vector(float i) TASJargon_Col =
 	if (jg_k[i] == 1) return jg_mv[i] ? '0.55 1 0.75' : SUI_THEME_GOOD;
 	if (jg_k[i] == 2) return SUI_THEME_WARN;
 	if (jg_k[i] == 5) return SUI_THEME_INFO;
+	if (jg_k[i] == 6) return SUI_THEME_INFO * 0.6;     // a turn point: planned, not a handle
 	return SUI_THEME_DIM;
 };
 
@@ -322,6 +343,7 @@ string(float i) TASJargon_Word =
 	if (jg_k[i] == 1) return "Ramp";
 	if (jg_k[i] == 2) return "Bhop";
 	if (jg_k[i] == 5) return "Air point";
+	if (jg_k[i] == 6) return "Turn point";
 	if (jg_k[i] == 3) return "End";
 	return "Point";
 };
@@ -352,14 +374,15 @@ vector(float i, vector eye, vector fwd) TASJargon_DragPoint =
 	if (trace_fraction < 1 && trace_plane_normal * n > 0.95 && vlen(trace_endpos - q) < 96) q = trace_endpos;   // the face itself
 	return q;
 };
+var float autocvar_tas_jargon_route = 1;     // Lex: the waypoints stay on     // P1483 stream: the route stays drawn with the panel closed
 
 // shown with the Jargon tab open or "Edit in world" on; each frame: the handle under the crosshair, a drag, a replan due
 void() TASJargon_Frame =
 {
 	local vector eye, fwd;
 	local float i, d, best;
-	jg_show = (jg_n > 0 && (jg_edit || (tasu_open && tasu_tab == TAS_TAB_OPTIMIZE)));
-	if (jg_replan && cltime >= jg_replan) { jg_replan = 0; TASJargon_RequestPlan(); }
+	jg_show = (jg_n > 0 && (jg_edit || (tasu_open && tasu_tab == TAS_TAB_OPTIMIZE) || taso_state == 1 || taso_armed || autocvar_tas_jargon_route));     // route: the stream panel's
+	if (jg_replan && cltime >= jg_replan && taso_state != 1) { jg_replan = 0; TASJargon_RequestPlan(); }    // held while it runs (review 1528)
 	if (!jg_edit) { jg_hover = jg_drag = -1; return; }
 	eye = getproperty(VF_ORIGIN);
 	makevectors(getproperty(VF_ANGLES));
@@ -376,12 +399,14 @@ void() TASJargon_Frame =
 	for (i = 0; i < jg_n; i = i + 1)
 	{
 		d = normalize(jg_o[i] + '0 0 24' - eye) * fwd;
+		if (jg_k[i] == 1 || jg_k[i] == 2 || jg_k[i] == 5)
 		if (d > best) { best = d; jg_hover = i; }
 	}
 };
 
 void() TASJargon_EditStart =
 {
+	if (taso_state == 1) { print("tas jargon: Move in the world waits for a stop -- type the numbers in the table to edit live\n"); return; }      // its free camera and the chase would fight
 	if (!jg_n) TASJargon_RequestPlan();
 	jg_edit = jg_fly = TRUE; jg_flyt = cltime;
 	jg_camorg = getproperty(VF_ORIGIN); jg_bodyang = getproperty(VF_CL_VIEWANGLES); jg_move = '0 0 0'; jg_btn = 0;
@@ -447,6 +472,7 @@ float(float evtype, float scanx, float chary, float devid) TASJargon_InputEvent 
 	if (evtype == IE_KEYUP && scanx == K_MOUSE2 && jg_m2) { jg_m2 = FALSE; return TRUE; }
 	if (evtype == IE_KEYUP && scanx == K_MOUSE1 && jg_m1 && jg_drag < 0) { jg_m1 = FALSE; return TRUE; }
 	if (!jg_edit) return FALSE;
+	if (taso_state == 1 && jg_drag < 0) return FALSE;   // armed or running: no new drag (review 1528)
 	if (tasu_open && jg_drag < 0) return FALSE;         // the panel's clicks are its own
 	if (evtype == IE_KEYDOWN && scanx == K_MOUSE1 && jg_hover >= 0)
 	{
@@ -469,6 +495,7 @@ float(float evtype, float scanx, float chary, float devid) TASJargon_InputEvent 
 			if (r >= 0) { localcmd(sprintf("tas route set %g %.1f %.1f %.1f 0 0 0\n", r + 1, jg_pos_x, jg_pos_y, jg_pos_z)); jg_replan = cltime + 0.4; }
 		}
 		jg_o[jg_drag] = jg_pos;
+		if (jg_drag == jgw_sel) jgw_selo = jg_pos;
 		jg_drag = -1; jg_m1 = FALSE;
 		return TRUE;
 	}
@@ -493,6 +520,8 @@ void(vector a, vector b, vector col, float al) TASJargon_Seg =
 	R_PolygonVertex(b, '0.5 0 0', col, al);
 	R_EndPolygon();
 };
+// hovered, selected in the panel, or the one a running chain works on: its ramp lit, its handle big
+float(float i) TASJargon_Lit = { return (i == jg_hover || i == jgw_sel || (taso_state == 1 && i == taso_i)); };
 void() TASJargon_DrawWorld =
 {
 	local float i, j, s, np, h;
@@ -518,14 +547,14 @@ void() TASJargon_DrawWorld =
 			{
 				np = getsurfacenumpoints(world, s);
 				R_BeginPolygon(TOV_SHADER, 0);
-				for (j = 0; j < np; j = j + 1) R_PolygonVertex(getsurfacepoint(world, s, j) + jg_nn[i] * 0.5, '0.5 0 0', col, (i == jg_hover) ? 0.28 : 0.14);
+				for (j = 0; j < np; j = j + 1) R_PolygonVertex(getsurfacepoint(world, s, j) + jg_nn[i] * 0.5, '0.5 0 0', col, TASJargon_Lit(i) ? 0.3 : 0.14);
 				R_EndPolygon();
 				for (j = 0; j < np; j = j + 1)
 					TASJargon_Seg(getsurfacepoint(world, s, j) + jg_nn[i], getsurfacepoint(world, s, (j + 1) % np) + jg_nn[i], col, 0.85);
 			}
 		}
 		// the handle: a cube on a post (zone_edit's look), bigger under the crosshair
-		h = (i == jg_hover || i == jg_drag) ? 14 : 8;
+		h = (i == jg_drag || TASJargon_Lit(i)) ? 14 : 8;
 		p = o + '0 0 1' * h;
 		TASJargon_Seg(o, o + '0 0 56', col, 0.9);
 		for (j = 0; j < 4; j = j + 1)

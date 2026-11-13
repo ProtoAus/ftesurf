@@ -42,6 +42,7 @@ void(entity e) SV_TASProjectReset;
 void(entity e) SV_TASShareCancel;
 void(entity e) SV_TASProjectFrame;
 void(entity e) SV_TASOptFrame;
+void(entity e) SV_TASAutoKeysStat;
 void(entity e) SV_TASSolveFrame;
 void(entity e) SV_TASLegalLog;
 void(entity e) SV_TASLegalFrame;
@@ -905,6 +906,7 @@ void() PlayerPostThink =
 	local vector dest;
 
 	SV_HeldCheck(self);
+	SV_TASAutoKeysStat(self);           // the keys HUD shows what a TAS tape or Jargon pressed (Lex), before the paused return
 	SV_NoColPost(self);                 // P1193: before anything else traces
 	SV_PeNameSync(self);                // P1405: the client's name filters
 	SV_VsVelPost(self);                 // P1205: a VScript velocity write from this command's touches
@@ -1610,6 +1612,11 @@ void(entity e, float argc) SV_TASCommand =
 		}
 		return;
 	}
+	// the Jargon panel's Continue poll reads a file: before the gates below, which answered it every 5 s mid-search (review 1528)
+	if (!strcmp(action, "autosurf") && argc == 5 && argv(2) == "saved") { SV_TASAutoCommand(e, argc); return; }
+	// P1531: live edits -- a moved point, an air point -- reach a running Jargon: they change its plan, not the search
+	if (!strcmp(action, "autosurf") && argc == 7 && argv(2) == "move") { SV_TASAutoCommand(e, argc); return; }
+	if (!strcmp(action, "route") && argc >= 3 && argc <= 10) { SV_TASRouteCommand(e, argc); return; }
 	if (e.tsol_on)
 	{
 		if (strcmp(action,"contacts") && strcmp(action,"page2"))
@@ -1621,12 +1628,15 @@ void(entity e, float argc) SV_TASCommand =
 		}
 	}
 	if (!strcmp(action, "contacts")) { SV_TASContactsCommand(e, argc); return; }
-	if (e.tasp_load && strcmp(action, "status") && strcmp(action, "project"))
-	{
+	if (e.tasp_load && strcmp(action, "status") && strcmp(action, "project") && !(!strcmp(action, "autosurf") && argc == 3 && argv(2) == "stop"))
+	{	// P1519 review: Jargon's stop reaches it during a Continue's load (the load plays on and pauses; the chain is off)
 		sprint(e, PRINT_HIGH, "tas: a project load is running; wait, or tas play/off to stop it\n");
 		return;
 	}
-	if (e.topt_on && strcmp(action, "status") && !(!strcmp(action, "autosurf") && argc == 3 && (argv(2) == "stop" || argv(2) == "status" || argv(2) == "startpause")))
+	// P1531: and the panel's project poll (every 0.3 s while it is open and a project exists -- Jargon's Continue save makes
+	// one): refused, it printed three lines a second for the rest of a run (the solve gate above lets it through too)
+	if (e.topt_on && strcmp(action, "status") && !(!strcmp(action, "autosurf") && argc == 3 && (argv(2) == "stop" || argv(2) == "status" || argv(2) == "startpause"))
+		&& !(!strcmp(action, "project") && argc == 3 && (argv(2) == "event" || argv(2) == "status")))
 	{	// P1449 review: autosurf's own stop and status are how its chain is ended between and during searches
 		sprint(e, PRINT_HIGH, "tas: the optimizer is running; tas play or tas off stops it\n");
 		return;

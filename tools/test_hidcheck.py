@@ -173,6 +173,12 @@ class Journal:
         self._adv(us)
         self.lines.append("d %d %g %g" % (us, dx, dy))
 
+    def joyaxis(self, axis, value, us=0, dev=0):
+        """A tagged joystick-axis record; its ID is not a pointer identity."""
+        self._adv(us)
+        self.lines.append("j %d %d %d %g" % (us, dev, axis, value))
+        self.events += 1
+
     def abspos(self, x, y, us=0, dev=0):
         """An 'a' record. A window holding one cannot be joined: the engine
         derives a delta from successive absolute positions, so those counts
@@ -289,7 +295,7 @@ class Journal:
 def run(text):
     fd, path = tempfile.mkstemp(suffix=".hid")
     try:
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(text)
         return hidcheck.check_hid(path)
     finally:
@@ -835,6 +841,1009 @@ def case_pre309_journal():
 
 
 MOUSE0 = ("mouse", "0", "\\?\HID#VID_DEAD&PID_BEEF")
+
+
+def namespace_journal(devices, pointer=None, joystick=None, keyboard=None,
+                      pad_accepted=None):
+    devices = list(devices)
+    if any(t in ("tablet", "xtest") for t, _d, _n in devices):
+        devices.append(("keyboard", "-", "x11"))
+    j = Journal(rawkbds=1 if keyboard is not None else 0, devices=devices)
+    if any(t == "touchpad" for t, _d, _n in devices):
+        j.lines.insert(j.lines.index("begin"), "rawpads 1")
+    yaw = 0.0
+    for i in range(20):
+        j.frame(8600 + i)
+        if pointer is not None:
+            j.mouse(4, 0, dev=pointer)
+            yaw += j.k * 4
+        if joystick is not None:
+            j.joyaxis(0, 0.5, dev=joystick)
+        if keyboard is not None:
+            j.key(True, 101, prev=0, dev=keyboard)
+            j.key(False, 101, prev=1, dev=keyboard)
+        j.view(4 if pointer is not None else 0, 0, 10.0, yaw)
+        if pad_accepted:
+            j.pad(1, 7)
+    return j.end(touchpad=pad_accepted,
+                 padreports=pad_accepted * 7 if pad_accepted is not None else None)
+
+
+def case_device_id_namespaces():
+    for keyboard, joystick in ((True, False), (False, True), (True, True)):
+        devices = [("mouse", "0", "mouse-example")]
+        if keyboard:
+            devices.append(("keyboard", "0", "keyboard-example"))
+        if joystick:
+            devices.append(("joy", "0", "joy-example"))
+        r = run(namespace_journal(devices, pointer=0,
+                                  keyboard=0 if keyboard else None,
+                                  joystick=0 if joystick else None))
+        check(r.ok, "native independent namespace ID0 is valid: %s %s" % (devices, r.faults[:1]))
+        check(r.info.get("events") == 20 + 40 * keyboard + 20 * joystick and
+              r.info.get("identity_yaw_mouse_frames") == (None if joystick else 19),
+              "shared namespace control actually records/compares both streams")
+        if joystick:
+            check(r.info.get("joystick_axis_events") == 20,
+                  "shared ID does not erase the joystick's tagged records")
+
+    for first, second in (("mouse", "mouse"), ("mouse", "touchpad"),
+                          ("tablet", "mouse"), ("tablet", "xtest"),
+                          ("joy", "joy"), ("keyboard", "keyboard")):
+        devices = [(first, "0", "device-A"), (second, "0", "device-B")]
+        r = run(namespace_journal(devices,
+                                  pointer=0 if first in ("mouse", "tablet") else None,
+                                  joystick=0 if first == "joy" else None,
+                                  keyboard=0 if first == "keyboard" else None,
+                                  pad_accepted=20 if second == "touchpad" else None))
+        check(has_fault(r, "claimed by two devices"),
+              "CONTROL same-namespace conflicting names still fault: %s/%s" % (first, second))
+
+    for event, declared in (("pointer", "keyboard"), ("joystick", "mouse"),
+                            ("keyboard", "mouse")):
+        args = {event: 7}
+        r = run(namespace_journal([(declared, "7", "other-namespace")], **args))
+        wording = {"pointer": "20 pointer events", "joystick": "20 joystick axis events",
+                   "keyboard": "40 key events"}[event]
+        check(has_note(r, "devid 7 produced " + wording),
+              "another namespace cannot claim an otherwise unaccounted %s stream" % event)
+        check(not has_fault(r, "claimed by two devices"),
+              "unavailable source stays a note, not a fabricated namespace collision")
+
+
+def case_legacy_controller_keys_are_not_keyboard_identity():
+    for dev in (7, 8):
+        j = Journal(rawkbds=0, devices=[MOUSE0, ("joy", "7", "joy-example")])
+        j.frame(8650)
+        j.key(True, 188, prev=0, dev=dev)  # native K_JOY4, not a mouse key
+        j.view(0, 0, 10.0, 0.0)
+        r = run(j.end())
+        check(r.ok, "legacy controller keys do not invent a file fault")
+        if dev == 7:
+            check("not available" in r.info.get("key_attribution", "") and
+                  not has_note(r, "does not match the engine"),
+                  "known joystick ID is not an impossible legacy keyboard or raw-key proof")
+        else:
+            check(has_note(r, "raw-key identity is unavailable") and
+                  not has_note(r, "does not match the engine"),
+                  "CONTROL unclaimed key remains unavailable, not an invented engine mismatch")
+
+
+def case_joystick_does_not_spend_touchpad_budget():
+    devices = [("mouse", "0", "mouse-example"), ("touchpad", "1", "pad-example"),
+               ("joy", "1", "joy-example")]
+    for pointer, accepted, should_pass in ((0, 0, True), (1, 20, True), (1, 0, False)):
+        r = run(namespace_journal(devices, pointer=pointer, joystick=1,
+                                  pad_accepted=accepted))
+        check(r.ok == should_pass, "joy1/pad1 separate; pointer%d accepted%d: %s" %
+              (pointer, accepted, r.faults[:1]))
+        check(r.info.get("joystick_axis_events") == 20 and
+              r.info.get("identity_yaw_mouse_frames") is None and
+              r.info.get("identity_blind"),
+              "pad budget test actually processes20axis and20mouse records")
+        check(not has_fault(r, "claimed by two devices"),
+              "joy1 and pad1 are not a duplicate pointer identity")
+        if accepted:
+            check(r.info.get("touchpad_events") == 20,
+                  "exactly20pad motion records, not40 including unrelated axes")
+        if not should_pass:
+            check(has_fault(r, "20 pointer events carry the touchpad's devid"),
+                  "CONTROL real pad motion still exceeds zero accepted reports")
+
+
+def observer_value_journal(kind, column, value, once=False, legacy=False):
+    text = namespace_journal([("mouse", "0", "mouse-example")], pointer=0)
+    text = text.replace("begin\n", 'input m_filter "0" "0"\nbegin\n', 1)
+    lines = []
+    index = 0
+    for line in text.splitlines():
+        fields = line.split()
+        if fields and fields[0] == "v":
+            if legacy:
+                fields = fields[:7]
+            mutate = not once or index == 10
+            if kind == "d":
+                raw = ["d", "0", "4", "0"]
+                if mutate:
+                    raw[column] = value
+                lines.append(" ".join(raw))
+            elif mutate:
+                fields[column] = value
+            line = " ".join(fields)
+            index += 1
+        lines.append(line)
+    return "\n".join(lines) + "\n"
+
+
+def case_observer_numeric_quality():
+    for kind, columns in (("v", (2, 3, 5, 6, 7, 8)), ("d", (2, 3))):
+        for column in columns:
+            for once in (False, True):
+                r = run(observer_value_journal(kind, column, "nan", once=once))
+                label = "%s column%d once%s" % (kind, column, once)
+                check(not r.ok and has_fault(r, "non-finite"),
+                      "unusable observation quality is refused: " + label)
+                check(r.info.get("view_records") == 20 and r.info.get("events") == 20,
+                      "descriptive records consumed, not measurements: " + label)
+                check("join_checked" not in r.info and "join_broke" not in r.info,
+                      "invalid observation is not an absent/equal raw join: " + label)
+                if kind == "v":
+                    check("identity_judged" not in r.info and
+                          r.info.get("identity_yaw_exclusions") == {"reader_profile_gate": 20} and
+                          r.info.get("identity_pitch_exclusions") == {"reader_profile_gate": 20},
+                          "unusable view baseline poisons neither judged axis: " + label)
+                else:
+                    check(r.info.get("identity_yaw_mouse_frames") == 19,
+                          "bad raw annotation does not erase independent finite angle arithmetic")
+                check(not any("COUNTS JOIN BROKEN" in f or "IDENTITY BROKEN" in f
+                              for f in r.faults),
+                      "quality unavailability is not an angle/count accusation: " + label)
+
+    for legacy in (False, True):
+        r = run(observer_value_journal("v", 2, "4", legacy=legacy))
+        check(r.ok and r.info.get("identity_yaw_mouse_frames") == 19 and
+              r.info.get("join_checked") == 19 and r.info.get("join_broke") == 0,
+              "CONTROL finite current/legacy view still ACTS, legacy=%s" % legacy)
+        r = run(observer_value_journal("v", 5, "nan", once=True, legacy=legacy))
+        check(not r.ok and "identity_judged" not in r.info,
+              "finite guard does not mistake legacy optional None for data, legacy=%s" % legacy)
+    r = run(observer_value_journal("d", 2, "4"))
+    check(r.ok and r.info.get("join_checked") == 19 and r.info.get("join_broke") == 0,
+          "CONTROL finite raw annotation actually joins")
+    for kind, column in (("d", 2), ("v", 5), ("d", 1), ("v", 1)):
+        r = run(observer_value_journal(kind, column, "broken", once=True))
+        check(not r.ok and "join_checked" not in r.info,
+              "already-invalid %s syntax/time cannot retain partial join" % kind)
+        if kind == "v":
+            check("identity_judged" not in r.info,
+                  "already-invalid view cannot silently keep a partial baseline")
+
+
+def rejected_change_journal(wire='c 0 sensitivity "0.375"', restore=False,
+                            counts_mismatch=False, follows=True):
+    """Keep the actual changed angles/counts; damage only the setting record."""
+    j = Journal(devices=[("mouse", "0", "mouse-example")], inputcvars=P312_INPUT)
+    yaw = 90.0
+    for i in range(20):
+        j.frame(8800 + i)
+        j.mouse(6, 0)
+        if i == 10:
+            j.lines.append(wire)
+        if restore and i == 15:
+            j.cvarchange("sensitivity", "0.375")
+        yaw += (-0.022 * 0.375 if follows and i >= 10 else j.k) * 6
+        j.view(7 if counts_mismatch and i == 17 else 6, 0, 10.0, yaw)
+    return j.end()
+
+
+def case_rejected_model_change():
+    for restore in (False, True):
+        for wire in ('c 0 sensitivity', 'c broken sensitivity "0.375"',
+                     'c -1 sensitivity "0.375"', 'c sensitivity "0.375"'):
+            r = run(rejected_change_journal(wire, restore))
+            label = wire[:45] + (" restored" if restore else " unknown")
+            check(not r.ok and bool(r.faults),
+                  "rejected model record keeps its format fault: " + label)
+            check(not has_fault(r, "IDENTITY BROKEN"),
+                  "lost setting is unavailable, not a stale-scale accusation: " + label)
+            check(r.info.get("identity_yaw_judged") == (14 if restore else 9) and
+                  r.info.get("identity_yaw_exclusions", {}).get("profile") ==
+                  (5 if restore else 10),
+                  "known earlier/restored intervals ACT, lost ones excluded: " + label)
+            check(r.info.get("join_checked") == 19 and r.info.get("join_broke") == 0,
+                  "independent finite raw-count join ACTS: " + label)
+    for wire in ('c', 'c 0', 'c broken', 'c 0 "0.375"', r'c 0 \"0.375\"'):
+        r = run(rejected_change_journal(wire, restore=True))
+        check(not r.ok and not has_fault(r, "IDENTITY BROKEN"),
+              "unknown setting name cannot retain a stale model: " + wire)
+        check(r.info.get("identity_yaw_judged") == 9 and
+              r.info.get("identity_yaw_exclusions", {}).get("profile") == 10 and
+              r.info.get("join_checked") == 19,
+              "one restored setting cannot restore an unknown whole model: " + wire)
+    r = run(rejected_change_journal('c ' + '9' * 400 + ' sensitivity "0.375"'))
+    check(not r.ok and "time" not in r.info and
+          has_note(r, "timing measurements unavailable") and
+          r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+          "CONTROL lost clock with finite setting payload preserves independent judgements")
+    r = run(rejected_change_journal())
+    check(r.ok and r.info.get("identity_yaw_judged") == 19 and
+          r.info.get("join_checked") == 19,
+          "CONTROL valid actual change judges all19 intervals")
+    r = run(rejected_change_journal(follows=False))
+    check(has_fault(r, "IDENTITY BROKEN") and
+          r.info.get("identity_violations") == 10,
+          "CONTROL valid contradictory change still faults10actual intervals")
+    r = run(rejected_change_journal('c 0 r_shadow', follows=False))
+    check(not r.ok and not has_fault(r, "IDENTITY BROKEN") and
+          r.info.get("identity_yaw_judged") == 19,
+          "CONTROL named unrelated malformed setting does not hide angle checks")
+    r = run(rejected_change_journal('c 0 sensitivity', counts_mismatch=True))
+    check(has_fault(r, "COUNTS JOIN BROKEN") and
+          not has_fault(r, "IDENTITY BROKEN") and r.info.get("join_checked") == 19,
+          "CONTROL real independent count mismatch survives unknown angle setting")
+
+
+def rejected_key_observer_journal(wire=None):
+    lines = rejected_change_journal().splitlines()
+    lines.insert(lines.index("begin"), "kbdobserve 1")
+    if wire is not None:
+        at = next(i for i, line in enumerate(lines) if line.startswith("c 0 sensitivity"))
+        lines.insert(at, wire)
+    return "\n".join(lines) + "\n"
+
+
+def case_rejected_key_observer():
+    for wire in ('o', 'o 0', 'o broken 0', 'o -1 0', 'o 0 nope', 'o 0 -1',
+                 'o 10 0', 'y', 'y 0', 'y 0 nope 0', 'y 0 -1 0',
+                 'y broken 1 0', 'y 10 1 0'):
+        r = run(rejected_key_observer_journal(wire))
+        check(not r.ok and bool(r.faults),
+              "rejected keyboard observation keeps format fault: " + wire)
+        check("legacy_keys" not in r.info and "kbd_nohandle" not in r.info and
+              r.info.get("legacy_keys_partial") and
+              has_note(r, "keyboard observation unavailable"),
+              "lost keyboard state/count is unavailable, not whole-journal zero: " + wire)
+        check(r.info.get("identity_yaw_judged") == 19 and
+              r.info.get("join_checked") == 19 and r.info.get("join_broke") == 0,
+              "independent angle/count checks ACT despite lost keyboard observation: " + wire)
+    r = run(rejected_key_observer_journal())
+    check(r.ok and r.info.get("legacy_keys") == 0 and r.info.get("kbd_nohandle") == 0,
+          "CONTROL valid observed whole-journal zero stays measured zero")
+    r = run(rejected_key_observer_journal('y 0 2 1'))
+    check(r.ok and r.info.get("legacy_keys") == 2 and r.info.get("kbd_nohandle") == 1,
+          "CONTROL valid positive keyboard counts remain actual2/1")
+    r = run(rejected_key_observer_journal('o 0 0'))
+    check(r.ok and r.info.get("legacy_keys_partial") and "legacy_keys" not in r.info and
+          has_note(r, "only part of this journal"),
+          "CONTROL known observation stop stays partial, not corrupt/unavailable")
+
+
+def loss_declaration_journal(markers=(), total="0"):
+    lines = rejected_change_journal().splitlines()
+    at = next(i for i, line in enumerate(lines) if line.startswith("c 0 sensitivity"))
+    lines[at:at] = markers
+    end = lines[-1].split()
+    end[5] = str(total)
+    lines[-1] = " ".join(end)
+    return "\n".join(lines) + "\n"
+
+
+def case_loss_declarations():
+    cases = [
+        ("cancel forward", ('! 0 2', '! 0 -2'), "0"),
+        ("cancel reverse", ('! 0 -2', '! 0 2'), "0"),
+        ("negative marker", ('! 0 -1',), "0"),
+        ("negative trailer", (), "-1"),
+        ("matching negative", ('! 0 -1',), "-1"),
+        ("marker native overflow", ('! 0 4294967296',), "4294967296"),
+        ("trailer native overflow", (), "4294967296"),
+        ("nonnumeric marker", ('! 0 bad',), "0"),
+        ("fractional marker", ('! 0 1.5',), "0"),
+        ("missing dt", ('!',), "0"),
+        ("missing count", ('! 0',), "0"),
+        ("nonnumeric dt", ('! broken 2',), "2"),
+        ("negative dt", ('! -1 2',), "2"),
+        ("nonnumeric trailer", (), "bad"),
+        ("negative with positive close", ('! 0 -1',), "2"),
+        ("overflow with zero close", ('! 0 4294967296',), "0"),
+        ("bad marker with positive close", ('! 0 bad',), "2"),
+    ]
+    for label, markers, total in cases:
+        r = run(loss_declaration_journal(markers, total))
+        check(not r.ok and bool(r.faults),
+              "invalid unsigned loss declaration is a format fault: " + label)
+        check("dropped" not in r.info and has_note(r, "drop count unavailable"),
+              "invalid loss cannot become zero, subtotal or measured total: " + label)
+        check(r.info.get("identity_yaw_judged") == 19 and
+              r.info.get("join_checked") == 19 and r.info.get("join_broke") == 0,
+              "independent finite observed angle/count intervals ACT: " + label)
+    for value in (0, 1, 4294967295):
+        r = run(loss_declaration_journal(('! 0 %d' % value,), value))
+        check(r.ok and r.info.get("dropped") == value,
+              "CONTROL exact native unsigned loss value survives: %d" % value)
+        check(has_note(r, "LOST") == bool(value) and
+              r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+              "CONTROL valid loss disclosure is separate from finite comparisons: %d" % value)
+    r = run(loss_declaration_journal((), "2"))
+    check(r.ok and r.info.get("dropped") == 2 and has_note(r, "LOST"),
+          "CONTROL whole-run loss may legitimately exceed emitted markers")
+    r = run(loss_declaration_journal(('! ' + '9' * 400 + ' 1',), "1"))
+    check(not r.ok and "time" not in r.info and r.info.get("dropped") == 1 and
+          r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+          "CONTROL unusable elapsed clock does not discard a finite loss payload")
+    lines = loss_declaration_journal().splitlines()
+    end = lines[-1].split()
+    end[7:10] = ["-1", "-1", "-1"]
+    lines[-1] = " ".join(end)
+    r = run("\n".join(lines) + "\n")
+    check(r.ok and r.info.get("dropped") == 0 and "injected" not in r.info and
+          "unenum" not in r.info,
+          "CONTROL signed backend-unknown sentinels remain valid, not unsigned loss")
+
+
+def closing_counter_journal(truncated=True, postcap=False, **totals):
+    j = Journal(rawkbd=1, rawmice=1, rawkbds=1,
+                devices=[("mouse", "0", "mouse-example"),
+                         ("keyboard", "0", "keyboard-example")], inputcvars=P312_INPUT)
+    yaw = 90.0
+    for i in range(20):
+        j.frame(8800 + i)
+        if i == 10:
+            j.hidden(dev=0, us=0)
+        j.mouse(6, 0)
+        yaw += j.k * 6
+        j.view(6, 0, 10.0, yaw)
+    if truncated:
+        j.truncate()
+    if postcap:
+        j.frame(8820)
+        j.mouse(6, 0)
+        yaw += j.k * 6
+        j.view(6, 0, 10.0, yaw + (90 if postcap == "bad-view" else 0))
+    lines = j.end().splitlines()
+    end = lines[-1].split()
+    for name, index in (("events", 3), ("frames", 4), ("hidden", 6)):
+        if name in totals:
+            end[index] = str(totals[name])
+    lines[-1] = " ".join(end)
+    return "\n".join(lines) + "\n"
+
+
+def case_closing_counters():
+    for truncated in (False, True):
+        for name in ("events", "frames", "hidden"):
+            for value in ("-1", "4294967296", "bad", "1.5"):
+                r = run(closing_counter_journal(truncated, **{name: value}))
+                label = "%s=%s truncated=%s" % (name, value, truncated)
+                check(not r.ok and bool(r.faults),
+                      "invalid native closing count is a format fault: " + label)
+                check(name not in r.info,
+                      "unsupported closing total is not negative/zero/subtotal: " + label)
+                check("time" in r.info and r.info.get("frame_rate", 0) > 0 and
+                      r.info.get("events_per_sec", 0) > 0 and
+                      r.info.get("events_per_frame", 0) > 0 and
+                      r.info.get("identity_yaw_judged") == 19 and
+                      r.info.get("join_checked") == 19,
+                      "finite clock/prefix rates and independent angle/count observations ACT: " + label)
+    for truncated in (False, True):
+        r = run(closing_counter_journal(truncated, hidden=0))
+        check(not r.ok and has_fault(r, "hidden") and "hidden" not in r.info,
+              "whole hidden count cannot be behind its observed body, truncated=%s" % truncated)
+        r = run(closing_counter_journal(truncated, hidden=1))
+        check(r.ok and r.info.get("hidden") == 1 and r.info.get("join_checked") == 19,
+              "CONTROL equal observed/closing hidden1 remains valid, truncated=%s" % truncated)
+    r = run(closing_counter_journal(True, hidden=2))
+    check(r.ok and r.info.get("hidden") == 2,
+          "CONTROL whole hidden count ahead of truncated prefix remains valid")
+    r = run(closing_counter_journal(False, hidden=2))
+    check(not r.ok and has_fault(r, "hidden") and "hidden" not in r.info,
+          "CONTROL untruncated hidden count still must match exactly")
+    for truncated in (False, True):
+        for name, value in (("events", 20), ("frames", 19)):
+            r = run(closing_counter_journal(truncated, **{name: value}))
+            check(not r.ok and name not in r.info,
+                  "counter behind its observed prefix is not a measurement: %s/%s" %
+                  (name, truncated))
+            check("time" in r.info and r.info.get("frame_rate", 0) > 0 and
+                  r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+                  "observed prefix stays independently checkable despite contradictory close")
+    r = run(loss_declaration_journal(('! 0 1',), "0"))
+    check(not r.ok and "dropped" not in r.info and has_note(r, "drop count unavailable"),
+          "valid-domain closing loss behind its marker is not a measured zero")
+    check(r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+          "finite prefix still ACTS with contradictory valid-domain closing loss")
+    for name in ("events", "frames", "hidden"):
+        r = run(closing_counter_journal(True, **{name: 4294967295}))
+        check(r.ok and r.info.get(name) == 4294967295,
+              "CONTROL native unsigned maximum survives truncated prefix: " + name)
+        check("time" in r.info and r.info.get("identity_yaw_judged") == 19 and
+              r.info.get("join_checked") == 19,
+              "CONTROL finite independent observations remain with valid whole count: " + name)
+
+
+def closing_clock_journal(truncated=True, end_offset=None, cap_offset=None, zero=False,
+                          counts_ahead=False):
+    lines = closing_counter_journal(truncated, **({"hidden": 2} if counts_ahead else {})).splitlines()
+    cap = next((i for i, line in enumerate(lines) if line.startswith("truncated ")), None)
+    if zero:
+        for i, line in enumerate(lines):
+            fields = line.split()
+            if fields and fields[0] in ("f", "m", "v", "x", "truncated", "end"):
+                fields[1] = "0"
+                if fields[0] == "f":
+                    fields[2] = "0.000000"
+                elif fields[0] in ("truncated", "end"):
+                    fields[2] = "0.000000"
+                lines[i] = " ".join(fields)
+    if end_offset is not None:
+        fields = lines[-1].split()
+        origin = float(lines[cap].split()[2]) if truncated else float(fields[2])
+        fields[2] = "%.6f" % (origin + end_offset)
+        lines[-1] = " ".join(fields)
+    if cap_offset is not None:
+        fields = lines[cap].split()
+        fields[2] = "%.6f" % (float(fields[2]) + cap_offset)
+        lines[cap] = " ".join(fields)
+    return "\n".join(lines) + "\n"
+
+
+def case_closing_clocks():
+    cases = [(False, -0.01), (False, 0.01), (False, -0.000003), (False, 0.000003),
+             (True, -0.01), (True, -0.000003)]
+    for truncated, offset in cases:
+        r = run(closing_clock_journal(truncated, end_offset=offset))
+        label = "truncated=%s delta=%g" % (truncated, offset)
+        check(not r.ok and bool(r.faults), "inconsistent finite closing clock refuses: " + label)
+        check("time" not in r.info and has_note(r, "closing duration unavailable"),
+              "unsupported closing time is not a duration/zero: " + label)
+        check(r.info.get("frame_rate", 0) > 0 and r.info.get("events_per_sec", 0) > 0 and
+              r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+              "finite observed prefix rate/angle/counts still ACT: " + label)
+    for offset in (-0.01, 0.01, -0.000003, 0.000003):
+        r = run(closing_clock_journal(True, cap_offset=offset, counts_ahead=True))
+        check(not r.ok and "truncated_at" not in r.info and
+              has_note(r, "truncation timestamp unavailable"),
+              "inconsistent cap clock is not a measured prefix endpoint: %g" % offset)
+        check("time" in r.info and r.info.get("hidden") == 2 and
+              not has_fault(r, "hidden") and r.info.get("frame_rate", 0) > 0 and
+              r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+              "cap existence and independent whole/prefix facts survive bad timestamp")
+    for truncated in (False, True):
+        r = run(closing_clock_journal(truncated))
+        check(r.ok and "time" in r.info and r.info.get("identity_yaw_judged") == 19,
+              "CONTROL unchanged native clock control ACTS, truncated=%s" % truncated)
+        r = run(closing_clock_journal(truncated, zero=True))
+        check(r.ok and r.info.get("time") == 0 and
+              (not truncated or r.info.get("truncated_at") == 0),
+              "CONTROL zero clock is valid, not unavailable, truncated=%s" % truncated)
+        for offset in (-0.000001, 0.000001):
+            r = run(closing_clock_journal(truncated, end_offset=offset))
+            check(r.ok and "time" in r.info,
+                  "CONTROL existing print budget retains finite end: %s/%g" % (truncated, offset))
+    for offset in (-0.000001, 0.000001):
+        r = run(closing_clock_journal(True, cap_offset=offset))
+        check(r.ok and "truncated_at" in r.info and "time" in r.info,
+              "CONTROL cap timestamp within existing print budget remains usable: %g" % offset)
+    r = run(closing_clock_journal(True, end_offset=0.5, counts_ahead=True))
+    check(r.ok and r.info.get("hidden") == 2 and "time" in r.info,
+          "CONTROL actual truncated whole duration/counts may be ahead of prefix")
+    text = closing_clock_journal(False)
+    end_time = text.splitlines()[-1].split()[2]
+    r = run(text + "truncated 0 %s\n" % end_time)
+    check(not r.ok and has_fault(r, "after 'end'"),
+          "truncation cannot appear after the journal was closed")
+    check("truncated_at" not in r.info and "time" in r.info and
+          r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+          "invalid post-close cap does not rewrite the valid observed prefix")
+    lines = closing_clock_journal(True).splitlines()
+    cap = next(i for i, line in enumerate(lines) if line.startswith("truncated "))
+    lines.insert(cap + 1, lines[cap])
+    r = run("\n".join(lines) + "\n")
+    check(not r.ok and has_fault(r, "second 'truncated'"),
+          "single native cap marker cannot be silently replaced by a second")
+    check("time" in r.info and "truncated_at" in r.info and
+          r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+          "first valid cap/prefix remain observed despite rejected duplicate")
+
+
+def case_postcap_records():
+    base = run(closing_counter_journal(True))
+    check(base.ok and base.info.get("identity_yaw_judged") == 19 and
+          base.info.get("join_checked") == 19,
+          "CONTROL known captured prefix before cap ACTS19angle/19join")
+    for tail in (True, "bad-view"):
+        r = run(closing_counter_journal(True, postcap=tail))
+        check(not r.ok and has_fault(r, "after 'truncated'"),
+              "body after cap is not recorded native input: %s" % tail)
+        keys = [k for k in base.info if k.startswith(("identity_", "join_"))]
+        check(all(r.info.get(k) == base.info[k] for k in keys),
+              "unsupported tail cannot judge/accuse/pollute valid captured-prefix identity/joins")
+        check(r.info.get("frame_rate") == base.info.get("frame_rate") and
+              r.info.get("events_per_sec") == base.info.get("events_per_sec") and
+              "time" in r.info and "truncated_at" in r.info and r.info.get("frames") == 21,
+              "prefix rates stay measured; known cap and legitimate whole totals remain")
+    r = run(closing_counter_journal(False, postcap=True))
+    check(r.ok and r.info.get("identity_yaw_judged") == 20 and r.info.get("join_checked") == 20,
+          "CONTROL same extra native body without a cap is valid and ACTS20/20")
+    lines = closing_counter_journal(True).splitlines()
+    lines[-1:-1] = ["devmap mouse 0 mouse-example", "devmap keyboard 0 keyboard-example"]
+    r = run("\n".join(lines) + "\n")
+    check(r.ok and "time" in r.info and "truncated_at" in r.info and
+          r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+          "CONTROL permitted closing device tables and end still follow the cap")
+
+
+def backend_counts_journal(records=(), injected=0, unenum=0, legacy=0, truncated=False):
+    lines = closing_counter_journal(truncated).splitlines()
+    footer = next(i for i, line in enumerate(lines) if line.startswith(("truncated ", "devmap ")))
+    lines[footer:footer] = records
+    end = lines[-1].split()
+    end[7:10] = [str(injected), str(unenum), str(legacy)]
+    lines[-1] = " ".join(end)
+    return "\n".join(lines) + "\n"
+
+
+def case_backend_count_availability():
+    names = ("injected", "unenum", "legacy_presses")
+    def record(name, token, other=0):
+        if name == "injected":
+            return "i 0 %s %s" % (token, other)
+        if name == "unenum":
+            return "i 0 %s %s" % (other, token)
+        return "b 0 %s" % token
+
+    def finite_prefix(r):
+        return ("time" in r.info and r.info.get("frame_rate", 0) > 0 and
+                r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19)
+
+    for name in names:
+        for values in ((2, -2), (-2, 2)):
+            r = run(backend_counts_journal([record(name, v) for v in values]))
+            check(not r.ok, "backend count cancellation is not clean: %s/%s" % (name, values))
+            check(name not in r.info,
+                  "canceled backend quantity is unavailable, never measured0/subtotal: " + name)
+            check(finite_prefix(r) and all(r.info.get(k) == 0 for k in names if k != name),
+                  "independent backend zero/finite prefix19/19 ACT despite cancellation")
+        for token in (-1, -2, "bad", "1.5", 2147483648):
+            totals = {"injected": 0, "unenum": 0, "legacy": 0}
+            rows = [record(name, token, other=2)]
+            other = "unenum" if name == "injected" else "injected"
+            if name == "legacy_presses":
+                rows.insert(0, "i 0 2 0")
+            totals[other] = 2
+            r = run(backend_counts_journal(rows, **totals))
+            label = "%s/%s" % (name, token)
+            check(not r.ok, "unusable backend count observation faults: " + label)
+            check(name not in r.info, "unusable observation cannot support closing0: " + label)
+            check(finite_prefix(r) and r.info.get(other) == 2,
+                  "other known counter2 and finite prefix remain independent: " + label)
+        totals = {"injected": 0, "unenum": 0, "legacy": 0}
+        totals["legacy" if name == "legacy_presses" else name] = 2
+        r = run(backend_counts_journal([record(name, "bad")], **totals))
+        phrase = {"injected": "2 synthesized input reports", "unenum": "2 reports came from",
+                  "legacy_presses": "2 mouse press(es)"}[name]
+        check(not r.ok and name not in r.info and not has_note(r, phrase),
+              "unavailable quantity cannot emit a numeric cause/attempt note: " + name)
+        check(finite_prefix(r), "unknown backend count must not taint finite clocks/identity")
+    for rows, missing in [(["i 0 2"], ("injected", "unenum")),
+                          (["i 0 2 0 extra"], ("injected", "unenum")),
+                          (["b 0"], ("legacy_presses",)),
+                          (["b 0 1 extra"], ("legacy_presses",))]:
+        r = run(backend_counts_journal(rows))
+        check(not r.ok and all(k not in r.info for k in missing),
+              "structurally unsupported backend observation is unavailable, not zero")
+        check(finite_prefix(r), "malformed backend shape preserves finite prefix ACTING19/19")
+    for row, missing in [("i bad 2 3", ("injected", "unenum")),
+                         ("i -1 2 3", ("injected", "unenum")),
+                         ("b bad 2", ("legacy_presses",)),
+                         ("b -1 2", ("legacy_presses",))]:
+        r = run(backend_counts_journal([row]))
+        check(not r.ok and all(k not in r.info for k in missing),
+              "unread backend observation on an invalid clock cannot manufacture complete0")
+        check("time" not in r.info and r.info.get("identity_yaw_judged") == 19 and
+              r.info.get("join_checked") == 19,
+              "existing bad-clock abstention and independent finite model facts remain")
+    for name in names:
+        for truncated, closing in ((False, 0), (True, 1)):
+            totals = {"legacy" if name == "legacy_presses" else name: closing}
+            r = run(backend_counts_journal([record(name, 2)], truncated=truncated, **totals))
+            check(not r.ok and name not in r.info,
+                  "contradictory backend closing total is unavailable, not measured0/subtotal")
+            check(finite_prefix(r) and all(r.info.get(k) == 0 for k in names if k != name),
+                  "independent known counter0 and finite prefix survive contradicted whole count")
+    r = run(backend_counts_journal(["i 0 2 3", "b 0 1"], injected=2, unenum=3, legacy=1))
+    check(r.ok and [r.info.get(k) for k in names] == [2, 3, 1] and
+          has_note(r, "2 synthesized input reports"),
+          "CONTROL positive known backend counts remain measured/review-only, not faults")
+    check(finite_prefix(r), "CONTROL positive count notes still ACT with finite19/19prefix")
+    for name in names:
+        totals = {"legacy" if name == "legacy_presses" else name: 2147483647}
+        r = run(backend_counts_journal([record(name, 2147483647)], **totals))
+        check(r.ok and r.info.get(name) == 2147483647,
+              "CONTROL native signed-int32 maximum count survives: " + name)
+    r = run(backend_counts_journal(injected=-1, unenum=-1, legacy=-1))
+    check(r.ok and all(k not in r.info for k in names) and finite_prefix(r),
+          "CONTROL trailer backend-1 remains legitimate unavailable, never a body delta")
+    r = run(backend_counts_journal())
+    check(r.ok and [r.info.get(k) for k in names] == [0, 0, 0] and finite_prefix(r),
+          "CONTROL genuine measured backend0 and finite19/19prefix remain valid")
+
+
+def backend_trailer_journal(truncated=False, observations=True, **totals):
+    j = Journal(rawkbd=1, rawmice=1, rawkbds=1,
+                devices=[("mouse", "0", "mouse-example"),
+                         ("keyboard", "0", "keyboard-example"),
+                         ("touchpad", "1", "touchpad-example")], inputcvars=P312_INPUT)
+    j.lines.insert(j.lines.index("begin"), "rawpads 1")
+    yaw = 90.0
+    for i in range(20):
+        j.frame(8800 + i)
+        if i == 10:
+            j.hidden(dev=0, us=0)
+        j.mouse(6, 0)
+        yaw += j.k * 6
+        j.view(6, 0, 10.0, yaw)
+    if observations:
+        j.rejected(2, 2)
+        j.legacypress(2)
+        j.pad(2, 2)
+    if truncated:
+        j.truncate()
+    value = 2 if observations else 0
+    lines = j.end(injected=value, unenum=value, legacybtn=value,
+                  touchpad=value, padreports=value).splitlines()
+    end = lines[-1].split()
+    for name, index in (("injected", 7), ("unenum", 8), ("legacy_presses", 9),
+                        ("touchpad", 10), ("touchpad_digitizer_reports", 11)):
+        if name in totals:
+            end[index] = str(totals[name])
+    lines[-1] = " ".join(end)
+    return "\n".join(lines) + "\n"
+
+
+def case_backend_trailer_isolation():
+    names = ("injected", "unenum", "legacy_presses", "touchpad", "touchpad_digitizer_reports")
+    for truncated in (False, True):
+        for name in names:
+            for token in ("bad", "1.5", "2147483648", "-2"):
+                r = run(backend_trailer_journal(truncated, **{name: token}))
+                label = "%s=%s/truncated=%s" % (name, token, truncated)
+                check(not r.ok and name not in r.info,
+                      "unusable backend closing quantity unavailable, not0: " + label)
+                check("time" in r.info and r.info.get("frame_rate", 0) > 0 and
+                      r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+                      "valid present end/finite prefix19/19 survives unrelated bad count: " + label)
+                check(all(r.info.get(k) == 2 for k in names if k != name) and
+                      not has_fault(r, "no 'end' trailer") and not has_fault(r, "mixes two grammars"),
+                      "other four counters ACT2; bad field is not absent trailer/old grammar: " + label)
+    for truncated in (False, True):
+        r = run(backend_trailer_journal(truncated))
+        check(r.ok and all(r.info.get(k) == 2 for k in names) and "time" in r.info and
+              r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+              "CONTROL fully usable all2 native counters and finite19/19 ACT: %s" % truncated)
+    for name in names:
+        r = run(backend_trailer_journal(True, **{name: 2147483647}))
+        check(r.ok and r.info.get(name) == 2147483647 and
+              all(r.info.get(k) == 2 for k in names if k != name) and "time" in r.info,
+              "CONTROL native signedMAX legitimate whole ahead preserves siblings: " + name)
+    r = run(backend_trailer_journal(observations=False, **{name: -1 for name in names}))
+    check(r.ok and all(k not in r.info for k in names) and "time" in r.info and
+          r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+          "CONTROL all legitimate backend-1 sentinels stay unavailable, not format faults")
+
+
+def model_constant_journal(name=None, value=None, change=False, late=False, text=None):
+    if text is None:
+        text = namespace_journal([("mouse", "0", "mouse-example")], pointer=0)
+    if name is None:
+        return text
+    if change:
+        before, after = (text.rsplit("v 30", 1) if late else text.split("v 30", 1))
+        return before + 'c 0 %s "%s"\nv 30' % (name, value) + after
+    lines = text.splitlines()
+    found = [i for i, line in enumerate(lines) if line.startswith(name + " ")]
+    assert len(found) == 1
+    lines[found[0]] = name + " " + value
+    return "\n".join(lines) + "\n"
+
+
+def model_constant_bad_cases():
+    cases = [("header " + name, model_constant_journal(name, "nan"))
+             for name in ("sensitivity", "sensitivityscale", "m_yaw", "m_pitch")]
+    cases.append(("unrepresentable header", model_constant_journal("m_yaw", "1e308")))
+    product = model_constant_journal("sensitivity", "3.4e38",
+                                     text=model_constant_journal("m_yaw", "3.4e38"))
+    cases.append(("finite native gain overflow", product))
+    cases.append(("finite native prediction overflow", model_constant_journal("m_yaw", "3e38")))
+    for name in ("sensitivity", "m_yaw", "m_pitch"):
+        cases.append(("complete captured " + name,
+                      model_constant_journal(name, "9" * 50, change=True)))
+    cases.append(("late unusable model", model_constant_journal("m_pitch", "9" * 50,
+                                                              change=True, late=True)))
+    return cases
+
+
+def case_model_numeric_quality():
+    for label, text in model_constant_bad_cases():
+        r = run(text)
+        check(not r.ok and has_fault(r, "unusable numeric input-model"),
+              "numeric model quality is refused: " + label)
+        check(r.info.get("view_records") == 20 and r.info.get("events") == 20,
+              "model validator actually consumed declared stream: " + label)
+        check("identity_judged" not in r.info and "deg_per_count" not in r.info,
+              "unusable model is not a surviving partial comparison: " + label)
+        check(r.info.get("identity_yaw_exclusions") == {"reader_profile_gate": 20} and
+              r.info.get("identity_pitch_exclusions") == {"reader_profile_gate": 20},
+              "whole unavailable identity partition is explicit: " + label)
+        check(r.info.get("join_checked") == 19 and r.info.get("join_broke") == 0,
+              "independent finite counts join still ACTS: " + label)
+        check(not any("IDENTITY BROKEN" in f or "COUNTS JOIN BROKEN" in f for f in r.faults),
+              "unusable model is not angle/count guilt: " + label)
+
+    for text in (model_constant_journal(),
+                 model_constant_journal("m_pitch", "1e999", change=True)):
+        r = run(text)
+        check(r.ok and r.info.get("identity_yaw_mouse_frames") == 19,
+              "CONTROL finite/native scientific-prefix1 with held pitch actually judges19")
+    for name, value, change in (("sensitivity", "nan", True),
+                                 ("m_yaw", "0", False), ("m_filter", "1", False)):
+        r = run(model_constant_journal(name, value, change))
+        check(r.ok and "identity_judged" not in r.info and bool(r.info.get("identity_blind")),
+              "CONTROL NativeQ_atof0/zero/nonlinear is BLIND, not corrupt data")
+    for name in ("sensitivity", "m_yaw"):
+        r = run(model_constant_journal(name, "1e999", change=True))
+        check(not r.ok and has_fault(r, "IDENTITY BROKEN") and
+              not has_fault(r, "unusable numeric input-model"),
+              "CONTROL NativeQ_atof scientific-prefix1 is a genuine finite contradiction")
+
+
+def native_byte_journal(value, native, late=False):
+    """Literal Q_atof byte coefficient, not a Unicode-codepoint equation."""
+    text = model_constant_journal("sensitivity", value, change=True, late=late)
+    f32 = lambda x: hidcheck.struct.unpack("=f", hidcheck.struct.pack("=f", x))[0]
+    oldgain, gain = f32(-f32(0.022) * f32(0.3)), f32(-f32(0.022) * native)
+    yaw, changed, lines = 0.0, False, []
+    for line in text.splitlines():
+        if line.startswith("c 0 sensitivity "):
+            changed = True
+        if line.startswith("v "):
+            yaw = f32(yaw + f32((gain if changed else oldgain) * 4))
+            fields = line.split()
+            fields[6] = "%.9g" % yaw
+            line = " ".join(fields)
+        lines.append(line)
+    return "\n".join(lines) + "\n"
+
+
+def native_byte_cases():
+    # UTF8 'é is -61/195 and '😀 is -16/240 in the two native char modes.
+    cases = [(label, native_byte_journal(value, native))
+             for label, value, native in (
+                 ("signed UTF8 latin", "'é", -61),
+                 ("unsigned UTF8 latin", "'é", 195),
+                 ("signed UTF8 emoji", "'😀", -16),
+                 ("unsigned UTF8 emoji", "'😀", 240),
+                 ("negative signed byte", "-'é", 61),
+                 ("negative unsigned byte", "-'é", -195))]
+    cases.append(("late unavailable native byte",
+                  native_byte_journal("'é", -61, late=True)))
+    return cases
+
+
+def case_native_quoted_byte():
+    for label, text in native_byte_cases():
+        r = run(text)
+        check(not r.ok and has_fault(r, "unusable numeric input-model"),
+              "native-byte coefficient is unavailable, not Unicode: " + label)
+        check(r.info.get("view_records") == 20 and r.info.get("events") == 20,
+              "native byte subject actually consumes20records: " + label)
+        check("identity_judged" not in r.info and "deg_per_count" not in r.info,
+              "unrecorded char mode cannot leave healthy partial identity: " + label)
+        check(r.info.get("identity_yaw_exclusions") == {"reader_profile_gate": 20},
+              "whole native-byte identity partition is unavailable: " + label)
+        check(not has_fault(r, "IDENTITY BROKEN") and r.info.get("join_checked") == 19,
+              "no angle guilt; independent finite counts still ACT: " + label)
+
+    for value, native in (("'A", 65), ("'Aé", 65), ("1é", 1), ("0x10", 16)):
+        r = run(native_byte_journal(value, native))
+        check(r.ok and r.info.get("identity_yaw_mouse_frames") == 19,
+              "CONTROL known native ASCII/prefix coefficient actually judges: " + ascii(value))
+    r = run(model_constant_journal("sensitivity", "'A", change=True))
+    check(not r.ok and has_fault(r, "IDENTITY BROKEN"),
+          "CONTROL finite ASCII contradiction still ACTS")
+    for name in ("leftisright", "m_filter", "m_accel"):
+        r = run(model_constant_journal(name, "'é", change=True))
+        check(not has_fault(r, "unusable numeric input-model"),
+              "CONTROL native signedness-independent nonzero path stays known: " + name)
+        if name == "leftisright":
+            check(not r.ok and has_fault(r, "IDENTITY BROKEN"),
+                  "CONTROL known nonzero flip actually contradicts unflipped data")
+        else:
+            check(r.ok and "identity_judged" not in r.info,
+                  "CONTROL known nonlinear nonzero path abstains without corruption")
+
+
+def clock_journal(kind, value, delta=None):
+    lines = model_constant_journal().splitlines()
+    if kind == "truncated":
+        i = next(i for i, line in enumerate(lines) if line.startswith("end "))
+        lines.insert(i, "truncated %s %s" % (0 if delta is None else delta, value))
+    else:
+        indexes = [i for i, line in enumerate(lines) if line.startswith(kind + " ")]
+        i = indexes[1] if kind == "m" else indexes[0]  # first join is seed-exempt
+        fields = lines[i].split()
+        if kind != "m":
+            fields[1 if kind == "base" else 2] = value
+        if delta is not None:
+            fields[1] = str(delta)
+        lines[i] = " ".join(fields)
+    return "\n".join(lines) + "\n"
+
+
+def clock_quality_cases():
+    cases = [(kind + " " + value, clock_journal(kind, value), kind == "base")
+             for kind in ("base", "f", "end", "truncated")
+             for value in ("nan", "inf", "-inf")]
+    cases += [("negative end delta", clock_journal("end", "0.0245", -100), False),
+              ("negative truncated delta", clock_journal("truncated", "0.0246", -100), False),
+              ("unrepresentable end delta", clock_journal("end", "0.0247", "9" * 400), False),
+              ("malformed body delta", clock_journal("m", "unused", "broken"), False),
+              ("negative body delta", clock_journal("m", "unused", -1), False),
+              ("unrepresentable body delta", clock_journal("m", "unused", "9" * 400), False)]
+    return cases
+
+
+def case_clock_quality():
+    for label, text, header in clock_quality_cases():
+        try:
+            r = run(text)
+        except OverflowError:
+            check(False, "unusable clock must refuse rather than crash: " + label)
+            continue
+        wanted = "finite number" if header else "dt" if "body" in label and "unrepresentable" not in label else "unusable clock"
+        check(not r.ok and has_fault(r, wanted),
+              "clock quality refuses unusable timing: " + label)
+        check(all(key not in r.info for key in ("time", "frame_rate", "events_per_sec")),
+              "unusable clock has no healthy duration/rate: " + label)
+        check(r.info.get("map") == "test_identity" if header else
+              r.info.get("view_records") == 20,
+              "clock subject actually parses its declared stage: " + label)
+        check(not has_fault(r, "IDENTITY BROKEN") and not has_fault(r, "COUNTS JOIN BROKEN"),
+              "clock quality is not an angle/count accusation: " + label)
+    for text in (clock_journal("base", "1000000000000"),
+                 clock_journal("f", "0.001201")):
+        r = run(text)
+        check(r.ok and r.info.get("identity_judged") == 19,
+              "CONTROL finite clocks and bounded rounding still judge19")
+        check(r.info.get("time") == 0.0247 and r.info.get("frame_rate", 0) > 0,
+              "CONTROL finite duration/rate are actual measurements, not silence")
+    r = run(clock_journal("end", "0.030000"))
+    check(not r.ok and has_fault(r, "dt sum") and not has_fault(r, "unusable clock"),
+          "CONTROL finite clock contradiction still ACTS with unchanged tolerance")
+
+
+def pointer_coordinate_journal(kind, x, y, profile=False):
+    text = namespace_journal([("mouse", "0", "mouse-example")], pointer=0)
+    text = text.replace("m 0 0 4 0", "%s 0 0 %s %s" % (kind, x, y))
+    if profile:
+        text = text.replace("begin\n", 'input m_filter "0" "0"\nbegin\n', 1)
+    return text
+
+
+def pointer_sum_journal(amount):
+    j = Journal(devices=[MOUSE0])
+    yaw = 0.0
+    for i in range(20):
+        j.frame(9000 + i)
+        j.mouse(amount, 0)
+        j.mouse(amount, 0)
+        yaw += j.k * 4
+        j.view(4, 0, 10, yaw)
+    return j.end()
+
+
+def case_pointer_coordinate_quality():
+    for kind in ("m", "a"):
+        for column in (0, 1):
+            for value in ("broken", "nan", "1e999"):
+                for profile in (False, True):
+                    coords = ["4", "0"]
+                    coords[column] = value
+                    r = run(pointer_coordinate_journal(kind, *coords, profile=profile))
+                    label = "%s column%d %s profile%s" % (kind, column, value, profile)
+                    check(not r.ok and has_fault(r, "pointer coordinates"),
+                          "unusable pointer data cannot become a clean content result: " + label)
+                    check(r.info.get("view_records") == 20 and r.info.get("events") == 20,
+                          "coordinate validator actually consumed the declared stream: " + label)
+                    check("join_checked" not in r.info and "join_broke" not in r.info,
+                          "partial/non-finite source is not a measured join or zero: " + label)
+                    check(not any("COUNTS JOIN BROKEN" in f or "IDENTITY BROKEN" in f
+                                  for f in r.faults),
+                          "quality refusal is not a fabricated angle/count accusation: " + label)
+
+    for kind in ("m", "a"):
+        r = run(pointer_coordinate_journal(kind, "4", "").replace("4 \n", "4\n"))
+        check(not r.ok and "join_checked" not in r.info,
+              "already-invalid %s width also withholds incomplete join measurement" % kind)
+    for dx in (-4.5, 0.125):
+        j = Journal(devices=[MOUSE0])
+        yaw = 0.0
+        for i in range(20):
+            j.frame(8900 + i)
+            j.mouse(dx, 0)
+            yaw += j.k * dx
+            j.view(dx, 0, 10, yaw)
+        r = run(j.end())
+        check(r.ok and r.info.get("join_checked") == 19 and
+              r.info.get("join_broke") == 0 and
+              r.info.get("identity_yaw_mouse_frames") == 19,
+              "CONTROL signed/fractional finite pointer motion still judges: %s" % dx)
+    r = run(pointer_coordinate_journal("a", "-4.5", "0.125"))
+    check(r.ok and r.info.get("join_checked") == 0 and
+          r.info.get("join_unjoinable") == 19,
+          "finite absolute coordinates retain existing unjoinable quantity, not a fault")
+    r = run(pointer_coordinate_journal("m", "5", "0", profile=True))
+    check(has_fault(r, "COUNTS JOIN BROKEN") and r.info.get("join_checked") == 19,
+          "CONTROL real finite counts contradiction still acts and faults")
+    for amount, valid in ((2.0, True), (1e308, False)):
+        r = run(pointer_sum_journal(amount))
+        check(r.ok == valid, "paired pointer numeric closure, valid=%s" % valid)
+        check(r.info.get("join_checked") == (19 if valid else None),
+              "paired finite source ACTS; overflowing sums stay unmeasured")
+        check(not any("COUNTS JOIN BROKEN" in f for f in r.faults),
+              "numeric overflow is unavailable source, not a counts accusation")
+
+
+def case_controller_profile_is_not_a_keyboard_turn():
+    for table, axis, unsupported in (("assigned", True, True),
+                                      ("assigned", False, True),
+                                      ("closing", False, True),
+                                      ("unset", True, True),
+                                      ("unset", False, False),
+                                      ("dash", False, False)):
+        did = "unset" if table == "unset" else "-" if table == "dash" else "0"
+        devices = [MOUSE0, ("joy", did, "controller-example")]
+        if table == "closing":
+            devices[1] = ("joy", "unset", "controller-example")
+        j = Journal(devices=devices)
+        yaw = 0.0
+        for i in range(30):
+            j.frame(8800 + i)
+            j.mouse(4, 0)
+            if axis:
+                j.joyaxis(0, 0.5)
+            yaw += j.k * 4 + (1.8 if unsupported else 0)
+            j.view(4, 0, 10.0, yaw)
+        if table == "closing":
+            j.devices[1] = ("joy", "0", "controller-example")
+        text = j.end()
+        r = run(text)
+        check(r.ok, "controller %s/axis%s: no fabricated identity fault" % (table, axis))
+        check(r.info.get("view_records") == 30 and
+              r.info.get("events") == 30 + 30 * axis,
+              "controller profile control actually consumes view and input records")
+        if unsupported:
+            check("controller" in r.info.get("identity_blind", "") and
+                  r.info.get("identity_yaw_exclusions") == {"reader_profile_gate": 30} and
+                  r.info.get("identity_pitch_exclusions") == {"reader_profile_gate": 30},
+                  "unavailable controller model accounts for BOTH axes")
+            check("identity_judged" not in r.info and
+                  "identity_yaw_mouse_frames" not in r.info,
+                  "unavailable is not a measured zero or a clean-angle judgement")
+            bad = run(text.replace("m 0 0 4 0", "m broken 0 4 0", 1))
+            check(not bad.ok, "controller profile does NOT hide malformed pointer data")
+            bad = run(text.replace("m_yaw 0.022", "m_yaw broken", 1))
+            check(not bad.ok, "controller profile does NOT hide malformed header scales")
+            wire = float_capture_cases()[0][2]
+            bad = run(text.replace("v 30", "c 0 m_yaw " + wire + "\nv 30", 1))
+            check(has_fault(bad, "m_yaw capture unavailable"),
+                  "controller profile preserves actual captured-scalar quality faults")
+        else:
+            check(r.info.get("identity_yaw_mouse_frames") == 29,
+                  "empty unassigned controller slots preserve actual mouse judgement")
+            bad = run(text.replace("v 30 4 0 0 10.000000", "v 30 5 0 0 10.000000"))
+            check(has_fault(bad, "YAW IDENTITY BROKEN"),
+                  "CONTROL normal mouse identity still rejects a changed delta")
 
 
 def case_key_devid_is_not_the_mouse():
@@ -2147,6 +3156,225 @@ def case_leftisright_sign():
                   % (r.faults[:1] or "none"))
 
 
+# Literal native COM_QuotedString output, independently checked by the
+# production C helper. Plain quotes do NOT give backslashes escape semantics.
+CVAR_QUOTE_CASES = (
+    ('1"', r'\"1\""', True),
+    ('1\r', r'\"1\r"', True),
+    ('1\n"', r'\"1\n\""', True),
+    ('1\\', '"1\\"', True),
+    ('\\1', '"\\1"', False),
+    ('  1', '"  1"', False),
+    ('1  2', '"1  2"', True),
+    ("'$\n", r'\"\'\$\n"', True),
+)
+
+
+def case_cvar_quote_codec():
+    for value, wire, _flip in CVAR_QUOTE_CASES:
+        got = hidcheck._unquote_pair(wire + ' "0"')
+        check(got == (value, "0"),
+              "native quoted cvar decoded exactly: %r -> %r" % (value, got))
+
+
+def case_cvar_quote_identity():
+    for value, wire, flip in CVAR_QUOTE_CASES:
+        for change in (False, True):
+            for correct in (True, False):
+                j = Journal(inputcvars=[("leftisright", "0", "0")])
+                if not change:
+                    j.lines = [l.replace('input leftisright "0" "0"',
+                                         'input leftisright ' + wire + ' "0"')
+                               for l in j.lines]
+                yaw = 0.0
+                for i in range(30):
+                    j.frame(8100 + i)
+                    j.mouse(3, 0)
+                    if change and i == 12:
+                        j.lines.append('c 0 leftisright ' + wire)
+                    active = not change or i >= 12
+                    mirrored = (flip if correct else not flip) if active else False
+                    yaw += (-j.k if mirrored else j.k) * 3
+                    j.view(3, 0, 10.0, yaw)
+                r = run(j.end())
+                label = "%r %s" % (value, "change" if change else "header")
+                if correct:
+                    check(r.ok and r.info.get("identity", "").startswith("exact"),
+                          "native quote legitimate angles exact %s: %s" % (label, r.faults[:1]))
+                    check(r.info.get("identity_judged", 0) > 0 and
+                          r.info.get("identity_yaw_mouse_frames", 0) > 0,
+                          "native quote mouse identity actually judged %s" % label)
+                else:
+                    check(has_fault(r, "YAW IDENTITY BROKEN"),
+                          "CONTROL native quote wrong sign still faults %s: %s" % (label, r.faults[:1]))
+
+
+def case_cvar_quote_malformed():
+    for wire in ('"1', r'\"1\q"', '"1"extra'):
+        for change in (False, True):
+            j = Journal(inputcvars=[("leftisright", "0", "0")])
+            if change:
+                j.lines.append('c 0 leftisright ' + wire)
+            else:
+                j.lines = [l.replace('input leftisright "0" "0"',
+                                     'input leftisright ' + wire + ' "0"')
+                           for l in j.lines]
+            r = run(j.end())
+            check(has_fault(r, "malformed") and has_fault(r, "quoted cvar"),
+                  "malformed native quoted cvar is a format fault, not a crash: %r" % wire)
+    # A malformed change invalidates the known value until the next valid one;
+    # leaving the old value active would turn format loss into false attribution.
+    j = Journal(inputcvars=[("leftisright", "0", "0")])
+    yaw = 0.0
+    for i in range(30):
+        j.frame(8200 + i)
+        j.mouse(3, 0)
+        if i == 12:
+            j.lines.append('c 0 leftisright "1')
+        if i == 20:
+            j.cvarchange("leftisright", "1")
+        yaw += (-j.k if i >= 12 else j.k) * 3
+        j.view(3, 0, 10.0, yaw)
+    r = run(j.end())
+    check(has_fault(r, "malformed quoted cvar") and not has_fault(r, "YAW IDENTITY BROKEN"),
+          "lost change is a format fault, not a stale-sign accusation")
+    check(r.info.get("identity_yaw_judged") == 21 and
+          r.info.get("identity_yaw_exclusions", {}).get("profile") == 8,
+          "only eight unknown transitions excluded; valid change resumes actual judging")
+
+
+def leftisright_capture_cases(capacity):
+    """Wire fixtures checked against literal native Q_atoi/COM_QuotedString."""
+    n = capacity - 3
+    return (
+        ("plain clipped one", "0" * n + "1", '"' + "0" * n + '"', 1, True),
+        ("same whole zero", "0" * n, '"' + "0" * n + '"', 0, True),
+        ("signed clipped one", "-" + "0" * (n - 1) + "1",
+         '"-' + "0" * (n - 1) + '"', -1, True),
+        ("hex clipped one", "0x" + "0" * (n - 2) + "1",
+         '"0x' + "0" * (n - 2) + '"', 1, True),
+        ("escaped clipped one", "0" * (capacity - 5) + "1\n",
+         '\\"' + "0" * (capacity - 5) + '"', 1, True),
+        ("escaped same zero", "0" * (capacity - 5) + "\n",
+         '\\"' + "0" * (capacity - 5) + '"', 0, True),
+        ("stable terminated one", "1x" + "0" * (capacity + 8),
+         '"1x' + "0" * (n - 2) + '"', 1, False),
+        ("stable quoted character", "'0" + "0" * (capacity + 8),
+         '"\'0' + "0" * (n - 2) + '"', 48, False),
+        ("escaped full boundary stable zero", "0" * (capacity - 6) + "\n" + "1" * 9,
+         '\\"' + "0" * (capacity - 6) + '\\n"', 0, False),
+        ("stable terminated hex", "0x1z" + "0" * (capacity + 8),
+         '"0x1z' + "0" * (n - 4) + '"', 1, False),
+    )
+
+
+def case_leftisright_capture_boundary():
+    for capacity, change in ((64, False), (128, True)):
+        for name, _value, wire, integer, unavailable in leftisright_capture_cases(capacity):
+            for correct in (True, False):
+                j = Journal(inputcvars=[("leftisright", "0", "0")])
+                if not change:
+                    j.lines = [l.replace('input leftisright "0" "0"',
+                                         'input leftisright ' + wire + ' "0"')
+                               for l in j.lines]
+                yaw = 0.0
+                for i in range(30):
+                    j.frame(8300 + i)
+                    j.mouse(3, 0)
+                    if change and i == 12:
+                        j.lines.append('c 0 leftisright ' + wire)
+                    if i == 20:
+                        j.cvarchange("leftisright", "1" if integer else "0")
+                    active = not change or i >= 12
+                    mirrored = (bool(integer) if correct else not bool(integer)) if active else False
+                    yaw += (-j.k if mirrored else j.k) * 3
+                    j.view(3, 0, 10.0, yaw)
+                r = run(j.end())
+                label = "%s %s correct=%s" % (name, "change" if change else "header", correct)
+                if unavailable:
+                    check(not r.ok and has_fault(r, "leftisright capture unavailable"),
+                          "ambiguous capture is refused, never an unproved pass: %s" % label)
+                    if correct:
+                        check(not has_fault(r, "YAW IDENTITY BROKEN"),
+                              "ambiguous capture does not accuse valid angles: %s" % label)
+                    expected = 21 if change else 10
+                    check(r.info.get("identity_yaw_judged") == expected,
+                          "known sign resumes exactly after replacement: %s" % label)
+                elif correct:
+                    check(r.ok and r.info.get("identity", "").startswith("exact"),
+                          "complete integer prefix keeps exact identity: %s %s" % (label, r.faults[:1]))
+                    check(r.info.get("identity_yaw_mouse_frames") == 29,
+                          "complete-prefix mouse comparisons actually act: %s" % label)
+                else:
+                    check(has_fault(r, "YAW IDENTITY BROKEN") and
+                          not has_fault(r, "leftisright capture unavailable"),
+                          "CONTROL complete-prefix wrong sign still faults: %s" % label)
+
+
+def float_capture_cases(capacity=128):
+    n = capacity - 3
+    return (
+        ("plain clipped one", "0" * n + "1", '"' + "0" * n + '"', 1, True),
+        ("same whole zero", "0" * n, '"' + "0" * n + '"', 0, True),
+        ("escaped clipped one", "0" * (capacity - 5) + "1\n",
+         '\\"' + "0" * (capacity - 5) + '"', 1, True),
+        ("escaped same zero", "0" * (capacity - 5) + "\n",
+         '\\"' + "0" * (capacity - 5) + '"', 0, True),
+        ("terminated one", "1x" + "0" * (capacity + 8),
+         '"1x' + "0" * (n - 2) + '"', 1, False),
+    )
+
+
+def float_capture_journal(name, wire, numeric, corrupt=False):
+    defaults = {"sensitivity": 0.3, "m_yaw": 0.022, "m_pitch": 0.022,
+                "m_filter": 0, "m_accel": 0}
+    j = Journal(inputcvars=[(name, str(defaults[name]), str(defaults[name]))])
+    pitch, yaw = 10.0, 0.0
+    for i in range(30):
+        j.frame(8500 + i)
+        j.mouse(3, 2)
+        if i == 12:
+            j.lines.append('c 0 ' + name + ' ' + wire)
+        if i == 20:
+            j.cvarchange(name, str(defaults[name]))
+        active = 12 <= i < 20
+        sensitivity = numeric if active and name == "sensitivity" else 0.3
+        myaw = numeric if active and name == "m_yaw" else 0.022
+        mpitch = numeric if active and name == "m_pitch" else 0.022
+        yaw -= 3 * sensitivity * myaw
+        pitch += 2 * sensitivity * mpitch
+        if corrupt and i == 15:
+            yaw += 5
+        j.view(3, 2, pitch, yaw)
+    return j.end()
+
+
+def case_float_capture_boundary():
+    for name in ("sensitivity", "m_yaw", "m_pitch", "m_filter", "m_accel"):
+        for label, _value, wire, numeric, unavailable in float_capture_cases():
+            r = run(float_capture_journal(name, wire, numeric))
+            label = name + " " + label
+            if unavailable:
+                check(not r.ok and has_fault(r, name + " capture unavailable"),
+                      "unfinished captured float cannot become proof: %s" % label)
+                check(not has_fault(r, "IDENTITY BROKEN"),
+                      "unfinished float capture does not invent angle accusations: %s" % label)
+                check(r.info.get("identity_yaw_judged") == 21 and
+                      r.info.get("identity_pitch_judged") == 21,
+                      "float replacement restores exactly the known comparisons: %s" % label)
+            else:
+                check(r.ok and not has_fault(r, "capture unavailable"),
+                      "terminated float prefix remains available: %s %s" % (label, r.faults[:1]))
+                expected = 21 if name in ("m_filter", "m_accel") else 29
+                check(r.info.get("identity_yaw_mouse_frames") == expected and
+                      r.info.get("identity_pitch_mouse_frames") == expected,
+                      "known float profile acts (nonlinear modes stay excluded): %s" % label)
+                if name not in ("m_filter", "m_accel"):
+                    broken = run(float_capture_journal(name, wire, numeric, corrupt=True))
+                    check(has_fault(broken, "YAW IDENTITY BROKEN"),
+                          "CONTROL terminated float does not hide angle rewrite: %s" % label)
+
+
 def case_leftisright_engine_parse():
     """The sign is leftisright's .ival (Q_atoi), so no value blinds the check
     and none the engine reads as 0 flips it: "abc", "0.5" and " 1" are all 0."""
@@ -2334,6 +3562,190 @@ def case_no_input_is_blind():
           % (r.faults[:1] or "none", r.info.get("identity_blind")))
 
 
+def case_review_rejected_observations():
+    from test_journal_diagnostics import receipt_for
+
+    def prefix(r):
+        return (r.info.get("identity_yaw_judged") == 19 and
+                r.info.get("join_checked") == 19)
+
+    def insert(text, rows):
+        lines = text.splitlines()
+        lines[-1:-1] = rows
+        return "\n".join(lines) + "\n"
+
+    base = backend_trailer_journal(observations=False)
+    check(run(base).ok and prefix(run(base)), "review CONTROL zero backend with acting19/19")
+    positive = backend_trailer_journal()
+    check(run(positive).ok and prefix(run(positive)), "review CONTROL positive backend with acting19/19")
+    for rows, missing, sibling in (
+            (["p 0 2 2 0", "p 0 -2 -2 0"], ("touchpad", "touchpad_digitizer_reports"), None),
+            (["p 0 -1 2 0"], ("touchpad",), "touchpad_digitizer_reports"),
+            (["p 0 2 -1 0"], ("touchpad_digitizer_reports",), "touchpad"),
+            (["p 0 0 0 1"], ("touchpad",), "touchpad_digitizer_reports"),
+            (["p"], ("touchpad", "touchpad_digitizer_reports"), None),
+            (["p 0 bad 0 0"], ("touchpad",), "touchpad_digitizer_reports")):
+        text = base
+        if sibling:
+            lines = text.splitlines()
+            end = lines[-1].split()
+            end[10 if sibling == "touchpad" else 11] = "2" if "2" in rows[0].split()[2:4] else "0"
+            lines[-1] = " ".join(end)
+            text = "\n".join(lines) + "\n"
+        text = insert(text, rows)
+        r, receipt = run(text), receipt_for(text)
+        check(not r.ok and all(k not in r.info for k in missing),
+              "review rejected p cannot publish affected total: %s" % rows)
+        check(all(k not in receipt.journal_metrics["metrics"] for k in missing),
+              "review rejected p absent from captured receipt projection: %s" % rows)
+        check(prefix(r) and r.info.get("injected") == 0 and
+              (sibling is None or sibling in r.info),
+              "review p rejection preserves independently usable sibling and19/19")
+    for row, missing in (("i", ("injected", "unenum")), ("b", ("legacy_presses",))):
+        r = run(insert(base, [row]))
+        check(not r.ok and all(k not in r.info for k in missing) and prefix(r),
+              "review kind-only backend cannot manufacture zero: " + row)
+    lines = base.splitlines()
+    mice = [i for i, line in enumerate(lines) if line.startswith("m ")]
+    for kind in ("m", "a"):
+        changed = lines[:]
+        changed[mice[1]] = kind
+        text = "\n".join(changed) + "\n"
+        r, receipt = run(text), receipt_for(text)
+        check(not r.ok and "join_checked" not in r.info and "join_broke" not in r.info and
+              not has_fault(r, "COUNTS JOIN BROKEN") and r.info.get("identity_yaw_judged") == 19,
+              "review kind-only pointer abstains join with independent angle19: " + kind)
+        check("join_broke" not in receipt.journal_metrics["metrics"],
+              "review unsupported join absent from receipt: " + kind)
+    for valid, bad in (("y 0 2 0", "y 0 bad 0"), ("y 0 0 2", "y 0 0 bad")):
+        text = base.replace("begin\n", "kbdobserve 1\nbegin\n")
+        clean = run(insert(text, [valid]))
+        check(clean.ok and prefix(clean), "review CONTROL known keyboard observations act: " + valid)
+        r = run(insert(text, [valid, bad]))
+        check(not r.ok and "legacy_keys" not in r.info and "kbd_nohandle" not in r.info and
+              not has_note(r, "so these came") and not has_note(r, "every legacy key press"),
+              "review unknown keyboard counts cannot infer absence/cause: " + bad)
+        check(prefix(r), "review keyboard corruption retains19/19 mouse comparisons")
+    pad = [MOUSE0, ("touchpad", "1", PAD[2])]
+    for opening, change, needle in (("0", None, "Innocent on a machine"),
+                                    ("1", None, "NOT one on this build"),
+                                    ("0.5", None, "Innocent on a machine"),
+                                    ("1", "0.5", "changed mid-journal")):
+        j = _padjournal(pad, cvar=opening, rawpads=1)
+        j.frame(3000)
+        j.mouse(4, 0)
+        j.view(4, 0, 10, j.k * 4)
+        if change is not None:
+            j.cvarchange("in_rawinput_touchpad", change)
+        j.legacypress(2)
+        r = run(j.end(touchpad=0))
+        check(r.ok and has_note(r, needle),
+              "review native integer pad state: %s/%s" % (opening, change))
+
+
+def case_review_boundary_prefix_timing():
+    text = closing_counter_journal(False)
+    base = run(text)
+    timing = ("first_frame_at", "frame_rate", "events_per_sec")
+    check(base.ok and all(base.info.get(k, 0) > 0 for k in timing),
+          "boundary timing CONTROL healthy finite no-tail prefix rates ACT")
+    lines = text.splitlines()
+    cases = {"end-width": "\n".join(lines[:-1] + [lines[-1] + " 0"]) + "\n",
+             "absent-end": "\n".join(lines[:-1]) + "\n"}
+    capped = closing_counter_journal(True).splitlines()
+    cap = next(i for i, line in enumerate(capped) if line.startswith("truncated "))
+    capped[cap] += " 0"
+    cases["cap-width"] = "\n".join(capped) + "\n"
+    for name, changed in cases.items():
+        r = run(changed)
+        check(not r.ok and bool(r.faults), "boundary timing remains FAULT: " + name)
+        check(all(r.info.get(k) == base.info[k] for k in timing),
+              "boundary timing preserves independently finite prefix: " + name)
+        check("time" not in r.info and "truncated_at" not in r.info,
+              "boundary timing no unsupported whole duration/endpoint: " + name)
+        check(r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+              "boundary timing accepted prefix19/19 ACT: " + name)
+        check(has_fault(r, "no 'end' trailer") == (name == "absent-end"),
+              "boundary timing present unusable versus absent end: " + name)
+        if name != "absent-end":
+            marker = "end" if name == "end-width" else "truncated"
+            check(has_fault(r, "'%s' has" % marker) and
+                  not has_fault(r, "'devmap' after"),
+                  "boundary timing shape fault and permitted closing table: " + name)
+            tail = run(changed + "f 0 0 9000\ntruncated 0 0\nend 0 0 0 0 0 0\n")
+            check(has_fault(tail, "after 'end'") and has_fault(tail, "second 'end'") and
+                  has_fault(tail, "'truncated' after 'end'") and
+                  all(tail.info.get(k) == r.info.get(k) for k in timing) and
+                  tail.info.get("join_checked") == 19,
+                  "boundary timing no body resurrection or replacement: " + name)
+
+
+def case_review_malformed_boundaries():
+    from test_journal_diagnostics import receipt_for
+    base = run(closing_counter_journal(True))
+    keys = [k for k in base.info if k.startswith(("identity_", "join_"))]
+    for marker in ("truncated", "truncated bad 0", "truncated 0 nan"):
+        for tail in (True, "bad-view"):
+            lines = closing_counter_journal(True, postcap=tail).splitlines()
+            cap = next(i for i, line in enumerate(lines) if line.startswith("truncated "))
+            lines[cap] = marker
+            text = "\n".join(lines) + "\n"
+            r, receipt = run(text), receipt_for(text)
+            check(not r.ok and has_fault(r, "after 'truncated'") and
+                  all(r.info.get(k) == base.info[k] for k in keys),
+                  "review malformed cap excludes unsupported tail: %s/%s" % (marker, tail))
+            check("truncated_at" not in r.info and r.info.get("frames") == 21,
+                  "review cap existence keeps ahead closing count without invented timestamp")
+            check(receipt.journal_metrics["metrics"].get("join_checked") == 19,
+                  "review malformed cap receipt retains only actual19join prefix")
+        lines = closing_counter_journal(True).splitlines()
+        cap = next(i for i, line in enumerate(lines) if line.startswith("truncated "))
+        lines.insert(cap, marker)
+        r = run("\n".join(lines) + "\n")
+        check(has_fault(r, "second 'truncated'") and "truncated_at" not in r.info,
+              "review malformed first cap cannot be replaced by valid cap: " + marker)
+    text = closing_counter_journal(False, postcap=True)
+    lines = text.splitlines()
+    # Put a recognized unusable end at the existing cap-equivalent boundary.
+    cut = next(i for i, line in enumerate(lines) if line.startswith("devmap "))
+    # The extra frame is immediately before the closing device tables.
+    cut = max(i for i, line in enumerate(lines[:cut]) if line.startswith("f "))
+    for marker in ("end", "end bad 0 0 0 0 0", "end 0 nan 0 0 0 0"):
+        changed = lines[:]
+        changed.insert(cut, marker)
+        r = run("\n".join(changed) + "\n")
+        check(not r.ok and has_fault(r, "after 'end'") and has_fault(r, "second 'end'"),
+              "review malformed end establishes close boundary/order: " + marker)
+        check(not has_fault(r, "no 'end' trailer") and "time" not in r.info and
+              r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+              "review present unusable closure not absent; actual19/19prefix retained")
+    for marker in ("truncated", "truncated bad 0", "truncated 0 nan"):
+        lines = closing_clock_journal(True, counts_ahead=True).splitlines()
+        cap = next(i for i, line in enumerate(lines) if line.startswith("truncated "))
+        lines[cap] = marker
+        r = run("\n".join(lines) + "\n")
+        check(not r.ok and r.info.get("hidden") == 2 and not has_fault(r, "hidden") and
+              r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+              "review malformed cap without tail keeps partial lower-bound direction: " + marker)
+        check("truncated_at" not in r.info and "time" not in r.info,
+              "review unusable boundary clock does not invent duration/endpoint")
+        lines.insert(-1, "truncated 0 0")
+        r = run("\n".join(lines) + "\n")
+        check(has_fault(r, "second 'truncated'"), "review malformed cap duplicate remains faulted")
+    for marker in ("end", "end bad 0 0 0 0 0"):
+        lines = closing_counter_journal(False).splitlines()
+        lines[-1] = marker
+        r = run("\n".join(lines) + "\n")
+        check(not r.ok and not has_fault(r, "no 'end' trailer") and
+              has_note(r, "present 'end' trailer is unusable"),
+              "review final malformed close is present not absent: " + marker)
+        r = run("\n".join(lines) + "\ntruncated 0 0\n")
+        check(has_fault(r, "'truncated' after 'end'"),
+              "review malformed end excludes later cap: " + marker)
+    r = run("\n".join(closing_counter_journal(False).splitlines()[:-1]) + "\n")
+    check(has_fault(r, "no 'end' trailer"), "review CONTROL genuinely absent end stays absent")
+
+
 def main():
     print("test_hidcheck.py -- the Patch 293 yaw identity\n")
     for fn in (case_clean, case_mutated_delta, case_subtle_mutation,
@@ -2351,6 +3763,8 @@ def main():
                case_legacy_reopened_midrun, case_pre307_journal,
                case_autorepeat_separated, case_orphan_release,
                case_release_everything_not_orphan, case_pre309_journal,
+               case_device_id_namespaces, case_legacy_controller_keys_are_not_keyboard_identity,
+               case_joystick_does_not_spend_touchpad_budget,
                case_key_devid_is_not_the_mouse, case_pointer_devid_still_unclaimed,
                case_key_devid_unclaimed_when_raw_is_live,
                case_render_all_default, case_render_nondefault,
@@ -2385,7 +3799,17 @@ def main():
                case_pitch_pre305_silent, case_teleport_is_unresolved,
                case_teleport_at_the_clamp_is_unresolved, case_no_frame_markers,
                case_cvar_change_followed, case_leftisright_sign,
-               case_leftisright_engine_parse):
+               case_leftisright_engine_parse, case_cvar_quote_codec,
+               case_cvar_quote_identity, case_cvar_quote_malformed,
+               case_leftisright_capture_boundary, case_float_capture_boundary,
+               case_controller_profile_is_not_a_keyboard_turn,
+               case_pointer_coordinate_quality, case_observer_numeric_quality,
+               case_model_numeric_quality, case_native_quoted_byte, case_clock_quality,
+               case_rejected_model_change, case_rejected_key_observer,
+               case_loss_declarations, case_closing_counters, case_closing_clocks,
+               case_postcap_records, case_backend_count_availability,
+               case_backend_trailer_isolation, case_review_rejected_observations,
+               case_review_malformed_boundaries, case_review_boundary_prefix_timing):
         print("%s:" % fn.__name__)
         fn()
         print("")

@@ -1725,7 +1725,7 @@ def case_row_check():
 
 def case_main_evidence():
     surfd, sweep, runs = fresh()
-    sweep.TOOLS = TOOLS     # recsim found: no 'similarity skipped' on the line
+    sweep.TOOLS = TOOLS     # similarity has separate actual-process controls
     conn = surfd.connect()
     conn.execute(
         "INSERT INTO runs (map, track, leg, tier, style, player, name, ticks,"
@@ -1748,7 +1748,7 @@ def case_main_evidence():
     def cron(*argv):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            rc = sweep.main(list(argv))
+            rc = sweep.main(["--sims", "0", *argv])
         return rc, out.getvalue()
 
     rc, text = cron("--dry-run")
@@ -1771,12 +1771,12 @@ def case_disk_note():
     # Patch 423.  The note goes BEFORE the sweep line, which stays last: other
     # cases (and anyone tailing the log) read the last line.
     surfd, sweep, runs = fresh()
-    sweep.TOOLS = TOOLS     # recsim found: no 'similarity skipped' on the line
+    sweep.TOOLS = TOOLS     # isolate disk-note ordering from similarity availability
 
     def cron():
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            sweep.main([])
+            sweep.main(["--sims", "0"])
         return out.getvalue().rstrip().splitlines()
 
     def boom():

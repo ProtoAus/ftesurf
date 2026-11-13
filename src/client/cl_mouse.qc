@@ -309,14 +309,8 @@ void(vector scr) MPad_Geom =
 	               floor(sz_y / ui_mp_px_y + 0.5) * ui_mp_px_y, 0];
 };
 
-// One trail stroke a -> b in screen units, colour/alpha ca/la at a and cb/lb at
-// b, at the width MPad_Draw set (Line_Width).  Patch 432: anti-aliased, edges
-// fading over a pixel (cl_lines.qc).  Queued 2D polygons: MPad_Draw's
-// drawresetcliparea flushes them under the clip.
-void(vector a, vector b, float t, vector ca, float la, vector cb, float lb) MPad_Stroke =
-{
-	Line_Seg2D(a, b, ca, la, cb, lb);
-};
+// Strokes are Line_Seg2D at the width MPad_Draw set (Line_Width).  Patch 432: anti-aliased, edges fading over a
+// pixel (cl_lines.qc).  Queued 2D polygons: MPad_Draw's drawresetcliparea flushes them under the clip.
 
 vector(float st) MPad_Colour = { return st ? MPC_STRAFE : MPC_TURN; };
 
@@ -338,9 +332,8 @@ void(vector a, vector b, vector o, vector wh, float t, vector ca, float la, vect
 	{
 		for (j = 0; j < 2; j = j + 1)
 		{
-			MPad_Stroke([o_x + (a_x + i * sx) * wh_x, o_y + (a_y + j * sy) * wh_y, 0],
-			            [o_x + (b_x + i * sx) * wh_x, o_y + (b_y + j * sy) * wh_y, 0],
-			            t, ca, la, cb, lb);
+			Line_Seg2D([o_x + (a_x + i * sx) * wh_x, o_y + (a_y + j * sy) * wh_y, 0],
+			           [o_x + (b_x + i * sx) * wh_x, o_y + (b_y + j * sy) * wh_y, 0], ca, la, cb, lb);
 			if (!sy)
 				break;
 		}
@@ -351,7 +344,7 @@ void(vector a, vector b, vector o, vector wh, float t, vector ca, float la, vect
 
 void(vector scr) MPad_Draw =
 {
-	local vector o, wh, p, d, q, dq;
+	local vector o, wh, p, d, q, dq, a;
 	local float px, py, i, slot, os, age, oage, life, ds, sx, sy, t, ost;
 
 	MPad_Frame();                   // hidden too: switching on shows now
@@ -409,9 +402,17 @@ void(vector scr) MPad_Draw =
 				dq = ui_mp_sd[os];
 				ost = dq_z;
 			}
-			MPad_Seg([p_x - d_x, p_y - d_y, 0], [p_x, p_y, 0], o, wh, t,
-			         MPad_Colour(ost), 0.85 * (1 - oage / life),
-			         MPad_Colour(d_z), 0.85 * (1 - age / life));
+			// P1499: a stroke that crosses no edge goes straight to the line, without MPad_Seg's copies and the
+			// colour calls (~0.05 of the pad's ~0.15 ms a frame, surf_kitsune; same pixels); one that does takes MPad_Seg.
+			a = [p_x - d_x, p_y - d_y, 0];
+			if (a_x < 0 || a_x >= 1 || a_y < 0 || a_y >= 1)
+				MPad_Seg(a, [p_x, p_y, 0], o, wh, t,
+				         MPad_Colour(ost), 0.85 * (1 - oage / life),
+				         MPad_Colour(d_z), 0.85 * (1 - age / life));
+			else
+				Line_Seg2D([o_x + a_x * wh_x, o_y + a_y * wh_y, 0], [o_x + p_x * wh_x, o_y + p_y * wh_y, 0],
+				           ost ? MPC_STRAFE : MPC_TURN, 0.85 * (1 - oage / life),
+				           d_z ? MPC_STRAFE : MPC_TURN, 0.85 * (1 - age / life));
 		}
 	}
 

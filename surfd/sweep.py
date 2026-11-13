@@ -52,6 +52,14 @@ _quiet = logging.StreamHandler(sys.stderr)
 _quiet.setLevel(logging.WARNING)
 logging.getLogger("surfd").addHandler(_quiet)
 
+# A raw private-worker launch must refuse before an application import can
+# initialize/migrate DATA. Normal cron imports retain their existing behavior.
+if __name__ == "__main__" and sys.argv[1:] == ["--similarity-worker"]:
+    import simcheck
+    if (os.environ.get("_SURFD_SIMILARITY_WORKER") != "1"
+            or not simcheck.process_limits_present()):
+        sys.exit(2)
+
 import surfd   # one source for DB_PATH, RUNS_DIR, leg_dir and the name checks
 
 GAME = os.environ.get("SURFD_GAME", "/srv/nvme/ftesurf-server/game")
@@ -1067,7 +1075,7 @@ def evidence_step(conn):
 
 
 def similarity_step(conn, limit=50, max_pairs=200, max_seconds=10.0,
-                    max_sql_steps=1000000, max_lock_ms=1000):
+                    max_sql_steps=1000000, max_lock_ms=1000, hard_process=False):
     """surfd schema 10: store the cross-run similarity sample.  STORE-ONLY --
     nothing here moves a badge or a verdict, and a fault is printed rather than
     raised, because a measurement that cannot run must not take the checks that DO
@@ -1081,6 +1089,8 @@ def similarity_step(conn, limit=50, max_pairs=200, max_seconds=10.0,
         raise ValueError("max_sql_steps must be a nonnegative integer")
     if type(max_lock_ms) is not int or not 0 <= max_lock_ms <= 2147483647:
         raise ValueError("max_lock_ms must be an integer in 0..2147483647")
+    if type(hard_process) is not bool:
+        raise ValueError("hard_process must be a boolean")
     if limit <= 0 or max_pairs <= 0 or max_seconds <= 0 or max_sql_steps == 0:
         return 0, 0, ""
     if conn.in_transaction:
@@ -1089,6 +1099,11 @@ def similarity_step(conn, limit=50, max_pairs=200, max_seconds=10.0,
     if mod is None:
         return 0, 0, ""
     try:
+        if hard_process:
+            return mod.process_step(conn, surfd, os.path.abspath(__file__),
+                                    tools_dir=TOOLS, limit=limit, max_pairs=max_pairs,
+                                    max_seconds=max_seconds, max_sql_steps=max_sql_steps,
+                                    max_lock_ms=max_lock_ms)
         # Sweep owns the otherwise unused progress and busy-handler slots.
         # Restore the caller's numeric busy timeout before badge-gating work.
         with mod.lock_wait(conn, max_lock_ms):
@@ -1220,7 +1235,8 @@ def _main_connected(conn, args):
                                                max_pairs=args.sims_pairs,
                                                max_seconds=args.sims_seconds,
                                                max_sql_steps=args.sims_sql_steps,
-                                               max_lock_ms=args.sims_lock_ms)
+                                               max_lock_ms=args.sims_lock_ms,
+                                               hard_process=True)
     counts = sweep(conn, args.limit)
     line = " ".join("%s %d" % kv for kv in sorted(counts.items())) or "nothing to verify"
     if added or dropped:
@@ -1264,4 +1280,7 @@ def disk_note():
 
 
 if __name__ == "__main__":
+    if sys.argv[1:] == ["--similarity-worker"]:
+        module = _simcheck()
+        sys.exit(module.process_worker(surfd, similarity_step) if module is not None else 2)
     sys.exit(main())

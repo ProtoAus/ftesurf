@@ -21,6 +21,145 @@
 
 ## next
 
+### P1540 Recording summaries
+- Recording summaries keep supported captured-prefix rates even when closing metadata is malformed. Whole-run timing remains unavailable where it cannot be established.
+
+### P1539 Input recording consistency
+- Damaged or incomplete input records no longer produce unsupported zero totals or misleading cause notes. Known recording boundaries remain effective even when their timestamps are unusable.
+
+### P1538 Recording consistency
+- Supported landing observations now require a usable numeric context. Movement and existing airborne handling are unchanged.
+
+### P1537 Journal closing-field isolation
+- One malformed backend counter no longer discards an otherwise present journal closing record, valid clocks or unrelated counters. Unsupported quantities remain unavailable rather than a fabricated zero or missing-end diagnosis.
+
+### P1536 Journal backend counts
+- Malformed rejected-input or legacy-click observations can no longer cancel real counts into a reported zero. Unsupported totals and numerical cause notes are withheld without losing independently valid prefix measurements.
+
+### P1529 Recording consistency
+- Run recording retains a confirmed movement-condition signal through supported landings. Movement itself is unchanged; unavailable comparisons remain unavailable.
+
+### P1524 Input-model quality
+- Unusable input settings no longer produce false angle findings or clean comparisons. Native observation abstains, and analysis keeps unavailable measurements separate from genuine contradictions.
+
+### P1521 Controller input analysis
+- Controller turns no longer cause misleading run-analysis errors. Comparisons that lack the required input data are reported as unavailable rather than clean.
+
+## 0.1.45 2026-11-13
+
+### P1535 Journal cap boundaries
+- Input records after a journal byte-cap marker are no longer treated as captured observations. Valid prefix measurements and permitted closing tables remain separate from the unsupported tail.
+
+### P1534 Journal timeline consistency
+- Journal closing times must cover their recorded prefix. Inconsistent durations or truncation timestamps are unavailable, not measured zero; duplicate or post-close truncation markers no longer pass.
+
+### P1533 Journal closing consistency
+- Closing journal counters can no longer under-report hidden events already recorded in a truncated prefix. Invalid or contradictory totals are unavailable rather than a measured zero; valid partial captures remain distinct.
+
+### P1532 Journal loss validation
+- Invalid loss declarations are rejected instead of being allowed to cancel reported loss into a measured zero. Unusable loss data is shown as unavailable; independent finite comparisons remain active.
+
+### P1531 Jargon take over, live edits and options
+- Jargon can take over from wherever you are: pick "When I press", Arm in any start box, surf, then press Take over now (or bind tas jargon takeover). It picks the stage you are in.
+- Waypoint edits work while Jargon runs: a moved point is used at once and a new air point from the next waypoint. Continue keeps your edits, and Redo from a waypoint goes back to it with them.
+- The Jargon panel has Options: how hard it tries, how closely it follows the guide, where it boards and finishes, and its behaviour switches. Hover a choice for what it does.
+- With the TAS panel open, the console no longer fills with "the optimizer is running" while Jargon runs after a save.
+
+### P1530 Journal consistency
+- Journal checks no longer judge later angles against stale settings after a damaged setting-change record. Valid earlier comparisons and restored settings remain checkable.
+- Damaged keyboard-observation records are reported as unavailable, not a whole-run measured zero. Independent mouse-count checks remain active.
+
+### P1528 Jargon panel, portals and starts
+- Jargon has one panel: pick the course and the guide run from dropdowns, and edit the waypoints in a table (click X, Y or Z, type, Enter). Air points sit in the list, and Undo, Redo and Reset work.
+- Choose how Jargon takes over: at your jump, when you leave the start zone, or by itself. Continue resumes a saved run, and Back to playing returns you to normal play.
+- While Jargon drives, the keys display shows the keys it presses.
+- Jargon now goes through the teleports between stages, so a full run no longer stops at the end of the first stage.
+- Jargon's starts take one jump off the platform and line up again when they reach the exit at a bad angle, and it finishes more stages.
+- Jargon's lines are drawn smoothly instead of in 4-unit steps.
+
+### P1526 Recording clock validation
+- Unusable recording clocks are now reported as evidence-quality problems instead of valid timing. Unproved duration and rate measurements stay unavailable without becoming player accusations.
+
+### P1525 Input setting analysis
+- Input analysis no longer mistakes a character-valued setting for unexplained movement. Comparisons with unrecorded numeric meaning stay unavailable, while known settings remain checked.
+
+### P1523 Observation quality
+- Unusable recorded view data no longer produces clean comparisons. Analysis now distinguishes records that were read from measurements it could actually check.
+
+### P1522 Input recording validation
+- Unusable input samples no longer appear as clean analysis. Incomplete input measurements stay unavailable instead of being reported as healthy zeroes.
+
+### P1520 Lines under the HUD
+- Replay paths, trails, board lines and Jargon's route and search lines, with their numbers and names, now draw under the HUD and panels instead of over them.
+- Jargon's start fix (still off by default) lines up again only when its heading is off, not when it is merely to the side of the human's line.
+
+### P1519 Jargon stream view
+- The Jargon tab opens on a simple view: pick a course and press "Jargon surfs it", or "I start it" to prestrafe and jump yourself while Jargon takes over at your jump.
+- Switching course, Stop and Back to playing work at any time; pressing a start while Jargon runs stops it first. Camera: first person, chase (behind you) or overview.
+- Lines: keep the route on screen, and turn the search lines and the thinking panel on or off. Hotkeys: tas jargon go, arm, stop, play, course N, cam 0/1/2.
+- Starting the next stage right after Jargon finishes one now starts it properly instead of walking out of the box.
+- Prediction-error reports stay quiet while TAS or Jargon is in control. Jargon's panel calls its speed-with-height numbers energy.
+
+### P1518 Input device analysis
+- Journal analysis keeps controllers, keyboards and pointers separate, avoiding false device conflicts and touchpad-report errors.
+
+### P1517 Less transparent-surface sorting work
+- Transparent-surface sorting does less CPU bookkeeping when a face stays on one side, without cutting visual effects.
+
+### P1516 Incomplete input settings
+- Journal analysis now reports clipped settings as unavailable instead of guessing a sign or scale. Valid later settings restore comparisons; uncertain data cannot become a journal pass.
+
+### P1515 Input-journal analysis
+- Escaped cvar values and literal backslashes no longer cause false angle-identity findings. Damaged changes report a format problem rather than reusing stale settings.
+
+### P1514 Practice-run gravity attribution
+- Clear airborne water-jump moves now count proven use of retained gravity toward the existing practice-run policy, without changing movement.
+
+### P1513 Configurable replay-journal upload budgets
+- Operators can configure a run-length budget for replay journals; servers without this setting keep their existing upload behavior.
+
+### P1512 Save-load view prediction
+- Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
+
+### P1511 Less work sorting intersecting transparent surfaces
+- Transparent-surface ordering stops checking a pair once neither side can be proved, keeping the same drawing order and visual effects.
+
+### P1510 Safer background work during maintenance
+- Background replay analysis stays accounted for during service maintenance instead of appearing finished while work is still running.
+
+### P1509 Bounded background replay analysis
+- Background replay analysis runs separately with resource limits, allowing normal verification to continue after a timed-out check is stopped. Missing results remain unavailable rather than being treated as clean.
+
+### P1508 Keep queued updates when packets fill
+- Servers keep queued stats and entity updates pending when an update packet fills or is discarded, rather than silently losing them.
+
+### P1507 Less sprite work on busy maps
+- Sprites and light glows skip unnecessary per-frame checks on maps like surf_fairy, keeping their original appearance and drawing order.
+
+### P1504 Steadier frames on maps with many light glows
+- Light glows now stay within their per-frame time budget, so the slowest frames on glow-heavy maps like surf_fairy are a little shorter.
+
+### P1501 No stutter when props first come into view
+- On Source maps, props (trees, statues, decorations) now finish loading behind the loading screen, so their shaders are ready before you move: no stutter the first time you see them after an update (surf_fairy, bhop_orgrimmar).
+
+### P1483 Jargon finishes more reliably, and repeats what works
+- Jargon aims a course's last stretch at actually entering the end. A line that gets near the end but would fall short is played as close as it gets, and the finish is tried again with a longer search instead of being given up after one go.
+- On surf_tensor2 stage 2 it finished in both test runs, once faster than the replay it learned from.
+- The same start and settings now search the same way, so a good result can be repeated; pressing Start again after "stuck", or Continue, tries new lines.
+- A new Start no longer replaces a saved run that got further.
+- New effort options: "Best of 4 lines" in the panel (each ramp's few best boards are tried against the next ramp before one is kept), and `turns` for the console (a waypoint halfway through each big air turn).
+- Fixed: a server crash in Jargon's search; Jargon stopping a whole run when "trying harder" after backtracks; route editor points that moved on screen but changed nothing (planned points are no longer draggable).
+
+### P1502 Selected public map imports
+- Public map imports can update a selected set while preserving unrelated map entries and earlier map revisions.
+
+### P1499 Cheaper mouse-pad trail
+- The mouse-pad display draws its trail with less work and looks exactly the same.
+
+### P1497 Steadier frames on maps with many sprites and light shafts
+- The check that hides sprites and light shafts behind the sky re-checks the ones that have not changed less often, so maps full of them spend less time on it (surf_fairy about 0.25 ms less a frame).
+- `vbsp_sprite_skyhold 16` checks as often as before.
+
 ### P1496 Public bhop library imports
 - Map acquisition recognizes Momentum's native HL1-bhop category even when the filename does not begin with bhop_. This does not switch the current movement model.
 - New map and screenshot publication excludes private or unqualified testing entries, including retained offline catalogues.
@@ -53,7 +192,8 @@
 - Ladder climbs and descents are no longer mistaken for standing still by replay idle skipping.
 
 ### P1486 Recording statistics keep their measurement state
-- Input-recording identity counters publish without racing the physics worker. Never-measured values stay unknown, and the last recording's measurements remain available after it closes; settings callbacks still run outside the recording update's lock.
+- Input-recording identity counters publish without racing the physics worker. Never-measured values stay unknown, and the last recording's measurements remain available after it closes.
+- Settings callbacks still run outside the recording update's lock.
 
 ### P1485 Threaded recording updates keep their callback order
 - Ordinary recording updates no longer overlap the physics producer. Relative mouse updates stay grouped across empty paste polls, while actual key/paste callbacks retain their original position and ownership.
@@ -800,12 +940,9 @@
 - A HUD or zone setting changed from the console or a bind now shows within a tenth of a second (instantly while the HUD or zone editor is open).
 
 ### P1237 Faster skies on Source maps
-- The flat sky on Source maps is drawn whole, as Source draws it, instead of being worked out piece by piece
-  every frame: about 8-10% more frames per second where a lot of sky is reflected (surf_eternity's glass),
-  with the same picture.
-- New setting `r_skyroom_scale`: 0.5 draws a map's 3D sky at half resolution, which at `r_renderscale 2` is
-  your screen's own resolution. surf_demise runs about 16% faster at those settings with a slightly softer
-  sky; maps with a simple sky gain nothing. It is off (1) unless you set it.
+- The flat sky on Source maps is drawn whole, as Source draws it, instead of being worked out piece by piece every frame: about 8-10% more frames per second where a lot of sky is reflected (surf_eternity's glass), with the same picture.
+- New setting `r_skyroom_scale`: 0.5 draws a map's 3D sky at half resolution, which at `r_renderscale 2` is your screen's own resolution. It is off (1) unless you set it.
+- surf_demise runs about 16% faster at those settings with a slightly softer sky; maps with a simple sky gain nothing.
 
 ### P1236 Kerned, fuller text
 - Letters in the menus, the HUD and chat now sit as their font intends: pairs like AV, To, Ty and P. close up (kerning). Number readouts do not move, because neither font kerns digits.
@@ -821,8 +958,7 @@
 - With the visualizer sky on, scrolling and animated textures no longer flicker as you move (surf_dragonfall's lava panels).
 
 ### P1233 Faster water on Source maps
-- Water with live reflections (hl2_water 2) draws faster with the same picture: about 22-49% more frames per second at your
-  surf_garden and surf_boreas saves.
+- Water with live reflections (hl2_water 2) draws faster with the same picture: about 22-49% more frames per second at your surf_garden and surf_boreas saves.
 
 ### P1232 Records from KSF and Momentum
 - KSF times and demos are collected again: one bad entry in a player's KSF profile had stopped all KSF collection since 30 October.
