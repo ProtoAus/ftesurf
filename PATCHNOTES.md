@@ -22,6 +22,9 @@
 ## next
 - Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
+### P1533 Journal closing consistency
+- Closing journal counters can no longer under-report hidden events already recorded in a truncated prefix. Invalid or contradictory totals are unavailable rather than a measured zero; valid partial captures remain distinct.
+
 ### P1532 Journal loss validation
 - Invalid loss declarations are rejected instead of being allowed to cancel reported loss into a measured zero. Unusable loss data is shown as unavailable; independent finite comparisons remain active.
 

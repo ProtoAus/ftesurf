@@ -1181,6 +1181,81 @@ def case_loss_declarations():
           "CONTROL signed backend-unknown sentinels remain valid, not unsigned loss")
 
 
+def closing_counter_journal(truncated=True, **totals):
+    j = Journal(rawkbd=1, rawmice=1, rawkbds=1,
+                devices=[("mouse", "0", "mouse-example"),
+                         ("keyboard", "0", "keyboard-example")], inputcvars=P312_INPUT)
+    yaw = 90.0
+    for i in range(20):
+        j.frame(8800 + i)
+        if i == 10:
+            j.hidden(dev=0, us=0)
+        j.mouse(6, 0)
+        yaw += j.k * 6
+        j.view(6, 0, 10.0, yaw)
+    if truncated:
+        j.lines.append("truncated 0 %.6f" % j.clock)
+    lines = j.end().splitlines()
+    end = lines[-1].split()
+    for name, index in (("events", 3), ("frames", 4), ("hidden", 6)):
+        if name in totals:
+            end[index] = str(totals[name])
+    lines[-1] = " ".join(end)
+    return "\n".join(lines) + "\n"
+
+
+def case_closing_counters():
+    for truncated in (False, True):
+        for name in ("events", "frames", "hidden"):
+            for value in ("-1", "4294967296", "bad", "1.5"):
+                r = run(closing_counter_journal(truncated, **{name: value}))
+                label = "%s=%s truncated=%s" % (name, value, truncated)
+                check(not r.ok and bool(r.faults),
+                      "invalid native closing count is a format fault: " + label)
+                check(name not in r.info,
+                      "unsupported closing total is not negative/zero/subtotal: " + label)
+                check("time" in r.info and r.info.get("frame_rate", 0) > 0 and
+                      r.info.get("events_per_sec", 0) > 0 and
+                      r.info.get("events_per_frame", 0) > 0 and
+                      r.info.get("identity_yaw_judged") == 19 and
+                      r.info.get("join_checked") == 19,
+                      "finite clock/prefix rates and independent angle/count observations ACT: " + label)
+    for truncated in (False, True):
+        r = run(closing_counter_journal(truncated, hidden=0))
+        check(not r.ok and has_fault(r, "hidden") and "hidden" not in r.info,
+              "whole hidden count cannot be behind its observed body, truncated=%s" % truncated)
+        r = run(closing_counter_journal(truncated, hidden=1))
+        check(r.ok and r.info.get("hidden") == 1 and r.info.get("join_checked") == 19,
+              "CONTROL equal observed/closing hidden1 remains valid, truncated=%s" % truncated)
+    r = run(closing_counter_journal(True, hidden=2))
+    check(r.ok and r.info.get("hidden") == 2,
+          "CONTROL whole hidden count ahead of truncated prefix remains valid")
+    r = run(closing_counter_journal(False, hidden=2))
+    check(not r.ok and has_fault(r, "hidden") and "hidden" not in r.info,
+          "CONTROL untruncated hidden count still must match exactly")
+    for truncated in (False, True):
+        for name, value in (("events", 20), ("frames", 19)):
+            r = run(closing_counter_journal(truncated, **{name: value}))
+            check(not r.ok and name not in r.info,
+                  "counter behind its observed prefix is not a measurement: %s/%s" %
+                  (name, truncated))
+            check("time" in r.info and r.info.get("frame_rate", 0) > 0 and
+                  r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+                  "observed prefix stays independently checkable despite contradictory close")
+    r = run(loss_declaration_journal(('! 0 1',), "0"))
+    check(not r.ok and "dropped" not in r.info and has_note(r, "drop count unavailable"),
+          "valid-domain closing loss behind its marker is not a measured zero")
+    check(r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+          "finite prefix still ACTS with contradictory valid-domain closing loss")
+    for name in ("events", "frames", "hidden"):
+        r = run(closing_counter_journal(True, **{name: 4294967295}))
+        check(r.ok and r.info.get(name) == 4294967295,
+              "CONTROL native unsigned maximum survives truncated prefix: " + name)
+        check("time" in r.info and r.info.get("identity_yaw_judged") == 19 and
+              r.info.get("join_checked") == 19,
+              "CONTROL finite independent observations remain with valid whole count: " + name)
+
+
 def model_constant_journal(name=None, value=None, change=False, late=False, text=None):
     if text is None:
         text = namespace_journal([("mouse", "0", "mouse-example")], pointer=0)
@@ -3271,7 +3346,7 @@ def main():
                case_pointer_coordinate_quality, case_observer_numeric_quality,
                case_model_numeric_quality, case_native_quoted_byte, case_clock_quality,
                case_rejected_model_change, case_rejected_key_observer,
-               case_loss_declarations):
+               case_loss_declarations, case_closing_counters):
         print("%s:" % fn.__name__)
         fn()
         print("")

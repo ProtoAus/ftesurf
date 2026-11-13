@@ -452,11 +452,11 @@ def _finite_clock(value):
     return value
 
 
-def _native_loss_count(token):
+def _native_unsigned_count(token):
     value = int(token)
-    # IN_Journal_Frame/End print these unsigned-int counts with %u, not -1 sentinels.
+    # Native closing/drop counters use %u; appended backend fields have -1 sentinels.
     if not 0 <= value <= 0xFFFFFFFF:
-        raise ValueError("outside native unsigned loss range")
+        raise ValueError("outside native unsigned count range")
     return value
 
 
@@ -760,9 +760,9 @@ def check_hid(path, verbose=False, *, data=None):
                 if dt < 0:
                     raise ValueError("negative clock delta")
                 elapsed = _finite_clock(clock + dt / 1000000.0)
-                # Loss corruption must not discard independently finite clocks.
-                pending = ([_finite_clock(tok[2]), int(tok[3]), int(tok[4]), tok[5]]
-                           + [int(x) for x in tok[6:]])
+                # Counter corruption must not discard independently finite clocks.
+                pending = ([_finite_clock(tok[2])] + tok[3:7]
+                           + [int(x) for x in tok[7:]])
             except (ValueError, OverflowError):
                 bad_clock = True
                 r.fault("line %d: 'end' has an unusable clock or non-numeric field" % (lineno + 1))
@@ -989,7 +989,7 @@ def check_hid(path, verbose=False, *, data=None):
                 clock = abst
         elif kind == "!":
             try:
-                dropped += _native_loss_count(tok[2])
+                dropped += _native_unsigned_count(tok[2])
             except ValueError:
                 bad_loss = True
                 r.fault("line %d: '!' count is not a native unsigned 32-bit count" % (lineno + 1))
@@ -1162,22 +1162,25 @@ def check_hid(path, verbose=False, *, data=None):
         r.fault("no 'end' trailer -- the journal was never closed, so the run "
                 "it belongs to has no admissible input record")
     else:
-        t_abs, t_events, t_frames, t_dropped, t_hidden = trailer[:5]
-        try:
-            t_dropped = _native_loss_count(t_dropped)
-        except ValueError:
-            bad_loss = True
-            t_dropped = None
-            r.fault("trailer dropped count is not a native unsigned 32-bit count")
+        t_abs = trailer[0]
+        closing_counts = []
+        for name, token in zip(("events", "frames", "dropped", "hidden"), trailer[1:5]):
+            try:
+                value = _native_unsigned_count(token)
+            except ValueError:
+                value = None
+                r.fault("trailer %s count is not a native unsigned 32-bit count" % name)
+                if name == "dropped":
+                    bad_loss = True
+            closing_counts.append(value)
+            if value is not None:
+                r.info[name] = value
+        t_events, t_frames, t_dropped, t_hidden = closing_counts
         t_injected = trailer[5] if len(trailer) > 5 else None
         t_unenum = trailer[6] if len(trailer) > 6 else None
         t_legacybtn = trailer[7] if len(trailer) > 7 else None
         t_touchpad = trailer[8] if len(trailer) > 8 else None   # Patch 468
         t_padreports = trailer[9] if len(trailer) > 9 else None
-        r.info["events"] = t_events
-        r.info["frames"] = t_frames
-        r.info["dropped"] = t_dropped
-        r.info["hidden"] = t_hidden
         r.info["time"] = t_abs
 
         # A TRUNCATED FILE CANNOT MATCH ITS OWN TRAILER, by construction: the
@@ -1187,26 +1190,33 @@ def check_hid(path, verbose=False, *, data=None):
         # truncated, which the 'truncated' marker already says.  What must still
         # hold is the direction -- the trailer can only be ahead.
         if truncated is None:
-            if t_events != events:
+            if t_events is not None and t_events != events:
+                r.info.pop("events", None)
                 r.fault("trailer says %d events, the file has %d"
                         % (t_events, events))
-            if t_frames != frames:
+            if t_frames is not None and t_frames != frames:
+                r.info.pop("frames", None)
                 r.fault("trailer says %d frames, the file has %d"
                         % (t_frames, frames))
         else:
-            if t_events < events:
+            if t_events is not None and t_events < events:
+                r.info.pop("events", None)
                 r.fault("trailer says %d events but the file already holds %d"
                         % (t_events, events))
-            if t_frames < frames:
+            if t_frames is not None and t_frames < frames:
+                r.info.pop("frames", None)
                 r.fault("trailer says %d frames but the file already holds %d"
                         % (t_frames, frames))
-        if truncated is None and t_hidden != hidden:
-            r.fault("trailer says %d hidden keys, the file has %d"
-                    % (t_hidden, hidden))
+        if t_hidden is not None:
+            if (truncated is None and t_hidden != hidden) or t_hidden < hidden:
+                r.info.pop("hidden", None)
+                r.fault("trailer says %d hidden keys, the file has %d"
+                        % (t_hidden, hidden))
         # The '!' markers report drops as they are NOTICED, and the last batch
         # can arrive after the final frame marker, so the trailer is allowed to
         # be ahead of them -- but never behind.
         if t_dropped is not None and t_dropped < dropped:
+            bad_loss = True
             r.fault("trailer says %d dropped, but the '!' markers already "
                     "account for %d" % (t_dropped, dropped))
         elif t_dropped:
