@@ -172,6 +172,7 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 	local float b, f, fh, i, mark, fa, stream, buf, flags;
 	local int bytes;
 	local string path, src, branch, rid;
+	if (strlen(serverkey("*movementprofile"))) return FALSE; // no historic AG tuple export
 	m = rw_slot[num_for_edict(e)];
 	b = rw_statebase;
 	mark = m[b+29];

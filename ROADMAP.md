@@ -15,7 +15,14 @@ infer optimality/unreachability from failed searches. A future launch-aware
 handoff/value design remains unbuilt and must earn its own acting, same-budget
 comparison plus a small owner check of the actual ramp and platform behavior.
 
-## Optional GoldSrc/HL2 movement profiles — requested 11 Nov 2026, UNBUILT
+## Optional GoldSrc/HL2 movement profiles — requested 11 Nov 2026, IN PROGRESS
+
+P1542 is a local, unpushed experimental GoldSrc-style 100/250 practice candidate,
+not the completed reference-faithful request and not deployed. It has shared
+server/prediction contexts and separate unranked state. Full Windows compilation
+and current reader/corpus checks pass; runtime packaging and the remaining
+historical/native qualification are still pending. Status and limits:
+`tools/p1542-legacy-movement.md`. Keep the full acceptance below open.
 
 Lex wants a NEW selectable GoldSrc HL1 profile, including duckrolls and the
 frame-dependent quirks,100/250/1000physics rates, optionally chosen for maps;
@@ -27,8 +34,12 @@ Feasible as separate shared engine movement profiles, not cvar tweaks or just
 changing render FPS. First pin the actual reference: stock HL1 versus AG/OpenAG,
 exact HL2 builds on either side of the behavior change, and whether rate means
 fixed simulation updates independent of display FPS or the original FPS coupling.
-Owner decisions remain pending; do not silently choose or claim exact parity.
-Use compatible licensed reference/oracle behavior; do not copy non-GPL HL1 SDK
+Full reference/rate decisions remain pending; do not claim exact parity from the
+experimental 100/250 implementation. Authentic 1000 scheduling has no qualified
+oracle and remains refused. For HL2, the owner has been asked whether older
+uncapped forward boost and Orange Box ABH-enabled behavior are the intended two
+targets; a later ABH-removal build has not been established. Those full profiles
+remain unbuilt. Use compatible licensed reference/oracle behavior; do not copy non-GPL HL1 SDK
 code into the GPL engine or assume AG code licensing. An installed executable's
 presence, a video or correct map hulls alone is not a behavioral oracle.
 

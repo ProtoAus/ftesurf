@@ -66,7 +66,7 @@ string(entity e) SV_MsKey =
 	return SV_SaveSanitise(infokey(e, "guid"));
 };
 
-string(entity e) SV_MsRoot = { return sprintf("data/resume/%s/@%s", mapname, SV_MsKey(e)); };
+string(entity e) SV_MsRoot = { return FS_MovementProfilePath(serverkey("*movementprofile"), sprintf("data/resume/%s/@%s", mapname, SV_MsKey(e))); };
 string(entity e, string leaf) SV_MsPath = { return sprintf("%s/save000/%s", SV_MsRoot(e), leaf); };
 
 string() SV_MsClaimLeaf =
@@ -340,20 +340,25 @@ string() SV_MsStale =
   (Patch 360's rule): its rows are on the board.  `leaf` is the ms file that
   is present (ms.txt, or a claim); the meta must already be read.
 */
-void(string dir, string leaf) SV_MsWipeDir =
+void(string dir, string leaf, string profile) SV_MsWipeDirProfile =
 {
 	local string dst;
 
 	if (ms_posts > 0)
 	if (ms_rid != "")
 	{
-		dst = sprintf("data/evidence/%s/%s.rec", mapname, ms_rid);
+		dst = FS_MovementProfilePath(profile, sprintf("data/evidence/%s/%s.rec", mapname, ms_rid));
 		fremove(dst);
 		frename(strcat(dir, "run.rec"), dst);
 	}
 	fremove(strcat(dir, "run.rec"));
 	fremove(strcat(dir, "state.txt"));
 	fremove(strcat(dir, leaf));
+};
+
+void(string dir, string leaf) SV_MsWipeDir =
+{
+	SV_MsWipeDirProfile(dir, leaf, serverkey("*movementprofile"));
 };
 
 void(entity e, string leaf) SV_MsWipe =
@@ -658,6 +663,14 @@ void(entity e, string why, float explicit) SV_MsDiscardOffer =
 */
 float(entity e) SV_MsCopyBegin =
 {
+	local string oldroot;
+	local float rows, valid;
+	oldroot = sl_root; sl_root = SV_MsRoot(e);
+	rows = SL_StateSnapshot(0); sl_root = oldroot;
+	if (rows < 1) return FALSE;
+	valid = SL_StateProfileValid(rows); buf_del(rows);
+	if (!valid) return FALSE; // no part truncation on cross-profile state
+	SV_SaveProfileBind(e);
 	e.rec_ms_src = fopen(SV_MsPath(e, "run.rec"), FILE_READ);
 	if (e.rec_ms_src < 0)
 		return FALSE;
@@ -1051,7 +1064,7 @@ void(entity e) SV_MsAbortHere;      // Patch 478: below, after SV_MsAbort
 void(entity e) SV_MsApply =
 {
 	local string why, oldroot, claim;
-	local float ok, hold;
+	local float ok, hold, rows;
 
 	// The CSQC reports and the zone table have to be in: without them the start
 	// latches below read "broken" and the slot cannot be checked.
@@ -1101,11 +1114,22 @@ void(entity e) SV_MsApply =
 		return;
 	}
 
-	SV_WatchRelease(e);                 // Patch 477: a pin taken since the accept
-	e.movetype = MOVETYPE_WALK;
 	oldroot = sl_root;
 	sl_root = SV_MsRoot(e);
-	ok = SV_SaveApplyState(e, 0, 2);
+	rows = SL_StateSnapshot(0);
+	ok = FALSE;
+	if (rows >= 1)
+	{
+		if (SL_StateProfileValid(rows) && SL_StateViewValid(rows))
+		{
+			SV_WatchRelease(e);
+			e.movetype = MOVETYPE_WALK;
+			SV_SaveProfileBind(e);
+			SV_SaveApplyStateRows(e, 0, 2, rows);
+			ok = TRUE;
+		}
+		buf_del(rows);
+	}
 	sl_root = oldroot;
 	if (!ok || e.run_t_state != TS_RUNNING)
 	{
@@ -1396,16 +1420,33 @@ void(entity e) SV_MsDiscardCmd =
 	SV_MsDiscardOffer(e, "you dropped it", TRUE);
 };
 
-// worldspawn: slots on this map past run_resume_days.
-void() SV_MsSweep =
+// An optional slot may be claimed by another process, or active in this one.
+float(string dir) SV_MsSweepProtected =
+{
+	local float h, claimed;
+	local entity p;
+	h = search_begin(strcat(dir, "ms*.txt"), FS_NAMESORT, TRUE);
+	if (h < 0) return TRUE; // unknown claim eligibility cannot authorize expiry
+	claimed = (search_getsize(h) != 1 || strcmp(search_getfilename(h, 0), strcat(dir, "ms.txt")) != 0);
+	search_end(h);
+	if (claimed) return TRUE;
+	p = world;
+	while ((p = find(p, classname, "player")))
+		if (p.run_ms_phase || p.run_ms_offer || p.run_ms_pendat)
+			if (!strcmp(dir, sprintf("%s/save000/", SV_MsRoot(p)))) return TRUE;
+	return FALSE;
+};
+
+// worldspawn: slots on this map past run_resume_days, in closed known roots.
+void(string profile) SV_MsSweepProfile =
 {
 	local float h, n, i, days, cut;
 	local string fn, dir, leaf;
 
 	days = cvar("run_resume_days");
-	if (days <= 0)
+	if (days <= 0 || !FS_MovementProfileKnown(profile))
 		return;
-	h = search_begin(sprintf("data/resume/%s/*/save000/ms*.txt", mapname), FS_NAMESORT, TRUE);
+	h = search_begin(FS_MovementProfilePath(profile, sprintf("data/resume/%s/*/save000/ms*.txt", mapname)), FS_NAMESORT, TRUE);
 	if (h < 0)
 		return;
 	n = search_getsize(h);
@@ -1423,9 +1464,21 @@ void() SV_MsSweep =
 			cut = cut - 1;
 		dir = substring(fn, 0, cut + 1);
 		leaf = substring(fn, cut + 1, strlen(fn) - cut - 1);
+		if (strlen(profile))
+		{
+			if (strcmp(leaf, "ms.txt")) continue;
+			if (SV_MsSweepProtected(dir)) continue;
+		}
 		if (!SV_MsSlotCleanMain(strcat(dir, "state.txt")))
 			continue;
-		SV_MsWipeDir(dir, leaf);
+		SV_MsWipeDirProfile(dir, leaf, profile);
 	}
 	search_end(h);
+};
+
+void() SV_MsSweep =
+{
+	if (!strlen(serverkey("*movementprofile"))) SV_MsSweepProfile("");
+	SV_MsSweepProfile("ag-100-v1");
+	SV_MsSweepProfile("ag-250-v1");
 };

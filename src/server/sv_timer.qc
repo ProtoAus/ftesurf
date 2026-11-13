@@ -1206,6 +1206,8 @@ void(entity e) SV_SourcePhaseClear =
   The essay above covers all three; only the declaration moved.
 */
 
+.string run_agprofile; //server-owned identity latched at start; optional runs never promote PBs
+.string rec_agprofile; //recorder namespace latched before open, never re-derived at close
 .float  run_t_state;             // TS_*
 .float  run_t_track;
 .float  run_t_startseg;          // the 0-based SEGMENT the run began at
@@ -2425,8 +2427,8 @@ string(entity e) SV_RecPartPath =
 	// (and the evidence keep renames it).  Keyed by port there; offline unchanged.
 	// Patch 375: the name as opened, so a lobby_enable flip mid-run cannot move it.
 	if (e.rec_rec_partlob ? (e.rec_rec_partlob == 1) : Lobby_Active())
-		return sprintf("data/parts/p%s-%g.rec", cvar_string("sv_port"), e.run_t_slot);
-	return sprintf("data/parts/%g.rec", e.run_t_slot);
+		return FS_MovementProfilePath(e.rec_agprofile, sprintf("data/parts/p%s-%g.rec", cvar_string("sv_port"), e.run_t_slot));
+	return FS_MovementProfilePath(e.rec_agprofile, sprintf("data/parts/%g.rec", e.run_t_slot));
 };
 
 /*
@@ -4173,9 +4175,9 @@ string(entity e, float ticks, string who, string tag) SV_RecFinalPath =
 	// BUILD 57: by LEG.  A stage-1 run begins at segment 0 exactly as a full run
 	// does, and filing it by the segment would put it in `main`.
 	// BUILD 66: and by PLAYER, which is "" everywhere except a lobby.
-	return FS_RunPathWho(mapname, e.run_t_track,
-	                     FS_LegOf(e.run_t_startseg, e.run_t_stagerun), ticks,
-	                     who, tag, "rec");
+	return FS_MovementProfilePath(e.rec_agprofile,
+		FS_RunPathWho(mapname, e.run_t_track,
+		              FS_LegOf(e.run_t_startseg, e.run_t_stagerun), ticks, who, tag, "rec"));
 };
 
 /*
@@ -4882,6 +4884,7 @@ void(entity e, string pub, string ticks, string hid, string hidlen, string kept,
 	local float fh, svt, noup;
 	local string path, who, rid, nonce;
 
+	if (strlen(e.rec_agprofile)) return; // no normal upload receipt for optional diagnostics
 	/*
 	  EVERY REFUSAL SAYS WHY, under developer.  A receipt that silently does not
 	  appear is indistinguishable from a client that never sent one, and the
@@ -5589,6 +5592,9 @@ void(entity e) SV_RecOpen =
 			dprint("timer: a new recording drops the kept attempt\n");
 	SV_RecFailDrop(e);                  // Patch 817: you left the start
 	SV_RecCopyFlush(e);                 // Patch 375: the part file is about to be reopened
+	if (!FS_MovementProfileKnown(e.run_agprofile)) return; // never fall back to normal paths
+	if (strlen(e.rec_agprofile)) strunzone(e.rec_agprofile);
+	e.rec_agprofile = strzone(e.run_agprofile);
 	SV_RecGenBegin(e);
 	e.rec_rec_ver = FS_REC_VERSION;
 	e.rec_rec_views = 0;
@@ -6012,6 +6018,8 @@ void(entity e) SV_RecOpen =
 	if (pin != "")
 	{
 		SV_RecPut(e, strcat("pmpin ", pin));
+		if (strlen(e.rec_agprofile))
+			SV_RecPut(e, strcat("movementprofile ", e.rec_agprofile));
 		e.rec_rec_epoch = e.run_pmepoch;
 	}
 
@@ -6174,7 +6182,7 @@ float(entity e) SV_RecKeepEvidence =
 	if (e.run_movetickrate > 0)
 		SV_RecPut(e, sprintf("inend %d %.9g", endmt, endcarry));
 	SV_RecTrailer(e, ticks);
-	dst = sprintf("data/evidence/%s/%s.rec", mapname, e.rec_rec_rid);
+	dst = FS_MovementProfilePath(e.rec_agprofile, sprintf("data/evidence/%s/%s.rec", mapname, e.rec_rec_rid));
 	if (e.rec_hm_mode == 12)
 	{
 		SV_HeldAbort(e);
@@ -6524,7 +6532,7 @@ string(entity e, float leg, string tag, string who) SV_RecPruneGlob =
 {
 	if (who != "")
 		who = strcat(who, "_");
-	return sprintf("%s*_%s%s.rec", FS_RunDir(mapname, e.run_t_track, leg), who, tag);
+	return FS_MovementProfilePath(e.rec_agprofile, sprintf("%s*_%s%s.rec", FS_RunDir(mapname, e.run_t_track, leg), who, tag));
 };
 
 void(string glob, string keepme) SV_RecPruneIn =
@@ -6966,7 +6974,7 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 	if (e.rec_rec_rid != "")
 	if (!FS_TagArchived(tag))
 	{
-		dst = sprintf("data/evidence/%s/%s.rec", mapname, e.rec_rec_rid);
+		dst = FS_MovementProfilePath(e.rec_agprofile, sprintf("data/evidence/%s/%s.rec", mapname, e.rec_rec_rid));
 		tag = RT_NONE;
 		print(sprintf("^5board:^7 kept %s (%g posted stage(s))\n", dst, e.rec_rec_posts));
 	}
@@ -8257,7 +8265,7 @@ void() SV_PBLoad =
 	  StartFrame, which is why Lobby_NoPB reads its cvars live rather than a
 	  value Lobby_Frame cached.  See the essay at those accessors.
 	*/
-	if (Lobby_NoPB())
+	if (Lobby_NoPB() || strlen(serverkey("*movementprofile")))
 		return;
 
 	f = fopen(SV_PBPath(), FILE_READ);
@@ -8436,7 +8444,7 @@ void() SV_PBSave =
 	  later by someone who has read SV_TimerFinish and not this essay, and the
 	  cost of that mistake is somebody's data.
 	*/
-	if (Lobby_NoPB())
+	if (Lobby_NoPB() || strlen(serverkey("*movementprofile")))
 		return;
 
 	f = fopen(SV_PBPath(), FILE_WRITE);
@@ -8537,7 +8545,7 @@ float(float track, float leg) SV_PBGet =
 	  lobby_enable back to 0 restores it without a re-read.  Nothing has to
 	  detect the edge.
 	*/
-	if (Lobby_NoPB())
+	if (Lobby_NoPB() || strlen(serverkey("*movementprofile")))
 		return 0;
 
 	return run_pb_ticks[track * FS_MAXSPLITS + leg];
@@ -10047,6 +10055,7 @@ void(entity e, float ticks) SV_StageClose =
 	// above every refusal below, which are about writing a local file.
 	e.run_st_endlaunch = e.run_st_launch;
 	Lobby_RqDetail(e);                  // ABOVE the braceless if: it gates the submit
+	if (!strlen(e.run_agprofile) && !strlen(serverkey("*movementprofile")))
 	if (SV_StageFillable(e, seg, e.run_st_endticks))
 	{
 		Lobby_StoryLocal(e, e.run_t_track, FS_LegOf(seg, TRUE), e.run_st_endticks, SV_StageSubmitFlags(e));
@@ -10108,6 +10117,7 @@ void(entity e, float ticks) SV_StageClose =
 	*/
 	leg = FS_LegOf(seg, TRUE);
 	pb = SV_PBGet(e.run_t_track, leg);
+	if (strlen(e.run_agprofile)) return; //no stage archive/PB promotion across movement identities
 	if (Lobby_NoPB() || (pb > 0 && dur >= pb))
 	{
 		if (FS_RunClass(SV_StageFlags(e)) == RC_CLEAN)
@@ -11982,13 +11992,15 @@ void(entity e, float atstart) SV_TimerRuleset =
 	*/
 	if (atstart)
 	{
+		if (strlen(e.run_agprofile)) strunzone(e.run_agprofile);
+		e.run_agprofile = strzone(serverkey("*movementprofile"));
 		s = serverkey("*ruleset");
 		if (s != "")
 		if (tokenize(s) >= 4)
 			e.run_t_rbreach = stof(argv(3));
 	}
 
-	if (SV_RulesetBroken(e))
+	if (SV_RulesetBroken(e) || strlen(e.run_agprofile) || strlen(serverkey("*movementprofile")))
 		e.run_t_flags = e.run_t_flags | TF_NORULESET;
 };
 
@@ -13704,7 +13716,11 @@ void(entity e, float ticks) SV_TimerFinish =
 	  `not a lobby best` itself when this time does not beat the one on disk, and
 	  it is the only half of the system that can know.
 	*/
-	else if (Lobby_NoPB())
+	else if (strlen(e.run_agprofile))
+	{
+		sprint(e, PRINT_HIGH, "^3experimental movement -- unranked, recorded without PB promotion^7\n");
+	}
+	else if (Lobby_NoPB() || strlen(serverkey("*movementprofile")))
 	{
 		sprint(e, PRINT_HIGH,
 		       strcat(what,
@@ -13958,13 +13974,16 @@ void(entity e, float ticks) SV_TimerFinish =
 		                Lobby_ChatName(e), Lobby_Where(e.run_t_track), SV_TimerString(ticks),
 		                (pb > 0) ? strcat(", ", SV_TimerString(pb - ticks), " faster") : ""));
 
-	Lobby_StoryLocal(e, e.run_t_track, leg, ticks, e.run_t_flags);
-	Lobby_RqDetail(e);
-	if (e.rec_hm_closing)
-		SV_HeldQueuePost(e, leg, ticks, e.run_t_flags);
-	else
-		Lobby_SubmitRun(e, e.run_t_track, leg, ticks, e.run_t_flags,
-		                SV_RecKeptLeaf(e), e.rec_rec_bytes, e.rec_rec_full);
+	if (!strlen(e.run_agprofile) && !strlen(serverkey("*movementprofile")))
+	{
+		Lobby_StoryLocal(e, e.run_t_track, leg, ticks, e.run_t_flags);
+		Lobby_RqDetail(e);
+		if (e.rec_hm_closing)
+			SV_HeldQueuePost(e, leg, ticks, e.run_t_flags);
+		else
+			Lobby_SubmitRun(e, e.run_t_track, leg, ticks, e.run_t_flags,
+			                SV_RecKeptLeaf(e), e.rec_rec_bytes, e.rec_rec_full);
+	}
 
 	/*
 	  PATCH 448: THE HOPPED-START TAG DIES WITH THE RUN IT DESCRIBED.
@@ -14035,7 +14054,7 @@ void(entity e, float seg, float ticks) SV_TimerSplit =
 	// the host's best.pb happened to hold -- a running "+2.31" against a
 	// stranger's ghost, on every stage boundary, which is the same wrong
 	// number the finish card was fixed not to show.
-	if (seg > 0 && seg < FS_MAXSPLITS && !Lobby_NoPB())
+	if (seg > 0 && seg < FS_MAXSPLITS && !Lobby_NoPB() && !strlen(serverkey("*movementprofile")))
 	{
 		pbs = run_pb_split[e.run_t_track * FS_MAXSPLITS + seg];
 		if (pbs > 0)
@@ -14080,7 +14099,7 @@ void(entity e, float cpn, float ticks) SV_TimerCheckpoint =
 	// rather than through SV_PBGet, so the accessor's gate does not cover them.
 	// BUILD 57: run_t_stagerun rather than `startseg == 0`, which a stage-1 run
 	// shares with a full run -- every stage run is refused alike.
-	if (!e.run_t_stagerun && cpn > 0 && cpn < FS_MAXCPS && !Lobby_NoPB())
+	if (!e.run_t_stagerun && cpn > 0 && cpn < FS_MAXCPS && !Lobby_NoPB() && !strlen(serverkey("*movementprofile")))
 	{
 		pbc = run_pb_cp[e.run_t_track * FS_MAXCPS + cpn];
 		if (pbc > 0)

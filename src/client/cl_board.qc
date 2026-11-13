@@ -1738,7 +1738,7 @@ string() CL_SaveRoot =
 	if (r != "")
 		return r;
 	r = getstats(STAT_FS_SAVEROOT);
-	m = sprintf("data/saves/%s", serverkey("map"));
+	m = FS_MovementProfilePath(serverkey("*movementprofile"), sprintf("data/saves/%s", serverkey("map")));
 	// Not in yet, or the last map's (19 Oct: two surf_dragon lobby saves wrote
 	// their seq.txt into surf_jumble's folder).  The plain map folder only when
 	// the server names it (a local game, lobby_nosaveloc).

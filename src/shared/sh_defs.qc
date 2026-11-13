@@ -2706,6 +2706,20 @@ string(float ticks) FS_RunStamp =
 // The directory for one leg, trailing slash included.  fopen/COM_WriteFile call
 // FS_CreatePath, so nothing has to create these.  BUILD 57: `leg` is a LEG (0
 // the full run, k stage k) and never a segment -- see FS_LegOf.
+// Optional diagnostics never share normal archive/save/part namespaces.
+// Only server-published, closed versioned identities may form a path component.
+float(string profile) FS_MovementProfileKnown =
+{
+	return !strlen(profile) || !strcmp(profile, "ag-100-v1") || !strcmp(profile, "ag-250-v1");
+};
+string(string profile, string path) FS_MovementProfilePath =
+{
+	if (!FS_MovementProfileKnown(profile) || strcmp(substring(path, 0, 5), "data/"))
+		return "";
+	if (!strlen(profile)) return path;
+	return strcat("data/experimental/", profile, "/", substring(path, 5, -1));
+};
+
 string(string map, float track, float leg) FS_RunDir =
 {
 	return sprintf("data/runs/%s/%s/", map, FS_LegDir(track, leg));

@@ -97,6 +97,7 @@ float  rec_rp_recat;             // cltime the current recording began at
 float  rec_rp_asked;             // this run has already asked for its nonce
 // Patch 417: the .view this run wrote, for the receipt to hash.  "" when none.
 string rec_rp_lastview;
+string rec_rp_agprofile; //latched alongside the sidecar; no normal namespace fallback
 /*
   Patch 417: did THIS run open a journal?  The engine keeps the last journal's
   digest so a receipt can sign it after the buffer is freed -- and a run that
@@ -220,7 +221,8 @@ string(float runleg, float ticks, string tag, string ext) Rec_ViewPath =
 	track  = floor(runleg / 100);
 	leg    = runleg - track * 100;
 
-	return FS_RunPath(Rec_MapName(), track, leg, ticks, tag, ext);
+	if (strcmp(rec_rp_agprofile, serverkey("*movementprofile"))) return "";
+	return FS_MovementProfilePath(rec_rp_agprofile, FS_RunPath(Rec_MapName(), track, leg, ticks, tag, ext));
 };
 
 // Kept as a name because this file calls it in several places; the definition is
@@ -790,6 +792,8 @@ void() Rec_ViewBegin =
 {
 	local float i;
 
+	if (strlen(rec_rp_agprofile)) strunzone(rec_rp_agprofile);
+	rec_rp_agprofile = strzone(serverkey("*movementprofile"));
 	rec_rp_lines = 0;
 	rec_rp_full  = FALSE;
 	// Patch 808: no mark is a line of the buffer begun here; those saves load cold.
@@ -1046,7 +1050,7 @@ void() Rec_ViewEnd =
 		    && stof(serverkey("fs_ul")) >= 1 && rec_rp_nonce != ""
 		    && rec_rp_lines > FS_VIEWHEAD)
 		{
-			dst = sprintf("data/staged/%s.view", rec_rp_nonce);
+			dst = FS_MovementProfilePath(rec_rp_agprofile, sprintf("data/staged/%s.view", rec_rp_nonce));
 			fh = fopen(dst, FILE_WRITE);
 			if (fh < 0)
 				dprint(sprintf("replay: cannot stage %s\n", dst));
@@ -1529,7 +1533,7 @@ void() Rec_HidEnd =
 		    && stof(serverkey("fs_ul")) >= 2 && rec_rp_nonce != "")
 		{
 			local string dst;
-			dst = sprintf("data/staged/%s.hid", rec_rp_nonce);
+			dst = FS_MovementProfilePath(rec_rp_agprofile, sprintf("data/staged/%s.hid", rec_rp_nonce));
 			localcmd(sprintf("in_journal_end %s\n", dst));
 			localcmd(sprintf("rec_ul_arm %s\n", dst));
 			return;
@@ -1727,6 +1731,8 @@ float(string path, float buf) Watch_BufLoad;
 void(float id) Rec_ViewLoaded =
 {
 	local float buf, i;
+	if (strlen(rec_rp_agprofile)) strunzone(rec_rp_agprofile);
+	rec_rp_agprofile = strzone(serverkey("*movementprofile"));
 	// See Rec_ViewSaved.  Slot 0 is the retry point, and for it the cold branch
 	// below is the ONLY one that can ever run: a map restart shuts this VM down
 	// (CSQC_Shutdown in CLQW_ParseServerData), so rec_rp_mark is all zeroes by
@@ -2328,12 +2334,13 @@ void() Rec_ViewFrame =
   every run end, not this call; this one is the tidy-up for a session that
   ended.
 */
-void(string keep, string keep2) Rec_StagedClear =
+void(string profile, string keep, string keep2) Rec_StagedClearProfile =
 {
 	local float h, n, i;
 	local string fn;
 
-	h = search_begin("data/staged/*", FS_NAMESORT, TRUE);
+	if (!FS_MovementProfileKnown(profile)) return;
+	h = search_begin(FS_MovementProfilePath(profile, "data/staged/*"), FS_NAMESORT, TRUE);
 	if (h < 0)
 		return;
 	n = search_getsize(h);
@@ -2364,9 +2371,25 @@ void(string keep, string keep2) Rec_StagedClear =
 	search_end(h);
 };
 
+void(string keep, string keep2) Rec_StagedClear =
+{
+	Rec_StagedClearProfile(serverkey("*movementprofile"), keep, keep2);
+};
+
+void(string keep, string keep2) Rec_StagedMapClear =
+{
+	if (!strlen(serverkey("*movementprofile"))) Rec_StagedClearProfile("", keep, keep2);
+	Rec_StagedClearProfile("ag-100-v1", keep, keep2);
+	Rec_StagedClearProfile("ag-250-v1", keep, keep2);
+};
+
 void() Rec_ViewInit =
 {
 	local float i;
+
+	// A map change can retain uploads. Preserve any still-known two-run nonces
+	// before resetting this VM's bookkeeping; deletion remains best effort.
+	Rec_StagedMapClear(rec_rp_nonce, rec_rp_ulkeep);
 
 	rec_rp_view   = 0;
 	rec_rp_lines  = 0;
@@ -2442,14 +2465,7 @@ void() Rec_ViewInit =
 	rec_rp_lastview = "";           // Patch 417
 	rec_rp_hadhid   = FALSE;
 
-	/*
-	  Patch 418: EMPTY THE STAGING DIRECTORY.  What is in it belongs to the map
-	  session that just ended -- offered, sent, and of no further use to anybody
-	  -- and a directory nobody ever prunes is the finding this patch's
-	  predecessor had to answer for.  A map load is the one moment no upload can
-	  be in flight: the netchan that would have carried it is gone.
-	*/
-	Rec_StagedClear("", "");
+	// Staged map cleanup ran above, before clearing the known upload nonces.
 	if (rec_rp_ulkeep != "")
 		strunzone(rec_rp_ulkeep);
 	rec_rp_ulkeep = "";

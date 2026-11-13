@@ -589,6 +589,10 @@ void(entity e) SV_SaveLeadEyeDetach;
 #define FD_DUCK   2
 
 .float run_forceduck;
+.float run_forceagwater;
+.float run_agwateractive;
+.float run_agwatertime;
+.vector run_agwaterpush;
 
 // Defined below, next to the hold it undoes; forward-declared because a reset
 // and a respawn both have to be able to let go of one.
@@ -871,6 +875,7 @@ void(entity e) SV_SaveRootSet =
 		sl_root = sprintf("data/saves/%s/@%s", mapname, k);
 	else
 		sl_root = sprintf("data/saves/%s", mapname);
+	sl_root = FS_MovementProfilePath(serverkey("*movementprofile"), sl_root);
 };
 
 .string sl_rootstat;             // STAT_FS_SAVEROOT; zoned
@@ -1210,14 +1215,57 @@ float(filestream f, string path) SL_StateCloseConfirmed =
 	return ok;
 };
 
+float(string line) SL_AGWaterValid =
+{
+	local float i, value;
+	if (tokenize(line) != 5 || strcmp(argv(0), "agwaterjump")) return FALSE;
+	if (strcmp(argv(1), "0") && strcmp(argv(1), "1")) return FALSE;
+	for (i = 2; i < 5; i = i + 1)
+	{
+		if (!FS_TASNumber(argv(i))) return FALSE;
+		value = fs_tas_number;
+		if (i == 2 && !(value >= 0 && value <= 2)) return FALSE;
+		if (i > 2 && !(value >= -50 && value <= 50)) return FALSE;
+	}
+	return TRUE;
+};
+string(entity e) SV_AGWaterSave =
+{
+	local string text, token, line;
+	local float i, count, seen, bit, active, timer, x, y;
+	text = SV_RecPinText(e, "*pmstate");
+	count = tokenize(text); seen = 0;
+	active = timer = x = y = 0;
+	for (i = 0; i < count; i = i + 1)
+	{
+		token = argv(i); bit = 0;
+		if (!strcmp(substring(token, 0, 12), "agwaterjump=")) { bit = 1; active = stof(substring(token, 12, -1)); }
+		if (!strcmp(substring(token, 0, 7), "wjtime=")) { bit = 2; timer = stof(substring(token, 7, -1)); }
+		if (!strcmp(substring(token, 0, 4), "wjx=")) { bit = 4; x = stof(substring(token, 4, -1)); }
+		if (!strcmp(substring(token, 0, 4), "wjy=")) { bit = 8; y = stof(substring(token, 4, -1)); }
+		if (bit && (seen & bit)) return "";
+		seen = seen | bit;
+	}
+	if (seen != 15) return "";
+	line = sprintf("agwaterjump %d %.9f %.9f %.9f", active, timer, x, y);
+	if (!SL_AGWaterValid(line)) return "";
+	return line;
+};
+
 // TRUE only for matching immediate state readback and no known buffered-prefix
 // failure. Other save callers retain their warm/legacy behavior; retry needs it.
 float(entity e, float id, float seq) SV_SaveWriteState =
 {
 	local filestream f;
 	local float i, mark, prefixok;
-	local string p;
+	local string p, agwater;
 
+	agwater = "";
+	if (strlen(serverkey("*movementprofile")))
+	{
+		agwater = SV_AGWaterSave(e);
+		if (!strlen(agwater)) return FALSE; // no unknown-to-zero saved state, before opening anything
+	}
 	p = SL_StatePath(id);
 	f = fopen(p, FILE_WRITE);
 	if (f < 0)
@@ -1235,9 +1283,11 @@ float(entity e, float id, float seq) SV_SaveWriteState =
 	*/
 	mark = SV_RecWritePrefix(e, SL_RecPath(id));
 	prefixok = rec_prefix_ok;       // SV_RecSaveKeys consumes/resets the global.
-
 	fputs(f, sprintf("FTESURF-SAVE %d\n", SL_STATE_VERSION));
+	if (strlen(agwater)) fputs(f, strcat(agwater, "\n"));
 	fputs(f, sprintf("map %s\n", mapname));
+	if (strlen(serverkey("*movementprofile")))
+		fputs(f, strcat("movementprofile ", serverkey("*movementprofile"), "\n"));
 	/*
 	  PATCH 450: WHICH BSP, not just which NAME.  `map` has been written since this
 	  format existed and NO READER EVER LOOKED AT IT -- round 7 counted it as one of
@@ -1836,6 +1886,35 @@ float(float rows) SL_StateViewValid =
 	return SL_ViewClockValid(st, viewseconds, elapsed, haveelapsed);
 };
 
+// Validate before placement/rewind; absent identity means legacy Source only.
+float(float rows) SL_StateProfileValid =
+{
+	local float row, seen, water;
+	local string profile, line;
+	profile = ""; seen = water = 0;
+	for (row = 0; row < buf_getsize(rows); row = row + 1)
+	{
+		line = bufstr_get(rows, row);
+		if (!strlen(line)) break;
+		if (strlen(serverkey("*movementprofile")) && !strcmp(substring(line, 0, 12), "agwaterjump "))
+		{
+			if (water || !SL_AGWaterValid(line)) return FALSE;
+			water = 1;
+		}
+		if (strcmp(substring(line, 0, 16), "movementprofile ")) continue;
+		if (seen) return FALSE;
+		seen = 1; profile = substring(line, 16, -1);
+	}
+	return FS_MovementProfileKnown(profile) && !strcmp(profile, serverkey("*movementprofile")) && (!strlen(profile) || water);
+};
+void(entity e) SV_SaveProfileBind =
+{
+	if (strlen(e.run_agprofile)) strunzone(e.run_agprofile);
+	if (strlen(e.rec_agprofile)) strunzone(e.rec_agprofile);
+	e.run_agprofile = strzone(serverkey("*movementprofile"));
+	e.rec_agprofile = strzone(serverkey("*movementprofile"));
+};
+
 // Native byte/row confirmation is shared with the writer, not a second open.
 float(float id) SL_StateSnapshot =
 {
@@ -1961,6 +2040,13 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 		if (n < 2)
 			continue;
 
+		if (!strcmp(k, "agwaterjump") && strlen(serverkey("*movementprofile")))
+		{
+			e.run_agwateractive = stof(argv(1)); e.run_agwatertime = stof(argv(2));
+			e.run_agwaterpush = [stof(argv(3)), stof(argv(4)), 0];
+			e.run_forceagwater = 1;
+			continue;
+		}
 		if (k == "state")      { st  = stof(argv(1)); continue; }
 		if (k == "track")      { tr  = stof(argv(1)); continue; }
 		if (k == "startseg")   { ss  = stof(argv(1)); continue; }
@@ -2806,6 +2892,13 @@ float(entity e, float id, float retry) SV_SaveApplyState =
 		buf_del(rows);
 		return FALSE;
 	}
+	if (!SL_StateProfileValid(rows))
+	{
+		buf_del(rows);
+		sprint(e, PRINT_HIGH, "save: movement profile mismatch; source preserved\n");
+		return FALSE;
+	}
+	SV_SaveProfileBind(e);
 	SV_SaveApplyStateRows(e, id, retry, rows);
 	buf_del(rows);
 	return TRUE;
@@ -3012,7 +3105,7 @@ void() SV_SaveLocReset =
 	  that is the map's any more.
 	*/
 	SV_SaveLocAlloc();              // Patch 428
-	sl_root = sprintf("data/saves/%s", mapname);
+	sl_root = FS_MovementProfilePath(serverkey("*movementprofile"), sprintf("data/saves/%s", mapname));
 	sl_lob_last = Lobby_Active();
 	for (i = 0; i <= FS_SLCLIENTS; i = i + 1)
 	{
@@ -3064,7 +3157,7 @@ void(entity e) SV_SaveLocSync =
 	if (sl_lob_last != Lobby_Active())
 	{
 		sl_lob_last = Lobby_Active();
-		sl_root = sprintf("data/saves/%s", mapname);
+		sl_root = FS_MovementProfilePath(serverkey("*movementprofile"), sprintf("data/saves/%s", mapname));
 		for (blk = 0; blk <= FS_SLCLIENTS; blk = blk + 1)
 		{
 			rec_sl_nb[blk] = 0;
@@ -3375,7 +3468,8 @@ float(entity e, float row) SV_SaveTransferFlags =
 void(float row) SV_SaveDemote =
 {
 	local filestream f;
-	local float id;
+	local float id, rows, i;
+	local string agwater, line;
 	local vector o, v;
 
 	/*
@@ -3390,6 +3484,21 @@ void(float row) SV_SaveDemote =
 		return;                         // no run to take (idle, armed, or already demoted)
 	if (!SV_SaveReadIdent(id) || !SV_SaveRowIs(row))
 		return;
+	agwater = "";
+	if (strlen(serverkey("*movementprofile")))
+	{
+		rows = SL_StateSnapshot(id);
+		if (rows < 1) return;
+		if (!SL_StateProfileValid(rows)) { buf_del(rows); return; }
+		for (i = 0; i < buf_getsize(rows); i = i + 1)
+		{
+			line = bufstr_get(rows, i);
+			if (!strlen(line)) break;
+			if (!strcmp(substring(line, 0, 12), "agwaterjump ")) agwater = line;
+		}
+		buf_del(rows);
+		if (!strlen(agwater)) return; // preserve unknown state before cache/file mutation
+	}
 	rec_sl_tick[row] = SL_DEMOTED;
 	rec_sl_seg [row] = 0;
 	rec_sl_cps [row] = 0;
@@ -3407,7 +3516,10 @@ void(float row) SV_SaveDemote =
 	o = rec_sl_org[row];
 	v = rec_sl_vel[row];
 	fputs(f, sprintf("FTESURF-SAVE %d\n", SL_STATE_VERSION));
+	if (strlen(agwater)) fputs(f, strcat(agwater, "\n"));
 	fputs(f, sprintf("map %s\n", mapname));
+	if (strlen(serverkey("*movementprofile")))
+		fputs(f, strcat("movementprofile ", serverkey("*movementprofile"), "\n"));
 	/*
 	  ROUND 8 REMOVED A `mapcrc` WRITE FROM HERE, and the reason it was added was false.
 
@@ -3974,6 +4086,7 @@ float(entity e, float id, float seq, float go) SV_SaveWriteAt =
 {
 	local filestream f;
 
+	if (strlen(serverkey("*movementprofile"))) return FALSE;
 	if (rw_statebase >= 0)
 	if (SV_RewindWriteState(e, id, seq, go))
 		return TRUE;
@@ -3982,6 +4095,8 @@ float(entity e, float id, float seq, float go) SV_SaveWriteAt =
 		return FALSE;
 	fputs(f, sprintf("FTESURF-SAVE %d\n", SL_STATE_VERSION));
 	fputs(f, sprintf("map %s\n", mapname));
+	if (strlen(serverkey("*movementprofile")))
+		fputs(f, strcat("movementprofile ", serverkey("*movementprofile"), "\n"));
 	// Taken on this map in this process, so the crc is a fact here -- unlike a
 	// demote, which rewrites a row it cannot vouch for.
 	fputs(f, sprintf("mapcrc %s\n", infokey(world, "*mapcrc")));
@@ -4078,6 +4193,11 @@ float(entity e, float t, vector near, float usenear, float go, float view, float
 {
 	local float id, seq, row, blk, base, cnt, full, written;
 
+	if (strlen(serverkey("*movementprofile")))
+	{
+		sprint(e, PRINT_HIGH, "rewind: AG historic disk export unsupported (waterjump state unavailable); existing save preserved\n");
+		return FALSE;
+	}
 	if (!SV_SaveLocBegin(e, FALSE))
 		return FALSE;
 	// A viewed pose is a practice-only snapshot; it never reads the held body.
@@ -4381,10 +4501,10 @@ void(entity e, float n) SV_SaveLocLoad =
 		sprint(e, PRINT_HIGH, "^3save: that save changed on disk -- the list rereads at the next map\n");
 		return;
 	}
-	if (!SL_StateViewValid(rows))
+	if (!SL_StateProfileValid(rows) || !SL_StateViewValid(rows))
 	{
 		buf_del(rows);
-		sprint(e, PRINT_HIGH, "^3save: the state file is invalid\n");
+		sprint(e, PRINT_HIGH, "^3save: the state file/profile is invalid; source preserved\n");
 		return;
 	}
 	dem = (sl_fticks == SL_DEMOTED);
@@ -4435,6 +4555,7 @@ void(entity e, float n) SV_SaveLocLoad =
 	  were standing in does not fire again, and the recorder rewinds to the
 	  movement you had done by then.
 	*/
+	SV_SaveProfileBind(e);
 	SV_SaveApplyStateRows(e, id, FALSE, rows);
 	buf_del(rows);
 

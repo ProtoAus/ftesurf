@@ -21,6 +21,10 @@
 
 ## next
 
+### P1542 Experimental legacy practice movement
+- Custom practice maps can opt into experimental GoldSrc-style 100 or 250 movement profiles; normal Source movement remains the default.
+- Practice runs and saves stay separate and unranked. Full HL1/AG parity, 1000-rate movement and the requested HL2 variants are not included.
+
 ### P1541 Jargon search initialization
 - Jargon starts each search with clean fallback steering instead of carrying values from an earlier failed search.
 - Rejected trial paths no longer distort its search updates; useful negatively scored trials are still considered.

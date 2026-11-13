@@ -309,7 +309,8 @@ HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule", "movebnd", "holdclock", "view
                      "contexts",    # Patch 1036, additive
                      "filtermatch", # Patch 1367, additive
                      "startrule",   # Patch 1371, additive
-                     "gamemode"}    # Patch 1371, additive
+                     "gamemode",   # Patch 1371, additive
+                     "movementprofile"} # Optional unranked engine model identity
 # v10 (Patch 364): no new header key.  A file is v10 exactly when it carries a
 # `pause`: the buffered writer rewrites line 0 when the first one lands.
 HEAD_V10 = HEAD_V9
@@ -721,6 +722,14 @@ def spec_restates(r, ln, what, mt, carry, pend):
                     "from the live counter" % (ln, what, sln, rw, mt, smt))
 
 
+def pin_physics_mode(tokens):
+    values = dict(token.split("=", 1) for token in tokens if "=" in token)
+    try:
+        return file_float(values.get("physmode", ""))
+    except ValueError:
+        return None  # Ordinary pin shape checks diagnose malformed values.
+
+
 def read_lines(path, data=None):
     """Preserve text-mode decoding/newlines, optionally from captured bytes."""
     stream = (open(path, "r", encoding="utf-8", errors="replace") if data is None
@@ -1075,8 +1084,24 @@ def _check_rec(r, path, verbose=False, *, data=None):
             if not n:
                 r.fault("header pmpin carries no values")
             r.info["pmpin"] = "%d values" % n
+            if pin_physics_mode(pmpin.split()) == 2:
+                r.info["movementprofile"] = head.get("movementprofile", "AG identity absent")
+                r.note("UNSUPPORTED physics mode 2 (AG): shape checks only; no physics verdict or Source fallback")
+                try:
+                    ag_flags = int(file_float(head.get("flags", "0")))
+                except ValueError:
+                    pass  # The ordinary header-flags check reports malformed values.
+                else:
+                    if not (ag_flags & TF_NORULESET):
+                        r.fault("AG recording lacks the unranked/no-ruleset safety flag")
     else:
         r.info.pop("pmpin", None)   # a stray key below v9 prints nothing new
+
+    if head.get("movementprofile"):
+        r.info["movementprofile"] = head["movementprofile"]
+        if not pmpin or pin_physics_mode(pmpin.split()) != 2:
+            r.fault("optional movementprofile has no matching AG physics pin; no Source fallback")
+            r.note("UNSUPPORTED optional movementprofile: no physics verdict")
 
     # ---- the move-column bound, Patch 493 -----------------------------------
     #
@@ -1744,6 +1769,10 @@ def _check_rec(r, path, verbose=False, *, data=None):
             seeds.append((lineno + 1, tok[1:]))
         elif kind == "pm" and ver >= 9:
             pms.append((lineno + 1, tok[1:], inrows))
+            if pin_physics_mode(tok[1:]) == 2:
+                if "movementprofile" not in r.info:
+                    r.note("UNSUPPORTED physics mode 2 in pm restatement: shape checks only; no physics verdict")
+                    r.info["movementprofile"] = "AG restatement without header identity"
         elif kind == "pe" and ver >= 9:
             pes.append((lineno + 1, tok[1:], inrows))
         elif kind == "portal" and ver >= 9:
@@ -4410,7 +4439,7 @@ def emit(r, verbose):
     tag = "ok  " if r.ok else "FAIL"
     print("%s %s" % (tag, os.path.basename(r.path)))
     if verbose or not r.ok:
-        for k in ("version", "map", "track", "startseg", "samples", "padding",
+        for k in ("version", "movementprofile", "map", "track", "startseg", "samples", "padding",
                   "records", "checkpoints", "cp_ordinals", "resumes",
                   "resumed_from", "retries", "retried_at",
                   # Build 43.  Same class of fact as `resumes`: the sample

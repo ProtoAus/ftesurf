@@ -273,8 +273,16 @@ void() PutClientInServer =
 	setmodel(self, "");
 
 	// CS:S hull, origin AT THE FEET (Source convention, not Quake's centre).
-	setsize(self, PM_HULL_MINS, PM_HULL_MAXS);
-	self.view_ofs = PM_VIEW_OFS;
+	if (strlen(serverkey("*movementprofile")))
+	{
+		setsize(self, '-16 -16 -36', '16 16 36');
+		self.view_ofs = '0 0 28';
+	}
+	else
+	{
+		setsize(self, PM_HULL_MINS, PM_HULL_MAXS);
+		self.view_ofs = PM_VIEW_OFS;
+	}
 	// PM_RUN_SPEED is only the fallback now -- see PlayerPreThink below.
 	self.maxspeed = cvar("sv_maxspeed");
 	if (self.maxspeed <= 0)
@@ -284,7 +292,7 @@ void() PutClientInServer =
 	if (spot)
 	{
 		// CBasePlayer::Spawn nudges 1 unit up off the spawn pad.
-		setorigin(self, spot.origin + '0 0 1');
+		setorigin(self, spot.origin + (strlen(serverkey("*movementprofile")) ? '0 0 37' : '0 0 1'));
 		self.angles = spot.angles;
 	}
 	else

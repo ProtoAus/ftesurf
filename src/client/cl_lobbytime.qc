@@ -198,6 +198,7 @@ float() LT_Enabled =
 // does not, the server's PB stats are the source, or there is none.
 float() LT_Keeps =
 {
+	if (strlen(serverkey("*movementprofile"))) return FALSE;
 	if (!(getstatf(STAT_FS_LOBBY) & LS_LOBBY))
 		return FALSE;
 	if (!(getstatf(STAT_FS_LOBBY) & LS_NOPB))
@@ -380,6 +381,7 @@ float(string map, float track, float leg, float mine, float uncert, float rclass
 	local float h, n, i, best, t, cut, dot, flags;
 	local string fn, base, tagw;
 
+	if (strlen(serverkey("*movementprofile"))) return 0;
 	if (map == "" || track < 0 || leg < 0)
 		return 0;
 
@@ -589,6 +591,7 @@ void(float track, float leg, float ticks, float flags) LT_Keep =
 	local float prev, fh, tick, uncert, rclass;
 	local string map, dst, nm, kind;
 
+	if (strlen(serverkey("*movementprofile"))) return; //retained by the server, never a cross-profile local best
 	if (track < 0 || leg < 0 || ticks <= 0)
 		return;
 	rclass = FS_RunClass(flags);
