@@ -452,6 +452,14 @@ def _finite_clock(value):
     return value
 
 
+def _native_loss_count(token):
+    value = int(token)
+    # IN_Journal_Frame/End print these unsigned-int counts with %u, not -1 sentinels.
+    if not 0 <= value <= 0xFFFFFFFF:
+        raise ValueError("outside native unsigned loss range")
+    return value
+
+
 class Report:
     def __init__(self, path):
         self.path = path
@@ -675,6 +683,7 @@ def check_hid(path, verbose=False, *, data=None):
     events = 0
     frames = 0
     dropped = 0
+    bad_loss = False  # no complete loss measurement from rejected declarations
     hidden = 0
     injected = 0        # Patch 306: summed from the 'i' records
     unenum = 0
@@ -751,7 +760,9 @@ def check_hid(path, verbose=False, *, data=None):
                 if dt < 0:
                     raise ValueError("negative clock delta")
                 elapsed = _finite_clock(clock + dt / 1000000.0)
-                pending = [_finite_clock(tok[2])] + [int(x) for x in tok[3:]]
+                # Loss corruption must not discard independently finite clocks.
+                pending = ([_finite_clock(tok[2]), int(tok[3]), int(tok[4]), tok[5]]
+                           + [int(x) for x in tok[6:]])
             except (ValueError, OverflowError):
                 bad_clock = True
                 r.fault("line %d: 'end' has an unusable clock or non-numeric field" % (lineno + 1))
@@ -804,6 +815,8 @@ def check_hid(path, verbose=False, *, data=None):
 
         if len(tok) < 2:
             r.fault("line %d: %r has no dt" % (lineno + 1, kind))
+            if kind == "!":
+                bad_loss = True
             if kind in ("y", "o"):
                 bad_key_observer = True
             if kind == "c":
@@ -816,6 +829,8 @@ def check_hid(path, verbose=False, *, data=None):
         except ValueError:
             bad_clock = True
             r.fault("line %d: dt is not an integer: %r" % (lineno + 1, tok[1]))
+            if kind == "!":
+                bad_loss = True
             if kind in ("y", "o"):
                 bad_key_observer = True
             if kind == "c":
@@ -829,6 +844,8 @@ def check_hid(path, verbose=False, *, data=None):
             bad_clock = True
             r.fault("line %d: negative dt %d -- time does not run backwards"
                     % (lineno + 1, dt))
+            if kind == "!":
+                bad_loss = True
             if kind in ("y", "o"):
                 bad_key_observer = True
             if kind == "c":
@@ -851,6 +868,8 @@ def check_hid(path, verbose=False, *, data=None):
                                  else len(tok) != 2 + want):
             r.fault("line %d: %r has %d fields, expected %d"
                     % (lineno + 1, kind, len(tok), 2 + want))
+            if kind == "!":
+                bad_loss = True
             if kind in ("y", "o"):
                 bad_key_observer = True
             if kind == "c":
@@ -970,9 +989,10 @@ def check_hid(path, verbose=False, *, data=None):
                 clock = abst
         elif kind == "!":
             try:
-                dropped += int(tok[2])
+                dropped += _native_loss_count(tok[2])
             except ValueError:
-                r.fault("line %d: '!' count is not a number" % (lineno + 1))
+                bad_loss = True
+                r.fault("line %d: '!' count is not a native unsigned 32-bit count" % (lineno + 1))
         elif kind == "i":
             # Patch 306. Deliberately NOT counted as an event: these reports
             # were thrown away by the backend and never became input.
@@ -1143,6 +1163,12 @@ def check_hid(path, verbose=False, *, data=None):
                 "it belongs to has no admissible input record")
     else:
         t_abs, t_events, t_frames, t_dropped, t_hidden = trailer[:5]
+        try:
+            t_dropped = _native_loss_count(t_dropped)
+        except ValueError:
+            bad_loss = True
+            t_dropped = None
+            r.fault("trailer dropped count is not a native unsigned 32-bit count")
         t_injected = trailer[5] if len(trailer) > 5 else None
         t_unenum = trailer[6] if len(trailer) > 6 else None
         t_legacybtn = trailer[7] if len(trailer) > 7 else None
@@ -1180,7 +1206,7 @@ def check_hid(path, verbose=False, *, data=None):
         # The '!' markers report drops as they are NOTICED, and the last batch
         # can arrive after the final frame marker, so the trailer is allowed to
         # be ahead of them -- but never behind.
-        if t_dropped < dropped:
+        if t_dropped is not None and t_dropped < dropped:
             r.fault("trailer says %d dropped, but the '!' markers already "
                     "account for %d" % (t_dropped, dropped))
         elif t_dropped:
@@ -1956,6 +1982,12 @@ def check_hid(path, verbose=False, *, data=None):
         if events:
             r.info["events_per_sec"] = events / span
             r.info["events_per_frame"] = events / float(frames)
+
+    if bad_loss:
+        r.info.pop("dropped", None)
+        r.note("drop count unavailable: an unusable loss declaration cannot "
+               "establish a complete total or a measured zero; independent "
+               "finite angle/count observations are separate.")
 
     if bad_clock:
         for key in ("time", "truncated_at", "first_frame_at", "frame_rate", "events_per_sec"):

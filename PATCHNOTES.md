@@ -22,6 +22,9 @@
 ## next
 - Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
+### P1532 Journal loss validation
+- Invalid loss declarations are rejected instead of being allowed to cancel reported loss into a measured zero. Unusable loss data is shown as unavailable; independent finite comparisons remain active.
+
 ### P1530 Journal consistency
 - Journal checks no longer judge later angles against stale settings after a damaged setting-change record. Valid earlier comparisons and restored settings remain checkable.
 - Damaged keyboard-observation records are reported as unavailable, not a whole-run measured zero. Independent mouse-count checks remain active.

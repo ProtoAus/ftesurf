@@ -1118,6 +1118,69 @@ def case_rejected_key_observer():
           "CONTROL known observation stop stays partial, not corrupt/unavailable")
 
 
+def loss_declaration_journal(markers=(), total="0"):
+    lines = rejected_change_journal().splitlines()
+    at = next(i for i, line in enumerate(lines) if line.startswith("c 0 sensitivity"))
+    lines[at:at] = markers
+    end = lines[-1].split()
+    end[5] = str(total)
+    lines[-1] = " ".join(end)
+    return "\n".join(lines) + "\n"
+
+
+def case_loss_declarations():
+    cases = [
+        ("cancel forward", ('! 0 2', '! 0 -2'), "0"),
+        ("cancel reverse", ('! 0 -2', '! 0 2'), "0"),
+        ("negative marker", ('! 0 -1',), "0"),
+        ("negative trailer", (), "-1"),
+        ("matching negative", ('! 0 -1',), "-1"),
+        ("marker native overflow", ('! 0 4294967296',), "4294967296"),
+        ("trailer native overflow", (), "4294967296"),
+        ("nonnumeric marker", ('! 0 bad',), "0"),
+        ("fractional marker", ('! 0 1.5',), "0"),
+        ("missing dt", ('!',), "0"),
+        ("missing count", ('! 0',), "0"),
+        ("nonnumeric dt", ('! broken 2',), "2"),
+        ("negative dt", ('! -1 2',), "2"),
+        ("nonnumeric trailer", (), "bad"),
+        ("negative with positive close", ('! 0 -1',), "2"),
+        ("overflow with zero close", ('! 0 4294967296',), "0"),
+        ("bad marker with positive close", ('! 0 bad',), "2"),
+    ]
+    for label, markers, total in cases:
+        r = run(loss_declaration_journal(markers, total))
+        check(not r.ok and bool(r.faults),
+              "invalid unsigned loss declaration is a format fault: " + label)
+        check("dropped" not in r.info and has_note(r, "drop count unavailable"),
+              "invalid loss cannot become zero, subtotal or measured total: " + label)
+        check(r.info.get("identity_yaw_judged") == 19 and
+              r.info.get("join_checked") == 19 and r.info.get("join_broke") == 0,
+              "independent finite observed angle/count intervals ACT: " + label)
+    for value in (0, 1, 4294967295):
+        r = run(loss_declaration_journal(('! 0 %d' % value,), value))
+        check(r.ok and r.info.get("dropped") == value,
+              "CONTROL exact native unsigned loss value survives: %d" % value)
+        check(has_note(r, "LOST") == bool(value) and
+              r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+              "CONTROL valid loss disclosure is separate from finite comparisons: %d" % value)
+    r = run(loss_declaration_journal((), "2"))
+    check(r.ok and r.info.get("dropped") == 2 and has_note(r, "LOST"),
+          "CONTROL whole-run loss may legitimately exceed emitted markers")
+    r = run(loss_declaration_journal(('! ' + '9' * 400 + ' 1',), "1"))
+    check(not r.ok and "time" not in r.info and r.info.get("dropped") == 1 and
+          r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+          "CONTROL unusable elapsed clock does not discard a finite loss payload")
+    lines = loss_declaration_journal().splitlines()
+    end = lines[-1].split()
+    end[7:10] = ["-1", "-1", "-1"]
+    lines[-1] = " ".join(end)
+    r = run("\n".join(lines) + "\n")
+    check(r.ok and r.info.get("dropped") == 0 and "injected" not in r.info and
+          "unenum" not in r.info,
+          "CONTROL signed backend-unknown sentinels remain valid, not unsigned loss")
+
+
 def model_constant_journal(name=None, value=None, change=False, late=False, text=None):
     if text is None:
         text = namespace_journal([("mouse", "0", "mouse-example")], pointer=0)
@@ -3207,7 +3270,8 @@ def main():
                case_controller_profile_is_not_a_keyboard_turn,
                case_pointer_coordinate_quality, case_observer_numeric_quality,
                case_model_numeric_quality, case_native_quoted_byte, case_clock_quality,
-               case_rejected_model_change, case_rejected_key_observer):
+               case_rejected_model_change, case_rejected_key_observer,
+               case_loss_declarations):
         print("%s:" % fn.__name__)
         fn()
         print("")
