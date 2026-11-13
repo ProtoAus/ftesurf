@@ -20,7 +20,6 @@
 -->
 
 ## next
-- Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
 ### P1535 Journal cap boundaries
 - Input records after a journal byte-cap marker are no longer treated as captured observations. Valid prefix measurements and permitted closing tables remain separate from the unsupported tail.
@@ -101,6 +100,9 @@
 
 ### P1513 Configurable replay-journal upload budgets
 - Operators can configure a run-length budget for replay journals; servers without this setting keep their existing upload behavior.
+
+### P1512 Save-load view prediction
+- Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
 ### P1511 Less work sorting intersecting transparent surfaces
 - Transparent-surface ordering stops checking a pair once neither side can be proved, keeping the same drawing order and visual effects.
