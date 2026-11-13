@@ -43,9 +43,6 @@
 - Journal checks no longer judge later angles against stale settings after a damaged setting-change record. Valid earlier comparisons and restored settings remain checkable.
 - Damaged keyboard-observation records are reported as unavailable, not a whole-run measured zero. Independent mouse-count checks remain active.
 
-### P1529 Recording consistency
-- Run recording retains a confirmed movement-condition signal through supported landings. Movement itself is unchanged; unavailable comparisons remain unavailable.
-
 ### P1528 Jargon panel, portals and starts
 - Jargon has one panel: pick the course and the guide run from dropdowns, and edit the waypoints in a table (click X, Y or Z, type, Enter). Air points sit in the list, and Undo, Redo and Reset work.
 - Choose how Jargon takes over: at your jump, when you leave the start zone, or by itself. Continue resumes a saved run, and Back to playing returns you to normal play.
@@ -60,17 +57,11 @@
 ### P1525 Input setting analysis
 - Input analysis no longer mistakes a character-valued setting for unexplained movement. Comparisons with unrecorded numeric meaning stay unavailable, while known settings remain checked.
 
-### P1524 Input-model quality
-- Unusable input settings no longer produce false angle findings or clean comparisons. Native observation abstains, and analysis keeps unavailable measurements separate from genuine contradictions.
-
 ### P1523 Observation quality
 - Unusable recorded view data no longer produces clean comparisons. Analysis now distinguishes records that were read from measurements it could actually check.
 
 ### P1522 Input recording validation
 - Unusable input samples no longer appear as clean analysis. Incomplete input measurements stay unavailable instead of being reported as healthy zeroes.
-
-### P1521 Controller input analysis
-- Controller turns no longer cause misleading run-analysis errors. Comparisons that lack the required input data are reported as unavailable rather than clean.
 
 ### P1520 Lines under the HUD
 - Replay paths, trails, board lines and Jargon's route and search lines, with their numbers and names, now draw under the HUD and panels instead of over them.
