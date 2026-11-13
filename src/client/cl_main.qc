@@ -2579,7 +2579,7 @@ float(string cmd) CSQC_ConsoleCommand =
 			else
 				localcmd(sprintf("p%g cmd tas seed%s\n", tsseat + 1, tsline));
 		}
-		else if (cmdargc >= 3 && cmdargc <= 24 && !strcmp(argv(1), "autosurf"))  // P1449: a path, then known words and numbers
+		else if (cmdargc >= 3 && cmdargc <= 48 && !strcmp(argv(1), "autosurf"))  // P1449: a path, then known words and numbers (P1531: 48)
 		{
 			tsline = argv(2);
 			for (tsi = 0; tsi < strlen(tsline); tsi = tsi + 1)

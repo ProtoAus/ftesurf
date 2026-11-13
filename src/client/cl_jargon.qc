@@ -297,8 +297,11 @@ void() TASJargon_SavedEvent =
 var float jg_plannedc = -1;         // the course the shown plan is of
 void() TASJargon_RequestPlan =
 {
+	local float x;
 	if (jg_pick >= jg_gn) return;
-	localcmd(sprintf("tas autosurf %s plan%s%s\n", jg_gp[jg_pick], TASJargon_CourseWords(), TASJargon_Airs() ? " air" : ""));
+	x = cvar("tas_jargon_exp");     // the panel's experiments: apex, join, launch and turns shape the plan (cl_tasoptui.qc)
+	localcmd(sprintf("tas autosurf %s plan%s%s%s\n", jg_gp[jg_pick], TASJargon_CourseWords(), TASJargon_Airs() ? " air" : "",
+		strcat((x & 4) ? " apex" : "", (x & 8) ? " join" : "", (x & 512) ? " launch" : "", (x & 1024) ? " turns" : "")));
 	// another course or run: none until its plan arrives (a refused one left the last course's route up: review B); the
 	// same one (an edit's replan) keeps its points up meanwhile -- a run refuses plans, and they stayed blank (Lex)
 	if (jg_planned != jg_gp[jg_pick] || jg_plannedc != jg_cpick) jg_n = 0;

@@ -211,7 +211,9 @@ void() TASAuto_Event =
 		for (k = taso_i; k < TASO_STRETCHES; k = k + 1) taso_rb[k] = taso_rf[k] = 0;
 	if (rk >= 0 && rk < TASO_STRETCHES) { taso_rb[rk] = rb; taso_rf[rk] = (rf > 0) ? rf : -1; taso_lastk = rk; }   // -1: a route point
 	if (substring(taso_note, 0, 18) == "saved for Continue") jg_kat = 0;
-	taso_armed = (taso_state == 1 && substring(taso_note, 0, 6) == "armed:");     // the chase waits for the takeover
+	taso_armed = (taso_state == 1 && substring(taso_note, 0, 6) == "armed:");
+	// which take-over the server armed (its note): the label and Take over follow it, not the chip (review 1531)
+	taso_armmode = !taso_armed ? -1 : ((strstrofs(taso_note, "surf as you like") >= 0) ? 3 : ((strstrofs(taso_note, "at your jump") >= 0) ? 0 : 1));     // the chase waits for the takeover
 	if (taso_state == 2 && was != 2) taso_endt = cltime;
 	if (substring(taso_note, 0, 12) == "your route: ")
 	{	// the server's count; a taken add's note carries its point ("N points, added x y z nx ny nz"), every other
@@ -502,26 +504,27 @@ void(float b, float on) TASOptUI_RuleSet =
 };
 // a label over a row of choices
 void(vector at, string s, float hint) TASOptUI_OptHead = { sui_text(at, [hint, hint], s, SUI_THEME_DIM, 1, 0); };
+float jgo_exp;     // the experiments shown (folded by default: the panel does not scroll -- review 1531)
 float(vector at, float width, float hint, float row) TASOptUI_DrawOptions =
 {
 	local float i, b, third, half, q, tsc, on;
 	local string id;
 	third = (width - 12) / 3; half = (width - 6) / 2; q = (width - 18) / 4; tsc = max(1, hint / 7);
-	sui_text(at, [hint, hint], "Used from the next Start, Arm or Continue. Hover a choice for what it does.", SUI_THEME_MUTED, 1, 0);
+	sui_text(at, [hint, hint], "Effort, path, boarding, finish: from the next Start or Arm. Switches: at once. Hover a choice.", SUI_THEME_MUTED, 1, 0);
 	at_y = at_y + hint * 1.6;
 	TASOptUI_OptHead(at, "How hard it tries", hint); at_y = at_y + hint * 1.5;
 	for (i = 0; i < 3; i = i + 1)
 	{
 		id = sprintf("jgo_e%g", i);
-		if (Profile_Chip(id, at + [i * (third + 6), 0, 0], [third, row, 0], (i == 0) ? "Quick" : ((i == 1) ? "Normal" : "Thorough"), hint,
+		if (Profile_Chip(id, at + [i * (q + 6), 0, 0], [q, row, 0], (i == 0) ? "Quick" : ((i == 1) ? "Normal" : "Thorough"), hint,
 			autocvar_tas_jargon_effort == i))
 			cvar_set("tas_jargon_effort", ftos(i));
 		sui_tooltip_for(id, (i == 0) ? "One try a ramp before it goes back: fastest, gives up soonest."
 			: ((i == 1) ? "Two tries a ramp, with extra control over each ride's dip and flick. The default."
 			: "Three tries a ramp, every ramp polished, up to 30 goes back. Slow."), tsc);
 	}
-	at_y = at_y + row + 3;
-	if (Profile_Chip("jgo_pol", at, [width, row, 0], "Polish every ramp", hint, autocvar_tas_jargon_polish || autocvar_tas_jargon_effort == 2))
+	if (Profile_Chip("jgo_pol", at + [3 * (q + 6), 0, 0], [q, row, 0], "Polish", hint, autocvar_tas_jargon_polish || autocvar_tas_jargon_effort == 2))
+	if (autocvar_tas_jargon_effort != 2)       // Thorough always polishes (review 1531: the click flipped a hidden setting)
 		cvar_set("tas_jargon_polish", autocvar_tas_jargon_polish ? "0" : "1");
 	sui_tooltip_for("jgo_pol", "Each ramp is searched until it carries 99% of the human's energy there (or its last try). Thorough always does.", tsc);
 	at_y = at_y + row + hint;
@@ -551,28 +554,41 @@ float(vector at, float width, float hint, float row) TASOptUI_DrawOptions =
 	for (i = 0; i < JGO_RULES; i = i + 1)
 	{
 		id = sprintf("jgo_r%g", i); b = TASOptUI_RuleBits(i); on = TASOptUI_RuleOn(b);
-		if (Profile_Chip(id, at + [(i & 1) * (half + 6), floor(i / 2) * (row + 3), 0], [half, row, 0], TASOptUI_RuleName(i), hint, on))
+		if (Profile_Chip(id, at + [(i - 3 * floor(i / 3)) * (third + 6), floor(i / 3) * (row + 3), 0], [third, row, 0], TASOptUI_RuleName(i), hint, on))
+		{
 			TASOptUI_RuleSet(b, !on);
+			if (b & 8192) jg_replan = cltime + 0.2;     // portals shape the plan: the list follows (held while it runs)
+		}
 		sui_tooltip_for(id, TASOptUI_RuleTip(i), tsc);
 	}
-	at_y = at_y + ceil(JGO_RULES / 2) * (row + 3) + hint;
-	TASOptUI_OptHead(at, "Crouch like the human (off: copied by time it lost a portal and a first ramp)", hint); at_y = at_y + hint * 1.5;
-	if (Profile_Chip("jgo_ck", at, [half, row, 0], "In the search", hint, cvar("tas_jargon_rowkeys"))) cvar_set("tas_jargon_rowkeys", cvar("tas_jargon_rowkeys") ? "0" : "1");
-	sui_tooltip_for("jgo_ck", "The guide run's crouch, tick by tick, in every line it tries. Measured: colin_blaster's first portal went from 2 of 2 runs through to 0 of 3.", tsc);
-	if (Profile_Chip("jgo_cs", at + [half + 6, 0, 0], [half, row, 0], "At the start", hint, cvar("tas_jargon_startduck"))) cvar_set("tas_jargon_startduck", cvar("tas_jargon_startduck") ? "0" : "1");
-	sui_tooltip_for("jgo_cs", "The guide's crouch-jump off the start platform, timed from Jargon's own jump. Measured: tensor2 stage 1's first ramp was no longer reached.", tsc);
-	at_y = at_y + row + hint;
-	TASOptUI_OptHead(at, "Experiments (off by default, not proven better)", hint); at_y = at_y + hint * 1.5;
-	b = 1;
-	for (i = 0; i < JGO_EXP; i = i + 1)
+	at_y = at_y + ceil(JGO_RULES / 3) * (row + 3) + hint * 0.5;
+	if (Profile_Chip("jgo_xs", at, [width, row, 0], jgo_exp ? "Experiments and test switches (hide)" : "Experiments and test switches (show)", hint, jgo_exp))
+		jgo_exp = !jgo_exp;
+	sui_tooltip_for("jgo_xs", "Ways of searching that are off by default and not proven better, and the two crouch switches.", tsc);
+	at_y = at_y + row + 3;
+	if (jgo_exp)
 	{
-		id = sprintf("jgo_x%g", i); on = (autocvar_tas_jargon_exp & b) ? TRUE : FALSE;
-		if (Profile_Chip(id, at + [(i - 4 * floor(i / 4)) * (q + 6), floor(i / 4) * (row + 3), 0], [q, row, 0], TASOptUI_ExpName(i), hint, on))
-			cvar_set("tas_jargon_exp", sprintf("%.0f", on ? (autocvar_tas_jargon_exp - b) : (autocvar_tas_jargon_exp | b)));
-		sui_tooltip_for(id, TASOptUI_ExpTip(i), tsc);
-		b = b * 2;
+		if (Profile_Chip("jgo_ck", at, [half, row, 0], "Crouch: in the search", hint, cvar("tas_jargon_rowkeys")))
+			cvar_set("tas_jargon_rowkeys", cvar("tas_jargon_rowkeys") ? "0" : "1");
+		sui_tooltip_for("jgo_ck", "The guide run's crouch, tick by tick, in every line it tries. Measured: colin_blaster's first portal went from 2 of 2 runs through to 0 of 3.", tsc);
+		if (Profile_Chip("jgo_cs", at + [half + 6, 0, 0], [half, row, 0], "Crouch: at the start", hint, cvar("tas_jargon_startduck")))
+			cvar_set("tas_jargon_startduck", cvar("tas_jargon_startduck") ? "0" : "1");
+		sui_tooltip_for("jgo_cs", "The guide's crouch-jump off the start platform, timed from Jargon's own jump. Measured: tensor2 stage 1's first ramp was no longer reached.", tsc);
+		at_y = at_y + row + 3;
+		b = 1;
+		for (i = 0; i < JGO_EXP; i = i + 1)
+		{
+			id = sprintf("jgo_x%g", i); on = (autocvar_tas_jargon_exp & b) ? TRUE : FALSE;
+			if (Profile_Chip(id, at + [(i - 4 * floor(i / 4)) * (q + 6), floor(i / 4) * (row + 3), 0], [q, row, 0], TASOptUI_ExpName(i), hint, on))
+			{
+				cvar_set("tas_jargon_exp", sprintf("%.0f", on ? (autocvar_tas_jargon_exp - b) : (autocvar_tas_jargon_exp | b)));
+				if (b & 1548) jg_replan = cltime + 0.2;      // apex, join, launch, turns shape the plan (4+8+512+1024)
+			}
+			sui_tooltip_for(id, TASOptUI_ExpTip(i), tsc);
+			b = b * 2;
+		}
+		at_y = at_y + ceil(JGO_EXP / 4) * (row + 3);
 	}
-	at_y = at_y + ceil(JGO_EXP / 4) * (row + 3);
 	return at_y;
 };
 string() TASOptUI_Effort =
@@ -591,6 +607,16 @@ string() TASOptUI_Exps =
 };
 // the stream view's commands, built once for its buttons and `tas jargon go | arm` (hotkeys, the harness): "" when the
 // picked course has no guide run
+// a Continue's words: the continue parser takes effort, polish, low, safe, air, finish, spots, wide -- the path and the other
+// experiments are the save's (review 1531: `tube` or an experiment refused it after the stop)
+string() TASOptUI_ContinueWords =
+{
+	local string s;
+	s = strcat(TASOptUI_Effort(), (autocvar_tas_jargon_polish || autocvar_tas_jargon_effort == 2) ? " polish" : "", autocvar_tas_jargon_low ? " low" : "",
+		autocvar_tas_jargon_endany ? " safe" : "");
+	return strcat(s, TASJargon_Airs() ? " air" : "", (TASJargon_CourseWords() != "") ? " finish" : "", (autocvar_tas_jargon_exp & 1) ? " spots" : "",
+		(autocvar_tas_jargon_exp & 16) ? " wide" : "");
+};
 string() TASOptUI_DemoWords =
 {
 	local string s;
@@ -695,7 +721,9 @@ string() TASOptUI_ArmKeyCmd =
 // row nearest the body going its way. `tas jargon takeover` binds it.
 void() TASOptUI_Takeover =
 {
-	local float seg, segs, track, leg, c, i;
+	local float seg, segs, track, leg, c, i, was;
+	if (taso_state == 1 && !taso_armed) { print("tas jargon: Jargon is surfing already: Take over is for a run you surf\n"); return; }
+	if (Timer_Stat(STAT_FS_TIMERSTATE) != TS_RUNNING) { print("tas jargon: leave the start box first, then Take over\n"); return; }
 	seg = Timer_Stat(STAT_FS_TIMERSEG); segs = Timer_Stat(STAT_FS_TIMERSEGS); track = Timer_Stat(STAT_FS_TIMERTRACK);
 	leg = (segs > 1) ? seg + 1 : 0;
 	TASJargon_Courses();
@@ -703,10 +731,17 @@ void() TASOptUI_Takeover =
 	for (i = 0; i < jg_cn; i = i + 1) if (jg_ct[i] == track && jg_cl[i] == leg) c = i;
 	if (c < 0) for (i = 0; i < jg_cn; i = i + 1) if (jg_ct[i] == track && jg_cl[i] == 0) c = i;
 	if (c < 0) { print("tas jargon: no course here to take over\n"); return; }
-	if (c != jg_cpick) { jg_cpick = c; jg_kat = 0; taso_sel = -1; taso_stale = 1; jg_n = 0; jgw_sel = -1; }
-	jg_gat = 0; TASJargon_Guides();
-	if (!jg_gn) { print(sprintf("tas jargon: no guide run of %s here: turn one on in the leaderboard\n", TASJargon_CourseLabel(c))); return; }
+	was = jg_cpick; jg_cpick = c; jg_gat = 0; TASJargon_Guides();
+	if (!jg_gn)
+	{	// the panel's course as it was (review 1531: it switched first and hid Take over, Stop and Back to playing)
+		print(sprintf("tas jargon: no guide run of %s here: turn one on in the leaderboard\n", TASJargon_CourseLabel(c)));
+		jg_cpick = was; jg_gat = 0; TASJargon_Guides();
+		return;
+	}
+	if (c != was) { jg_kat = 0; taso_sel = -1; taso_stale = 1; jg_n = 0; jgw_sel = -1; }
 	localcmd(sprintf("tas autosurf %s%s here%s\n", jg_gp[jg_pick], TASOptUI_DemoWords(), TASJargon_CourseWords()));
+	if (jg_planned != "") strunzone(jg_planned);
+	jg_planned = "";        // after this run the list is the whole course's again (the takeover's starts from here)
 	print(sprintf("tas jargon: taking over in %s\n", TASJargon_CourseLabel(c)));
 };
 void() TASOptUI_Start =
@@ -1018,7 +1053,12 @@ void(float argc) TASOptUI_Verb =
 	if (w == "redo") { TASOptUI_WpUndo(FALSE); return; }
 	if (w == "guide") { if (argc == 4) TASOptUI_GuidePick(stof(argv(3)) - 1); return; }
 	if (w == "takeover") { TASOptUI_Takeover(); return; }
-	if (w == "redofrom") { if (argc == 4 && stof(argv(3)) >= 1) TASOptUI_Go(sprintf("tas autosurf redo %g\n", floor(stof(argv(3))))); return; }
+	if (w == "redofrom")
+	{
+		i = floor(stof(argv(3))) - 1;
+		if (argc == 4) if (i >= 0 && i < jg_n) TASOptUI_Go(sprintf("tas autosurf redo %g %.3f\n", i + 1, jg_t[i]));
+		return;
+	}
 	if (w == "options") { if (argc == 4) { if (jgf_on) TASOptUI_FieldCommit(); jgo_open = (stof(argv(3)) != 0); } print(sprintf("tas jargon: options %g, words%s\n", jgo_open, TASOptUI_DemoWords())); return; }
 	if (w == "drop") { if (argc == 4) { jgd_open = bound(0, floor(stof(argv(3))), 2); jgd_scroll = '0 0 0'; print(sprintf("tas jargon: dropdown %g\n", jgd_open)); } return; }
 	if (w == "guides")
@@ -1072,7 +1112,7 @@ void(float argc) TASOptUI_Verb =
 };
 void(vector at, float width, float tsz, float hint, float row, float running, string label) TASOptUI_DrawJargon =
 {
-	local float i, q, half, third, kw, fw, rows;
+	local float i, q, half, third, kw, fw, rows, tk;
 	local vector chip3, lp, o, a;
 	local string cn, cw;
 	TASOptUI_Refind(); TASOptUI_UndoKeep();
@@ -1107,11 +1147,11 @@ void(vector at, float width, float tsz, float hint, float row, float running, st
 		cvar_set("tas_jargon_startmode", "2");
 	sui_tooltip_for("jgp_m2", "Jargon starts the course itself from its start box.", max(1, hint / 7));
 	at_y = at_y + row + 3;
-	if (Profile_Chip("jgp_start", at, [third, row * 1.4, 0], (running && taso_armed && autocvar_tas_jargon_startmode == 3) ? "Take over now"
-		: ((autocvar_tas_jargon_startmode == 2) ? sprintf("Start %s", cn) : ((autocvar_tas_jargon_startmode == 3) ? "Arm" : sprintf("Arm %s", cn))), tsz,
-		running && taso_armed && autocvar_tas_jargon_startmode == 3))
+	tk = (running && taso_armed && taso_armmode == 3);
+	if (Profile_Chip("jgp_start", at, [third, row * 1.4, 0], tk ? ((Timer_Stat(STAT_FS_TIMERSTATE) == TS_RUNNING) ? "Take over now" : "Leave the box first")
+		: ((autocvar_tas_jargon_startmode == 2) ? sprintf("Start %s", cn) : ((autocvar_tas_jargon_startmode == 3) ? "Arm" : sprintf("Arm %s", cn))), tsz, tk))
 	{
-		if (running && taso_armed && autocvar_tas_jargon_startmode == 3) TASOptUI_Takeover();
+		if (tk) TASOptUI_Takeover();
 		else TASOptUI_Start();
 	}
 	if (Profile_Chip("jgp_stop", at + [third + 6, 0, 0], [third, row * 1.4, 0], "Stop", tsz, running)) TASOptUI_Stop(1);
@@ -1128,7 +1168,7 @@ void(vector at, float width, float tsz, float hint, float row, float running, st
 	{
 		if (Profile_Chip("jgs_cont", at, [width, row, 0], (jg_knext >= jg_kof) ? sprintf("Watch the saved %s run", cn)
 			: sprintf("Continue %s from ramp %g of %g", cn, jg_knext + 1, jg_kof), hint, FALSE))
-			TASOptUI_Go(sprintf("tas autosurf continue %g %g%s\n", jg_ct[jg_cpick], jg_cl[jg_cpick], TASOptUI_DemoWords()));
+			TASOptUI_Go(sprintf("tas autosurf continue %g %g%s\n", jg_ct[jg_cpick], jg_cl[jg_cpick], TASOptUI_ContinueWords()));
 		at_y = at_y + row + 3;
 	}
 	sui_text(at, [hint, hint], "Camera", SUI_THEME_DIM, 1, 0); at_y = at_y + hint * 1.5;
@@ -1211,7 +1251,7 @@ void(vector at, float width, float tsz, float hint, float row, float running, st
 	if (Profile_Chip("jgp_redofrom", at, [width, row, 0], (jgw_sel >= 0) ? sprintf("Redo from waypoint %g with my edits", jgw_sel + 1)
 		: "Redo from a waypoint (pick a row)", hint, FALSE))
 	if (jgw_sel >= 0 && jgw_sel < jg_n)
-		TASOptUI_Go(sprintf("tas autosurf redo %g\n", jgw_sel + 1));
+		TASOptUI_Go(sprintf("tas autosurf redo %g %.3f\n", jgw_sel + 1, jg_t[jgw_sel]));      // by its demo time (review 1531)
 	sui_tooltip_for("jgp_redofrom", "Rewinds Jargon's last run to the start of this waypoint and goes on from there with your edits. The waypoint must have been reached in that run.", max(1, hint / 7));
 	}       // the waypoints
 	at_y = at_y + row + hint;
@@ -1252,8 +1292,8 @@ void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 	// the route fills itself in: the picked run's plan as soon as the tab is open or the pick changes (Lex, 10 Nov)
 	if (!running && jg_gn && (jg_planned != jg_gp[jg_pick] || jg_plannedc != jg_cpick)) TASJargon_RequestPlan();
 	cn = TASJargon_CourseLabel(jg_cpick);
-	if (running && taso_armed) label = (autocvar_tas_jargon_startmode == 3) ? "Armed: surf as you like -- Take over now hands it to Jargon from where you are"
-		: ((autocvar_tas_jargon_startmode == 1) ? "Armed: Jargon takes over when you leave the start zone"
+	if (running && taso_armed) label = (taso_armmode == 3) ? "Armed: surf as you like -- Take over now hands it to Jargon from where you are"
+		: ((taso_armmode == 1) ? "Armed: Jargon takes over when you leave the start zone"
 		: "Armed: prestrafe and jump -- Jargon takes over at your jump");
 	else if (running) label = sprintf("Surfing %s: waypoint %g of %g, try %g", cn, taso_i + 1, taso_n, taso_try + 1);
 	else label = (taso_note != "") ? taso_note : "Pick a course and how Jargon takes over, then Start or Arm.";
