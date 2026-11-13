@@ -553,17 +553,18 @@ float() WarpOp_Load =
 
 	// A release still in flight is ordered before this load (both ride commands);
 	// otherwise a hold the server still reports is not ours to stack on.
-	relpending = (wop_relseq != 0);
+	relpending = (wop_relseq != 0) || SaveLoc_HoldoffPending();     // P1544: or a stringcmd one
 	WarpOp_HoldAdopt(); // a newer load owns any subsequent hold
 	wop_relseq = 0;                     // a new hold: the last release's backstop is moot
 	wop_loadpred = FALSE;
-	if (!WarpOp_Able() || Trail_RequestBusy())
+	if (!WarpOp_Able())
+		return FALSE;
+	if (Trail_RequestBusy() && !wop_fifoload)
 		return FALSE;
 	// A pending reset also releases the old hold, before this load's command.
 	if (getstatf(STAT_FS_HOLD) && !relpending && !WarpOp_Pending(WOPP_RESET))
 		return FALSE;
-	SaveLoc_Resync();
-	if (rec_sl_sent != getstatf(STAT_FS_SLACK))
+	if (SaveLoc_RowPending())
 		return FALSE;                   // a list command is in flight: the row may be stale
 	if (getstatf(STAT_FS_SAVECOUNT) < 1 || getstatf(STAT_FS_SAVEINDEX) < 1)
 		return FALSE;
@@ -860,6 +861,8 @@ float() WarpOp_LoadLead =
 		SaveLead_Press(wop_tgorg, wop_tgang);
 	return TRUE;
 };
+
+float() WarpOp_LoadPredicted = { return wop_loadpred; };     // P1544: SaveLoc_FifoLoad
 
 // P1384: a step not yet answered (SaveLead_Begin starts no travel under it).
 float() WarpOp_StepPending = { return WarpOp_Pending(WOPP_STEP); };

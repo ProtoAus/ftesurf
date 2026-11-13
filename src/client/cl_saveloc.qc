@@ -146,6 +146,8 @@ float rec_sl_leadt0;             // P1384: the load press its own answer is late
 float rec_sl_stept0;             // P1384: the last step pressed while held, for its answer
 float rec_sl_heldstep;           // P1384: a step was pressed during this hold (WarpOp_Release)
 float rec_sl_holdrep;            // a repeat has been observed for THIS hold
+float rec_sl_fifoload;           // P1544: this hold's sl_load + sl_hold wait behind a save (SaveLoc_FifoLoad)
+float rec_sl_fifowait;           // ...cltime it first waited there for the save's cursor row
 
 #define SL_HOLD_DEADMAN 1.5
 
@@ -271,6 +273,10 @@ float  rec_sl_holdackat;
   observe/join on the same map clears the edict and CSQC's count stayed ahead.
 */
 float rec_sl_ackseen;
+// P1544: rec_sl_sent at the last command that can move the cursor or the list (all but
+// sl_load/sl_hold/sl_holdoff), and at the last sl_holdoff. At 500 ms a fallback load's own
+// three commands kept every load after it off the predicted path, ~1 s held each.
+float rec_sl_rowsent, rec_sl_offsent;
 
 void() SaveLoc_Resync =
 {
@@ -280,11 +286,25 @@ void() SaveLoc_Resync =
 		return;
 	ack = getstatf(STAT_FS_SLACK);
 	if (ack < rec_sl_ackseen)
+	{
 		rec_sl_sent = ack;
+		rec_sl_rowsent = min(rec_sl_rowsent, ack);
+		rec_sl_offsent = min(rec_sl_offsent, ack);
+	}
 	if (ack > rec_sl_sent)
 		rec_sl_sent = ack;
 	rec_sl_ackseen = ack;
 };
+
+// P1544: a command that can change the published cursor row is unanswered.
+float() SaveLoc_RowPending =
+{
+	SaveLoc_Resync();
+	return (getstatf(STAT_FS_SLACK) < rec_sl_rowsent);
+};
+
+// P1544: a stringcmd sl_holdoff is unanswered: it runs before any later command's op.
+float() SaveLoc_HoldoffPending = { return (getstatf(STAT_FS_SLACK) < rec_sl_offsent); };
 
 string() SaveLoc_SaveCommand;   // cl_rewind.qc: live, rewind or replay cursor
 void() SaveLoc_LoadContext;
@@ -333,6 +353,10 @@ void(string c) SaveLoc_Cmd =
 		if (!strcmp(c, "sl_load"))
 		if (rec_sl_pv_on)
 			rec_sl_pv_ack = rec_sl_sent;
+		if (!strcmp(c, "sl_holdoff"))
+			rec_sl_offsent = rec_sl_sent;
+		else if (strcmp(c, "sl_load") && strcmp(c, "sl_hold"))
+			rec_sl_rowsent = rec_sl_sent;
 	}
 	c = Trail_Command(c);
 	localcmd(strcat("cmd ", c, "\n"));
@@ -653,6 +677,8 @@ void(float scan) SaveLoc_LoadKey =
 	}
 	rec_sl_wophold = FALSE;
 	rec_sl_pred = FALSE;
+	rec_sl_fifoload = Trail_RequestBusy();
+	rec_sl_fifowait = 0;
 	SaveLead_Clear();
 	if (!Trail_RequestBusy())
 		SaveLoc_PredictLoad();          // queued saves can change the selected row
@@ -668,6 +694,47 @@ void(float scan) SaveLoc_LoadKey =
 	SaveLoc_LeadLatch();
 	if (rec_sl_pv_on && rec_sl_pv_t0 == cltime)
 		SaveLead_Press(rec_sl_pv_org, rec_sl_pv_ang);   // P1384: this press's SaveLoc_PredictLoad
+};
+
+/*
+  P1544: the load key's pair queued behind a save (Trail_RequestFifoLoad), once the save is answered:
+  its row is the cursor now, so the load and hold go as one predicted command, released on key-up
+  without an answer. 1 sent, 0 send the stringcmds, -1 wait a frame for the cursor string, which
+  can land a packet after the save's numeric answer (WarpOp_Row).
+*/
+float wop_fifoload;              // WarpOp_Load: the trail FIFO is busy only with this pair
+float(float op) WarpOp_Row;
+float() WarpOp_LoadPredicted;
+float() SaveLoc_FifoLoad =
+{
+	local float ok;
+
+	if (!rec_sl_fifoload || !rec_sl_holding || rec_sl_wophold)
+		return 0;
+	if (!WarpOp_Row(WOP_LOAD))
+	{
+		if (!rec_sl_fifowait)
+			rec_sl_fifowait = cltime;
+		if (cltime - rec_sl_fifowait < 0.1 && cltime >= rec_sl_fifowait)
+			return -1;
+	}
+	rec_sl_fifoload = FALSE;
+	wop_fifoload = TRUE;
+	ok = WarpOp_Load();
+	wop_fifoload = FALSE;
+	if (!ok)
+		return 0;
+	rec_sl_wophold = TRUE;
+	rec_sl_holdack = rec_sl_holdackat = 0;
+	if (rec_sl_upwait && WarpOp_LoadPredicted())
+	{
+		// Let go while it waited: no run-up (it drew one frame of it), the release on the next command.
+		rec_sl_pred = TRUE;
+		SaveLoc_Release();
+		return 1;
+	}
+	rec_sl_pred = WarpOp_LoadLead();
+	return 1;
 };
 
 /*

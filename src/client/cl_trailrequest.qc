@@ -110,6 +110,30 @@ void() Trail_RequestSend =
 	}
 };
 
+// P1544: the load key's sl_load + sl_hold as the queue's whole tail go as one predicted command
+// (SaveLoc_FifoLoad): 1 taken, 0 send them as queued, -1 wait a frame. Not with anything queued
+// after them: those stringcmds would reach the server before the command carrying the load.
+float() Trail_RequestFifoLoad =
+{
+	local float i, r;
+	i = tr_req_head;
+	if (tr_req_n != 2 || strcmp(tr_req_cmd[i], "sl_load"))
+		return 0;
+	if (strcmp(tr_req_cmd[(i + 1) % TR_REQUESTS], "sl_hold"))
+		return 0;
+	r = SaveLoc_FifoLoad();
+	if (r <= 0)
+		return r;
+	strunzone(tr_req_cmd[i]);
+	tr_req_cmd[i] = "";
+	i = (i + 1) % TR_REQUESTS;
+	strunzone(tr_req_cmd[i]);
+	tr_req_cmd[i] = "";
+	tr_req_head = (i + 1) % TR_REQUESTS;
+	tr_req_n = 0;
+	return 1;
+};
+
 // Before the latest-event load can clear/rebase the current visual history.
 void() Trail_SaveAnswerFrame =
 {
@@ -127,6 +151,7 @@ void() Trail_SaveAnswerFrame =
 
 void() Trail_RequestFrame =
 {
+	local float r;
 	if (!LT_StatsAreMine())
 	{
 		Trail_RequestReset();
@@ -149,5 +174,11 @@ void() Trail_RequestFrame =
 	}
 	if (!Rewind_Waiting())
 	while (tr_req_n && !tr_req_wait)
-		Trail_RequestSend();           // load + hold stay in one command-buffer pass
+	{
+		r = Trail_RequestFifoLoad();
+		if (r < 0)
+			return;
+		if (!r)
+			Trail_RequestSend();           // load + hold stay in one command-buffer pass
+	}
 };
