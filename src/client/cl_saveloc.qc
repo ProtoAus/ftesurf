@@ -148,6 +148,7 @@ float rec_sl_heldstep;           // P1384: a step was pressed during this hold (
 float rec_sl_holdrep;            // a repeat has been observed for THIS hold
 float rec_sl_fifoload;           // P1544: this hold's sl_load + sl_hold wait behind a save (SaveLoc_FifoLoad)
 float rec_sl_fifowait;           // ...cltime it first waited there for the save's cursor row
+float rec_sl_ansat;              // P1544: cltime this hold's load was first seen answered (SaveLoc_LeadDone)
 
 #define SL_HOLD_DEADMAN 1.5
 
@@ -500,6 +501,20 @@ float() SaveLoc_StringHoldDone =
 	return (getstatf(STAT_FS_SLACK) >= rec_sl_holdack);
 };
 
+// P1544: SaveLoc_Release would let go on a command whose speed is not known yet (SaveLoc_LeadDone).
+float() WarpOp_RelBlind;
+float() WarpOp_Able;
+float() SaveLoc_RelBlind =
+{
+	if (rec_sl_wophold)
+		return WarpOp_RelBlind();
+	if (!SaveLoc_StringHoldDone())
+		return FALSE;                   // its release is sl_holdoff: nothing to wait for
+	if (!WarpOp_Able())
+		return FALSE;
+	return WarpOp_RelBlind();
+};
+
 void() SaveLoc_Release =
 {
 	local float sent;
@@ -664,6 +679,7 @@ void(float scan) SaveLoc_LoadKey =
 		rec_sl_holding  = TRUE;
 		rec_sl_holdkey  = scan;
 		rec_sl_holdseen = rec_sl_holdt0 = cltime;
+		rec_sl_ansat    = 0;
 		rec_sl_upwait   = FALSE;
 		rec_sl_holdrep  = FALSE;
 		SaveLoc_LeadLatch();
@@ -684,6 +700,7 @@ void(float scan) SaveLoc_LoadKey =
 	rec_sl_holding  = TRUE;
 	rec_sl_holdkey  = scan;
 	rec_sl_holdseen = rec_sl_holdt0 = cltime;
+	rec_sl_ansat    = 0;
 	rec_sl_upwait   = FALSE;
 	rec_sl_holdrep  = FALSE;
 	SaveLoc_LeadLatch();
@@ -700,7 +717,6 @@ void(float scan) SaveLoc_LoadKey =
 float wop_fifoload;              // WarpOp_Load: the trail FIFO is busy only with this pair
 float(float op) WarpOp_Row;
 float() WarpOp_LoadPredicted;
-float() WarpOp_Able;
 float() SaveLoc_FifoLoad =
 {
 	local float ok;
@@ -764,6 +780,16 @@ float() SaveLoc_LeadDone =
 	// P1544: bracketed -- `=` binds tighter than `||`, so the answer was dropped and every unpredicted
 	// load held to the backstop (measured: answered at 0.32 s, let go at 1.03 s).
 	answered = ((rec_sl_wophold && rec_sl_pred) || SaveLoc_LoadAnswered());
+	// P1544: answered, but a release on a command would go blind (WarpOp_RelBlind): give the cursor
+	// strings 0.15 s, which the held row's D string may never fill (WOPCHAIN_MAX).
+	if (answered && !(rec_sl_wophold && rec_sl_pred))
+	{
+		if (!rec_sl_ansat)
+			rec_sl_ansat = cltime;
+		if (cltime - rec_sl_ansat < 0.15 && cltime >= rec_sl_ansat)
+		if (SaveLoc_RelBlind())
+			answered = FALSE;
+	}
 	return (answered || cltime - rec_sl_holdt0 >= 1);
 };
 
