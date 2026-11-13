@@ -21,6 +21,9 @@
 
 ## next
 
+### P1543 Jargon recording continuity
+- Jargon restores the ramp-contact recording counter along with a retry, avoiding a duplicate earlier contact when movement resumes.
+
 ### P1542 Experimental legacy practice movement
 - Custom practice maps can opt into experimental GoldSrc-style 100 or 250 movement profiles; normal Source movement remains the default.
 - Fixed a profile-change disconnect when switching practice maps.

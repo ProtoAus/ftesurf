@@ -1443,6 +1443,9 @@ float(entity e, float slot, float token) SV_TASGo =
 		sprint(e, PRINT_HIGH, "tas: native restore failed; body remains paused, reconnect before rewinding\n");
 		return FALSE;
 	}
+	// The native restore republishes its board counter. The retained REC prefix
+	// already covers that head; do not treat its next publication as an arrival.
+	e.rec_rec_lastbc = e.run_boardcount;
 	// Settle the release now: normal holds defer this until a simulated frame,
 	// which would wrongly exclude the first explicitly granted TAS tick.
 	SV_TimerFreezeFrame(e);
