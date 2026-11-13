@@ -5,3 +5,5 @@ ping". At a 250-500 ms ping a load pressed within a round trip of a save, and ev
 previous one's stringcmds are unanswered, falls off the predicted usercmd path and holds ~1 s. QC only.
 After fetch: origin/main ab9579d9 has P1542; engine tag patch-1543 (422feac19) => 1544.
 Root C:\FTESurf-worktrees\savelock-20261114.
+
+Reviewed (four rounds) and measured; record tools/p1544-savelock.md.

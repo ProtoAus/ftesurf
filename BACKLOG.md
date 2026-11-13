@@ -1,5 +1,23 @@
 # BACKLOG.md
 
+## Save-lock at ping -- leftovers of P1544 (14 Nov)
+
+- A load pressed within a round trip of a save still waits for the save's answer (rig, 500 ms: 0.38 s for a load
+  0.15 s after the save). Instant needs the save itself predicted: a save riding a command (no impulse left --
+  WOP_TOP 254 is full -- and the trail ticket/ack would need another carrier), its row captured in prediction.
+- Press-time WarpOp_Load zeroes wop_relseq before refusing on a busy trail FIFO, so hold -> save -> let go -> load
+  inside one round trip finds STAT_FS_HOLD with no release pending and takes the stringcmd path once (round-1
+  review F4; correct, slower). Keeping the backstop across the FIFO wait needs it disarmed on every later dispatch.
+- `=` binds tighter than `&&`/`||` (id's table): 12 more assignments store only their first operand
+  (scan of src/{client,server,shared,menu}, 14 Nov): cl_entview.qc:2188 onpanel, cl_portal.qc:676 lpd_active,
+  cl_triggers.qc:1981 probe, :2779 hit, :2888 hit, cl_zones.qc:638 pvs, m_milk.qc:529 want, :734 orbit,
+  sv_entities.qc:12175 vbsp_sp_sky, sv_main.qc:158 vbsp_retrigger, sv_tasproject.qc:1017 nc[b+1], sv_vote.qc:615
+  vote_on. Each is a different behaviour (trigger prediction, votes, zone PVS...): check what each was meant to be
+  before bracketing; some may have been tuned against the broken value.
+- A stringcmd hold released on a command predicts walk afterwards (wop_heldmode NONE); a noclip hold is corrected
+  once (round-2 N2). With cl_sl_leadin 0 the 0.15 s wait for the held row can start at key-up, not at the answer,
+  when the D string never arrives (past WOPCHAIN_MAX): bounded extra latency (round-3 R2).
+
 - JARGON optional spots / `SV_TASAutoSpots` reference geometry (13 Nov, P1541 investigation): tensor2 stage2's guide-point128u ray missed, so d0=-1 silently rejected every alternative even with all eligibility guards clear. A native-reached-state/player-box prototype yielded4valid points and played3alternatives, but lost the matched seed1 comparison (12.720/298wall seconds versus12.450/217); it was removed, not accepted as a pathing fix. A missed ray does NOT prove a normal mismatch or physical unreachability. Falsifier for a future repair: demonstrate actual alternatives with native-face/body-clearance and existing finish/rewind authority, then improve the actual completed path at matched effort—not merely activate more searches. Source/diagnostic provenance: tools/p1541-jargon-search.md and retained jargon-sol-1113a artifacts.
 
 - JARGON final-ramp launch feasibility / `SV_TASOptTargetScore`, `SV_TASAutoLink`, tensor2 stage2 (13 Nov): owner reports high/late last-ramp boarding and an odd post-launch direction. Generic energy already credits height/potential energy, but neither that scalar nor reaching a board proves a usable dip/takeoff/platform continuation. Endsafe volumes are not physical platform surfaces; final targets also bypass hop-only low-height feedback. P1543's bounded platform-goal, two-state actual handoff and final-floor feedback pilots ACTED but did not beat the same-seed12.450 control; all were removed, not retained as switches. See tools/p1543-tas-board-restore.md. Next investigate trajectory generation/terminal launch feasibility rather than raising energy bars or arbitrary board offsets. Falsifier: same guide/native/physics/seed/effort, actual stable entry and supported platform reach with genuine stage finish no slower than control, and unchanged strict complete-recording acceptance. Failed searches are not impossibility proofs; sparse poses/endpoints do not establish first-impact or full hidden-state parity.

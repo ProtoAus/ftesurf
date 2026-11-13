@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1544 save loads at ping -- owner check PENDING (ask markbeaton54)
+- On a lobby at your normal ping: save, then tap the load key several times in a row, and once straight after saving. You should move the moment you let go. Straight after a save a short "Loading save" (about your ping) is expected; a second on every load is the old fault.
+- Hold the load key on a save: you stay parked (with the run-up) until you let go, as before.
+- Measured on a local rig with 250/500 ms added ping, not on the real internet: a save-then-reload loop held 1.02 s on every load before; now 0.13-0.49 s for the load right after the save, then instant. Packet loss/jitter and Mark's own bind are untested. tools/p1544-savelock.md.
+
 ## P1542 experimental legacy practice — both Windows copies installed; owner check PENDING
 - C:\FTEQuake is updated and passed its headless client/server check. C:\FTESurf was updated 13 Nov17:52UTC; Main files and backups are independently verified, but Main startup/loaded-provider and human checks are pending. First check that `C:\FTESurf\ftesurf64.exe` reaches the menu and loads a map normally. No human feel/visual acceptance is recorded.
 - In a disposable local practice session in an updated copy, set `sv_movementprofile ag-100` before a fresh map; repeat with `ag-250`. `default` before a fresh map restores normal Source movement. Do not execute a map-changing test during a valued run.
