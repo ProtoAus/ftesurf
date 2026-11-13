@@ -1256,6 +1256,91 @@ def case_closing_counters():
               "CONTROL finite independent observations remain with valid whole count: " + name)
 
 
+def closing_clock_journal(truncated=True, end_offset=None, cap_offset=None, zero=False,
+                          counts_ahead=False):
+    lines = closing_counter_journal(truncated, **({"hidden": 2} if counts_ahead else {})).splitlines()
+    cap = next((i for i, line in enumerate(lines) if line.startswith("truncated ")), None)
+    if zero:
+        for i, line in enumerate(lines):
+            fields = line.split()
+            if fields and fields[0] in ("f", "m", "v", "x", "truncated", "end"):
+                fields[1] = "0"
+                if fields[0] == "f":
+                    fields[2] = "0.000000"
+                elif fields[0] in ("truncated", "end"):
+                    fields[2] = "0.000000"
+                lines[i] = " ".join(fields)
+    if end_offset is not None:
+        fields = lines[-1].split()
+        origin = float(lines[cap].split()[2]) if truncated else float(fields[2])
+        fields[2] = "%.6f" % (origin + end_offset)
+        lines[-1] = " ".join(fields)
+    if cap_offset is not None:
+        fields = lines[cap].split()
+        fields[2] = "%.6f" % (float(fields[2]) + cap_offset)
+        lines[cap] = " ".join(fields)
+    return "\n".join(lines) + "\n"
+
+
+def case_closing_clocks():
+    cases = [(False, -0.01), (False, 0.01), (False, -0.000003), (False, 0.000003),
+             (True, -0.01), (True, -0.000003)]
+    for truncated, offset in cases:
+        r = run(closing_clock_journal(truncated, end_offset=offset))
+        label = "truncated=%s delta=%g" % (truncated, offset)
+        check(not r.ok and bool(r.faults), "inconsistent finite closing clock refuses: " + label)
+        check("time" not in r.info and has_note(r, "closing duration unavailable"),
+              "unsupported closing time is not a duration/zero: " + label)
+        check(r.info.get("frame_rate", 0) > 0 and r.info.get("events_per_sec", 0) > 0 and
+              r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+              "finite observed prefix rate/angle/counts still ACT: " + label)
+    for offset in (-0.01, 0.01, -0.000003, 0.000003):
+        r = run(closing_clock_journal(True, cap_offset=offset, counts_ahead=True))
+        check(not r.ok and "truncated_at" not in r.info and
+              has_note(r, "truncation timestamp unavailable"),
+              "inconsistent cap clock is not a measured prefix endpoint: %g" % offset)
+        check("time" in r.info and r.info.get("hidden") == 2 and
+              not has_fault(r, "hidden") and r.info.get("frame_rate", 0) > 0 and
+              r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+              "cap existence and independent whole/prefix facts survive bad timestamp")
+    for truncated in (False, True):
+        r = run(closing_clock_journal(truncated))
+        check(r.ok and "time" in r.info and r.info.get("identity_yaw_judged") == 19,
+              "CONTROL unchanged native clock control ACTS, truncated=%s" % truncated)
+        r = run(closing_clock_journal(truncated, zero=True))
+        check(r.ok and r.info.get("time") == 0 and
+              (not truncated or r.info.get("truncated_at") == 0),
+              "CONTROL zero clock is valid, not unavailable, truncated=%s" % truncated)
+        for offset in (-0.000001, 0.000001):
+            r = run(closing_clock_journal(truncated, end_offset=offset))
+            check(r.ok and "time" in r.info,
+                  "CONTROL existing print budget retains finite end: %s/%g" % (truncated, offset))
+    for offset in (-0.000001, 0.000001):
+        r = run(closing_clock_journal(True, cap_offset=offset))
+        check(r.ok and "truncated_at" in r.info and "time" in r.info,
+              "CONTROL cap timestamp within existing print budget remains usable: %g" % offset)
+    r = run(closing_clock_journal(True, end_offset=0.5, counts_ahead=True))
+    check(r.ok and r.info.get("hidden") == 2 and "time" in r.info,
+          "CONTROL actual truncated whole duration/counts may be ahead of prefix")
+    text = closing_clock_journal(False)
+    end_time = text.splitlines()[-1].split()[2]
+    r = run(text + "truncated 0 %s\n" % end_time)
+    check(not r.ok and has_fault(r, "after 'end'"),
+          "truncation cannot appear after the journal was closed")
+    check("truncated_at" not in r.info and "time" in r.info and
+          r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+          "invalid post-close cap does not rewrite the valid observed prefix")
+    lines = closing_clock_journal(True).splitlines()
+    cap = next(i for i, line in enumerate(lines) if line.startswith("truncated "))
+    lines.insert(cap + 1, lines[cap])
+    r = run("\n".join(lines) + "\n")
+    check(not r.ok and has_fault(r, "second 'truncated'"),
+          "single native cap marker cannot be silently replaced by a second")
+    check("time" in r.info and "truncated_at" in r.info and
+          r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+          "first valid cap/prefix remain observed despite rejected duplicate")
+
+
 def model_constant_journal(name=None, value=None, change=False, late=False, text=None):
     if text is None:
         text = namespace_journal([("mouse", "0", "mouse-example")], pointer=0)
@@ -3346,7 +3431,7 @@ def main():
                case_pointer_coordinate_quality, case_observer_numeric_quality,
                case_model_numeric_quality, case_native_quoted_byte, case_clock_quality,
                case_rejected_model_change, case_rejected_key_observer,
-               case_loss_declarations, case_closing_counters):
+               case_loss_declarations, case_closing_counters, case_closing_clocks):
         print("%s:" % fn.__name__)
         fn()
         print("")

@@ -680,6 +680,9 @@ def check_hid(path, verbose=False, *, data=None):
     # ---- body --------------------------------------------------------------
     clock = 0.0          # running sum of dt, seconds since base
     bad_clock = False   # no timing measurements from unusable clock records
+    bad_close_time = False  # finite but contradictory whole duration
+    bad_trunc_time = False  # cap exists even if its absolute timestamp disagrees
+    prefix_clock = None     # recorded relative prefix before the closing delta
     events = 0
     frames = 0
     dropped = 0
@@ -767,10 +770,18 @@ def check_hid(path, verbose=False, *, data=None):
                 bad_clock = True
                 r.fault("line %d: 'end' has an unusable clock or non-numeric field" % (lineno + 1))
                 continue
+            prefix_clock = clock
             trailer, clock = pending, elapsed
             continue
 
         if kind == "truncated":
+            # The producer emits one cap marker, before the closing trailer.
+            if trailer is not None:
+                r.fault("line %d: 'truncated' after 'end'" % (lineno + 1))
+                continue
+            if truncated is not None:
+                r.fault("line %d: a second 'truncated' record" % (lineno + 1))
+                continue
             # truncated <dt> <abs>
             if len(tok) != 3:
                 r.fault("line %d: 'truncated' has %d fields, expected 3"
@@ -787,6 +798,10 @@ def check_hid(path, verbose=False, *, data=None):
                 r.fault("line %d: 'truncated' has an unusable clock or non-numeric field" % (lineno + 1))
             else:
                 clock, truncated = elapsed, absolute
+                if abs(absolute - elapsed) > TIME_EPS:
+                    bad_trunc_time = True
+                    r.fault("line %d: truncation says t=%.6f but the recorded dt sum is %.6f"
+                            % (lineno + 1, absolute, elapsed))
             continue
 
         if kind == "devmap":
@@ -1153,10 +1168,15 @@ def check_hid(path, verbose=False, *, data=None):
 
     # ---- trailer agreement -------------------------------------------------
     if truncated is not None:
-        r.info["truncated_at"] = truncated
-        r.note("TRUNCATED at t=%.3f -- the journal hit in_journal_maxkb and "
-               "stops there. A truncated journal cannot audit the run it "
-               "belongs to." % truncated)
+        if bad_trunc_time:
+            r.note("truncation timestamp unavailable: it disagrees with the "
+                   "recorded relative clock. The byte cap is still known; a "
+                   "truncated journal cannot audit the run it belongs to.")
+        else:
+            r.info["truncated_at"] = truncated
+            r.note("TRUNCATED at t=%.3f -- the journal hit in_journal_maxkb and "
+                   "stops there. A truncated journal cannot audit the run it "
+                   "belongs to." % truncated)
 
     if trailer is None:
         r.fault("no 'end' trailer -- the journal was never closed, so the run "
@@ -1225,8 +1245,13 @@ def check_hid(path, verbose=False, *, data=None):
                    "the drop time is unknown by construction." % t_dropped)
 
         if truncated is None and abs(t_abs - clock) > TIME_EPS:
+            bad_close_time = True
             r.fault("trailer says t=%.6f but the dt sum is %.6f (off by %.6f)"
                     % (t_abs, clock, t_abs - clock))
+        elif truncated is not None and prefix_clock - t_abs > TIME_EPS:
+            bad_close_time = True
+            r.fault("trailer closes at t=%.6f before its recorded prefix at %.6f"
+                    % (t_abs, prefix_clock))
 
         # ---- rejected reports (engine Patch 306) ---------------------------
         #
@@ -1998,6 +2023,12 @@ def check_hid(path, verbose=False, *, data=None):
         r.note("drop count unavailable: an unusable loss declaration cannot "
                "establish a complete total or a measured zero; independent "
                "finite angle/count observations are separate.")
+
+    if bad_close_time:
+        r.info.pop("time", None)
+        r.note("closing duration unavailable: it contradicts the recorded "
+               "prefix clock; independently finite prefix rates and "
+               "angle/count observations are separate.")
 
     if bad_clock:
         for key in ("time", "truncated_at", "first_frame_at", "frame_rate", "events_per_sec"):

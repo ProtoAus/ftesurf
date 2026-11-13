@@ -22,6 +22,9 @@
 ## next
 - Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
+### P1534 Journal timeline consistency
+- Journal closing times must cover their recorded prefix. Inconsistent durations or truncation timestamps are unavailable, not measured zero; duplicate or post-close truncation markers no longer pass.
+
 ### P1533 Journal closing consistency
 - Closing journal counters can no longer under-report hidden events already recorded in a truncated prefix. Invalid or contradictory totals are unavailable rather than a measured zero; valid partial captures remain distinct.
 
