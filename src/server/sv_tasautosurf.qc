@@ -2713,6 +2713,10 @@ void(entity e, float argc) SV_TASAutoCommand =
 	// `start` begins in the start box, before the running attempt the tools need (it is a legal start's own path)
 	if (pl) { if (Lobby_Active()) { sprint(e, PRINT_HIGH, "tas autosurf: a local practice tool; not on lobby servers\n"); SV_TASAutoOptRestore(e); return; } }
 	else if (st || arm) { if (Lobby_Active() || !e.run_tas_rwcap) { SV_TASToolGate(e, "autosurf"); SV_TASAutoOptRestore(e); return; } }
+	else if (hr && (Lobby_Active() || !e.run_tas_mode || e.run_t_state != TS_RUNNING))
+		{ SV_TASAutoNote(e, 0, "take over needs a run going with TAS on: Arm with \"When I press\", then surf"); SV_TASAutoOptRestore(e); return; }
+	else if (hr && !e.run_tas_paused && !SV_TASPauseNow(e)) { SV_TASAutoNote(e, 0, "could not pause here to take over"); SV_TASAutoOptRestore(e); return; }
+	// P1531 take over from here pauses the live run just above, so the tools' gate finds it paused
 	else if (!pl && !SV_TASToolGate(e, "autosurf")) { SV_TASAutoNote(e, 0, "TAS is not paused in a run here: use Restart from the start zone"); SV_TASAutoOptRestore(e); return; }
 	if (ct >= 0 && zg) { sprint(e, PRINT_HIGH, "tas autosurf: `course` picks the start itself; not with zone\n"); SV_TASAutoOptRestore(e); return; }      // onjump/onexit with a course: armed in its own box (below)
 	if (path == "route")
@@ -2823,14 +2827,8 @@ void(entity e, float argc) SV_TASAutoCommand =
 		strunzone(path);
 		return;
 	}
-	if (hr)
-	{	// P1531 take over from here: a run going with TAS on (an armed one's), paused where it is now; the plan below is
-		// made from its nearest guide row going its way, the course the panel gave (the stage it is in)
-		if (!e.run_tas_mode || e.run_t_state != TS_RUNNING)
-			{ SV_TASAutoNote(e, 0, "take over needs a run going with TAS on: Arm with \"When I press\", then surf"); SV_TASAutoOptRestore(e); strunzone(path); return; }
-		if (!e.run_tas_paused && !SV_TASPauseNow(e))
-			{ SV_TASAutoNote(e, 0, "could not pause here to take over"); SV_TASAutoOptRestore(e); strunzone(path); return; }
-	}
+	// P1531 take over from here (paused at the tools' gate): the plan from the guide row nearest the body going its way,
+	// in the course the panel gave (the stage the run is in)
 	s = SV_TASAutoPlan(e, -1);
 	if (s < 0) { SV_TASAutoNote(e, 0, "you are not on the guide run's route (400 u): restart, or redo from a stretch"); SV_TASAutoOptRestore(e); strunzone(path); return; }
 	if (as_n < 1) { sprint(e, PRINT_HIGH, "tas autosurf: no ramp, hop or finish ahead on the demo from here\n"); SV_TASAutoOptRestore(e); strunzone(path); return; }
