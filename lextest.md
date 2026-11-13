@@ -1,7 +1,7 @@
 # lextest.md — things waiting on a human
 
-## P1542 experimental legacy practice — NOT deployed; owner check PENDING
-- Only after reviewed deployment: in a disposable local practice session, set `sv_movementprofile ag-100` before a fresh map; repeat with `ag-250`. `default` before a fresh map restores normal Source movement. Do not execute a map-changing test during a valued run.
+## P1542 experimental legacy practice — second copy installed; owner check PENDING
+- C:\FTEQuake is updated and passed its headless client/server check; the running C:\FTESurf game/install remains unchanged pending the owner quitting it. No human feel/visual acceptance is recorded. Only in the updated copy, in a disposable local practice session, set `sv_movementprofile ag-100` before a fresh map; repeat with `ag-250`. `default` before a fresh map restores normal Source movement. Do not execute a map-changing test during a valued run.
 - Try one short walk/jump/crouch, a stair or edge, and a water/ladder transition if available. Do feet and eye height stay plausible, and does a new practice save/load return without a view/body jump? A short clip and the map/spot are enough; this is feel/visual acceptance, not measured reference parity.
 - Return to default Source and confirm the normal save/replay list is still there. Practice runs must stay visibly unranked and separate; do not delete/reset existing data to test it. Report any cross-profile state appearing or a refusal that replaced an existing save.
 - The existing full-reader/corpus results do not substitute for these observations. No human pass, authentic 1000 schedule, full HL1/AG equivalence or HL2 implementation is claimed. Operational/runtime gates remain in `tools/p1542-legacy-movement.md`.

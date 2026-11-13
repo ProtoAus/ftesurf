@@ -6412,6 +6412,26 @@ measurements are valid bounded observations, not quiet/portable acceptance.
 
 ## Run and test
 
+- **P1542 headless legacy-context checks (13 Nov 2026).** Keep timed carried-state
+  review and map-switch cycles in separate cases: a map reset interrupts the
+  review phases. A cold CSQC start consumed most of the original25-second world
+  window before restore; the review-only window is40seconds, while the existing
+  post-input deadline and actor bounds remain unchanged. Preserve the original
+  short-window failure, not a retroactive pass. A selector cycle must prove the
+  LAST client remains live and actually sends directional input with advancing
+  native ticks/body displacement at the final rate. Server profile strings do
+  not prove that client survived signon. The original final-map version0 refusal
+  is retained; initial-snapshot priority membership fixed the acting case without
+  weakening missing/bad-version guards. Do not claim a measured packet boundary
+  or an arbitrary-size priority guarantee from the source explanation.
+- **Build retention and status metadata.** A concurrent Parent-owned runtime
+  OWNER status update outside both source repositories still tripped the strict
+  metadata-retention check. Retain that original HOLD and exact old/new hashes;
+  distinguish a separately adjudicated known status-only change from immutable
+  product/source/cache/index evidence. Never restore or silently refresh the
+  expected file merely to make the original check pass. Build, installed-file,
+  actual-loader, rendered/feel and full-platform acceptance remain separate.
+
 - **P1513 uploader settings/Flask fixtures (11 Nov 2026).** Optional run-length
   admission uses the existing app `setting()` loader, not only `os.environ`:
   real `surfd.env` and OS-precedence arms must ACT on the actual application.

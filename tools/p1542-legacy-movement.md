@@ -1,8 +1,14 @@
 # P1542 - experimental legacy movement candidate
 
-Status: **local candidate, not pushed or deployed**. This continues the earlier
-unpublished P1527 prototype on the inspected current engine/QC source. It is not
-a completed full HL1/AG/HL2 implementation, a release, or a parity claim.
+Status: **reviewed source published; second Windows install updated and tested**.
+Engine47998d6e3 / QC9cb29567 are the tested source pair. The second install has
+the hash-verified native/game-code/dependency cohort and passes its actual
+installed headless client/server map-switch check. The primary install remains
+unchanged while the owner's game is running. The current NanoPi build/default
+full-platform gate is pending: its read-only prerequisite check stopped on
+missing standard `zip`, before any build or remote-root creation. No new lobby
+deployment is claimed. This continues the earlier P1527 prototype, not a full
+HL1/AG/HL2 implementation, release, parity claim or completion of request 6.
 
 ## Available implementation
 
@@ -89,17 +95,27 @@ tag objects remain preserved; no public tag/history was replaced.
 
 The signon priority fix follows that cohort at reviewed engine commit
 `47998d6e3129978559d123e3334406cb95b0526b`, local tag `patch-1542`, and passed
-the actual paired headless checks above. At this source checkpoint its clean
-commit/tag-bound Full remains required before deployment. ENGINE.txt pins that
-source; do not relabel earlier images as its final build.
+the actual paired headless checks above. Its subsequent clean commit/tag-bound
+Full completed once with `git-8736-patch-1542-0-g47998d6e3`: all thirteen outputs,
+zero-warning QC, the same 74 native warnings and all five actual raw metadata
+payloads passed. A Parent-owned status-only runtime OWNER update triggered the
+original strict metadata-retention HOLD; that failure remains preserved and
+was adjudicated separately, without changing source, products or old cohorts.
+The final clean images, then the installed second-copy executables, both passed
+the acting 100/default/250 client check with owned-actor cleanup. ENGINE.txt
+pins that source; earlier images have not been relabelled as this build.
 
 Independent PE inspection qualified an owned 19-DLL, 11,018,734-byte file stage,
 with exact source/stage hashes and no missing non-system import names. Matching
 Python 3.10 metadata-domain checks prepared an isolated app-local runtime, where
 actual client/server startup succeeded. This does not independently identify
-every mapped provider or prove every plugin ABI. Both Windows installs still
-need fresh exclusive/no-overwrite dependency placement and guarded product
-installation. File closure is not public-redistribution acceptance.
+every mapped provider or prove every plugin ABI. The second Windows install
+received nineteen dependencies by exclusive create plus seven native and six
+QC/line-table files using the existing deployment helper. Installed hashes,
+previous live .prev files and older rollback preimages were verified before
+and after its actual headless runtime check. The active primary install is
+held unchanged until the owner quits it. File closure and this local delivery
+are not public-redistribution acceptance.
 
 The first isolated Full build failed on a missing freetype include path. A
 supported, scoped make-variable correction completed the same Full entrypoint.
@@ -118,13 +134,16 @@ generated file and diff were preserved before restoring that owned banner-only
 change. Its shader body was unchanged; no build product is qualified merely by
 file presence.
 
-The paired inspected QC candidate commits and engine pins are local only.
-At this source checkpoint the remaining delivery work is the priority-fix
-clean commit/tag-bound Full, final product/runtime binding, Windows dependency
-placement, and normal guarded dual Windows/fleet deployment. No publication,
-deployment or observed owner-feel pass is claimed here. Existing production /
-default movement remains in service. Subsequent delivery receipts must name
-actual committed source and installed hashes, not merely this checkpoint.
+The exact inspected engine/tag and QC source pair is now pushed. Remaining
+work is the primary Windows paired install after the owner quits the running
+game, fresh current default/full-platform qualification and guarded fleet
+delivery. The current Linux build needs its missing ZIP prerequisite resolved;
+no build or existing lobby was changed by the failed read-only preflight.
+Current Windows full-fixture reuse/baseline qualification is being checked
+separately, not replaced by the small acting-context case. No rendered/owner-
+feel or full-platform pass is claimed. Existing production/default lobbies
+remain in service. Delivery receipts must name actual committed source and
+installed hashes, not merely a build or this document.
 
 ## Small human check after reviewed deployment
 

@@ -23,6 +23,7 @@
 
 ### P1542 Experimental legacy practice movement
 - Custom practice maps can opt into experimental GoldSrc-style 100 or 250 movement profiles; normal Source movement remains the default.
+- Fixed a profile-change disconnect when switching practice maps.
 - Practice runs and saves stay separate and unranked. Full HL1/AG parity, 1000-rate movement and the requested HL2 variants are not included.
 
 ### P1541 Jargon search initialization
