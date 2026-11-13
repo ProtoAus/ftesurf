@@ -1946,6 +1946,7 @@ void(entity e) SV_TASAutoFrame =
 			SV_TASAutoNote(e, 1, sprintf("continuing with your new air points: %.0f stretches ahead from here", as_n));
 			return;
 		}
+		SV_TASAutoSendPlan(e);      // P1531: the saved plan in the panel's list (redo picks a row by its demo time in it)
 		SV_TASAutoNote(e, 1, sprintf("continuing %s from stretch %.0f of %.0f", SV_TASAutoCourseName(e.as_ctrack, e.as_cleg), e.as_i + 1, as_n));
 		return;
 	}
@@ -2156,6 +2157,7 @@ void(entity e) SV_TASAutoFrame =
 		{
 			s = SV_TASAutoPlan(e, -1);
 			if (s < 0 || as_n < 1) { SV_TASAutoStop(e, "out of the start box off the demo's route (not within 400 u)"); return; }
+			SV_TASAutoSendPlan(e);      // P1531: the panel's list is the run's plan (a Start sent none: redo looked up another's rows)
 			if (!e.as_sredo && !e.as_nolegal && e.as_ctrack >= 0 && SV_TASAutoRule(524288) && vlen([e.velocity_x, e.velocity_y, 0]) < 0.6 * vlen([as_rows[s*7+4], as_rows[s*7+5], 0]))
 			if (e.as_smeth == 1 || SV_TASAutoRest(e) >= 0)
 			{	// out of the box far slower than the guide there: the other way, once (surf_anubis stage 1 left at 76 u/s
@@ -2679,6 +2681,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		e.as_redo = n + 1; e.as_swph = 0; e.as_finrec = e.run_t_finrec; e.as_esc = 0; e.as_bmph = 0;
 		e.as_on = 1; e.as_i = n; e.as_try = 0; e.as_backs = 0; e.as_failat = -1; e.as_failmax = n;
 		e.as_tprev = as_wp[n]; e.as_goal = as_ws[n]; e.as_stage = 3;
+		SV_TASAutoSendPlan(e);      // P1531: the panel's list is the run's plan (its rows, its stretches)
 		SV_TASAutoNote(e, 1, sprintf("redo from stretch %.0f", n + 1));
 		return;
 	}
