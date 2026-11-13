@@ -4818,6 +4818,7 @@ float(float seg) Watch_WindowFind;     // Patch 431, below
 float() Rewind_Busy;                // cl_rewind.qc compiles after this file
 void() Rewind_HandOver;
 void() Rewind_Abandon;
+void() WarpOp_DropRelease;      // cl_warpop.qc, P1544
 
 float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn =
 {
@@ -4851,7 +4852,13 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 	if (Rewind_Busy())
 		Rewind_Abandon();
 	if (rec_sl_holding)
+	{
 		SaveLoc_Release();
+		// P1544 review: a release on a command is never carried once rec_wt_open stops the input
+		// frames, and `rec_watch 1` would reach the pin first; the stringcmd runs ahead of it.
+		SaveLoc_Cmd("sl_holdoff");
+		WarpOp_DropRelease();
+	}
 
 	rec_wt_loadms = gettime(1);
 	Watch_NavClear();

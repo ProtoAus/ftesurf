@@ -648,13 +648,13 @@ float(float op, float rep) WarpOp_Step =
 
 // Letting go of a predicted hold.  The speed is the held row's, once the server
 // says which row that is (3-6 can move it while held).  FALSE: send sl_holdoff.
-float() WarpOp_Release =
+vector wop_relv;
+// The release's speed into wop_relv; TRUE when it is not known here and the release would go blind.
+float() WarpOp_RelVel =
 {
 	local vector v;
 	local float blind;
 
-	if (!wop_seq)
-		return FALSE;
 	v = wop_loadvel;
 	blind = FALSE;
 	// A refused load advances the cursor without retargeting the hold. Only
@@ -679,13 +679,44 @@ float() WarpOp_Release =
 	}
 	else if (getstatf(STAT_FS_HOLD))
 		v = [getstatf(STAT_FS_HOLDVEL), getstatf(STAT_FS_HOLDVEL + 1), getstatf(STAT_FS_HOLDVEL + 2)];
-	if (!WarpOp_Queue(WOP_RELEASE, '0 0 0', v, '0 0 0', 0))
+	wop_relv = v;
+	return (blind || WarpOp_Pending(WOPP_BLINDLOAD));   // Patch 759: that load's speed is not known here
+};
+
+float() WarpOp_Release =
+{
+	local float blind;
+
+	if (!wop_seq)
 		return FALSE;
-	if (blind || WarpOp_Pending(WOPP_BLINDLOAD))
-		wop_blind[wop_slot] = WOPB_BLIND;   // Patch 759: that load's speed is not known here
+	blind = WarpOp_RelVel();
+	if (!WarpOp_Queue(WOP_RELEASE, '0 0 0', wop_relv, '0 0 0', 0))
+		return FALSE;
+	if (blind)
+		wop_blind[wop_slot] = WOPB_BLIND;
 	wop_relseq = -1;
 	wop_relat = 0;
 	return TRUE;
+};
+
+// P1544: SaveLoc_LeadDone. A release on a command would go blind now (the cursor strings that carry the
+// held row trail the numeric answer a packet): the view would stay parked a round trip, then snap.
+float() WarpOp_RelBlind =
+{
+	if (!wop_seq)
+		return FALSE;
+	return WarpOp_RelVel();
+};
+
+// P1544: Watch_OpenIn sent sl_holdoff; a queued release would be carried after the replay, over its pin.
+void() WarpOp_DropRelease =
+{
+	local float i;
+	if (wop_seq)
+		for (i = 0; i < WOP_RING; i = i + 1)
+			if (wop_seq[i] == -1 && wop_op[i] == WOP_RELEASE)
+				wop_seq[i] = 0;
+	wop_relseq = wop_relat = 0;
 };
 
 // A clean return discards queued actions as well as the accumulated usercmd.
