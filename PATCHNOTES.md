@@ -21,6 +21,12 @@
 
 ## next
 
+### P1539 Input recording consistency
+- Damaged or incomplete input records no longer produce unsupported zero totals or misleading cause notes. Known recording boundaries remain effective even when their timestamps are unusable.
+
+### P1538 Recording consistency
+- Supported landing observations now require a usable numeric context. Movement and existing airborne handling are unchanged.
+
 ### P1537 Journal closing-field isolation
 - One malformed backend counter no longer discards an otherwise present journal closing record, valid clocks or unrelated counters. Unsupported quantities remain unavailable rather than a fabricated zero or missing-end diagnosis.
 

@@ -351,7 +351,8 @@ KINDS = {
     "d": 2,     # rawdx rawdy
 }
 
-BACKEND_COUNT_FIELDS = {"i": ("injected", "unenum"), "b": ("legacy_presses",)}
+BACKEND_COUNT_FIELDS = {"i": ("injected", "unenum"), "b": ("legacy_presses",),
+                        "p": ("touchpad", "touchpad_digitizer_reports", "touchpad_releases")}
 
 # 'v' flag bits.  A frame with any of these set is one the yaw identity does NOT
 # apply to, and saying which is the whole reason the column exists.
@@ -718,7 +719,10 @@ def check_hid(path, verbose=False, *, data=None):
     saw_prev = False
     legacy_states = []  # Patch 307: every 'g' transition, in order
     trailer = None
+    # Recognized boundaries survive unusable clocks/fields.
+    end_seen = False
     truncated = None
+    cap_seen = False
     first_f = None
     last_f = None
     seqs = []
@@ -756,9 +760,10 @@ def check_hid(path, verbose=False, *, data=None):
         kind = tok[0]
 
         if kind == "end":
-            if trailer is not None:
+            if end_seen:
                 r.fault("line %d: a second 'end' record" % (lineno + 1))
                 continue
+            end_seen = True
             # end <dt> <abs> <events> <frames> <dropped> <hidden>
             #                                  [<injected> <unenum> [<legacybtn> [<touchpad> <padreports>]]]
             # Patch 306 appended the last two. A pre-306 file has 7 tokens and
@@ -766,6 +771,7 @@ def check_hid(path, verbose=False, *, data=None):
             # treated it as zero would report "no injection seen" about a file
             # that could not see any.
             if len(tok) not in (7, 9, 10, 12):
+                bad_clock = True
                 r.fault("line %d: 'end' has %d fields, expected 7 (pre-306), "
                         "9 (pre-307), 10 (pre-468) or 12" % (lineno + 1, len(tok)))
                 continue
@@ -786,14 +792,16 @@ def check_hid(path, verbose=False, *, data=None):
 
         if kind == "truncated":
             # The producer emits one cap marker, before the closing trailer.
-            if trailer is not None:
+            if end_seen:
                 r.fault("line %d: 'truncated' after 'end'" % (lineno + 1))
                 continue
-            if truncated is not None:
+            if cap_seen:
                 r.fault("line %d: a second 'truncated' record" % (lineno + 1))
                 continue
+            cap_seen = True
             # truncated <dt> <abs>
             if len(tok) != 3:
+                bad_clock = True
                 r.fault("line %d: 'truncated' has %d fields, expected 3"
                         % (lineno + 1, len(tok)))
                 continue
@@ -820,7 +828,7 @@ def check_hid(path, verbose=False, *, data=None):
             # so it is taken here rather than falling through to the dt parse
             # below -- which would read "devmap keyboard - ..." as a record whose
             # dt is the word `keyboard`.
-            if trailer is not None:
+            if end_seen:
                 r.fault("line %d: 'devmap' after 'end'" % (lineno + 1))
                 continue
             d = parse_dev_line(lines[lineno])
@@ -834,15 +842,18 @@ def check_hid(path, verbose=False, *, data=None):
             r.note("line %d: unknown record kind %r" % (lineno + 1, kind))
             continue
 
-        if trailer is not None:
+        if end_seen:
             r.fault("line %d: %r record after 'end'" % (lineno + 1, kind))
             continue
-        if truncated is not None:
+        if cap_seen:
             r.fault("line %d: %r record after 'truncated'" % (lineno + 1, kind))
             continue
 
         if len(tok) < 2:
             r.fault("line %d: %r has no dt" % (lineno + 1, kind))
+            bad_backend_counts.update(BACKEND_COUNT_FIELDS.get(kind, ()))
+            if kind in ("m", "a"):
+                bad_pointer = True
             if kind == "!":
                 bad_loss = True
             if kind in ("y", "o"):
@@ -1081,23 +1092,31 @@ def check_hid(path, verbose=False, *, data=None):
             # reached the game is journalled as 'm'/'+'/'-' on the touchpad's
             # devid; this says how many reports the window let through and how
             # many digitizer reports armed it.
-            try:
-                dacc, ddig, drel = int(tok[2]), int(tok[3]), int(tok[4])
-            except (ValueError, IndexError):
-                r.fault("line %d: 'p' counts are not three numbers" % (lineno + 1))
-            else:
-                if dacc < 0 or ddig < 0 or drel < 0:
-                    r.fault("line %d: 'p' carries a negative delta; the counters "
-                            "are monotone" % (lineno + 1))
-                elif drel > dacc:
-                    # a release-admitted report counts in both, so this cannot
-                    # come from the writer
-                    r.fault("line %d: 'p' releases %d more reports than it accepts"
-                            % (lineno + 1, drel - dacc))
+            values = []
+            for name, token in zip(BACKEND_COUNT_FIELDS[kind], tok[2:]):
+                try:
+                    value = int(token)
+                    if value < 0:
+                        raise ValueError
+                except ValueError:
+                    value = None
+                    bad_backend_counts.add(name)
+                    r.fault("line %d: 'p' %s has a negative delta or non-numeric count"
+                            % (lineno + 1, name))
+                values.append(value)
+            dacc, ddig, drel = values
+            if dacc is not None and drel is not None and drel > dacc:
+                bad_backend_counts.update(("touchpad", "touchpad_releases"))
+                r.fault("line %d: 'p' releases %d more reports than it accepts"
+                        % (lineno + 1, drel - dacc))
+                dacc = drel = None
+            if dacc is not None:
                 padacc += dacc
+            if ddig is not None:
                 padrep += ddig
+            if drel is not None:
                 padrel += drel
-                saw_p = True
+            saw_p = True
         elif kind == "c":
             # Patch 310: a render-integrity cvar changed mid-journal.
             nm = tok[2]
@@ -1192,8 +1211,11 @@ def check_hid(path, verbose=False, *, data=None):
                     devids_used[d] = devids_used.get(d, 0) + 1
 
     # ---- trailer agreement -------------------------------------------------
-    if truncated is not None:
-        if bad_trunc_time:
+    if cap_seen:
+        if truncated is None:
+            r.note("truncation timestamp unavailable: unusable cap marker; "
+                   "the byte cap is still known and capture is partial.")
+        elif bad_trunc_time:
             r.note("truncation timestamp unavailable: it disagrees with the "
                    "recorded relative clock. The byte cap is still known; a "
                    "truncated journal cannot audit the run it belongs to.")
@@ -1204,8 +1226,11 @@ def check_hid(path, verbose=False, *, data=None):
                    "belongs to." % truncated)
 
     if trailer is None:
-        r.fault("no 'end' trailer -- the journal was never closed, so the run "
-                "it belongs to has no admissible input record")
+        if end_seen:
+            r.note("present 'end' trailer is unusable; closing measurements unavailable")
+        else:
+            r.fault("no 'end' trailer -- the journal was never closed, so the run "
+                    "it belongs to has no admissible input record")
     else:
         t_abs = trailer[0]
         closing_counts = []
@@ -1244,7 +1269,7 @@ def check_hid(path, verbose=False, *, data=None):
                                       ("touchpad", t_touchpad, padacc),
                                       ("touchpad_digitizer_reports", t_padreports, padrep)):
             if total is not None and total >= 0:
-                if ((truncated is None and total != observed) or total < observed):
+                if ((not cap_seen and total != observed) or total < observed):
                     bad_backend_counts.add(name)
         r.info["time"] = t_abs
 
@@ -1254,7 +1279,7 @@ def check_hid(path, verbose=False, *, data=None):
         # equality there would fault every truncated journal for being
         # truncated, which the 'truncated' marker already says.  What must still
         # hold is the direction -- the trailer can only be ahead.
-        if truncated is None:
+        if not cap_seen:
             if t_events is not None and t_events != events:
                 r.info.pop("events", None)
                 r.fault("trailer says %d events, the file has %d"
@@ -1273,7 +1298,7 @@ def check_hid(path, verbose=False, *, data=None):
                 r.fault("trailer says %d frames but the file already holds %d"
                         % (t_frames, frames))
         if t_hidden is not None:
-            if (truncated is None and t_hidden != hidden) or t_hidden < hidden:
+            if (not cap_seen and t_hidden != hidden) or t_hidden < hidden:
                 r.info.pop("hidden", None)
                 r.fault("trailer says %d hidden keys, the file has %d"
                         % (t_hidden, hidden))
@@ -1289,11 +1314,11 @@ def check_hid(path, verbose=False, *, data=None):
                    "this journal. The file is not admissible across those gaps; "
                    "the drop time is unknown by construction." % t_dropped)
 
-        if truncated is None and abs(t_abs - clock) > TIME_EPS:
+        if not cap_seen and abs(t_abs - clock) > TIME_EPS:
             bad_close_time = True
             r.fault("trailer says t=%.6f but the dt sum is %.6f (off by %.6f)"
                     % (t_abs, clock, t_abs - clock))
-        elif truncated is not None and prefix_clock - t_abs > TIME_EPS:
+        elif cap_seen and prefix_clock - t_abs > TIME_EPS:
             bad_close_time = True
             r.fault("trailer closes at t=%.6f before its recorded prefix at %.6f"
                     % (t_abs, prefix_clock))
@@ -1329,7 +1354,7 @@ def check_hid(path, verbose=False, *, data=None):
                                           ("unenum", t_unenum, unenum)):
                 if total is not None and total >= 0:
                     r.info[name] = total
-                    if ((truncated is None and total != observed) or total < observed):
+                    if ((not cap_seen and total != observed) or total < observed):
                         r.fault("trailer %s says %d but its recorded observations hold %d"
                                 % (name, total, observed))
                     elif total and name not in bad_backend_counts:
@@ -1342,10 +1367,10 @@ def check_hid(path, verbose=False, *, data=None):
             if unenum:
                 r.fault("'i' records carry %d unenumerated reports although the "
                         "trailer says this backend does not count them" % unenum)
-            if truncated is None and t_injected != injected:
+            if not cap_seen and t_injected != injected:
                 r.fault("trailer says %d injected reports, the 'i' records "
                         "account for %d" % (t_injected, injected))
-            elif truncated is not None and t_injected < injected:
+            elif cap_seen and t_injected < injected:
                 r.fault("trailer says %d injected reports but the 'i' records "
                         "already hold %d" % (t_injected, injected))
             if t_injected and "injected" not in bad_backend_counts:
@@ -1371,7 +1396,7 @@ def check_hid(path, verbose=False, *, data=None):
             # made consistently in two places. Exempted on a truncated file for
             # the same reason as events/frames above: the counters keep running
             # after the writing stops, so the trailer can only be AHEAD.
-            if truncated is None:
+            if not cap_seen:
                 if t_injected != injected:
                     r.fault("trailer says %d injected reports, the 'i' records "
                             "account for %d" % (t_injected, injected))
@@ -1428,10 +1453,10 @@ def check_hid(path, verbose=False, *, data=None):
                         "the backend does not count them")
         else:
             r.info["legacy_presses"] = t_legacybtn
-            if truncated is None and t_legacybtn != legacybtn:
+            if not cap_seen and t_legacybtn != legacybtn:
                 r.fault("trailer says %d uncorroborated legacy presses, the "
                         "'b' records account for %d" % (t_legacybtn, legacybtn))
-            elif truncated is not None and t_legacybtn < legacybtn:
+            elif cap_seen and t_legacybtn < legacybtn:
                 r.fault("trailer says %d uncorroborated legacy presses but the "
                         "'b' records already hold %d" % (t_legacybtn, legacybtn))
 
@@ -1454,10 +1479,7 @@ def check_hid(path, verbose=False, *, data=None):
                     else:
                         # the engine gates on the cvar's integer value, so
                         # "0.0" and a non-number are off like "0"
-                        try:
-                            pad_states.add("off" if float(v) == 0 else "on")
-                        except ValueError:
-                            pad_states.add("off")
+                        pad_states.add("off" if q_atoi(v) == 0 else "on")
                 try:
                     pads_bound = int(head.get("rawpads", "-1"))
                 except ValueError:
@@ -1517,7 +1539,7 @@ def check_hid(path, verbose=False, *, data=None):
         elif kbdobserve == 1 and not obs_changes:
             r.info["legacy_keys"] = legacykeys
             r.info["kbd_nohandle"] = kbdnohandle
-            if truncated is not None:
+            if cap_seen:
                 r.info["legacy_keys_partial"] = True    # no trailer total: a floor
         elif kbdobserve is None:
             if saw_y or obs_changes:
@@ -1546,7 +1568,7 @@ def check_hid(path, verbose=False, *, data=None):
             r.note("kbdobserve %d -- legacy keys were not checked against raw "
                    "input, so an injected keystroke cannot be seen in this file"
                    % kbdobserve)
-        if legacykeys:
+        if legacykeys and not bad_key_observer:
             if kbdnohandle:
                 shape = ("%d handle-less keyboard report(s) arrived beside them, "
                          "which is what SendInput leaves" % kbdnohandle)
@@ -1560,7 +1582,7 @@ def check_hid(path, verbose=False, *, data=None):
                    "AltGr's synthesized Ctrl, and alt-tabbing back onto a held "
                    "key; otherwise this is the shape of an injected keystroke. A "
                    "NOTE, never a verdict." % (legacykeys, shape))
-        elif kbdnohandle:
+        elif kbdnohandle and not bad_key_observer:
             r.note("%d handle-less keyboard report(s) arrived, but every legacy "
                    "key press was vouched for by a keyboard device -- the "
                    "synthesized keys did not reach this window as presses"
@@ -1593,7 +1615,7 @@ def check_hid(path, verbose=False, *, data=None):
             if "touchpad" in bad_backend_counts:
                 if t_padreports is not None and t_padreports >= 0:
                     r.info["touchpad_digitizer_reports"] = t_padreports
-                    if ((truncated is None and t_padreports != padrep) or t_padreports < padrep):
+                    if ((not cap_seen and t_padreports != padrep) or t_padreports < padrep):
                         r.fault("trailer digitizer total says %d but 'p' observations hold %d"
                                 % (t_padreports, padrep))
         elif t_touchpad < 0:
@@ -1613,7 +1635,7 @@ def check_hid(path, verbose=False, *, data=None):
                         "touchpad input but no touchpad is in the device "
                         "table -- the file is not describing its own hardware"
                         % t_touchpad)
-            if truncated is None:
+            if not cap_seen:
                 if t_touchpad != padacc:
                     r.fault("trailer says %d touchpad reports accepted, the 'p' "
                             "records account for %d" % (t_touchpad, padacc))
@@ -1629,7 +1651,7 @@ def check_hid(path, verbose=False, *, data=None):
                         and t_padreports < padrep):
                     r.fault("trailer says %d digitizer reports but the 'p' "
                             "records already hold %d" % (t_padreports, padrep))
-            if padrel:
+            if padrel and "touchpad_releases" not in bad_backend_counts:
                 r.info["touchpad_releases"] = padrel
                 if padrel > pad_presses:
                     r.note("%d report(s) were accepted as releases outside the "

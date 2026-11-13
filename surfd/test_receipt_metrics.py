@@ -96,8 +96,10 @@ def case_keyboard_observations():
             ({'keys': 3, 'changes': (0, 1)},
              {'kbdobserve': 1, 'kbdobserve_changes': 2, 'legacy_keys_partial': True,
               'legacy_presses': 0}),
-            ({'keys': 0, 'malformed': 'y 0 invalid 0'}, {'kbdobserve': 1}),
-            ({'keys': 3, 'malformed': 'o 0 invalid'}, {'kbdobserve': 1})):
+            ({'keys': 0, 'malformed': 'y 0 invalid 0'},
+             {'kbdobserve': 1, 'legacy_keys_partial': True}),
+            ({'keys': 3, 'malformed': 'o 0 invalid'},
+             {'kbdobserve': 1, 'legacy_keys_partial': True})):
         s, sw, c, now, rc, rp = setup()
         try:
             with open(rp[:-5] + '.view', 'rb') as f:

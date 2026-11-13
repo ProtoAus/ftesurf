@@ -3562,6 +3562,153 @@ def case_no_input_is_blind():
           % (r.faults[:1] or "none", r.info.get("identity_blind")))
 
 
+def case_review_rejected_observations():
+    from test_journal_diagnostics import receipt_for
+
+    def prefix(r):
+        return (r.info.get("identity_yaw_judged") == 19 and
+                r.info.get("join_checked") == 19)
+
+    def insert(text, rows):
+        lines = text.splitlines()
+        lines[-1:-1] = rows
+        return "\n".join(lines) + "\n"
+
+    base = backend_trailer_journal(observations=False)
+    check(run(base).ok and prefix(run(base)), "review CONTROL zero backend with acting19/19")
+    positive = backend_trailer_journal()
+    check(run(positive).ok and prefix(run(positive)), "review CONTROL positive backend with acting19/19")
+    for rows, missing, sibling in (
+            (["p 0 2 2 0", "p 0 -2 -2 0"], ("touchpad", "touchpad_digitizer_reports"), None),
+            (["p 0 -1 2 0"], ("touchpad",), "touchpad_digitizer_reports"),
+            (["p 0 2 -1 0"], ("touchpad_digitizer_reports",), "touchpad"),
+            (["p 0 0 0 1"], ("touchpad",), "touchpad_digitizer_reports"),
+            (["p"], ("touchpad", "touchpad_digitizer_reports"), None),
+            (["p 0 bad 0 0"], ("touchpad",), "touchpad_digitizer_reports")):
+        text = base
+        if sibling:
+            lines = text.splitlines()
+            end = lines[-1].split()
+            end[10 if sibling == "touchpad" else 11] = "2" if "2" in rows[0].split()[2:4] else "0"
+            lines[-1] = " ".join(end)
+            text = "\n".join(lines) + "\n"
+        text = insert(text, rows)
+        r, receipt = run(text), receipt_for(text)
+        check(not r.ok and all(k not in r.info for k in missing),
+              "review rejected p cannot publish affected total: %s" % rows)
+        check(all(k not in receipt.journal_metrics["metrics"] for k in missing),
+              "review rejected p absent from captured receipt projection: %s" % rows)
+        check(prefix(r) and r.info.get("injected") == 0 and
+              (sibling is None or sibling in r.info),
+              "review p rejection preserves independently usable sibling and19/19")
+    for row, missing in (("i", ("injected", "unenum")), ("b", ("legacy_presses",))):
+        r = run(insert(base, [row]))
+        check(not r.ok and all(k not in r.info for k in missing) and prefix(r),
+              "review kind-only backend cannot manufacture zero: " + row)
+    lines = base.splitlines()
+    mice = [i for i, line in enumerate(lines) if line.startswith("m ")]
+    for kind in ("m", "a"):
+        changed = lines[:]
+        changed[mice[1]] = kind
+        text = "\n".join(changed) + "\n"
+        r, receipt = run(text), receipt_for(text)
+        check(not r.ok and "join_checked" not in r.info and "join_broke" not in r.info and
+              not has_fault(r, "COUNTS JOIN BROKEN") and r.info.get("identity_yaw_judged") == 19,
+              "review kind-only pointer abstains join with independent angle19: " + kind)
+        check("join_broke" not in receipt.journal_metrics["metrics"],
+              "review unsupported join absent from receipt: " + kind)
+    for valid, bad in (("y 0 2 0", "y 0 bad 0"), ("y 0 0 2", "y 0 0 bad")):
+        text = base.replace("begin\n", "kbdobserve 1\nbegin\n")
+        clean = run(insert(text, [valid]))
+        check(clean.ok and prefix(clean), "review CONTROL known keyboard observations act: " + valid)
+        r = run(insert(text, [valid, bad]))
+        check(not r.ok and "legacy_keys" not in r.info and "kbd_nohandle" not in r.info and
+              not has_note(r, "so these came") and not has_note(r, "every legacy key press"),
+              "review unknown keyboard counts cannot infer absence/cause: " + bad)
+        check(prefix(r), "review keyboard corruption retains19/19 mouse comparisons")
+    pad = [MOUSE0, ("touchpad", "1", PAD[2])]
+    for opening, change, needle in (("0", None, "Innocent on a machine"),
+                                    ("1", None, "NOT one on this build"),
+                                    ("0.5", None, "Innocent on a machine"),
+                                    ("1", "0.5", "changed mid-journal")):
+        j = _padjournal(pad, cvar=opening, rawpads=1)
+        j.frame(3000)
+        j.mouse(4, 0)
+        j.view(4, 0, 10, j.k * 4)
+        if change is not None:
+            j.cvarchange("in_rawinput_touchpad", change)
+        j.legacypress(2)
+        r = run(j.end(touchpad=0))
+        check(r.ok and has_note(r, needle),
+              "review native integer pad state: %s/%s" % (opening, change))
+
+
+def case_review_malformed_boundaries():
+    from test_journal_diagnostics import receipt_for
+    base = run(closing_counter_journal(True))
+    keys = [k for k in base.info if k.startswith(("identity_", "join_"))]
+    for marker in ("truncated", "truncated bad 0", "truncated 0 nan"):
+        for tail in (True, "bad-view"):
+            lines = closing_counter_journal(True, postcap=tail).splitlines()
+            cap = next(i for i, line in enumerate(lines) if line.startswith("truncated "))
+            lines[cap] = marker
+            text = "\n".join(lines) + "\n"
+            r, receipt = run(text), receipt_for(text)
+            check(not r.ok and has_fault(r, "after 'truncated'") and
+                  all(r.info.get(k) == base.info[k] for k in keys),
+                  "review malformed cap excludes unsupported tail: %s/%s" % (marker, tail))
+            check("truncated_at" not in r.info and r.info.get("frames") == 21,
+                  "review cap existence keeps ahead closing count without invented timestamp")
+            check(receipt.journal_metrics["metrics"].get("join_checked") == 19,
+                  "review malformed cap receipt retains only actual19join prefix")
+        lines = closing_counter_journal(True).splitlines()
+        cap = next(i for i, line in enumerate(lines) if line.startswith("truncated "))
+        lines.insert(cap, marker)
+        r = run("\n".join(lines) + "\n")
+        check(has_fault(r, "second 'truncated'") and "truncated_at" not in r.info,
+              "review malformed first cap cannot be replaced by valid cap: " + marker)
+    text = closing_counter_journal(False, postcap=True)
+    lines = text.splitlines()
+    # Put a recognized unusable end at the existing cap-equivalent boundary.
+    cut = next(i for i, line in enumerate(lines) if line.startswith("devmap "))
+    # The extra frame is immediately before the closing device tables.
+    cut = max(i for i, line in enumerate(lines[:cut]) if line.startswith("f "))
+    for marker in ("end", "end bad 0 0 0 0 0", "end 0 nan 0 0 0 0"):
+        changed = lines[:]
+        changed.insert(cut, marker)
+        r = run("\n".join(changed) + "\n")
+        check(not r.ok and has_fault(r, "after 'end'") and has_fault(r, "second 'end'"),
+              "review malformed end establishes close boundary/order: " + marker)
+        check(not has_fault(r, "no 'end' trailer") and "time" not in r.info and
+              r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+              "review present unusable closure not absent; actual19/19prefix retained")
+    for marker in ("truncated", "truncated bad 0", "truncated 0 nan"):
+        lines = closing_clock_journal(True, counts_ahead=True).splitlines()
+        cap = next(i for i, line in enumerate(lines) if line.startswith("truncated "))
+        lines[cap] = marker
+        r = run("\n".join(lines) + "\n")
+        check(not r.ok and r.info.get("hidden") == 2 and not has_fault(r, "hidden") and
+              r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+              "review malformed cap without tail keeps partial lower-bound direction: " + marker)
+        check("truncated_at" not in r.info and "time" not in r.info,
+              "review unusable boundary clock does not invent duration/endpoint")
+        lines.insert(-1, "truncated 0 0")
+        r = run("\n".join(lines) + "\n")
+        check(has_fault(r, "second 'truncated'"), "review malformed cap duplicate remains faulted")
+    for marker in ("end", "end bad 0 0 0 0 0"):
+        lines = closing_counter_journal(False).splitlines()
+        lines[-1] = marker
+        r = run("\n".join(lines) + "\n")
+        check(not r.ok and not has_fault(r, "no 'end' trailer") and
+              has_note(r, "present 'end' trailer is unusable"),
+              "review final malformed close is present not absent: " + marker)
+        r = run("\n".join(lines) + "\ntruncated 0 0\n")
+        check(has_fault(r, "'truncated' after 'end'"),
+              "review malformed end excludes later cap: " + marker)
+    r = run("\n".join(closing_counter_journal(False).splitlines()[:-1]) + "\n")
+    check(has_fault(r, "no 'end' trailer"), "review CONTROL genuinely absent end stays absent")
+
+
 def main():
     print("test_hidcheck.py -- the Patch 293 yaw identity\n")
     for fn in (case_clean, case_mutated_delta, case_subtle_mutation,
@@ -3624,7 +3771,8 @@ def main():
                case_rejected_model_change, case_rejected_key_observer,
                case_loss_declarations, case_closing_counters, case_closing_clocks,
                case_postcap_records, case_backend_count_availability,
-               case_backend_trailer_isolation):
+               case_backend_trailer_isolation, case_review_rejected_observations,
+               case_review_malformed_boundaries):
         print("%s:" % fn.__name__)
         fn()
         print("")
