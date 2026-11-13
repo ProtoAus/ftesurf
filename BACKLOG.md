@@ -1296,6 +1296,14 @@ gave 0:12.825 and 5 backtracks on two builds).
   Every unexplained prior path stays protected. No blanket parts exclusion,
   retrospective waiver, player-data restoration or repeated healthy restart.
   Preserve the original failed P1136 receipt and its unresolved historical limit.
+- P1541 observation (13 Nov): a CLOSED-window-only preservation caller correctly
+  refused a newly occupied lobby before canonical upload, despite normal occupied
+  restart preapproval. A later genuinely fresh closed-window capture/deploy passed
+  with all216 selected payloads/checked metadata unchanged. That is NOT an occupied
+  preservation qualification or a fix for this followup. Do not wait indefinitely
+  for emptiness, waive selected FDs/resume metadata or call ordinary occupancy a
+  missing permission. Qualify the active-stream before-state/actor handoff above
+  under the normal warning/countdown policy before claiming this broader route.
 
 ## Windows run-corpus lifetime attribution (P1123 observation)
 
