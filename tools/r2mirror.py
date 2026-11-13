@@ -119,7 +119,20 @@ def writer_lock(work):
                 fcntl.flock(f, fcntl.LOCK_UN)
 
 
-def scan(db, config):
+def scan(db, config, only=None):
+    """Register observed inputs; optional exact aliases leave all other rows untouched."""
+    if only is not None:
+        if not isinstance(only, (list, tuple, set, frozenset)) or not only:
+            raise ValueError("Expected a nonempty finite collection of full aliases")
+        selected = set()
+        for alias in only:
+            if not isinstance(alias, str) or not any(
+                    re.fullmatch(re.escape(FORMATS[group][1]) + FORMATS[group][0], alias)
+                    for group in config["groups"] if group in FORMATS):
+                raise ValueError("Alias is not in a configured public group")
+            if alias in selected:
+                raise ValueError("Duplicate selected alias")
+            selected.add(alias)
     observed = []
     for group, root in config["groups"].items():
         root = check_directory(root)
@@ -138,9 +151,14 @@ def scan(db, config):
             raise ValueError("Invalid source inventory minimum")
         if sum(row[1] == group for row in observed) < minimum:
             raise ValueError("Source inventory below its registered minimum")
+    if only is not None:
+        observed = [row for row in observed if row[0] in selected]
+        if {row[0] for row in observed} != selected:
+            raise ValueError("Selected alias missing from ordinary nonzero source inventory")
     # Enumeration must finish successfully before changing presence/readiness.
     with db:
-        db.execute("UPDATE assets SET present=0")
+        if only is None:
+            db.execute("UPDATE assets SET present=0")
         for alias, group, source, sig, size in observed:
             old = db.execute("SELECT * FROM assets WHERE alias=?", (alias,)).fetchone()
             if old and old["sig"] == sig and old["source"] == source:

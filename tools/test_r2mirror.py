@@ -189,6 +189,111 @@ class MirrorTests(unittest.TestCase):
             m.scan(self.db, config)
         self.assertEqual(dict(self.row()), before)
 
+    def inventory(self):
+        return [tuple(row) for row in self.db.execute("SELECT * FROM assets ORDER BY alias")]
+
+    def test_selected_scan_new_stale_and_unchanged_verified(self):
+        self.seed()
+        self.assertEqual(self.copy()[0], (1, 0))
+        alias = "ftesurf/maps/surf_test.bsp"
+        before = dict(self.row())
+        self.assertEqual(m.scan(self.db, self.config, only=[alias]), 1)
+        self.assertEqual(dict(self.row()), before)
+        (self.maps / "surf_test.bsp").write_bytes(b"VBSP-new-current-body")
+        (self.maps / "surf_new.bsp").write_bytes(b"VBSP-new")
+        self.assertEqual(m.scan(self.db, self.config,
+                                only=[alias, "ftesurf/maps/surf_new.bsp"]), 2)
+        for name in (alias, "ftesurf/maps/surf_new.bsp"):
+            row = self.row(name)
+            self.assertEqual(row["state"], "pending")
+            self.assertEqual(row["present"], 1)
+            self.assertEqual(row["sha"], "")
+            self.assertEqual(row["object_key"], "")
+            self.assertEqual(row["verified_at"], "")
+            self.assertEqual(row["error"], "")
+            self.assertEqual(row["sig"], m.signature(Path(row["source"]).stat()))
+            self.assertEqual(row["bytes"], Path(row["source"]).stat().st_size)
+        # A different configured source root also refreshes the selected row.
+        replacement = self.root / "replacement"
+        replacement.mkdir()
+        (replacement / "surf_new.bsp").write_bytes(b"VBSP-other-root")
+        config = {"groups": {"maps": str(replacement)}}
+        m.scan(self.db, config, only=("ftesurf/maps/surf_new.bsp",))
+        self.assertEqual(self.row("ftesurf/maps/surf_new.bsp")["source"],
+                         str(replacement / "surf_new.bsp"))
+
+    def test_selected_scan_preserves_every_unselected_column(self):
+        self.seed()
+        for name in ("surf_absent.bsp", "surf_changed.bsp", "surf_hidden.bsp"):
+            (self.maps / name).write_bytes(b"VBSP-fixture")
+        m.scan(self.db, self.config)
+        self.assertEqual(self.copy()[0], (4, 0))
+        with self.db:
+            self.db.execute("UPDATE assets SET present=0, state='error', error='fixture-error' "
+                            "WHERE alias='ftesurf/maps/surf_hidden.bsp'")
+        before = {row[0]: row for row in self.inventory()}
+        (self.maps / "surf_absent.bsp").unlink()
+        (self.maps / "surf_changed.bsp").write_bytes(b"VBSP-changed-body")
+        (self.maps / "surf_added.bsp").write_bytes(b"VBSP-added")
+        with self.db:
+            self.db.execute("UPDATE assets SET state='error' WHERE alias=?",
+                            ("ftesurf/maps/surf_test.bsp",))
+        self.assertEqual(m.scan(self.db, self.config,
+                                only={"ftesurf/maps/surf_test.bsp"}), 1)
+        self.assertEqual(self.row()["state"], "pending")
+        after = {row[0]: row for row in self.inventory()}
+        self.assertEqual(set(after), set(before))
+        for alias in before:
+            if alias != "ftesurf/maps/surf_test.bsp":
+                self.assertEqual(after[alias], before[alias])
+
+    def test_selected_scan_minimum_counts_full_inventory(self):
+        self.seed()
+        (self.maps / "surf_second.bsp").write_bytes(b"VBSP-second")
+        config = {**self.config, "minimum_files": {"maps": 2}}
+        self.assertEqual(m.scan(self.db, config,
+                                only=frozenset({"ftesurf/maps/surf_test.bsp"})), 1)
+        self.assertIsNone(self.row("ftesurf/maps/surf_second.bsp"))
+        before = self.inventory()
+        config["minimum_files"]["maps"] = 3
+        with self.assertRaises(ValueError):
+            m.scan(self.db, config, only=["ftesurf/maps/surf_test.bsp"])
+        self.assertEqual(self.inventory(), before)
+
+    def test_selected_scan_invalid_or_missing_aliases_never_write(self):
+        self.seed()
+        alias = "ftesurf/maps/surf_test.bsp"
+        (self.maps / "zero.bsp").write_bytes(b"")
+        (self.maps / "directory.bsp").mkdir()
+        before = self.inventory()
+        cases = ([], (), set(), alias, {alias: True}, 1, [1], [alias, alias],
+                 ["surf_test.bsp"], ["maps/surf_test.bsp"], [alias + "\n"],
+                 ["ftesurf/maps/../surf_test.bsp"], ["ftesurf/maps/sub/test.bsp"],
+                 ["ftesurf/maps/zero.bsp"], ["ftesurf/maps/directory.bsp"],
+                 [alias, "ftesurf/maps/missing.bsp"], ["avatars/" + "a" * 40 + ".jpg"],
+                 ["ftesurf/maps/private.rec"], ["ftesurf/maps/Surf_test.bsp"])
+        for only in cases:
+            with self.subTest(only=only):
+                with self.assertRaises(ValueError):
+                    m.scan(self.db, self.config, only=only)
+                self.assertEqual(self.inventory(), before)
+        # Even a valid selection cannot hide a failing unselected root/group.
+        for group, root, error in (("zones", self.root / "absent", OSError),
+                                   ("private", self.maps, KeyError)):
+            with self.subTest(group=group):
+                config = {"groups": {"maps": str(self.maps), group: str(root)}}
+                with self.assertRaises(error):
+                    m.scan(self.db, config, only=[alias])
+                self.assertEqual(self.inventory(), before)
+
+    def test_default_scan_still_refreshes_global_presence(self):
+        self.seed()
+        (self.maps / "surf_test.bsp").unlink()
+        (self.maps / "surf_new.bsp").write_bytes(b"VBSP-new")
+        self.assertEqual(m.scan(self.db, self.config), 1)
+        self.assertEqual(self.row()["present"], 0)
+        self.assertEqual(self.row("ftesurf/maps/surf_new.bsp")["state"], "pending")
+
     def test_upload_and_whole_body_verification_control_acted(self):
         self.seed()
         (result, _) = self.copy()

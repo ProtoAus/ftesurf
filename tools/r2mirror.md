@@ -96,6 +96,29 @@ automatic deletion/repair of an allegedly immutable corrupted remote object.
 Fix that explicitly only after establishing exact ownership and intended bytes.
 Transport output is suppressed; report error classes, not signed URLs/paths.
 
+## Selected registration (SDK only)
+
+`scan(db, config, only=["ftesurf/maps/example.bsp"])` registers or refreshes
+only those exact, case-sensitive full compatibility aliases. `only` must be a
+nonempty list, tuple, set or frozenset of unique strings matching configured
+public groups and their existing filename rules. Strings, dictionaries, empty
+collections, duplicates and invalid aliases are rejected before writes.
+
+All configured roots are enumerated before the transaction; `minimum_files`
+counts the full ordinary nonzero inventory, not the selected subset. Every
+requested alias must be observed or the call raises without changing the ledger.
+Selected new/changed sources become pending; unchanged sources retain existing
+readiness (errors retry as pending). Every column of every unselected existing
+row stays untouched, including presence. Unselected new files are not registered.
+The return value is the number of selected observed rows. Omitting `only` (or
+passing `None`) preserves the full global scan, including absence marking.
+
+This adds no CLI selection or publication authority. The caller must still hold
+the existing writer lock and establish public eligibility, current-byte entitlement
+and source controls. Upload, full readback, catalogue ownership and publication
+checks are unchanged; selected registration is not a complete catalogue or proof
+of delivery. Never use it to bypass another publisher's ownership or source holds.
+
 ## Gzip companions
 
 `tools/r2gzip.py` reads the existing publisher ledger and keeps its own existing
