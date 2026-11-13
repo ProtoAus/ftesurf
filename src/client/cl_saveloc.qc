@@ -273,10 +273,6 @@ float  rec_sl_holdackat;
   observe/join on the same map clears the edict and CSQC's count stayed ahead.
 */
 float rec_sl_ackseen;
-// P1544: rec_sl_sent at the last command that can move the cursor or the list (all but
-// sl_load/sl_hold/sl_holdoff), and at the last sl_holdoff. At 500 ms a fallback load's own
-// three commands kept every load after it off the predicted path, ~1 s held each.
-float rec_sl_rowsent, rec_sl_offsent;
 
 void() SaveLoc_Resync =
 {
@@ -286,25 +282,11 @@ void() SaveLoc_Resync =
 		return;
 	ack = getstatf(STAT_FS_SLACK);
 	if (ack < rec_sl_ackseen)
-	{
 		rec_sl_sent = ack;
-		rec_sl_rowsent = min(rec_sl_rowsent, ack);
-		rec_sl_offsent = min(rec_sl_offsent, ack);
-	}
 	if (ack > rec_sl_sent)
 		rec_sl_sent = ack;
 	rec_sl_ackseen = ack;
 };
-
-// P1544: a command that can change the published cursor row is unanswered.
-float() SaveLoc_RowPending =
-{
-	SaveLoc_Resync();
-	return (getstatf(STAT_FS_SLACK) < rec_sl_rowsent);
-};
-
-// P1544: a stringcmd sl_holdoff is unanswered: it runs before any later command's op.
-float() SaveLoc_HoldoffPending = { return (getstatf(STAT_FS_SLACK) < rec_sl_offsent); };
 
 string() SaveLoc_SaveCommand;   // cl_rewind.qc: live, rewind or replay cursor
 void() SaveLoc_LoadContext;
@@ -353,10 +335,6 @@ void(string c) SaveLoc_Cmd =
 		if (!strcmp(c, "sl_load"))
 		if (rec_sl_pv_on)
 			rec_sl_pv_ack = rec_sl_sent;
-		if (!strcmp(c, "sl_holdoff"))
-			rec_sl_offsent = rec_sl_sent;
-		else if (strcmp(c, "sl_load") && strcmp(c, "sl_hold"))
-			rec_sl_rowsent = rec_sl_sent;
 	}
 	c = Trail_Command(c);
 	localcmd(strcat("cmd ", c, "\n"));
@@ -507,6 +485,21 @@ void() SaveLoc_ResetHold =
 	rec_sl_leadans = rec_sl_leadhad = rec_sl_holdack = rec_sl_holdackat = 0;
 };
 
+/*
+  P1544: a stringcmd hold whose sl_load and sl_hold the server has run, with no sl_ command unanswered,
+  can let go on a command: nothing it could overtake is left. Its sl_holdoff kept the next load off the
+  predicted path for a round trip, and that load's own release did the same, so a reload loop at 250 or
+  500 ms stayed on the stringcmd path (rig: every reload held 1.02 s, the backstop, see SaveLoc_LeadDone).
+*/
+float() WarpOp_ReleaseString;
+float() SaveLoc_StringHoldDone =
+{
+	SaveLoc_Resync();
+	if (rec_sl_holdack <= 0 || rec_sl_sent != getstatf(STAT_FS_SLACK))
+		return FALSE;
+	return (getstatf(STAT_FS_SLACK) >= rec_sl_holdack);
+};
+
 void() SaveLoc_Release =
 {
 	local float sent;
@@ -525,6 +518,8 @@ void() SaveLoc_Release =
 	sent = FALSE;
 	if (rec_sl_wophold)
 		sent = WarpOp_Release();
+	else if (SaveLoc_StringHoldDone())
+		sent = WarpOp_ReleaseString();
 	if (!sent)
 		SaveLoc_Cmd("sl_holdoff");
 	rec_sl_wophold = FALSE;
@@ -705,13 +700,22 @@ void(float scan) SaveLoc_LoadKey =
 float wop_fifoload;              // WarpOp_Load: the trail FIFO is busy only with this pair
 float(float op) WarpOp_Row;
 float() WarpOp_LoadPredicted;
+float() WarpOp_Able;
 float() SaveLoc_FifoLoad =
 {
 	local float ok;
 
 	if (!rec_sl_fifoload || !rec_sl_holding || rec_sl_wophold)
 		return 0;
-	if (!WarpOp_Row(WOP_LOAD))
+	if (!WarpOp_Able())
+	{
+		rec_sl_fifoload = FALSE;
+		return 0;
+	}
+	// WarpOp_Load refuses while any sl_ stringcmd is unanswered: one queued behind another reliable
+	// can run after a later command's op. Its numeric count can trail the save's answer a packet too.
+	SaveLoc_Resync();
+	if (rec_sl_sent != getstatf(STAT_FS_SLACK) || !WarpOp_Row(WOP_LOAD))
 	{
 		if (!rec_sl_fifowait)
 			rec_sl_fifowait = cltime;
@@ -757,7 +761,9 @@ float() SaveLoc_LeadDone =
 {
 	local float answered;
 	// P1384: a predicted load and its release ride commands in order; the client already drew both.
-	answered = (rec_sl_wophold && rec_sl_pred) || SaveLoc_LoadAnswered();
+	// P1544: bracketed -- `=` binds tighter than `||`, so the answer was dropped and every unpredicted
+	// load held to the backstop (measured: answered at 0.32 s, let go at 1.03 s).
+	answered = ((rec_sl_wophold && rec_sl_pred) || SaveLoc_LoadAnswered());
 	return (answered || cltime - rec_sl_holdt0 >= 1);
 };
 
