@@ -61,11 +61,18 @@ Ordinary Source rewind and save behavior is not intentionally changed.
 ## Build and delivery limits still open
 
 The engine source is frozen locally at
-`92d87c1f21eb2ef0f3dd452a36cf2f26a16cbd38`, tag `patch-1542`; it includes the
-published P1541 delivery-note advance without changing runtime code. It is not
-pushed. The compiled Windows products are still diagnostic dirty-tree products,
-not a final commit-bound deployment. Independent PE inspection has qualified an
-owned 19-DLL, 11,018,734-byte file stage, with exact source/stage hashes and no
+`1bfa3eae138c70ad94e05416dfd96fc0cb327cb4`, tag `patch-1542`; it includes the
+published P1541 delivery-note advance and a portable plugin-metadata emitter
+correction. It is not pushed. The earlier clean `92d87c1f2` Full cohort compiled
+with the exact `git-8734-patch-1542-0-g92d87c1f2` stamp and no new warnings, but
+its five plugin ZIP payloads contain inherited literal backslash-n separators.
+Those original products remain retained with a metadata HOLD, not rewritten.
+Five old-echo negative controls and five same-shell printf positives verify the
+one-line emitter correction at the source/byte level; they do not execute the
+package parser. A new source/tag-bound Full is still required before qualifying
+the corrected products. The former unpublished local tag object is preserved;
+no public tag or history was replaced. Independent PE inspection has qualified
+an owned 19-DLL, 11,018,734-byte file stage, with exact source/stage hashes and no
 missing non-system import names. Both Windows installs still lack those exact
 app-local names. Final product binding, fresh exclusive/no-overwrite placement
 and an actual loader/runtime check remain required. File closure is not ABI or
@@ -87,10 +94,10 @@ generated file and diff were preserved before restoring that owned banner-only
 change. Its shader body was unchanged; no build product is qualified merely by
 file presence.
 
-Remaining delivery work includes the paired inspected QC candidate commit,
-commit-bound artifact/runtime checks, the outstanding historical input
-qualification, final Windows dependency placement, and the normal guarded dual
-Windows/fleet deployment. No publication, deployment or observed owner-feel pass
+The paired inspected QC candidate commits and engine pins are local only.
+Remaining delivery work includes the corrected commit-bound Full and actual
+runtime checks, the outstanding historical input qualification, final Windows
+dependency placement, and the normal guarded dual Windows/fleet deployment. No publication, deployment or observed owner-feel pass
 is claimed here. Existing production/default movement remains in service.
 
 ## Small human check after reviewed deployment

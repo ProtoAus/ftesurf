@@ -304,7 +304,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   92d87c1f21eb2ef0f3dd452a36cf2f26a16cbd38
+commit   1bfa3eae138c70ad94e05416dfd96fc0cb327cb4
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
