@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1531 Jargon take over, live edits, options -- owner check PENDING
+- Jargon tab: pick "When I press", Arm in any start box, surf a ramp or two, press Take over now (or bind a key to tas jargon takeover). The console says "took over" and Jargon goes on from there, in the stage you are in.
+- While Jargon runs, type a new X for a waypoint ahead, or add an air point: the console says Jargon aims there, or takes the air point at the next waypoint.
+- Options (the switch above the waypoint table): try Thorough or a wider path, then Start; hover a choice for what it does.
+- Known: Take over needs the guide's route within 400 u of where you are; Redo from a waypoint needs that waypoint reached in Jargon's last run.
+
 ## P1528 Jargon panel, portals, starts -- LIVE 12 Nov 22:13Z: 12 lobbies + both installs qw 9693e177 / cs 2bfa1db8, codes.txt 128; owner check PENDING
 - TAS panel, Jargon tab: pick a stage in Course and a run in Guide run. In the waypoint table click a number, type, Enter: the row gets a * and the route moves. Pick a row, + Air point, type its numbers; Delete air point; Undo, Redo; Reset asks twice.
 - Arm with "At my jump" or "When I leave the start zone", or pick "It starts by itself" and Start. The keys display should show Jargon's keys while it drives. Stop, then Back to playing.

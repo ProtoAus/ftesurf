@@ -74,6 +74,18 @@ Resolved by P1483 (drop from the P1478 list): the end teleport now scores as the
 runs, 0:12.825 and 0:12.330, the guide 12.570); the search is deterministic from one state with a seed (stage 2 run 0
 gave 0:12.825 and 5 backtracks on two builds).
 
+## Jargon -- leftovers of P1531 (13 Nov)
+
+- Site: the live and Continue replans call SV_TASAutoBacks, whose SV_TASAutoPriorLoad drops prior entries with no
+  stretch in the from-here plan; the next SV_TASAutoPriorKeep rewrites the .prior file without the ramps before the
+  replan point (takeover and from-here chains did this before P1531). Falsifier: a replan keeps every earlier prior.
+- Site: a stage chain inside a full run (a takeover in stage 2..N-1) reports run_t_split, measured from the full run's
+  start, as "finished stage k in". Falsifier: the note gives the stage's own time.
+- Site: redo by demo time takes the first waypoint at that time (a board and an air point on one demo row); the airsig
+  sums cannot see moves that cancel out. Both rare.
+- Site: jgp1531's K3 walk (+forward from the box) leaves it on the second try about half the time; the client's own
+  "leave the start box first" answers the first. A walk on the guide's exit heading would make it deterministic.
+
 ## Jargon -- leftovers of P1528 (13 Nov)
 
 - Site: copying the human's crouch (test cvars tas_jargon_startduck, tas_jargon_rowkeys), both off. The start's copy,

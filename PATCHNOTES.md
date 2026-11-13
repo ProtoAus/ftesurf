@@ -34,6 +34,12 @@
 ### P1532 Journal loss validation
 - Invalid loss declarations are rejected instead of being allowed to cancel reported loss into a measured zero. Unusable loss data is shown as unavailable; independent finite comparisons remain active.
 
+### P1531 Jargon take over, live edits and options
+- Jargon can take over from wherever you are: pick "When I press", Arm in any start box, surf, then press Take over now (or bind tas jargon takeover). It picks the stage you are in.
+- Waypoint edits work while Jargon runs: a moved point is used at once and a new air point from the next waypoint. Continue keeps your edits, and Redo from a waypoint goes back to it with them.
+- The Jargon panel has Options: how hard it tries, how closely it follows the guide, where it boards and finishes, and its behaviour switches. Hover a choice for what it does.
+- With the TAS panel open, the console no longer fills with "the optimizer is running" while Jargon runs after a save.
+
 ### P1530 Journal consistency
 - Journal checks no longer judge later angles against stale settings after a damaged setting-change record. Valid earlier comparisons and restored settings remain checkable.
 - Damaged keyboard-observation records are reported as unavailable, not a whole-run measured zero. Independent mouse-count checks remain active.
