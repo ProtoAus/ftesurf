@@ -36,7 +36,7 @@ stringcmd pair, whose key-up release waits for the server's answer. At 250-500 m
 
 ## Measured (rig on the PC, i9-9900K / RTX 2080 SUPER)
 
-Driver `savelock.py` in the task root, on tools/p1384lead.py's fixture: dedicated fteqwsv64 (C:/FTEQuake,
+Driver tools/p1544savelock.py, on tools/p1384lead.py's fixture: dedicated fteqwsv64 (C:/FTEQuake,
 sha256 b4dc8dca) + ftesurf64 client (854eb4ff), surf_dune end room, `cl_delay_packets` 0/250/500 (adds to
 the round trip), +forward held throughout, a tap = down and up in one frame, three taps 1.2 s apart per
 round. "Held" = press to the frame the client's hold ended; instant = released inside the press frame.
