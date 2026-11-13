@@ -712,10 +712,16 @@ float() WarpOp_RelBlind =
 void() WarpOp_DropRelease =
 {
 	local float i;
-	if (wop_seq)
-		for (i = 0; i < WOP_RING; i = i + 1)
-			if (wop_seq[i] == -1 && wop_op[i] == WOP_RELEASE)
-				wop_seq[i] = 0;
+	if (!wop_seq)
+		return;
+	// A load still queued could be carried after the sl_holdoff (the open fails, or closes at once):
+	// keep its release behind it (review round 3).
+	for (i = 0; i < WOP_RING; i = i + 1)
+		if (wop_seq[i] == -1 && wop_op[i] == WOP_LOAD)
+			return;
+	for (i = 0; i < WOP_RING; i = i + 1)
+		if (wop_seq[i] == -1 && wop_op[i] == WOP_RELEASE)
+			wop_seq[i] = 0;
 	wop_relseq = wop_relat = 0;
 };
 
