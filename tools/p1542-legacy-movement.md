@@ -1,14 +1,18 @@
 # P1542 - experimental legacy movement candidate
 
-Status: **reviewed source published; second Windows install updated and tested**.
+Status: **reviewed source published; both Windows installs updated**.
 Engine47998d6e3 / QC9cb29567 are the tested source pair. The second install has
 the hash-verified native/game-code/dependency cohort and passes its actual
-installed headless client/server map-switch check. The primary install remains
-unchanged while the owner's game is running. The current NanoPi build/default
-full-platform gate is pending: its read-only prerequisite check stopped on
-missing standard `zip`, before any build or remote-root creation. No new lobby
-deployment is claimed. This continues the earlier P1527 prototype, not a full
-HL1/AG/HL2 implementation, release, parity claim or completion of request 6.
+installed headless client/server map-switch check. Main received its normal
+three-native/six-QC ship set plus nineteen app-local dependencies at
+2026-11-13 17:52 UTC, with independent destination and backup verification.
+Main startup/loaded-provider and human acceptance remain pending; file checks
+and the second install's runtime do not establish those. The current NanoPi
+build/default full-platform gate is pending: its read-only prerequisite check
+stopped on missing standard `zip`, before any build or remote-root creation.
+No new lobby deployment is claimed. This continues the earlier P1527 prototype,
+not a full HL1/AG/HL2 implementation, release, parity claim or completion of
+request 6.
 
 ## Available implementation
 
@@ -23,7 +27,8 @@ The server and prediction share two explicit map-spawn selections:
 A selection is applied when a map spawns, not a live mid-run mode change. Unknown
 selectors and `ag-1000` are refused. A fixed simulation rate is not proof of the
 original client's frame-coupled schedule. Authentic 1000 behavior still needs a
-qualified reference; the requested HL2 eras have not been selected/implemented.
+qualified reference. The owner requests BOTH HL2 profiles, before and after the
+backward-acceleration change; neither is implemented or reference-qualified.
 The v1 contexts do not provide longjump equipment, and ladder intent uses analog
 signs. Do not label this full stock HL1 or exact AG compatibility.
 
@@ -113,9 +118,16 @@ every mapped provider or prove every plugin ABI. The second Windows install
 received nineteen dependencies by exclusive create plus seven native and six
 QC/line-table files using the existing deployment helper. Installed hashes,
 previous live .prev files and older rollback preimages were verified before
-and after its actual headless runtime check. The active primary install is
-held unchanged until the owner quits it. File closure and this local delivery
-are not public-redistribution acceptance.
+and after its actual headless runtime check. Once the owner's Main game had
+exited, Main received the existing primary ship set: the client as
+`C:\FTESurf\ftesurf64.exe`, HL2/UI plugins, six QC/line-table files and nineteen
+dependencies. All nine existing products changed to expected hashes and all
+nineteen absent dependencies were exclusively created. Prior-current .prev
+files and older rollback preimages are retained; the second install and source
+artifacts remained unchanged. Main's actual loader/startup check remains
+pending under the low-memory execution hold, not inferred from static PE or
+hash checks. File closure and local delivery are not public-redistribution
+acceptance.
 
 The first isolated Full build failed on a missing freetype include path. A
 supported, scoped make-variable correction completed the same Full entrypoint.
@@ -134,11 +146,12 @@ generated file and diff were preserved before restoring that owned banner-only
 change. Its shader body was unchanged; no build product is qualified merely by
 file presence.
 
-The exact inspected engine/tag and QC source pair is now pushed. Remaining
-work is the primary Windows paired install after the owner quits the running
-game, fresh current default/full-platform qualification and guarded fleet
-delivery. The current Linux build needs its missing ZIP prerequisite resolved;
-no build or existing lobby was changed by the failed read-only preflight.
+The exact inspected engine/tag and QC source pair is now pushed and installed
+in both Windows copies. Remaining work includes Main startup/loaded-provider
+and owner checks, fresh current default/full-platform qualification and guarded
+fleet delivery. The current Linux build needs its missing ZIP prerequisite
+resolved; no build or existing lobby was changed by the failed read-only
+preflight.
 Current Windows full-fixture reuse/baseline qualification is being checked
 separately, not replaced by the small acting-context case. No rendered/owner-
 feel or full-platform pass is claimed. Existing production/default lobbies
