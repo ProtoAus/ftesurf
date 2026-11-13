@@ -1,7 +1,7 @@
 # P1543 - TAS board-event restore continuity
 
-Status: **native/QC fix verified and hash-promoted to both Windows installs;
-post-copy installed-startup smoke blocked before actors**.
+Status: **native/QC fix verified, promoted to both Windows installs, and all
+three installed-native-image startup/provenance roles PASS in isolated fixtures**.
 Native source/tag:422feac19667b9a1151eea57dd001b58c6d53066 /patch-1543.
 Tested QC source:e04daf2f08256f33c96dba2e2a0ca0e68029ab83; published source/
 notes integration:eb54a5f2f0ed945599f6b1fa2cb44dfd99566cde. Subsequent notes
@@ -129,13 +129,30 @@ and its old bytes were not an unchanged prefix. Do not call that later whole-tre
 closure a pass, erase the log or restore player/config data to force one. The
 successful copy-boundary observation is retained at its actual time.
 
-The post-copy real-socket installed-role startup smoke was refused **before any
-actor or lock** by the unchanged2500MiB memory guard; a fresh census measured
-1066MiB available and no game actors. A later shared rig was occupied, not owned
-by this task. No readiness check was weakened. The three never-started disposable
-fixture copies were retired after retaining their input hashes; no task actor or
-owned maintenance gate remains. The full12.450 same-image real-socket run above
-is valid prepared-image evidence, **not** a substitute claim that post-copy
-installed startup, visuals or human launch quality passed. That small readback is
-pending resource availability. Detailed hashes, rollback bytes and private audit
-stay in the owned task's private continuation artifacts.
+The initial post-copy startup smoke was refused **before actors or lock** by the
+unchanged2500MiB guard; a fresh census had1066MiB/no game actors. Later shared-rig
+occupancy was not ours. Original refusals/input hashes remain; no readiness check
+was weakened or redated. Genuine later readiness allowed the existing thin-fixture
+probe. Its first body predicate wrongly required nonzero Z: this map returned an
+acted SSQC `setpos 0 0 0 0 0 0`. The failure/logs are preserved, not a product defect.
+The bounded correction accepts a finite six-value body reply and removes an
+invented client cvar; it does not relax any physics/recording acceptance.
+
+At **13Nov2026 20:43:08UTC**, actual installed `C:\FTESurf\ftesurf64.exe`,
+`C:\FTEQuake\fteqw64.exe` and `C:\FTEQuake\fteqwsv64.exe` all passed native
+source/tag version readback. The dedicated spawned the HL2 map; both clients
+loaded CSQC and returned finite SSQC body poses over the real socket. Every
+actually loaded HL2 provider matched the exact prepared SHA. These use the
+installed images with byte-identical installed progs/providers in isolated thin
+fixtures, not the owner's config or player namespace. Boundary free memory was
+4207MiB. All three actor exits were0, own lock released, all22destination hashes
+still matched, and all18526files in a separately fresh protected-data epoch were
+unchanged. That later epoch does not regrade/erase the earlier changed-log audit.
+
+This is startup/provenance acceptance, **not** human visual/path-quality, cold
+session, full streamed matrix or nativePM_verify acceptance. The full12.450 run
+above remains its separate gameplay/recording evidence. All unique fixture data/
+logs remain; only verified disposable map copies and376own generated COFF objects
+were retired, with all13prepared products intact. No task actor/owned gate remains.
+Detailed hashes, rollback bytes and private audits remain under the owned private
+continuation root; no failed pathing prototype was promoted.
