@@ -21,6 +21,9 @@
 
 ## next
 
+### P1537 Journal closing-field isolation
+- One malformed backend counter no longer discards an otherwise present journal closing record, valid clocks or unrelated counters. Unsupported quantities remain unavailable rather than a fabricated zero or missing-end diagnosis.
+
 ### P1536 Journal backend counts
 - Malformed rejected-input or legacy-click observations can no longer cancel real counts into a reported zero. Unsupported totals and numerical cause notes are withheld without losing independently valid prefix measurements.
 

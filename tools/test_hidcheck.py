@@ -1469,6 +1469,69 @@ def case_backend_count_availability():
           "CONTROL genuine measured backend0 and finite19/19prefix remain valid")
 
 
+def backend_trailer_journal(truncated=False, observations=True, **totals):
+    j = Journal(rawkbd=1, rawmice=1, rawkbds=1,
+                devices=[("mouse", "0", "mouse-example"),
+                         ("keyboard", "0", "keyboard-example"),
+                         ("touchpad", "1", "touchpad-example")], inputcvars=P312_INPUT)
+    j.lines.insert(j.lines.index("begin"), "rawpads 1")
+    yaw = 90.0
+    for i in range(20):
+        j.frame(8800 + i)
+        if i == 10:
+            j.hidden(dev=0, us=0)
+        j.mouse(6, 0)
+        yaw += j.k * 6
+        j.view(6, 0, 10.0, yaw)
+    if observations:
+        j.rejected(2, 2)
+        j.legacypress(2)
+        j.pad(2, 2)
+    if truncated:
+        j.truncate()
+    value = 2 if observations else 0
+    lines = j.end(injected=value, unenum=value, legacybtn=value,
+                  touchpad=value, padreports=value).splitlines()
+    end = lines[-1].split()
+    for name, index in (("injected", 7), ("unenum", 8), ("legacy_presses", 9),
+                        ("touchpad", 10), ("touchpad_digitizer_reports", 11)):
+        if name in totals:
+            end[index] = str(totals[name])
+    lines[-1] = " ".join(end)
+    return "\n".join(lines) + "\n"
+
+
+def case_backend_trailer_isolation():
+    names = ("injected", "unenum", "legacy_presses", "touchpad", "touchpad_digitizer_reports")
+    for truncated in (False, True):
+        for name in names:
+            for token in ("bad", "1.5", "2147483648", "-2"):
+                r = run(backend_trailer_journal(truncated, **{name: token}))
+                label = "%s=%s/truncated=%s" % (name, token, truncated)
+                check(not r.ok and name not in r.info,
+                      "unusable backend closing quantity unavailable, not0: " + label)
+                check("time" in r.info and r.info.get("frame_rate", 0) > 0 and
+                      r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+                      "valid present end/finite prefix19/19 survives unrelated bad count: " + label)
+                check(all(r.info.get(k) == 2 for k in names if k != name) and
+                      not has_fault(r, "no 'end' trailer") and not has_fault(r, "mixes two grammars"),
+                      "other four counters ACT2; bad field is not absent trailer/old grammar: " + label)
+    for truncated in (False, True):
+        r = run(backend_trailer_journal(truncated))
+        check(r.ok and all(r.info.get(k) == 2 for k in names) and "time" in r.info and
+              r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+              "CONTROL fully usable all2 native counters and finite19/19 ACT: %s" % truncated)
+    for name in names:
+        r = run(backend_trailer_journal(True, **{name: 2147483647}))
+        check(r.ok and r.info.get(name) == 2147483647 and
+              all(r.info.get(k) == 2 for k in names if k != name) and "time" in r.info,
+              "CONTROL native signedMAX legitimate whole ahead preserves siblings: " + name)
+    r = run(backend_trailer_journal(observations=False, **{name: -1 for name in names}))
+    check(r.ok and all(k not in r.info for k in names) and "time" in r.info and
+          r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+          "CONTROL all legitimate backend-1 sentinels stay unavailable, not format faults")
+
+
 def model_constant_journal(name=None, value=None, change=False, late=False, text=None):
     if text is None:
         text = namespace_journal([("mouse", "0", "mouse-example")], pointer=0)
@@ -3560,7 +3623,8 @@ def main():
                case_model_numeric_quality, case_native_quoted_byte, case_clock_quality,
                case_rejected_model_change, case_rejected_key_observer,
                case_loss_declarations, case_closing_counters, case_closing_clocks,
-               case_postcap_records, case_backend_count_availability):
+               case_postcap_records, case_backend_count_availability,
+               case_backend_trailer_isolation):
         print("%s:" % fn.__name__)
         fn()
         print("")

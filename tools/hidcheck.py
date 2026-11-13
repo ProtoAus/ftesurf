@@ -774,12 +774,11 @@ def check_hid(path, verbose=False, *, data=None):
                 if dt < 0:
                     raise ValueError("negative clock delta")
                 elapsed = _finite_clock(clock + dt / 1000000.0)
-                # Counter corruption must not discard independently finite clocks.
-                pending = ([_finite_clock(tok[2])] + tok[3:7]
-                           + [int(x) for x in tok[7:]])
+                # Every counter is validated separately; none can poison this clock.
+                pending = [_finite_clock(tok[2])] + tok[3:]
             except (ValueError, OverflowError):
                 bad_clock = True
-                r.fault("line %d: 'end' has an unusable clock or non-numeric field" % (lineno + 1))
+                r.fault("line %d: 'end' has an unusable clock" % (lineno + 1))
                 continue
             prefix_clock = clock
             trailer, clock = pending, elapsed
@@ -1222,14 +1221,28 @@ def check_hid(path, verbose=False, *, data=None):
             if value is not None:
                 r.info[name] = value
         t_events, t_frames, t_dropped, t_hidden = closing_counts
-        t_injected = trailer[5] if len(trailer) > 5 else None
-        t_unenum = trailer[6] if len(trailer) > 6 else None
-        t_legacybtn = trailer[7] if len(trailer) > 7 else None
-        t_touchpad = trailer[8] if len(trailer) > 8 else None   # Patch 468
-        t_padreports = trailer[9] if len(trailer) > 9 else None
+        backend_totals = []
+        for name, token in zip(("injected", "unenum", "legacy_presses", "touchpad",
+                                "touchpad_digitizer_reports"), trailer[5:]):
+            try:
+                value = int(token)
+                if value != -1:
+                    value = _native_report_delta(token)
+            except ValueError:
+                value = None
+                bad_backend_counts.add(name)
+                r.fault("trailer %s is not a usable native count or backend-1 sentinel" % name)
+            backend_totals.append(value)
+        t_injected = backend_totals[0] if len(backend_totals) > 0 else None
+        t_unenum = backend_totals[1] if len(backend_totals) > 1 else None
+        t_legacybtn = backend_totals[2] if len(backend_totals) > 2 else None
+        t_touchpad = backend_totals[3] if len(backend_totals) > 3 else None
+        t_padreports = backend_totals[4] if len(backend_totals) > 4 else None
         for name, total, observed in (("injected", t_injected, injected),
                                       ("unenum", t_unenum, unenum),
-                                      ("legacy_presses", t_legacybtn, legacybtn)):
+                                      ("legacy_presses", t_legacybtn, legacybtn),
+                                      ("touchpad", t_touchpad, padacc),
+                                      ("touchpad_digitizer_reports", t_padreports, padrep)):
             if total is not None and total >= 0:
                 if ((truncated is None and total != observed) or total < observed):
                     bad_backend_counts.add(name)
@@ -1302,7 +1315,7 @@ def check_hid(path, verbose=False, *, data=None):
         xi_only = (nonwin and t_injected is not None and t_injected >= 0
                    and t_unenum is not None and t_unenum < 0
                    and (r.info.get("input_backend") == "X11 XInput2" or saw_i))
-        if t_injected is None:
+        if len(trailer) <= 5:
             if saw_i:
                 r.fault("'i' records are present but the trailer has no "
                         "injected totals -- the file mixes two grammars")
@@ -1310,6 +1323,19 @@ def check_hid(path, verbose=False, *, data=None):
                 r.note("no injected-report counters: this journal predates "
                        "engine Patch 306, so whether synthesized input was "
                        "REJECTED during it cannot be asked of this file.")
+        elif t_injected is None or t_unenum is None:
+            # Present-but-unusable is not old grammar or an absent backend.
+            for name, total, observed in (("injected", t_injected, injected),
+                                          ("unenum", t_unenum, unenum)):
+                if total is not None and total >= 0:
+                    r.info[name] = total
+                    if ((truncated is None and total != observed) or total < observed):
+                        r.fault("trailer %s says %d but its recorded observations hold %d"
+                                % (name, total, observed))
+                    elif total and name not in bad_backend_counts:
+                        r.note("%d reports from the independently usable %s counter; "
+                               "the other closing field is unavailable, so a shared "
+                               "backend cause cannot be inferred." % (total, name))
         elif xi_only:
             r.info["injected"] = t_injected
             r.info["unenum"] = "not counted by this backend"
@@ -1393,7 +1419,7 @@ def check_hid(path, verbose=False, *, data=None):
         #                        not constant over a run and a single value at
         #                        `begin` cannot describe it.
         if t_legacybtn is None:
-            if saw_b:
+            if saw_b and "legacy_presses" not in bad_backend_counts:
                 r.fault("'b' records are present but the trailer has no "
                         "legacy-button total -- the file mixes two grammars")
         elif t_legacybtn < 0:
@@ -1561,9 +1587,15 @@ def check_hid(path, verbose=False, *, data=None):
         pad_events = sum(devids_used.get(int(i), 0) for i in pad_ids)
         pad_presses = sum(devids_btnplus.get(int(i), 0) for i in pad_ids)
         if t_touchpad is None:
-            if saw_p:
+            if saw_p and "touchpad" not in bad_backend_counts:
                 r.fault("'p' records are present but the trailer has no "
                         "touchpad totals -- the file mixes two grammars")
+            if "touchpad" in bad_backend_counts:
+                if t_padreports is not None and t_padreports >= 0:
+                    r.info["touchpad_digitizer_reports"] = t_padreports
+                    if ((truncated is None and t_padreports != padrep) or t_padreports < padrep):
+                        r.fault("trailer digitizer total says %d but 'p' observations hold %d"
+                                % (t_padreports, padrep))
         elif t_touchpad < 0:
             if saw_p:
                 r.fault("'p' records are present although the trailer says "
@@ -1572,7 +1604,7 @@ def check_hid(path, verbose=False, *, data=None):
             r.info["touchpad"] = t_touchpad
             if t_padreports is not None and t_padreports >= 0:
                 r.info["touchpad_digitizer_reports"] = t_padreports
-            elif padrep:
+            elif padrep and "touchpad_digitizer_reports" not in bad_backend_counts:
                 r.fault("'p' records carry %d digitizer reports although the "
                         "trailer says the backend does not count them" % padrep)
             pads = [d for d in devs + devmaps if d[0] == "touchpad"]
@@ -1612,7 +1644,7 @@ def check_hid(path, verbose=False, *, data=None):
                 r.fault("%d pointer events carry the touchpad's devid but the "
                         "trailer says only %d handle-less reports were accepted"
                         % (pad_events, t_touchpad))
-            if t_touchpad:
+            if t_touchpad and "touchpad" not in bad_backend_counts:
                 r.info["touchpad_events"] = pad_events
                 r.note("%d handle-less mouse reports were ACCEPTED as "
                        "precision-touchpad input (a digitizer report preceded "
