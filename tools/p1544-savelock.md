@@ -75,4 +75,12 @@ SV_TimerStitched, .rec/.view and run class unchanged (round-1 fairness lens).
 
 ## Delivery
 
-(filled in at deploy)
+LIVE 14 Nov 2026 ~20:58Z. Main 3b881030 (compiler 1f2efd06, 0 warnings).
+- 12 lobbies: `build.ps1 -Pi` from deploy/p1544-savelock 37f65fe9 = 5c4f772b (the live P1541 source; P1542/P1543
+  are not lobby-delivered and stay out) + the four P1544 code commits; src diff from 6baeb6b4 has P1544's
+  patch-id (54f42d96d20c). Nobody on any lobby; all 12 restarted. Live qwprogs 37ef9e41 / csprogs dd6d6c63
+  (sha256), .prev = 79e18f47 / 3a52a7c9. Second-install sync pointed at a missing dir (skipped).
+- Both Windows installs: csprogs.dat + .lno only (P1544 is client-only), 620c4da4 from main 3b881030,
+  .prev = 4bcabb5d (P1543's install); qwprogs 7040dda7 and menu 1c8bb7c8 untouched; csprogsvers seeded
+  (fdeaf894).
+- tasrevd codes.txt 129 -> 131 (dd6d6c63, 620c4da4; backup codes.txt.pre1544).
