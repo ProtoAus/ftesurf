@@ -351,6 +351,8 @@ KINDS = {
     "d": 2,     # rawdx rawdy
 }
 
+BACKEND_COUNT_FIELDS = {"i": ("injected", "unenum"), "b": ("legacy_presses",)}
+
 # 'v' flag bits.  A frame with any of these set is one the yaw identity does NOT
 # apply to, and saying which is the whole reason the column exists.
 VF_STRAFE_X = 1     # counts went to sidemove, not yaw (+strafe / lookstrafe)
@@ -457,6 +459,14 @@ def _native_unsigned_count(token):
     # Native closing/drop counters use %u; appended backend fields have -1 sentinels.
     if not 0 <= value <= 0xFFFFFFFF:
         raise ValueError("outside native unsigned count range")
+    return value
+
+
+def _native_report_delta(token):
+    value = int(token)
+    # Monotone count deltas use signed %i; backend -1 belongs to the trailer.
+    if not 0 <= value <= 0x7FFFFFFF:
+        raise ValueError("outside native non-negative report range")
     return value
 
 
@@ -687,6 +697,7 @@ def check_hid(path, verbose=False, *, data=None):
     frames = 0
     dropped = 0
     bad_loss = False  # no complete loss measurement from rejected declarations
+    bad_backend_counts = set()  # unavailable whole quantities, never a subtotal/0
     hidden = 0
     injected = 0        # Patch 306: summed from the 'i' records
     unenum = 0
@@ -847,6 +858,7 @@ def check_hid(path, verbose=False, *, data=None):
         except ValueError:
             bad_clock = True
             r.fault("line %d: dt is not an integer: %r" % (lineno + 1, tok[1]))
+            bad_backend_counts.update(BACKEND_COUNT_FIELDS.get(kind, ()))
             if kind == "!":
                 bad_loss = True
             if kind in ("y", "o"):
@@ -862,6 +874,7 @@ def check_hid(path, verbose=False, *, data=None):
             bad_clock = True
             r.fault("line %d: negative dt %d -- time does not run backwards"
                     % (lineno + 1, dt))
+            bad_backend_counts.update(BACKEND_COUNT_FIELDS.get(kind, ()))
             if kind == "!":
                 bad_loss = True
             if kind in ("y", "o"):
@@ -886,6 +899,7 @@ def check_hid(path, verbose=False, *, data=None):
                                  else len(tok) != 2 + want):
             r.fault("line %d: %r has %d fields, expected %d"
                     % (lineno + 1, kind, len(tok), 2 + want))
+            bad_backend_counts.update(BACKEND_COUNT_FIELDS.get(kind, ()))
             if kind == "!":
                 bad_loss = True
             if kind in ("y", "o"):
@@ -1014,21 +1028,30 @@ def check_hid(path, verbose=False, *, data=None):
         elif kind == "i":
             # Patch 306. Deliberately NOT counted as an event: these reports
             # were thrown away by the backend and never became input.
-            try:
-                injected += int(tok[2])
-                unenum += int(tok[3])
+            deltas = {}
+            for name, token in zip(BACKEND_COUNT_FIELDS[kind], tok[2:]):
+                try:
+                    deltas[name] = _native_report_delta(token)
+                except ValueError:
+                    bad_backend_counts.add(name)
+                    r.fault("line %d: 'i' %s is not a usable native non-negative count"
+                            % (lineno + 1, name))
+            injected += deltas.get("injected", 0)
+            unenum += deltas.get("unenum", 0)
+            if len(deltas) == 2:
                 saw_i = True
-            except ValueError:
-                r.fault("line %d: 'i' counts are not numbers" % (lineno + 1))
         elif kind == "b":
             # Patch 307. NOT an event: the K_MOUSE1 it produced is journalled
             # separately as its own '+' record and is counted there. This line
             # says only that raw input could not vouch for that press.
             try:
-                legacybtn += int(tok[2])
-                saw_b = True
+                delta = _native_report_delta(tok[2])
             except ValueError:
-                r.fault("line %d: 'b' count is not a number" % (lineno + 1))
+                bad_backend_counts.add("legacy_presses")
+                r.fault("line %d: 'b' is not a usable native non-negative count" % (lineno + 1))
+            else:
+                legacybtn += delta
+                saw_b = True
         elif kind in ("y", "o"):
             # Patch 1424. NOT events, like 'b'. The engine writes both with dt 0
             # (an older hidcheck faults any other dt), so a nonzero one is not
@@ -1204,6 +1227,12 @@ def check_hid(path, verbose=False, *, data=None):
         t_legacybtn = trailer[7] if len(trailer) > 7 else None
         t_touchpad = trailer[8] if len(trailer) > 8 else None   # Patch 468
         t_padreports = trailer[9] if len(trailer) > 9 else None
+        for name, total, observed in (("injected", t_injected, injected),
+                                      ("unenum", t_unenum, unenum),
+                                      ("legacy_presses", t_legacybtn, legacybtn)):
+            if total is not None and total >= 0:
+                if ((truncated is None and total != observed) or total < observed):
+                    bad_backend_counts.add(name)
         r.info["time"] = t_abs
 
         # A TRUNCATED FILE CANNOT MATCH ITS OWN TRAILER, by construction: the
@@ -1293,7 +1322,7 @@ def check_hid(path, verbose=False, *, data=None):
             elif truncated is not None and t_injected < injected:
                 r.fault("trailer says %d injected reports but the 'i' records "
                         "already hold %d" % (t_injected, injected))
-            if t_injected:
+            if t_injected and "injected" not in bad_backend_counts:
                 r.note("%d core XTEST reports (synthesized input: xdotool, "
                        "x11vnc, Barrier/Synergy/Input Leap, XKB MouseKeys) were "
                        "REJECTED while the pointer was grabbed. They did NOT "
@@ -1339,7 +1368,7 @@ def check_hid(path, verbose=False, *, data=None):
             # tablet and macro drivers, and a laptop's own touchpad utility all
             # synthesize input legitimately. Auto-rejecting a run on this would
             # accuse a named person over their screen reader.
-            if t_injected:
+            if t_injected and "injected" not in bad_backend_counts:
                 r.note("%d synthesized input reports (no device handle) were "
                        "REJECTED by raw input during this journal. They did "
                        "NOT reach the view. This is evidence of an attempt, "
@@ -1347,7 +1376,7 @@ def check_hid(path, verbose=False, *, data=None):
                        "(remote desktop, accessibility and screen-sharing "
                        "tools all synthesize input) -- review, never auto-"
                        "reject." % t_injected)
-            if t_unenum:
+            if t_unenum and "unenum" not in bad_backend_counts:
                 r.note("%d reports came from a real device that was never "
                        "enumerated -- a mouse plugged in after startup, or an "
                        "RDP device excluded by in_rawinput_rdp. That device's "
@@ -1385,7 +1414,7 @@ def check_hid(path, verbose=False, *, data=None):
             # at all, so on such a machine EVERY honest click lands in this
             # count. The Patch 303 device table is what separates the two, and
             # that is a judgement for a reviewer holding both, not for this tool.
-            if t_legacybtn:
+            if t_legacybtn and "legacy_presses" not in bad_backend_counts:
                 pad_cvar = next((v for (n, v, dfl) in inputcvars
                                  if n == "in_rawinput_touchpad"), None)
                 # the state over the whole journal: the opening value, then
@@ -2020,6 +2049,12 @@ def check_hid(path, verbose=False, *, data=None):
         if events:
             r.info["events_per_sec"] = events / span
             r.info["events_per_frame"] = events / float(frames)
+
+    for name in sorted(bad_backend_counts):
+        r.info.pop(name, None)
+        r.note("%s count unavailable: unusable or contradictory backend observations "
+               "cannot establish a whole total or measured zero; independent "
+               "finite prefix observations are separate." % name)
 
     if bad_loss:
         r.info.pop("dropped", None)

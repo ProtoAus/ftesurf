@@ -21,6 +21,9 @@
 
 ## next
 
+### P1536 Journal backend counts
+- Malformed rejected-input or legacy-click observations can no longer cancel real counts into a reported zero. Unsupported totals and numerical cause notes are withheld without losing independently valid prefix measurements.
+
 ### P1535 Journal cap boundaries
 - Input records after a journal byte-cap marker are no longer treated as captured observations. Valid prefix measurements and permitted closing tables remain separate from the unsupported tail.
 

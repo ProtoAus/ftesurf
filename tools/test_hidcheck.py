@@ -1373,6 +1373,102 @@ def case_postcap_records():
           "CONTROL permitted closing device tables and end still follow the cap")
 
 
+def backend_counts_journal(records=(), injected=0, unenum=0, legacy=0, truncated=False):
+    lines = closing_counter_journal(truncated).splitlines()
+    footer = next(i for i, line in enumerate(lines) if line.startswith(("truncated ", "devmap ")))
+    lines[footer:footer] = records
+    end = lines[-1].split()
+    end[7:10] = [str(injected), str(unenum), str(legacy)]
+    lines[-1] = " ".join(end)
+    return "\n".join(lines) + "\n"
+
+
+def case_backend_count_availability():
+    names = ("injected", "unenum", "legacy_presses")
+    def record(name, token, other=0):
+        if name == "injected":
+            return "i 0 %s %s" % (token, other)
+        if name == "unenum":
+            return "i 0 %s %s" % (other, token)
+        return "b 0 %s" % token
+
+    def finite_prefix(r):
+        return ("time" in r.info and r.info.get("frame_rate", 0) > 0 and
+                r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19)
+
+    for name in names:
+        for values in ((2, -2), (-2, 2)):
+            r = run(backend_counts_journal([record(name, v) for v in values]))
+            check(not r.ok, "backend count cancellation is not clean: %s/%s" % (name, values))
+            check(name not in r.info,
+                  "canceled backend quantity is unavailable, never measured0/subtotal: " + name)
+            check(finite_prefix(r) and all(r.info.get(k) == 0 for k in names if k != name),
+                  "independent backend zero/finite prefix19/19 ACT despite cancellation")
+        for token in (-1, -2, "bad", "1.5", 2147483648):
+            totals = {"injected": 0, "unenum": 0, "legacy": 0}
+            rows = [record(name, token, other=2)]
+            other = "unenum" if name == "injected" else "injected"
+            if name == "legacy_presses":
+                rows.insert(0, "i 0 2 0")
+            totals[other] = 2
+            r = run(backend_counts_journal(rows, **totals))
+            label = "%s/%s" % (name, token)
+            check(not r.ok, "unusable backend count observation faults: " + label)
+            check(name not in r.info, "unusable observation cannot support closing0: " + label)
+            check(finite_prefix(r) and r.info.get(other) == 2,
+                  "other known counter2 and finite prefix remain independent: " + label)
+        totals = {"injected": 0, "unenum": 0, "legacy": 0}
+        totals["legacy" if name == "legacy_presses" else name] = 2
+        r = run(backend_counts_journal([record(name, "bad")], **totals))
+        phrase = {"injected": "2 synthesized input reports", "unenum": "2 reports came from",
+                  "legacy_presses": "2 mouse press(es)"}[name]
+        check(not r.ok and name not in r.info and not has_note(r, phrase),
+              "unavailable quantity cannot emit a numeric cause/attempt note: " + name)
+        check(finite_prefix(r), "unknown backend count must not taint finite clocks/identity")
+    for rows, missing in [(["i 0 2"], ("injected", "unenum")),
+                          (["i 0 2 0 extra"], ("injected", "unenum")),
+                          (["b 0"], ("legacy_presses",)),
+                          (["b 0 1 extra"], ("legacy_presses",))]:
+        r = run(backend_counts_journal(rows))
+        check(not r.ok and all(k not in r.info for k in missing),
+              "structurally unsupported backend observation is unavailable, not zero")
+        check(finite_prefix(r), "malformed backend shape preserves finite prefix ACTING19/19")
+    for row, missing in [("i bad 2 3", ("injected", "unenum")),
+                         ("i -1 2 3", ("injected", "unenum")),
+                         ("b bad 2", ("legacy_presses",)),
+                         ("b -1 2", ("legacy_presses",))]:
+        r = run(backend_counts_journal([row]))
+        check(not r.ok and all(k not in r.info for k in missing),
+              "unread backend observation on an invalid clock cannot manufacture complete0")
+        check("time" not in r.info and r.info.get("identity_yaw_judged") == 19 and
+              r.info.get("join_checked") == 19,
+              "existing bad-clock abstention and independent finite model facts remain")
+    for name in names:
+        for truncated, closing in ((False, 0), (True, 1)):
+            totals = {"legacy" if name == "legacy_presses" else name: closing}
+            r = run(backend_counts_journal([record(name, 2)], truncated=truncated, **totals))
+            check(not r.ok and name not in r.info,
+                  "contradictory backend closing total is unavailable, not measured0/subtotal")
+            check(finite_prefix(r) and all(r.info.get(k) == 0 for k in names if k != name),
+                  "independent known counter0 and finite prefix survive contradicted whole count")
+    r = run(backend_counts_journal(["i 0 2 3", "b 0 1"], injected=2, unenum=3, legacy=1))
+    check(r.ok and [r.info.get(k) for k in names] == [2, 3, 1] and
+          has_note(r, "2 synthesized input reports"),
+          "CONTROL positive known backend counts remain measured/review-only, not faults")
+    check(finite_prefix(r), "CONTROL positive count notes still ACT with finite19/19prefix")
+    for name in names:
+        totals = {"legacy" if name == "legacy_presses" else name: 2147483647}
+        r = run(backend_counts_journal([record(name, 2147483647)], **totals))
+        check(r.ok and r.info.get(name) == 2147483647,
+              "CONTROL native signed-int32 maximum count survives: " + name)
+    r = run(backend_counts_journal(injected=-1, unenum=-1, legacy=-1))
+    check(r.ok and all(k not in r.info for k in names) and finite_prefix(r),
+          "CONTROL trailer backend-1 remains legitimate unavailable, never a body delta")
+    r = run(backend_counts_journal())
+    check(r.ok and [r.info.get(k) for k in names] == [0, 0, 0] and finite_prefix(r),
+          "CONTROL genuine measured backend0 and finite19/19prefix remain valid")
+
+
 def model_constant_journal(name=None, value=None, change=False, late=False, text=None):
     if text is None:
         text = namespace_journal([("mouse", "0", "mouse-example")], pointer=0)
@@ -3464,7 +3560,7 @@ def main():
                case_model_numeric_quality, case_native_quoted_byte, case_clock_quality,
                case_rejected_model_change, case_rejected_key_observer,
                case_loss_declarations, case_closing_counters, case_closing_clocks,
-               case_postcap_records):
+               case_postcap_records, case_backend_count_availability):
         print("%s:" % fn.__name__)
         fn()
         print("")
