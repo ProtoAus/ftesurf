@@ -22,6 +22,9 @@
 ## next
 - Ordinary save-load view prediction waits for that load's reply instead of ending early on an older acknowledgement.
 
+### P1535 Journal cap boundaries
+- Input records after a journal byte-cap marker are no longer treated as captured observations. Valid prefix measurements and permitted closing tables remain separate from the unsupported tail.
+
 ### P1534 Journal timeline consistency
 - Journal closing times must cover their recorded prefix. Inconsistent durations or truncation timestamps are unavailable, not measured zero; duplicate or post-close truncation markers no longer pass.
 

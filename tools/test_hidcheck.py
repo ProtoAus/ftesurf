@@ -1181,7 +1181,7 @@ def case_loss_declarations():
           "CONTROL signed backend-unknown sentinels remain valid, not unsigned loss")
 
 
-def closing_counter_journal(truncated=True, **totals):
+def closing_counter_journal(truncated=True, postcap=False, **totals):
     j = Journal(rawkbd=1, rawmice=1, rawkbds=1,
                 devices=[("mouse", "0", "mouse-example"),
                          ("keyboard", "0", "keyboard-example")], inputcvars=P312_INPUT)
@@ -1194,7 +1194,12 @@ def closing_counter_journal(truncated=True, **totals):
         yaw += j.k * 6
         j.view(6, 0, 10.0, yaw)
     if truncated:
-        j.lines.append("truncated 0 %.6f" % j.clock)
+        j.truncate()
+    if postcap:
+        j.frame(8820)
+        j.mouse(6, 0)
+        yaw += j.k * 6
+        j.view(6, 0, 10.0, yaw + (90 if postcap == "bad-view" else 0))
     lines = j.end().splitlines()
     end = lines[-1].split()
     for name, index in (("events", 3), ("frames", 4), ("hidden", 6)):
@@ -1339,6 +1344,33 @@ def case_closing_clocks():
     check("time" in r.info and "truncated_at" in r.info and
           r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
           "first valid cap/prefix remain observed despite rejected duplicate")
+
+
+def case_postcap_records():
+    base = run(closing_counter_journal(True))
+    check(base.ok and base.info.get("identity_yaw_judged") == 19 and
+          base.info.get("join_checked") == 19,
+          "CONTROL known captured prefix before cap ACTS19angle/19join")
+    for tail in (True, "bad-view"):
+        r = run(closing_counter_journal(True, postcap=tail))
+        check(not r.ok and has_fault(r, "after 'truncated'"),
+              "body after cap is not recorded native input: %s" % tail)
+        keys = [k for k in base.info if k.startswith(("identity_", "join_"))]
+        check(all(r.info.get(k) == base.info[k] for k in keys),
+              "unsupported tail cannot judge/accuse/pollute valid captured-prefix identity/joins")
+        check(r.info.get("frame_rate") == base.info.get("frame_rate") and
+              r.info.get("events_per_sec") == base.info.get("events_per_sec") and
+              "time" in r.info and "truncated_at" in r.info and r.info.get("frames") == 21,
+              "prefix rates stay measured; known cap and legitimate whole totals remain")
+    r = run(closing_counter_journal(False, postcap=True))
+    check(r.ok and r.info.get("identity_yaw_judged") == 20 and r.info.get("join_checked") == 20,
+          "CONTROL same extra native body without a cap is valid and ACTS20/20")
+    lines = closing_counter_journal(True).splitlines()
+    lines[-1:-1] = ["devmap mouse 0 mouse-example", "devmap keyboard 0 keyboard-example"]
+    r = run("\n".join(lines) + "\n")
+    check(r.ok and "time" in r.info and "truncated_at" in r.info and
+          r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+          "CONTROL permitted closing device tables and end still follow the cap")
 
 
 def model_constant_journal(name=None, value=None, change=False, late=False, text=None):
@@ -3431,7 +3463,8 @@ def main():
                case_pointer_coordinate_quality, case_observer_numeric_quality,
                case_model_numeric_quality, case_native_quoted_byte, case_clock_quality,
                case_rejected_model_change, case_rejected_key_observer,
-               case_loss_declarations, case_closing_counters, case_closing_clocks):
+               case_loss_declarations, case_closing_counters, case_closing_clocks,
+               case_postcap_records):
         print("%s:" % fn.__name__)
         fn()
         print("")

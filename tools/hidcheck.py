@@ -827,6 +827,9 @@ def check_hid(path, verbose=False, *, data=None):
         if trailer is not None:
             r.fault("line %d: %r record after 'end'" % (lineno + 1, kind))
             continue
+        if truncated is not None:
+            r.fault("line %d: %r record after 'truncated'" % (lineno + 1, kind))
+            continue
 
         if len(tok) < 2:
             r.fault("line %d: %r has no dt" % (lineno + 1, kind))
