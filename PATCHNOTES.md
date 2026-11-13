@@ -24,6 +24,17 @@
 ### P1536 Journal backend counts
 - Malformed rejected-input or legacy-click observations can no longer cancel real counts into a reported zero. Unsupported totals and numerical cause notes are withheld without losing independently valid prefix measurements.
 
+### P1529 Recording consistency
+- Run recording retains a confirmed movement-condition signal through supported landings. Movement itself is unchanged; unavailable comparisons remain unavailable.
+
+### P1524 Input-model quality
+- Unusable input settings no longer produce false angle findings or clean comparisons. Native observation abstains, and analysis keeps unavailable measurements separate from genuine contradictions.
+
+### P1521 Controller input analysis
+- Controller turns no longer cause misleading run-analysis errors. Comparisons that lack the required input data are reported as unavailable rather than clean.
+
+## 0.1.45 2026-11-13
+
 ### P1535 Journal cap boundaries
 - Input records after a journal byte-cap marker are no longer treated as captured observations. Valid prefix measurements and permitted closing tables remain separate from the unsupported tail.
 
@@ -46,9 +57,6 @@
 - Journal checks no longer judge later angles against stale settings after a damaged setting-change record. Valid earlier comparisons and restored settings remain checkable.
 - Damaged keyboard-observation records are reported as unavailable, not a whole-run measured zero. Independent mouse-count checks remain active.
 
-### P1529 Recording consistency
-- Run recording retains a confirmed movement-condition signal through supported landings. Movement itself is unchanged; unavailable comparisons remain unavailable.
-
 ### P1528 Jargon panel, portals and starts
 - Jargon has one panel: pick the course and the guide run from dropdowns, and edit the waypoints in a table (click X, Y or Z, type, Enter). Air points sit in the list, and Undo, Redo and Reset work.
 - Choose how Jargon takes over: at your jump, when you leave the start zone, or by itself. Continue resumes a saved run, and Back to playing returns you to normal play.
@@ -63,17 +71,11 @@
 ### P1525 Input setting analysis
 - Input analysis no longer mistakes a character-valued setting for unexplained movement. Comparisons with unrecorded numeric meaning stay unavailable, while known settings remain checked.
 
-### P1524 Input-model quality
-- Unusable input settings no longer produce false angle findings or clean comparisons. Native observation abstains, and analysis keeps unavailable measurements separate from genuine contradictions.
-
 ### P1523 Observation quality
 - Unusable recorded view data no longer produces clean comparisons. Analysis now distinguishes records that were read from measurements it could actually check.
 
 ### P1522 Input recording validation
 - Unusable input samples no longer appear as clean analysis. Incomplete input measurements stay unavailable instead of being reported as healthy zeroes.
-
-### P1521 Controller input analysis
-- Controller turns no longer cause misleading run-analysis errors. Comparisons that lack the required input data are reported as unavailable rather than clean.
 
 ### P1520 Lines under the HUD
 - Replay paths, trails, board lines and Jargon's route and search lines, with their numbers and names, now draw under the HUD and panels instead of over them.
@@ -129,16 +131,12 @@
 - On Source maps, props (trees, statues, decorations) now finish loading behind the loading screen, so their shaders are ready before you move: no stutter the first time you see them after an update (surf_fairy, bhop_orgrimmar).
 
 ### P1483 Jargon finishes more reliably, and repeats what works
-- Jargon aims a course's last stretch at actually entering the end. A line that gets near the end but would fall short
-  is played as close as it gets, and the finish is tried again with a longer search instead of being given up after
-  one go. On surf_tensor2 stage 2 it finished in both test runs, once faster than the replay it learned from.
-- The same start and settings now search the same way, so a good result can be repeated; pressing Start again after
-  "stuck", or Continue, tries new lines.
+- Jargon aims a course's last stretch at actually entering the end. A line that gets near the end but would fall short is played as close as it gets, and the finish is tried again with a longer search instead of being given up after one go.
+- On surf_tensor2 stage 2 it finished in both test runs, once faster than the replay it learned from.
+- The same start and settings now search the same way, so a good result can be repeated; pressing Start again after "stuck", or Continue, tries new lines.
 - A new Start no longer replaces a saved run that got further.
-- New effort options: "Best of 4 lines" in the panel (each ramp's few best boards are tried against the next ramp
-  before one is kept), and `turns` for the console (a waypoint halfway through each big air turn).
-- Fixed: a server crash in Jargon's search; Jargon stopping a whole run when "trying harder" after backtracks; route
-  editor points that moved on screen but changed nothing (planned points are no longer draggable).
+- New effort options: "Best of 4 lines" in the panel (each ramp's few best boards are tried against the next ramp before one is kept), and `turns` for the console (a waypoint halfway through each big air turn).
+- Fixed: a server crash in Jargon's search; Jargon stopping a whole run when "trying harder" after backtracks; route editor points that moved on screen but changed nothing (planned points are no longer draggable).
 
 ### P1502 Selected public map imports
 - Public map imports can update a selected set while preserving unrelated map entries and earlier map revisions.
@@ -930,12 +928,9 @@
 - A HUD or zone setting changed from the console or a bind now shows within a tenth of a second (instantly while the HUD or zone editor is open).
 
 ### P1237 Faster skies on Source maps
-- The flat sky on Source maps is drawn whole, as Source draws it, instead of being worked out piece by piece
-  every frame: about 8-10% more frames per second where a lot of sky is reflected (surf_eternity's glass),
-  with the same picture.
-- New setting `r_skyroom_scale`: 0.5 draws a map's 3D sky at half resolution, which at `r_renderscale 2` is
-  your screen's own resolution. surf_demise runs about 16% faster at those settings with a slightly softer
-  sky; maps with a simple sky gain nothing. It is off (1) unless you set it.
+- The flat sky on Source maps is drawn whole, as Source draws it, instead of being worked out piece by piece every frame: about 8-10% more frames per second where a lot of sky is reflected (surf_eternity's glass), with the same picture.
+- New setting `r_skyroom_scale`: 0.5 draws a map's 3D sky at half resolution, which at `r_renderscale 2` is your screen's own resolution. It is off (1) unless you set it.
+- surf_demise runs about 16% faster at those settings with a slightly softer sky; maps with a simple sky gain nothing.
 
 ### P1236 Kerned, fuller text
 - Letters in the menus, the HUD and chat now sit as their font intends: pairs like AV, To, Ty and P. close up (kerning). Number readouts do not move, because neither font kerns digits.
@@ -951,8 +946,7 @@
 - With the visualizer sky on, scrolling and animated textures no longer flicker as you move (surf_dragonfall's lava panels).
 
 ### P1233 Faster water on Source maps
-- Water with live reflections (hl2_water 2) draws faster with the same picture: about 22-49% more frames per second at your
-  surf_garden and surf_boreas saves.
+- Water with live reflections (hl2_water 2) draws faster with the same picture: about 22-49% more frames per second at your surf_garden and surf_boreas saves.
 
 ### P1232 Records from KSF and Momentum
 - KSF times and demos are collected again: one bad entry in a player's KSF profile had stopped all KSF collection since 30 October.
