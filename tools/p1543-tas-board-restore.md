@@ -1,10 +1,12 @@
 # P1543 - TAS board-event restore continuity
 
-Status: **native/QC fix verified; Windows promotion not yet recorded**.
+Status: **native/QC fix verified and hash-promoted to both Windows installs;
+post-copy installed-startup smoke blocked before actors**.
 Native source/tag:422feac19667b9a1151eea57dd001b58c6d53066 /patch-1543.
-Tested QC source:e04daf2f08256f33c96dba2e2a0ca0e68029ab83. The subsequent
-merge of published delivery notes changes only three documentation files;
-runtime source, ENGINE metadata and the regression driver remain byte-identical.
+Tested QC source:e04daf2f08256f33c96dba2e2a0ca0e68029ab83; published source/
+notes integration:eb54a5f2f0ed945599f6b1fa2cb44dfd99566cde. Subsequent notes
+and independent reservation merges change no runtime source, ENGINE metadata or
+regression driver. Prepared native and VM images remain the exact acted bytes.
 This is a recording-observer fix, **not a faster JARGON pathing release**.
 
 ## Cause and change
@@ -100,10 +102,40 @@ API and preserves the exact corpus. A copied fixture driver rejected an unsuppor
 restored (the driver already preserves all data). Native images were not rebuilt,
 renamed or requalified to hide any failed guard.
 
-Windows promotion must use the exact tested prepared artifacts, preserve rollback
-copies and recheck live actors at the copy boundary. A transient unrelated game/
-server observation was not stopped; a later empty census is a fresh readiness
-observation, not a reinterpretation of the earlier one. No release, Build bump,
-Pi/native fleet/backend swap, detector change or historical evidence repair is
-part of this local TAS-authoring fix. Installed-file hashes, readback and UTC must
-be recorded separately below once the guarded dual-install copy completes.
+Windows promotion used the exact tested prepared artifacts, preserved rollback
+copies and rechecked live actors at the copy boundary. A transient unrelated game/
+server observation was not stopped; a later empty census was fresh readiness,
+not a reinterpretation of the earlier one. No release, Build bump, Pi/native fleet/
+backend swap, detector change or historical evidence repair is included.
+
+## Windows delivery and remaining readback limit
+
+At **13Nov2026 20:03:27UTC**, the inspected build procedure's existing `Deploy`
+function promoted the frozen native and VM products, without recompiling them.
+Its normal role map covers `C:\FTESurf` and `C:\FTEQuake`:22 destination hashes
+matched,18 files changed and4 already matched. Both HL2 providers are included.
+The qualified1542 predecessors matched before copying; changed targets retain
+`.prev`, with original and prior-`.prev` preimages retained privately. No owner or
+peer game/server was stopped. The short owned rig lock was released.
+
+All18526 captured config/data/dependency file byte hashes matched immediately
+after copying, including the optional owner-config presence. No source files or
+checkout refs, ENGINE metadata, optional primary native alias, dependency DLL or
+player record was copied/rewritten as a deployment target. A later read-only audit still matched
+all22 installed destinations. Its broader protected-file observation found one
+changed diagnostic/runtime `.log`, referenced by `tools/mapscan_6h.ps1`; the other
+18525 and owner-config presence still matched. The producer is **UNATTRIBUTED**,
+and its old bytes were not an unchanged prefix. Do not call that later whole-tree
+closure a pass, erase the log or restore player/config data to force one. The
+successful copy-boundary observation is retained at its actual time.
+
+The post-copy real-socket installed-role startup smoke was refused **before any
+actor or lock** by the unchanged2500MiB memory guard; a fresh census measured
+1066MiB available and no game actors. A later shared rig was occupied, not owned
+by this task. No readiness check was weakened. The three never-started disposable
+fixture copies were retired after retaining their input hashes; no task actor or
+owned maintenance gate remains. The full12.450 same-image real-socket run above
+is valid prepared-image evidence, **not** a substitute claim that post-copy
+installed startup, visuals or human launch quality passed. That small readback is
+pending resource availability. Detailed hashes, rollback bytes and private audit
+stay in the owned task's private continuation artifacts.
