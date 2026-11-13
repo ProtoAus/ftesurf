@@ -526,6 +526,9 @@ void() SV_TASAutoTurnsPlace =
 	}
 };
 
+float as_dirpick;                // P1531: SV_TASAutoPlan's nearest sample must go the body's way (mid-course plans)
+float(entity e, float from) SV_TASAutoPlan;
+float(entity e) SV_TASAutoPlanHere = { local float s; as_dirpick = 1; s = SV_TASAutoPlan(e, -1); as_dirpick = 0; return s; };
 // from < 0: from the sample nearest the body; else from that sample (the preview's: the start box's exit)
 float(entity e, float from) SV_TASAutoPlan =
 {
@@ -538,8 +541,9 @@ float(entity e, float from) SV_TASAutoPlan =
 		for (i = as_rmin; i < as_nrows; i = i + 1)
 		{
 			d = vlen(SV_TASAutoRowO(i) - e.origin);
-			// P1531: a path that crosses itself (a zigzag, stacked ramps): the sample going the body's way, not one beside it
-			if (vlen([e.velocity_x, e.velocity_y, 0]) > 100) if (vlen([as_rows[i*7+4], as_rows[i*7+5], 0]) > 100)
+			// P1531: mid-course (a takeover, a replan), on a path that crosses itself (a zigzag, stacked ramps): the sample going
+			// the body's way, not one beside it. Not at a start's handover: a box exit 57 deg off the line still matches.
+			if (as_dirpick) if (vlen([e.velocity_x, e.velocity_y, 0]) > 100) if (vlen([as_rows[i*7+4], as_rows[i*7+5], 0]) > 100)
 				if (normalize([e.velocity_x, e.velocity_y, 0]) * normalize([as_rows[i*7+4], as_rows[i*7+5], 0]) < 0.3) d = d + 1000;
 			if (d < best) { best = d; s = i; }
 		}
@@ -1911,7 +1915,7 @@ void(entity e) SV_TASAutoFrame =
 		{	// the air points changed since the save (one added before any existed too): the rest planned anew from here, with
 			// them, by a chain that does not overwrite the save
 			for (i = 0; i < rt_n; i = i + 1) if (rt_nn[i*3] == 0 && rt_nn[i*3+1] == 0 && rt_nn[i*3+2] == 0) e.as_air = 1;
-			s = SV_TASAutoPlan(e, -1);
+			s = SV_TASAutoPlanHere(e);
 			if (s < 0 || as_n < 1) { SV_TASAutoStop(e, "your air points changed and the guide's route is not near here: Start again"); return; }
 			e.as_i = 0; e.as_tprev = as_rows[s*7]; e.as_fromstart = 0; e.as_saved = -1; e.as_failmax = -1;
 			SV_TASAutoSendPlan(e);
@@ -2285,7 +2289,7 @@ void(entity e) SV_TASAutoFrame =
 			if (e.as_replan && !s && e.as_i < as_n)
 			{	// P1531: the player's air points changed while it ran: the rest planned anew from here, renumbered from 1
 				e.as_replan = 0;
-				t = SV_TASAutoPlan(e, -1);
+				t = SV_TASAutoPlanHere(e);
 				if (t >= 0 && as_n > 0)
 				{
 					e.as_i = 0; e.as_tprev = as_rows[t*7]; e.as_fromstart = 0; e.as_saved = -1; e.as_failmax = -1; e.as_stage = 1;
@@ -2829,7 +2833,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 	}
 	// P1531 take over from here (paused at the tools' gate): the plan from the guide row nearest the body going its way,
 	// in the course the panel gave (the stage the run is in)
-	s = SV_TASAutoPlan(e, -1);
+	s = SV_TASAutoPlanHere(e);
 	if (s < 0) { SV_TASAutoNote(e, 0, "you are not on the guide run's route (400 u): restart, or redo from a stretch"); SV_TASAutoOptRestore(e); strunzone(path); return; }
 	if (as_n < 1) { sprint(e, PRINT_HIGH, "tas autosurf: no ramp, hop or finish ahead on the demo from here\n"); SV_TASAutoOptRestore(e); strunzone(path); return; }
 	if (e.as_file != "") strunzone(e.as_file);
