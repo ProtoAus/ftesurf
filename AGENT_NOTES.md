@@ -7328,6 +7328,28 @@ must require42checks and exact8baseline labels, and catch unnumbered warnings.
 
 ## Anti-cheat and run evidence
 
+### TAS board observers must follow native restore, not just REC prefix cuts (P1543,13Nov2026)
+
+`SV_TASRewind` already restored the carried native board counter, but did not
+republish it to QC until the next move. Warm REC cuts retained the abandoned
+head's `rec_rec_lastbc`; streamed cuts initialized it before native restoration.
+The next publication could therefore be recorded as a duplicate earlier arrival.
+Publish native `run_boardcount` with fractional carry, then rebase the writer's
+change latch only after successful native restoration, before TAS-head capture.
+Both halves are needed; do not relax the strict reader or repair old recordings.
+Acting original/source controls plus a fresh same-image tensor2 stage2 finish
+(12.450,830inputs,6boards,strict0faults) cover the buffered path, not every cold/
+streamed transaction. No VIEW/nativePM_verify/full-state claim follows from this.
+
+The same bounded investigation found that endsafe portal volumes are not physical
+landing platforms, and height credited by the energy proxy is not a certificate
+of a usable ramp launch. Verified-platform goal and final-height feedback pilots
+acted but regressed; an actually played two-entry final-board handoff also missed.
+All experimental source/knobs were removed. Native endpoint parity held, but it is
+not per-tick/hidden-state parity. Preserve failed hypotheses; do not automatically
+raise energy bars, invent universal launch speeds or convert a failed search into
+an impossibility proof. Detail and limits:tools/p1543-tas-board-restore.md.
+
 **P1498 compiler-entry bounds and native stamp qualification (11 Nov 2026).**
 Pass the selected entry's extent to both string operations, not the surrounding
 aggregate; preserve the exact supported boundary and existing warning/refusal.

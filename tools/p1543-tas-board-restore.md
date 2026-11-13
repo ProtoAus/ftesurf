@@ -1,73 +1,109 @@
 # P1543 - TAS board-event restore continuity
 
-Status: **source candidate, not deployed; real-socket recording acceptance pending**.
-Native candidate source:422feac19667b9a1151eea57dd001b58c6d53066.
-This fixes a recording-observer seam, not JARGON's final-ramp pathing or speed.
-Do not call an in-game finish a valid/native-verified recording.
+Status: **native/QC fix verified; Windows promotion not yet recorded**.
+Native source/tag:422feac19667b9a1151eea57dd001b58c6d53066 /patch-1543.
+Tested QC source:e04daf2f08256f33c96dba2e2a0ca0e68029ab83. The subsequent
+merge of published delivery notes changes only three documentation files;
+runtime source, ENGINE metadata and the regression driver remain byte-identical.
+This is a recording-observer fix, **not a faster JARGON pathing release**.
 
-## Cause and bounded change
+## Cause and change
 
-A native TAS checkpoint already owns and restores `pmsourcestate_t.boardcount`.
-Previously, `SV_TASRewind` did not publish that restored value to QC immediately.
-`SV_TASGo` places/cuts the recorder before applying the native checkpoint. A warm
-buffer cut left `rec_rec_lastbc` at the abandoned future; a streamed cut reset it
-from the still-stale public value. On resumption a counter change could therefore
-be the restoration itself, not a new ramp arrival. A retained completed control
-had the repeated board2 row near5.49 seconds.
+A native TAS checkpoint already restores `pmsourcestate_t.boardcount`, but its
+public QC value was not republished until a later move. `SV_TASGo` places/cuts
+the recorder before applying the native checkpoint. A warm buffered cut left
+`rec_rec_lastbc` at the abandoned future; a streamed cut reset it from the
+still-stale public value. On resumption a counter change could therefore be the
+restoration itself, not a new ramp arrival. A retained completed control had a
+repeated board2 row near5.49seconds.
 
-The native restore now publishes its carried counter alongside its existing
-fractional-carry publication. Only after native restore succeeds, QC aligns the
-writer's board-change latch to that value, before freeze settlement and new TAS
-head capture. A genuine subsequent arrival still increments the counter and is
-recorded. Native count restoration and QC observer alignment are both necessary.
-No recording reader, format, rank, simulation equation, scoring, search, clock or
-Build change is included. Old recordings are neither edited nor regraded.
+Native restore now publishes its carried count alongside fractional carry.
+Only after native restore succeeds, QC aligns the writer's change latch before
+freeze settlement and new TAS-head capture. A subsequent genuine arrival still
+increments the counter and is recorded. Both native and QC halves are required.
+No reader, file format, rank, movement equation, search, goal, clock or Build
+change is retained. Old recordings are neither edited nor regraded.
 
-## Evidence and exact limits
+## Verification
 
-- `tools/test_tas_board_restore.py` extracts the production native capture and
-  carried-state restore block, and the complete `SV_TASGo` / `SV_RecBoard` QC
-  functions. The native fixture passes24 count/optional-field combinations,
-  including absent optional fields, unrelated carried state, plan rebind and
-  unchanged connection tick/epoch. The actual QC functions pass29 assertions:
-  observer alignment before head capture, no row for a resumed non-arrival,
-  first genuine new arrival retained, skipped counters, zero-normal reset,
-  closed recorder, and failed placement/native restore. Original engine47998d6e
-  and QC15205167 each fail independently at the specific missing-publication or
-  stale-latch assertion. Synthetic API/world/arrival stubs do **not** prove full
-  restore admission, actual physics, warm/cold session transactions or complete
-  recording/native verification. The original minimal fixture exposed its own
-  unrecognized system header warning; using the actual unchanged system prefix
-  then required the nine unused standard entrypoint bodies. Both failures were
-  retained. The final fixture has recognized system defs and zero warnings;
-  no warning was suppressed and no product source changed to accommodate it.
-- Existing three-VM `build.ps1 -NoDeploy -Jobs 2`: zero warnings in each VM.
-  Its first invocation refused before compiling because the isolated tool lookup
-  lacked fteqcc. Adding the existing installed compiler directory to PATH fixed
-  the supported discovery seam; no compiler/build-script change was made.
-- Unchanged reader regression:949 checks /0 failures. The first wrapper timed
-  out at120seconds; the live-log rerun completed. A subsequent log-decoding
-  exception did not invalidate or rerun the completed tests; their949/0 footer
-  was read directly. No reader code or validation rule was relaxed.
-- Stable captured current corpus:570 recordings,173 associated views,352 faulty
-  REC files and6 faulty VIEW files. The reader source is byte-identical to the
-  published baseline; existing faults remain faults. No player files were
-  changed. Private per-file evidence is not exported. Initial import/data-type
-  observer errors occurred before a sweep and were corrected against the actual
-  reader API; they are not reader failures or passes.
+- Two independent clean-tree reviews found no source blocker. They inspected
+  actual restore/cut/caller/recorder code and the fixture binding, not just this
+  conclusion. Source review is distinct from native/runtime acceptance.
+- `tools/test_tas_board_restore.py`: actual production native capture and
+  carried-state restore block pass24 count/optional-field arms. Unrelated carried
+  state, plan rebind and connection tick/epoch are preserved. Full production QC
+  `SV_TASGo` / `SV_RecBoard` pass29 assertions: observer alignment before capture,
+  no row for a resumed non-arrival, first genuine new arrival retained, skipped
+  counters, zero-normal reset, closed recorder and refused placement/native
+  restore. Original engine47998d6e and QC15205167 independently fail their exact
+  missing-publication/stale-latch assertions. Final fixture compiles0warnings.
+  Synthetic API/world/arrival stubs do **not** establish full admission, actual
+  physics, streamed/cold-session transactions or complete-recording verification.
+- Existing `build.ps1 -Engine -Full -NoDeploy -Jobs 2` completed from the isolated
+  source with the actual supported compiler/cache route. All three QC VMs have
+  zero warnings. Full native build has74warnings, exactly the same warning
+  messages/counts as its inspected public47998d6e baseline: **zero new warnings**.
+  Required prebuilt dependencies/public headers were copied as a small qualified
+  subset; neither canonical nor peer source/cache/build output was mutated.
+  The generated HL2 shader header differed only in its opening provenance comment;
+  exact generated bytes/diff were retained and only that owned comment restored.
+- Fresh dedicated-socket/headless tensor2 stage2 run on the paired exact images,
+  fixed seed1/OpenGL/640x480/100FPS and declared effort: **finished12.450seconds,
+  five backtracks**. All21 compared played rollout endpoints were bit-equal in
+  origin and velocity. Its complete TAS recording passes the unchanged strict
+  reader with0faults,830inputs and6board rows. No VIEW was produced. No native
+  `pm_verify`, all-hidden-state, all-intermediate-tick, ranked/human provenance or
+  optimality claim is made. This is real buffered TAS restore/recording evidence,
+  not a full streamed-session matrix.
+- Existing strict reader regression:949checks /0failures. Closing corpus sweep
+  matches the exact initial cohort, bytes and verdicts:570recordings,173views,
+ 352faultyREC files and6faultyVIEW files. Existing faults remain faults. Reader
+  source is unchanged, and no canonical player/config files were changed by any
+  diagnostic. All owned client/server processes exited and the shared rig lock
+  was released after every arm.
 
-## Remaining acceptance and pathing work
+## Bounded pathing experiments: not retained
 
-The native gameplay guard currently refuses below2500MiB free RAM; a prior
-continuation diagnostic refused before spawning any actors. No guard is weakened
-and no other process is killed. Full native build/review and a fresh matched
-same-image dedicated-socket TAS finish must establish strict complete-recording
-acceptance before deployment. Native and QC deployment must be paired; the
-ordinary dual-Windows and guarded fleet rules remain in force.
+The owner's final-platform and launch-energy observations were investigated
+separately. All use the same paired P1543 native images, guide and fixed declared
+seed/effort; these are individual diagnostic arms, not a benchmark/generalization
+study. The unchanged control above remains the best retained run.
 
-Separately, compare JARGON's *played* checkpoint endpoints with its predicted
-endpoints. Only if those agree should the bounded entry-to-finish handoff
-experiment compare several actually played final-ramp entries with the existing
-finish continuation. The previous native-window candidate was slower and was
-removed; simply searching more entries is not an improvement. No pathing or
-performance win is claimed by this recorder fix.
+| Experiment | Outcome |
+| --- | --- |
+| Physical platform goal, nearest usable interior | Floor/course association acted; three selected endpoints actually grounded on the verified full-hull footprint. Finished13.110/4backs, slower than12.450. |
+| Same region goal, interior-centre steering | Finished12.585/4backs, slower than control. No selected supported-landing endpoint; final arrival was a genuine end. |
+| Two archived final-board states, same20generation/seed continuation | Both distinct board states actually played; both continuations missed. Bounded stop after two, no ordinary retries/escalation. Higher entry was117.8units higher and about5.3%slower horizontally; selected forecast peaks were about158 and6units below the qualified floor. These are trajectory-conditioned forecasts, not impossibility or measured-impact proof. |
+| Final-floor shortfall into existing energy retry | Floor and feedback acted, but cascaded to12backtracks/one escalation and no finish within600seconds. Rejected. |
+
+All compared played endpoints in these arms matched their native predictions;
+that is not a claim about every intermediate tick or hidden state. The earlier
+contact-only minimum diagnostic was not the full-path trough and was explicitly
+not used as such. Increasing an energy proxy alone did not solve usable launch
+geometry. The original proxy already includes height/potential energy; adequate
+usable dip/takeoff speed, direction and platform reach remain distinct questions.
+Every unsuccessful source/diff/input/log/evidence set is retained privately; all
+experimental goal/beam/feedback code and default-off knobs were removed from the
+product tree. See BACKLOG.md and the pending owner observation in lextest.md.
+
+## Retained failures and delivery boundary
+
+Initial compiler lookup refused before compiling; the existing installed compiler
+PATH resolved it. An early minimal fixture exposed an unrecognized system-prefix
+warning; reusing the actual generated system prefix required the nine unused
+standard entrypoint bodies. No warning was suppressed. An initial reader wrapper
+hit its120second budget; the live-log rerun completed949/0. Subsequent output
+log-decoding and initial corpus import/data-type observer errors were tooling
+failures, not reader verdicts. The corrected sweep uses the reader's actual bytes
+API and preserves the exact corpus. A copied fixture driver rejected an unsupported
+`--keep` before actors; it was removed and the last-working observer protocol
+restored (the driver already preserves all data). Native images were not rebuilt,
+renamed or requalified to hide any failed guard.
+
+Windows promotion must use the exact tested prepared artifacts, preserve rollback
+copies and recheck live actors at the copy boundary. A transient unrelated game/
+server observation was not stopped; a later empty census is a fresh readiness
+observation, not a reinterpretation of the earlier one. No release, Build bump,
+Pi/native fleet/backend swap, detector change or historical evidence repair is
+part of this local TAS-authoring fix. Installed-file hashes, readback and UTC must
+be recorded separately below once the guarded dual-install copy completes.
