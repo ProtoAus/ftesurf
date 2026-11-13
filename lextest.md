@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1531 Jargon take over, live edits, options -- owner check PENDING
+## P1531 Jargon take over, live edits, options -- LIVE 13 Nov 01:47Z: 12 lobbies + both installs qw 3fb10353 / cs 3a52a7c9, codes.txt 129; owner check PENDING
 - Jargon tab: pick "When I press", Arm in any start box, surf a ramp or two, press Take over now (or bind a key to tas jargon takeover). The console says "took over" and Jargon goes on from there, in the stage you are in.
 - While Jargon runs, type a new X for a waypoint ahead, or add an air point: the console says Jargon aims there, or takes the air point at the next waypoint.
 - Options (the switch above the waypoint table): try Thorough or a wider path, then Start; hover a choice for what it does.
