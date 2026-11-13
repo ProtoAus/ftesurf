@@ -21,6 +21,9 @@
 
 ## next
 
+### P1540 Recording summaries
+- Recording summaries keep supported captured-prefix rates even when closing metadata is malformed. Whole-run timing remains unavailable where it cannot be established.
+
 ### P1539 Input recording consistency
 - Damaged or incomplete input records no longer produce unsupported zero totals or misleading cause notes. Known recording boundaries remain effective even when their timestamps are unusable.
 

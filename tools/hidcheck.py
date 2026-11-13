@@ -691,6 +691,7 @@ def check_hid(path, verbose=False, *, data=None):
     # ---- body --------------------------------------------------------------
     clock = 0.0          # running sum of dt, seconds since base
     bad_clock = False   # no timing measurements from unusable clock records
+    bad_boundary_clock = False  # unsupported shape withholds closure, not prefix rates
     bad_close_time = False  # finite but contradictory whole duration
     bad_trunc_time = False  # cap exists even if its absolute timestamp disagrees
     prefix_clock = None     # recorded relative prefix before the closing delta
@@ -771,7 +772,7 @@ def check_hid(path, verbose=False, *, data=None):
             # treated it as zero would report "no injection seen" about a file
             # that could not see any.
             if len(tok) not in (7, 9, 10, 12):
-                bad_clock = True
+                bad_boundary_clock = True
                 r.fault("line %d: 'end' has %d fields, expected 7 (pre-306), "
                         "9 (pre-307), 10 (pre-468) or 12" % (lineno + 1, len(tok)))
                 continue
@@ -801,7 +802,7 @@ def check_hid(path, verbose=False, *, data=None):
             cap_seen = True
             # truncated <dt> <abs>
             if len(tok) != 3:
-                bad_clock = True
+                bad_boundary_clock = True
                 r.fault("line %d: 'truncated' has %d fields, expected 3"
                         % (lineno + 1, len(tok)))
                 continue
@@ -2121,6 +2122,12 @@ def check_hid(path, verbose=False, *, data=None):
         r.note("closing duration unavailable: it contradicts the recorded "
                "prefix clock; independently finite prefix rates and "
                "angle/count observations are separate.")
+
+    if bad_boundary_clock:
+        for key in ("time", "truncated_at"):
+            r.info.pop(key, None)
+        r.note("boundary timing unavailable: unsupported closing record shape; "
+               "independently finite prefix rates are separate.")
 
     if bad_clock:
         for key in ("time", "truncated_at", "first_frame_at", "frame_rate", "events_per_sec"):

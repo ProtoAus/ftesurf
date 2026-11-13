@@ -3643,6 +3643,43 @@ def case_review_rejected_observations():
               "review native integer pad state: %s/%s" % (opening, change))
 
 
+def case_review_boundary_prefix_timing():
+    text = closing_counter_journal(False)
+    base = run(text)
+    timing = ("first_frame_at", "frame_rate", "events_per_sec")
+    check(base.ok and all(base.info.get(k, 0) > 0 for k in timing),
+          "boundary timing CONTROL healthy finite no-tail prefix rates ACT")
+    lines = text.splitlines()
+    cases = {"end-width": "\n".join(lines[:-1] + [lines[-1] + " 0"]) + "\n",
+             "absent-end": "\n".join(lines[:-1]) + "\n"}
+    capped = closing_counter_journal(True).splitlines()
+    cap = next(i for i, line in enumerate(capped) if line.startswith("truncated "))
+    capped[cap] += " 0"
+    cases["cap-width"] = "\n".join(capped) + "\n"
+    for name, changed in cases.items():
+        r = run(changed)
+        check(not r.ok and bool(r.faults), "boundary timing remains FAULT: " + name)
+        check(all(r.info.get(k) == base.info[k] for k in timing),
+              "boundary timing preserves independently finite prefix: " + name)
+        check("time" not in r.info and "truncated_at" not in r.info,
+              "boundary timing no unsupported whole duration/endpoint: " + name)
+        check(r.info.get("identity_yaw_judged") == 19 and r.info.get("join_checked") == 19,
+              "boundary timing accepted prefix19/19 ACT: " + name)
+        check(has_fault(r, "no 'end' trailer") == (name == "absent-end"),
+              "boundary timing present unusable versus absent end: " + name)
+        if name != "absent-end":
+            marker = "end" if name == "end-width" else "truncated"
+            check(has_fault(r, "'%s' has" % marker) and
+                  not has_fault(r, "'devmap' after"),
+                  "boundary timing shape fault and permitted closing table: " + name)
+            tail = run(changed + "f 0 0 9000\ntruncated 0 0\nend 0 0 0 0 0 0\n")
+            check(has_fault(tail, "after 'end'") and has_fault(tail, "second 'end'") and
+                  has_fault(tail, "'truncated' after 'end'") and
+                  all(tail.info.get(k) == r.info.get(k) for k in timing) and
+                  tail.info.get("join_checked") == 19,
+                  "boundary timing no body resurrection or replacement: " + name)
+
+
 def case_review_malformed_boundaries():
     from test_journal_diagnostics import receipt_for
     base = run(closing_counter_journal(True))
@@ -3772,7 +3809,7 @@ def main():
                case_loss_declarations, case_closing_counters, case_closing_clocks,
                case_postcap_records, case_backend_count_availability,
                case_backend_trailer_isolation, case_review_rejected_observations,
-               case_review_malformed_boundaries):
+               case_review_malformed_boundaries, case_review_boundary_prefix_timing):
         print("%s:" % fn.__name__)
         fn()
         print("")
