@@ -17,12 +17,14 @@ comparison plus a small owner check of the actual ramp and platform behavior.
 
 ## Optional GoldSrc/HL2 movement profiles — requested 11 Nov 2026, IN PROGRESS
 
-P1542 is a local, unpushed experimental GoldSrc-style 100/250 practice candidate,
-not the completed reference-faithful request and not deployed. It has shared
-server/prediction contexts and separate unranked state. Full Windows compilation
-and current reader/corpus checks pass; runtime packaging and the remaining
-historical/native qualification are still pending. Status and limits:
-`tools/p1542-legacy-movement.md`. Keep the full acceptance below open.
+P1542 is published experimental GoldSrc-style 100/250 practice, installed in
+both Windows copies on 13 Nov. It is not the completed reference-faithful request.
+It has shared server/prediction contexts and separate unranked state. Full Windows
+compilation and reader/corpus checks pass. The second install passed its actual
+headless client/server check; Main files and backups are verified, but Main
+startup/loaded-provider and owner checks remain pending. Current native/default
+full-platform qualification and lobby delivery are still pending. Status and
+limits: `tools/p1542-legacy-movement.md`. Keep the full acceptance below open.
 
 Lex wants a NEW selectable GoldSrc HL1 profile, including duckrolls and the
 frame-dependent quirks,100/250/1000physics rates, optionally chosen for maps;
@@ -36,12 +38,16 @@ exact HL2 builds on either side of the behavior change, and whether rate means
 fixed simulation updates independent of display FPS or the original FPS coupling.
 Full reference/rate decisions remain pending; do not claim exact parity from the
 experimental 100/250 implementation. Authentic 1000 scheduling has no qualified
-oracle and remains refused. For HL2, the owner has been asked whether older
-uncapped forward boost and Orange Box ABH-enabled behavior are the intended two
-targets; a later ABH-removal build has not been established. Those full profiles
-remain unbuilt. Use compatible licensed reference/oracle behavior; do not copy non-GPL HL1 SDK
-code into the GPL engine or assume AG code licensing. An installed executable's
-presence, a video or correct map hulls alone is not a behavioral oracle.
+oracle and remains refused. On 13 Nov the owner confirmed BOTH HL2 profiles,
+before and after the backward-acceleration change; this is not a choice of only
+one era. Source references distinguish older uncapped forward jump boost from
+the later ABH-enabling view-forward speed correction, not a fix removing ABH.
+Exact retail builds/patch identity and full behavioral references still need
+qualification; SDK import dates alone do not identify a retail patch. Both full
+profiles remain unbuilt. Use compatible licensed reference/oracle behavior;
+do not copy non-GPL HL1 SDK code into the GPL engine or assume AG code licensing.
+An installed executable's presence, a video or correct map hulls alone is not a
+behavioral oracle.
 
 Acceptance: dedicated server and client prediction use the same profile, hulls,
 command timing/quantization, crouch/unduck transitions, friction/air acceleration
