@@ -403,7 +403,7 @@ void() TASJargon_Frame =
 
 void() TASJargon_EditStart =
 {
-	if (taso_state == 1) { print("tas jargon: Stop Jargon to move its waypoints\n"); return; }      // review 1528: an edit cleared the armed state
+	if (taso_state == 1) { print("tas jargon: Move in the world waits for a stop -- type the numbers in the table to edit live\n"); return; }      // its free camera and the chase would fight
 	if (!jg_n) TASJargon_RequestPlan();
 	jg_edit = jg_fly = TRUE; jg_flyt = cltime;
 	jg_camorg = getproperty(VF_ORIGIN); jg_bodyang = getproperty(VF_CL_VIEWANGLES); jg_move = '0 0 0'; jg_btn = 0;
