@@ -1907,8 +1907,10 @@ void(entity e) SV_TASAutoFrame =
 		}
 		e.as_i = e.as_cnext; e.as_try = 0; e.as_tprev = e.as_ctprev; e.as_stage = 1; e.as_finrec = e.run_t_finrec;
 		if (jg_ovn > 0 && jg_ovpath == e.as_file) SV_TASAutoMoved();     // P1531: points moved since the save (Lex: Continue keeps edits)
-		if (e.as_air && SV_TASAutoAirsChanged())
-		{	// the air points changed since the save: the rest planned anew from here (a chain that does not overwrite it)
+		if (SV_TASAutoAirsChanged())
+		{	// the air points changed since the save (one added before any existed too): the rest planned anew from here, with
+			// them, by a chain that does not overwrite the save
+			for (i = 0; i < rt_n; i = i + 1) if (rt_nn[i*3] == 0 && rt_nn[i*3+1] == 0 && rt_nn[i*3+2] == 0) e.as_air = 1;
 			s = SV_TASAutoPlan(e, -1);
 			if (s < 0 || as_n < 1) { SV_TASAutoStop(e, "your air points changed and the guide's route is not near here: Start again"); return; }
 			e.as_i = 0; e.as_tprev = as_rows[s*7]; e.as_fromstart = 0; e.as_saved = -1; e.as_failmax = -1;
@@ -2600,7 +2602,11 @@ void(entity e, float argc) SV_TASAutoCommand =
 		if (n >= TAS_ASMAX) { sprint(e, PRINT_HIGH, "tas autosurf: too many moved points\n"); return; }
 		jg_ovt[n] = stof(argv(3)); jg_ovo[n*3] = stof(argv(4)); jg_ovo[n*3+1] = stof(argv(5)); jg_ovo[n*3+2] = stof(argv(6));
 		if (n == jg_ovn) jg_ovn = jg_ovn + 1;
-		if (e.as_on && e.as_stage != 20 && !e.as_route && jg_ovpath == e.as_file) SV_TASAutoMoved();      // P1531: live
+		if (e.as_on && e.as_stage != 20 && !e.as_route && jg_ovpath == e.as_file)
+		{	// P1531: live; a console line, not a note (a note replaces the panel's state line)
+			SV_TASAutoMoved();
+			sprint(e, PRINT_HIGH, sprintf("tas autosurf: the point at demo t=%.3f moved: Jargon aims there from now on\n", stof(argv(3))));
+		}
 		return;
 	}
 	if (argc == 3 && argv(2) == "reset") { jg_ovn = 0; SV_TASAutoNote(e, 0, "route: back to the guide run's points"); return; }

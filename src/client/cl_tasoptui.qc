@@ -1018,6 +1018,7 @@ void(float argc) TASOptUI_Verb =
 	if (w == "redo") { TASOptUI_WpUndo(FALSE); return; }
 	if (w == "guide") { if (argc == 4) TASOptUI_GuidePick(stof(argv(3)) - 1); return; }
 	if (w == "takeover") { TASOptUI_Takeover(); return; }
+	if (w == "redofrom") { if (argc == 4 && stof(argv(3)) >= 1) TASOptUI_Go(sprintf("tas autosurf redo %g\n", floor(stof(argv(3))))); return; }
 	if (w == "options") { if (argc == 4) { if (jgf_on) TASOptUI_FieldCommit(); jgo_open = (stof(argv(3)) != 0); } print(sprintf("tas jargon: options %g, words%s\n", jgo_open, TASOptUI_DemoWords())); return; }
 	if (w == "drop") { if (argc == 4) { jgd_open = bound(0, floor(stof(argv(3))), 2); jgd_scroll = '0 0 0'; print(sprintf("tas jargon: dropdown %g\n", jgd_open)); } return; }
 	if (w == "guides")
