@@ -63,6 +63,7 @@
 .float as_sbl;                  // a back-off counted this approach (cleared once back past 450 u)
 .float as_exair;                // the guide was in the air at its exit (it had jumped by the box's edge)
 .float as_sjmp;                 // this start has jumped
+.float as_replan;                // P1531: the player's air points changed while it ran: the rest replanned at the next waypoint
 .float as_sgj, as_sjk;           // the guide's own take-off row (-1: none); ticks since this start's jump
 .float as_sbfar, as_sbst;        // a back-off's farthest distance short of the exit; ticks since it last grew
 .float as_sland;                 // starts lined up again after the jump came down in the box
@@ -404,6 +405,26 @@ void() SV_TASAutoMoved =
 				}
 };
 
+// the plan to the player's Jargon panel, in chunks of 40 points (23 bytes each): one message past ~52 overflowed a UDP
+// client's backbuffer (review)
+void(entity e) SV_TASAutoSendPlan =
+{
+	local float s, n;
+	for (s = 0; s == 0 || s < as_n; s = s + 40)
+	{
+		WriteByte(MSG_MULTICAST, SVC_CGAMEPACKET); WriteByte(MSG_MULTICAST, TAS_EV_JPLAN);
+		WriteByte(MSG_MULTICAST, as_n); WriteByte(MSG_MULTICAST, s); WriteByte(MSG_MULTICAST, min(40, as_n - s));
+		for (n = s; n < min(as_n, s + 40); n = n + 1)
+		{
+			WriteByte(MSG_MULTICAST, (as_wk[n] == 5 && as_wl[n] < 0) ? 6 : as_wk[n]); WriteFloat(MSG_MULTICAST, as_wt[n]);
+			WriteFloat(MSG_MULTICAST, as_wo[n*3]); WriteFloat(MSG_MULTICAST, as_wo[n*3+1]); WriteFloat(MSG_MULTICAST, as_wo[n*3+2]);
+			WriteShort(MSG_MULTICAST, (as_wk[n] == 7) ? 0 : rint(as_wn[n*3] * 30000));
+			WriteShort(MSG_MULTICAST, (as_wk[n] == 7) ? 0 : rint(as_wn[n*3+1] * 30000));
+			WriteShort(MSG_MULTICAST, (as_wk[n] == 7) ? 0 : rint(as_wn[n*3+2] * 30000));
+		}
+		msg_entity = e; multicast(e.origin, MULTICAST_ONE_R);
+	}
+};
 // the guide's velocity heading change from row j-1 to j (0 under 200 u/s, where a heading is noise)
 float(float j) SV_TASAutoHeadD =
 {
@@ -517,6 +538,9 @@ float(entity e, float from) SV_TASAutoPlan =
 		for (i = as_rmin; i < as_nrows; i = i + 1)
 		{
 			d = vlen(SV_TASAutoRowO(i) - e.origin);
+			// P1531: a path that crosses itself (a zigzag, stacked ramps): the sample going the body's way, not one beside it
+			if (vlen([e.velocity_x, e.velocity_y, 0]) > 100) if (vlen([as_rows[i*7+4], as_rows[i*7+5], 0]) > 100)
+				if (normalize([e.velocity_x, e.velocity_y, 0]) * normalize([as_rows[i*7+4], as_rows[i*7+5], 0]) < 0.3) d = d + 1000;
 			if (d < best) { best = d; s = i; }
 		}
 	if (s < 0 || best > 400) return -1;
@@ -939,6 +963,41 @@ string(entity e, float i) SV_TASAutoEmin =
 
 // tas route add <x y z> <nx ny nz> | set <k> <x y z> <nx ny nz> | del <k> | undo | clear | show -- the clicked route
 // `tas autosurf route` surfs (set and del: the Optimizer tab's drag editor, cl_tasoptviz.qc).
+// the armed chain's note: its text is the client's armed state ("armed:"), so a route edit while armed says it again
+string(entity e) SV_TASAutoArmNote =
+{
+	if (e.as_arm == 3) return "armed: surf as you like -- I take over when you press Take over";
+	if (e.as_arm == 2) return "armed: prestrafe and jump -- I take over at your jump";
+	return "armed: prestrafe out of the box -- I take over at its edge";
+};
+// P1531: the air points a plan was made with differ from the route now (a point added, removed or moved)
+float() SV_TASAutoAirsChanged =
+{
+	local float k, j, na, np, hit;
+	na = 0; np = 0;
+	for (j = 0; j < as_n; j = j + 1) if (as_wk[j] == 5) np = np + 1;
+	for (k = 0; k < rt_n; k = k + 1)
+		if (rt_nn[k*3] == 0 && rt_nn[k*3+1] == 0 && rt_nn[k*3+2] == 0)
+		{
+			na = na + 1; hit = 0;
+			for (j = 0; j < as_n; j = j + 1)
+				if (as_wk[j] == 5)
+					if (vlen([as_wo[j*3], as_wo[j*3+1], as_wo[j*3+2]] - [rt_o[k*3], rt_o[k*3+1], rt_o[k*3+2]]) < 1) hit = 1;
+			if (!hit) return TRUE;
+		}
+	return (na != np);
+};
+// P1531: an air point edited: a chain armed says it is still armed (the plan is made at the takeover); one running takes
+// the route at its next waypoint
+void(entity e) SV_TASAutoRouteEdited =
+{
+	local float k;
+	if (!e.as_on || e.as_route) return;
+	if (e.as_stage == 20) { SV_TASAutoNote(e, 1, SV_TASAutoArmNote(e)); return; }
+	for (k = 0; k < rt_n; k = k + 1) if (rt_nn[k*3] == 0 && rt_nn[k*3+1] == 0 && rt_nn[k*3+2] == 0) e.as_air = 1;
+	e.as_replan = 1;
+	SV_TASAutoNote(e, 1, "your air points go in at the next waypoint");
+};
 void(entity e, float argc) SV_TASRouteCommand =
 {
 	local float i, ad;
@@ -977,6 +1036,7 @@ void(entity e, float argc) SV_TASRouteCommand =
 		else { rt_nn[ad*3-3] = stof(argv(7)); rt_nn[ad*3-2] = stof(argv(8)); rt_nn[ad*3-1] = stof(argv(9)); }
 		SV_TASAutoNote(e, e.as_on ? 1 : 0, strcat(sprintf("your route: %.0f points, set %.0f ", rt_n, ad),
 			sprintf("%.1f %.1f %.1f %.4f %.4f %.4f", rt_o[ad*3-3], rt_o[ad*3-2], rt_o[ad*3-1], rt_nn[ad*3-3], rt_nn[ad*3-2], rt_nn[ad*3-1])));
+		SV_TASAutoRouteEdited(e);
 		return;
 	}
 	else if (argc == 4 && argv(2) == "del")
@@ -986,6 +1046,7 @@ void(entity e, float argc) SV_TASRouteCommand =
 		for (i = ad * 3 - 3; i < rt_n * 3 - 3; i = i + 1) { rt_o[i] = rt_o[i + 3]; rt_nn[i] = rt_nn[i + 3]; }
 		rt_n = rt_n - 1;
 		SV_TASAutoNote(e, e.as_on ? 1 : 0, sprintf("your route: %.0f points, removed %.0f", rt_n, ad));
+		SV_TASAutoRouteEdited(e);
 		return;
 	}
 	else if (argc == 3 && argv(2) == "here")
@@ -1008,6 +1069,7 @@ void(entity e, float argc) SV_TASRouteCommand =
 		SV_TASAutoNote(e, e.as_on ? 1 : 0, strcat(sprintf("your route: %.0f points, added ", rt_n),
 			sprintf("%.1f %.1f %.1f %.4f %.4f %.4f", rt_o[rt_n*3-3], rt_o[rt_n*3-2], rt_o[rt_n*3-1], rt_nn[rt_n*3-3], rt_nn[rt_n*3-2], rt_nn[rt_n*3-1])));
 	else SV_TASAutoNote(e, e.as_on ? 1 : 0, sprintf("your route: %.0f points", rt_n));
+	if (argv(2) != "show") SV_TASAutoRouteEdited(e);
 };
 
 // One stretch: the demo's rows from where it left off, the target, the search.
@@ -1804,7 +1866,7 @@ void(entity e) SV_TASAutoFrame =
 	}
 	if (e.as_on && e.as_stage == 20)
 	{	// armed: the player's own prestrafe; take over at the jump (as_arm 2) or the exit (1)
-		if (e.run_t_state == TS_RUNNING)
+		if (e.run_t_state == TS_RUNNING && e.as_arm != 3)       // 3: the player surfs on until `here`
 		{
 			if (e.run_tas_paused || SV_TASPauseNow(e)) { e.as_stage = 12; return; }
 			SV_TASAutoStop(e, "could not pause where the run started"); return;
@@ -1844,6 +1906,16 @@ void(entity e) SV_TASAutoFrame =
 			return;
 		}
 		e.as_i = e.as_cnext; e.as_try = 0; e.as_tprev = e.as_ctprev; e.as_stage = 1; e.as_finrec = e.run_t_finrec;
+		if (jg_ovn > 0 && jg_ovpath == e.as_file) SV_TASAutoMoved();     // P1531: points moved since the save (Lex: Continue keeps edits)
+		if (e.as_air && SV_TASAutoAirsChanged())
+		{	// the air points changed since the save: the rest planned anew from here (a chain that does not overwrite it)
+			s = SV_TASAutoPlan(e, -1);
+			if (s < 0 || as_n < 1) { SV_TASAutoStop(e, "your air points changed and the guide's route is not near here: Start again"); return; }
+			e.as_i = 0; e.as_tprev = as_rows[s*7]; e.as_fromstart = 0; e.as_saved = -1; e.as_failmax = -1;
+			SV_TASAutoSendPlan(e);
+			SV_TASAutoNote(e, 1, sprintf("continuing with your new air points: %.0f stretches ahead from here", as_n));
+			return;
+		}
 		SV_TASAutoNote(e, 1, sprintf("continuing %s from stretch %.0f of %.0f", SV_TASAutoCourseName(e.as_ctrack, e.as_cleg), e.as_i + 1, as_n));
 		return;
 	}
@@ -2208,6 +2280,18 @@ void(entity e) SV_TASAutoFrame =
 			s = (as_wk[e.as_i] == 7); e.as_ptry = e.as_try;
 			e.as_tprev = t; e.as_i = e.as_i + 1; e.as_try = 0;
 			if (!s) SV_TASAutoSave(e, e.as_i);     // a portal's is saved once through it (review 1528: Continue resumed before it)
+			if (e.as_replan && !s && e.as_i < as_n)
+			{	// P1531: the player's air points changed while it ran: the rest planned anew from here, renumbered from 1
+				e.as_replan = 0;
+				t = SV_TASAutoPlan(e, -1);
+				if (t >= 0 && as_n > 0)
+				{
+					e.as_i = 0; e.as_tprev = as_rows[t*7]; e.as_fromstart = 0; e.as_saved = -1; e.as_failmax = -1; e.as_stage = 1;
+					SV_TASAutoSendPlan(e);
+					SV_TASAutoNote(e, 1, sprintf("your air points are in: %.0f stretches ahead from here", as_n));
+					return;
+				}
+			}
 			if (s && e.as_i < as_n)
 			{	// a portal reached: its line stops the tick before the teleport; stepped through it, then the next stretch
 				e.as_stage = 32; e.as_sn = 0; e.as_ptp = e.origin;
@@ -2458,7 +2542,7 @@ void(entity e, float ct, float cl) SV_TASAutoSavedQuery =
 };
 void(entity e, float argc) SV_TASAutoCommand =
 {
-	local float i, s, n, st, flip, arm, pl, ct, cl, zg, nct, ncl;
+	local float i, s, n, st, flip, arm, pl, ct, cl, zg, nct, ncl, hr;
 	local string w, path;
 	if (argc == 5 && argv(2) == "saved")
 	{
@@ -2516,6 +2600,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		if (n >= TAS_ASMAX) { sprint(e, PRINT_HIGH, "tas autosurf: too many moved points\n"); return; }
 		jg_ovt[n] = stof(argv(3)); jg_ovo[n*3] = stof(argv(4)); jg_ovo[n*3+1] = stof(argv(5)); jg_ovo[n*3+2] = stof(argv(6));
 		if (n == jg_ovn) jg_ovn = jg_ovn + 1;
+		if (e.as_on && e.as_stage != 20 && !e.as_route && jg_ovpath == e.as_file) SV_TASAutoMoved();      // P1531: live
 		return;
 	}
 	if (argc == 3 && argv(2) == "reset") { jg_ovn = 0; SV_TASAutoNote(e, 0, "route: back to the guide run's points"); return; }
@@ -2565,6 +2650,10 @@ void(entity e, float argc) SV_TASAutoCommand =
 		sprint(e, PRINT_HIGH, "tas autosurf <demo.rec> [tube R] [look N] [tries N] [backs N] [pace X] [emin F] [nohop] [join] [rideknots] [polish] [low] [finish] [course T L] [start [zone N] [sg N] | onjump | onexit] | continue T L | stop | status | startpause\n");
 		return;
 	}
+	hr = 0;
+	for (i = 3; i < argc; i = i + 1) if (argv(i) == "here") hr = 1;
+	// P1531 take over from here: an armed run waiting for it gives way (its own TAS session goes on)
+	if (hr && e.as_on && e.as_stage == 20 && !e.topt_on && !e.tdem_on) e.as_on = 0;
 	if (e.as_on || e.topt_on || e.tdem_on) { SV_TASAutoNote(e, e.as_on ? 1 : 0, "already running: stop it first"); return; }
 	if (path != "route" && !SV_TASDemoPathOK(path)) { sprint(e, PRINT_HIGH, "tas autosurf: a .rec under data/ or cfg/ksfreplays/ (or route)\n"); return; }
 	if (SV_TASOptBusy(e)) return;
@@ -2610,6 +2699,8 @@ void(entity e, float argc) SV_TASAutoCommand =
 		else if (w == "sg" && n >= 6 && n <= 2000 && n == floor(n)) { e.as_sg = n; i = i + 1; }   // the most ground ticks before the jump
 		else if (w == "onjump") arm = 2;
 		else if (w == "onexit") arm = 1;
+		else if (w == "onkey") arm = 3;        // P1531: you surf; take over from wherever you are (`here`)
+		else if (w == "here") hr = 1;
 		else if (w == "finish") e.as_finish = 1;
 		else { sprint(e, PRINT_HIGH, sprintf("tas autosurf: unknown option '%s'\n", w)); SV_TASAutoOptRestore(e); return; }
 	}
@@ -2682,7 +2773,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 		e.as_ctrack = nct; e.as_cleg = ncl; e.as_saved = -1; e.as_esc = 0; e.as_fromstart = 0; e.as_cseed = 0;   // a course: to its end
 		SV_TASAutoRunSalt();
 		e.as_lastground = (e.flags & FL_ONGROUND) ? 1 : 0;
-		SV_TASAutoNote(e, 1, (arm == 2) ? "armed: prestrafe and jump -- I take over at your jump" : "armed: prestrafe out of the box -- I take over at its edge");
+		SV_TASAutoNote(e, 1, SV_TASAutoArmNote(e));
 		return;
 	}
 	if (st)
@@ -2719,25 +2810,20 @@ void(entity e, float argc) SV_TASAutoCommand =
 			jg_ovpath = strzone(path);
 		}
 		SV_TASAutoPlan(e, i);
-		for (s = 0; s == 0 || s < as_n; s = s + 40)
-		{	// chunks of 40 points (23 bytes each): one message past ~52 overflowed a UDP client's backbuffer (review)
-			WriteByte(MSG_MULTICAST, SVC_CGAMEPACKET); WriteByte(MSG_MULTICAST, TAS_EV_JPLAN);
-			WriteByte(MSG_MULTICAST, as_n); WriteByte(MSG_MULTICAST, s); WriteByte(MSG_MULTICAST, min(40, as_n - s));
-			for (n = s; n < min(as_n, s + 40); n = n + 1)
-			{
-				WriteByte(MSG_MULTICAST, (as_wk[n] == 5 && as_wl[n] < 0) ? 6 : as_wk[n]); WriteFloat(MSG_MULTICAST, as_wt[n]);
-				WriteFloat(MSG_MULTICAST, as_wo[n*3]); WriteFloat(MSG_MULTICAST, as_wo[n*3+1]); WriteFloat(MSG_MULTICAST, as_wo[n*3+2]);
-				WriteShort(MSG_MULTICAST, (as_wk[n] == 7) ? 0 : rint(as_wn[n*3] * 30000));
-				WriteShort(MSG_MULTICAST, (as_wk[n] == 7) ? 0 : rint(as_wn[n*3+1] * 30000));
-				WriteShort(MSG_MULTICAST, (as_wk[n] == 7) ? 0 : rint(as_wn[n*3+2] * 30000));
-			}
-			msg_entity = e; multicast(e.origin, MULTICAST_ONE_R);
-		}
+		SV_TASAutoSendPlan(e);
 		SV_TASAutoNote(e, 0, (as_n >= TAS_ASMAX) ? sprintf("route: the first %.0f points of a longer course (surf it stage by stage)", as_n)
 			: sprintf("route: %.0f points from the guide run", as_n));
 		SV_TASAutoOptRestore(e);
 		strunzone(path);
 		return;
+	}
+	if (hr)
+	{	// P1531 take over from here: a run going with TAS on (an armed one's), paused where it is now; the plan below is
+		// made from its nearest guide row going its way, the course the panel gave (the stage it is in)
+		if (!e.run_tas_mode || e.run_t_state != TS_RUNNING)
+			{ SV_TASAutoNote(e, 0, "take over needs a run going with TAS on: Arm with \"When I press\", then surf"); SV_TASAutoOptRestore(e); strunzone(path); return; }
+		if (!e.run_tas_paused && !SV_TASPauseNow(e))
+			{ SV_TASAutoNote(e, 0, "could not pause here to take over"); SV_TASAutoOptRestore(e); strunzone(path); return; }
 	}
 	s = SV_TASAutoPlan(e, -1);
 	if (s < 0) { SV_TASAutoNote(e, 0, "you are not on the guide run's route (400 u): restart, or redo from a stretch"); SV_TASAutoOptRestore(e); strunzone(path); return; }
@@ -2748,5 +2834,7 @@ void(entity e, float argc) SV_TASAutoCommand =
 	SV_TASAutoRunSalt();
 	e.as_on = 1; e.as_stage = 1; e.as_i = 0; e.as_try = 0; e.as_backs = 0; e.as_tprev = as_rows[s*7]; e.as_failat = -1;
 	SV_TASAutoBacks(e);
-	SV_TASAutoNote(e, 1, sprintf("%.0f stretches ahead from demo t=%.2f (%.0f u off its route)", as_n, as_rows[s*7], vlen(SV_TASAutoRowO(s) - e.origin)));
+	if (hr) SV_TASAutoSendPlan(e);      // the panel's list: what is left from here
+	SV_TASAutoNote(e, 1, sprintf("%s%.0f stretches ahead from demo t=%.2f (%.0f u off its route)", hr ? "took over: " : "", as_n, as_rows[s*7],
+		vlen(SV_TASAutoRowO(s) - e.origin)));
 };
