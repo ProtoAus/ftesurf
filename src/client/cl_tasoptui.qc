@@ -1004,7 +1004,7 @@ void() TASOptUI_Reset =
 	}
 	jgw_sel = -1; jg_replan = cltime + 0.2;
 };
-// `tas jargon start | mode 0|1|2 | set N x|y|z V | field N x|y|z | air N | del N | undo | redo | list`: the panel's own
+// `tas jargon start | mode 0|1|2|3 | set N x|y|z V | field N x|y|z | air N | del N | undo | redo | list`: the panel's own
 // functions, for binds and the harness that tests them (N counts from 1, as the list does; field opens one as a click)
 void(float argc) TASOptUI_Verb =
 {
@@ -1013,7 +1013,7 @@ void(float argc) TASOptUI_Verb =
 	local string w;
 	w = argv(2);
 	if (w == "start") { TASOptUI_Start(); return; }
-	if (w == "mode") { if (argc == 4 && stof(argv(3)) >= 0 && stof(argv(3)) <= 2) cvar_set("tas_jargon_startmode", argv(3)); return; }
+	if (w == "mode") { if (argc == 4 && stof(argv(3)) >= 0 && stof(argv(3)) <= 3) cvar_set("tas_jargon_startmode", argv(3)); return; }     // 3: When I press (P1531)
 	if (w == "undo") { TASOptUI_WpUndo(TRUE); return; }
 	if (w == "redo") { TASOptUI_WpUndo(FALSE); return; }
 	if (w == "guide") { if (argc == 4) TASOptUI_GuidePick(stof(argv(3)) - 1); return; }
@@ -1068,7 +1068,7 @@ void(float argc) TASOptUI_Verb =
 		if (TASOptUI_AirDel(a)) TASOptUI_WpPush(4, 0, a, '0 0 0');
 		return;
 	}
-	print("tas jargon: start | mode 0|1|2 | guide N | guides | set N x|y|z V | field N x|y|z | air N | del N | undo | redo | list\n");
+	print("tas jargon: start | takeover | redofrom N | mode 0|1|2|3 | guide N | guides | set N x|y|z V | field N x|y|z | air N | del N | undo | redo | list\n");
 };
 void(vector at, float width, float tsz, float hint, float row, float running, string label) TASOptUI_DrawJargon =
 {
