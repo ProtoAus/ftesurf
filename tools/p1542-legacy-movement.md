@@ -1,18 +1,22 @@
 # P1542 - experimental legacy movement candidate
 
-Status: **reviewed source published; both Windows installs updated**.
-Engine47998d6e3 / QC9cb29567 are the tested source pair. The second install has
-the hash-verified native/game-code/dependency cohort and passes its actual
-installed headless client/server map-switch check. Main received its normal
-three-native/six-QC ship set plus nineteen app-local dependencies at
-2026-11-13 17:52 UTC, with independent destination and backup verification.
-Main startup/loaded-provider and human acceptance remain pending; file checks
-and the second install's runtime do not establish those. The current NanoPi
-build/default full-platform gate is pending: its read-only prerequisite check
-stopped on missing standard `zip`, before any build or remote-root creation.
-No new lobby deployment is claimed. This continues the earlier P1527 prototype,
-not a full HL1/AG/HL2 implementation, release, parity claim or completion of
-request 6.
+Status: **P1542 Windows delivery and narrow Native qualification recorded; no
+P1542 fleet or full-platform acceptance**. Engine47998d6e3 / QC9cb29567 are this
+page's tested source pair. Second's actual installed headless map-switch check
+passed. Main received its normal three-native/six-QC set plus nineteen app-local
+dependencies at2026-11-13 17:52 UTC, with independent destination/backup checks,
+not its own completed P1542 loader check. Later [P1543](p1543-tas-board-restore.md)
+superseded the native/QW roles and [P1544](p1544-savelock.md) the client program.
+Their later current-image checks do not backdate a P1542 pass; do not restore this
+older stage over those published fixes.
+
+The exact P1542 AArch64 pair now has source/build/dependency closure and all16
+selected Native DEFAULT cases. An actual9cb-QW cold world acted, but its bounded
+UDP reply was not captured and no Native real-client/CS/body leaf has completed.
+No later422/P1543 image acceptance or lobby deployment is claimed. Full Windows
+baseline comparison and human/retail acceptance remain separate gates. This is
+still the P1527-derived prototype, not full HL1/AG/HL2, parity, a release or
+completion of request6. Private receipts and account data are not exported here.
 
 ## Available implementation
 
@@ -58,16 +62,20 @@ Ordinary Source rewind and save behavior is not intentionally changed.
   stable bytes, 568 recordings and 173 associated views retained exactly the
   same fault sets. Existing faults are not a clean-corpus pass; unassociated
   views and other explicitly uncovered files are not inferred valid.
-- The earlier ARM64 verification candidate passed all twelve current dettest
-  arms, with 90 named candidate/baseline rows exactly equal across six maps.
-  Both historical pin2 arms also passed. Those are earlier-image results,
-  **not execution evidence for the newly merged binaries**.
-- Both corrected-input historical pin7 arms subsequently passed 9194 ticks /
-  9192 rows each, completing the earlier-image 16-arm execution matrix. The
-  qualified missing zone input and all five fixtures have final preservation /
-  actor-cleanup closure evidence. Original failed cases remain failed; the
-  one-case/parser-only CLI does not claim global platform acceptance. This does
-  not qualify current merged images, rendered play or optional AG reference parity.
+- Earlier-image Native16-arm evidence, including the corrected-input Pin7 cases,
+  remains bound to its own source/image hashes. Original failed inputs and probes
+  remain failures; none was relabelled as a later image pass.
+- Exact source47998d6e3 subsequently completed all16 selected AArch64 DEFAULT
+  arms: six full maps per image,90 exact normalized named-row pairs and both full
+  historical Pin2/Pin7 cases per image. Independent review cleared that recorded
+  scope. Its frozen DEFAULT QW is not the9cb product QW; neither this matrix nor
+  its source envelope qualifies422/P1543 or global platform acceptance.
+- A separate actual479 mapless built-in run produced1831 `ok` checks, one complete
+  all-checks-passed summary and positive AG-state refusal controls, exit0 and its
+  actor/group reaped/gone. This is numerical smoke, not selected-tier world/record,
+  prediction parity, rendered play or full AG/HL2 reference fidelity. Finite Native
+  binding keeps source, family, mover, namespace, dependencies and mode explicit;
+  unknown families hold, and ABI similarity cannot widen the recorded acceptance.
 - Actual headless dedicated-server/client cases passed the 100 and 250
   save/load and carried-waterjump controls, including active zero state. Cold
   CSQC startup needed a review-only 40-second world window for eight timed
@@ -107,8 +115,9 @@ payloads passed. A Parent-owned status-only runtime OWNER update triggered the
 original strict metadata-retention HOLD; that failure remains preserved and
 was adjudicated separately, without changing source, products or old cohorts.
 The final clean images, then the installed second-copy executables, both passed
-the acting 100/default/250 client check with owned-actor cleanup. ENGINE.txt
-pins that source; earlier images have not been relabelled as this build.
+the acting100/default/250 client check with owned-actor cleanup. The P1542 delivery
+pin named that source; later patches move the current pin, not these older artifact
+identities. Earlier images have not been relabelled as this build.
 
 Independent PE inspection qualified an owned 19-DLL, 11,018,734-byte file stage,
 with exact source/stage hashes and no missing non-system import names. Matching
@@ -124,10 +133,10 @@ exited, Main received the existing primary ship set: the client as
 dependencies. All nine existing products changed to expected hashes and all
 nineteen absent dependencies were exclusively created. Prior-current .prev
 files and older rollback preimages are retained; the second install and source
-artifacts remained unchanged. Main's actual loader/startup check remains
-pending under the low-memory execution hold, not inferred from static PE or
-hash checks. File closure and local delivery are not public-redistribution
-acceptance.
+artifacts remained unchanged at that delivery boundary. P1542 Main's own
+loader/startup was not closed before P1543 superseded it; P1543's later installed
+startup is documented separately and does not retroactively test these older
+bytes. File closure and local delivery are not public-redistribution acceptance.
 
 The first isolated Full build failed on a missing freetype include path. A
 supported, scoped make-variable correction completed the same Full entrypoint.
@@ -146,17 +155,46 @@ generated file and diff were preserved before restoring that owned banner-only
 change. Its shader body was unchanged; no build product is qualified merely by
 file presence.
 
-The exact inspected engine/tag and QC source pair is now pushed and installed
-in both Windows copies. Remaining work includes Main startup/loaded-provider
-and owner checks, fresh current default/full-platform qualification and guarded
-fleet delivery. The current Linux build needs its missing ZIP prerequisite
-resolved; no build or existing lobby was changed by the failed read-only
-preflight.
-Current Windows full-fixture reuse/baseline qualification is being checked
-separately, not replaced by the small acting-context case. No rendered/owner-
-feel or full-platform pass is claimed. Existing production/default lobbies
-remain in service. Delivery receipts must name actual committed source and
-installed hashes, not merely a build or this document.
+## Native qualification and remaining delivery boundary
+
+The earlier missing-zip/incomplete-transfer readiness HOLD is retained history,
+not the present result. Exact479 AArch64 dedicated and matching HL2 products were
+subsequently built through the normal Native Make targets with full source/version
+provenance. Existing warning sets were16 server and1 plugin, with no new warning
+class. Exact source, two-ELF metadata, finite SDK/OS dependencies and the frozen
+fixture were qualified before the16 acting DEFAULT cases described above. This
+is not blanket new-family admission or Windows/Native gameplay parity.
+
+A separate cold479/9cb server loaded actual P1542 QW and the real `bhop_eazy` Source
+BSP with matching HL2. It acted15 strict named collision rows and the2048-tick
+control; actual executable/HL2/four system providers and an owned loopback UDP
+socket were captured. SSQC world initialization and effective default context
+printed, with exit0/reaped/group gone. Its bounded UDP status reply was **not**
+captured, so the whole smoke remains HOLD. These narrower VM/world positives do
+not assert actual Native client/CS spawn/body or recorder startup. Original setup
+and reader failures remain failures; the actor was not repeated to hide them.
+Delayed read-only checks found its211 owned regular inputs,49 individual aliases,
+four staged products and original frozen/dependency closure unchanged; this is
+not represented as immediate observation.
+
+The exact P1542 four-role set is staged in owned scratch, **not promoted**. The
+subsequently published P1543 native/QW and P1544 client fixes must be preserved,
+not overwritten by this historical stage. A peer-preserving roll-forward needs
+its own source/artifact/dependency binding, targeted restore control and one
+acting real Native socket/client/served-CS/body leaf. Existing DEFAULT evidence
+is relevant for dependencies actually unchanged, not relabelled as a new-image
+pass or repeated wholesale merely because a patch stamp changes. A small owner
+check from an already open current game is legitimate manual evidence for what
+is observed, not a numeric trajectory claim. The original workstation headroom /
+quiet-window HOLD is not cleared by another image's smaller startup probe.
+
+Windows full-fixture/baseline qualification remains separate from the small acting
+context. No rendered/owner-feel, retail authenticity, full-platform, lobby/backend,
+ordinary release or recorder-resume promotion is claimed. Existing default lobbies
+remain in service. Source, artifacts, dependencies, destinations and active actors
+must be checked at the real execution boundary, with normal player warning /
+countdown, recorder/resume preservation and both rollback predecessors intact.
+Staged bytes, a listening socket or this document are not a promotion token.
 
 ## Small human check after reviewed deployment
 
