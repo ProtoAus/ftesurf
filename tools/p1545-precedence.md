@@ -70,4 +70,14 @@ Its one correction is in the table above (point tests, not the sweep's `d1 > 0 &
 
 ## Delivery
 
-DELIVERY
+LIVE 14 Nov 2026 ~00:51Z (11:51 local). Main 35105611 (code ad0f7add = 7a4db4a9 rebased over P1546, which
+touches no src; compiler 1f2efd06, 0 warnings).
+- 12 lobbies: `build.ps1 -Pi -QuakeDir <missing>` from deploy/p1545-precedence 21167906 = deploy/p1544-savelock
+  37f65fe9 (the live P1544 source; P1542/P1543 still not lobby-delivered) + P1545's code. Live hashes checked
+  first (37ef9e41 / dd6d6c63). One player (lobby 11) got the warning and countdown; all 12 restarted and
+  active, logs clean from SpawnServer. Live qwprogs 0aa19d14 / csprogs 8df4b1bf, .prev = P1544's pair.
+- Both Windows installs (C:/FTESurf, C:/FTEQuake): qwprogs bcb6f7c6, csprogs d27da0a6, menu eb072f13 (+ .lno)
+  from main's build, .prev = 7040dda7 / 620c4da4 / 1c8bb7c8 (what P1543/P1544 left); csprogsvers seeded
+  (8a2d283b). Smoke: 25 s headless local game on C:/FTEQuake, server and CSQC loaded, no errors
+  (artifacts/install-smoke.log in the task root).
+- tasrevd codes.txt 131 -> 133 (8df4b1bf, d27da0a6; backup codes.txt.pre1545).
