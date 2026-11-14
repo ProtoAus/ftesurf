@@ -4655,8 +4655,8 @@ void(float j, entity probe, vector org) Emit_PinBrush =
 	hit = n = 0;
 	for (tries = 0; tries < EM_PINS * 8 && n < EM_PINS; tries = tries + 1)
 	{
-		if (tries == 16 && hit == 16)
-			break;                  // a box: the box sample is already exact
+		if (tries == 32 && hit == 32)
+			break;                  // a box: the box sample is already exact (a 0.9 fill passes 3%)
 		p = lo + [random() * s_x, random() * s_y, random() * s_z];
 		other = probe;
 		tracebox(p, '0 0 0', '0 0 0', p, MOVE_TRIGGERS | MOVE_OTHERONLY, em_pinprobe);
