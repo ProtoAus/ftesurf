@@ -236,14 +236,18 @@ def upload_verdict(path):
     if "\n== client\n" not in text:
         return "no client section: the lobby stopped before it"
     half = text.split("\n== client\n", 1)[1]
-    marker = re.search(r"^== (end|refused [^\n]*|abandoned [^\n]*)$", half, re.M)
-    body = half[:marker.start()] if marker else half
+    # The lobby's marker is the file's last line; the lines before it are the client's own text, which could
+    # spell "== end" too (review), so only the last non-empty line counts.
+    lines = half.rstrip().splitlines()
+    last = lines[-1].rstrip("\r") if lines else ""
+    marker = re.match(r"^== (end|refused .*|abandoned .*)$", last)
+    body = "\n".join(lines[:-1]) if marker else half
     size = "EMPTY" if not body.strip() else "%d KB" % (len(body) // 1024)
     if marker and marker.group(1) == "end":
         return "client half whole (%s)" % size
     if marker:
         return "client half %s, not whole: %s" % (size, clean(marker.group(1)))
-    return ("client half %s with no end line: a lobby from before P1552, a map change or a server stop"
+    return ("client half %s with no end line: a lobby from before P1552, a map change or a server crash"
             % size)
 
 

@@ -430,7 +430,7 @@ void() ClientDisconnect =
 	SV_TASToolsDisconnect(self);        // P1449 review: a demo's file handle, a search, an autosurf
 	SV_TASContactSpansFree(self);
 	SV_TASShareCancel(self);           // callbacks/deferred opens belong to this connection
-	SV_PeAbandon(self, "the player disconnected");     // Patch 1195/P1552: a report still uploading
+	SV_PeAbandon(self, "as the player left (disconnect, kick, timeout, join/observe or a server stop)");     // P1552
 	SV_CrClose(self);                  // P1418
 	SV_PeForget(self);                 // P1238: its command ring
 	SV_PcForget(self);                 // P1211: delayed rows counting this player's commands
