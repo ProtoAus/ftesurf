@@ -2346,6 +2346,7 @@ void(entity e, string line) SV_RecMCRecountLine =
 // Patch 416: the run nonce.  See SV_RecNonce for what it is for and what it is
 // worth.  Zoned, freed and rebuilt at every open.
 .string rec_rec_nonce;              // the 32 hex chars in force for this run
+.float  rec_rec_anglecause;         // this source declared native wire-operation rows
 string  run_nonce_seed;             // per-boot, zoned; the seed under all of them
 // Patch 418: what `fs_ul` was PUBLISHED as at map init.  Read instead of the
 // cvar so the server cannot ask for evidence under a policy its clients were
@@ -4287,6 +4288,29 @@ void(entity e, string s) SV_RecPut =
 	e.rec_rec_lines = e.rec_rec_lines + 1;
 };
 
+// Native wire emission calls this only from an idle VM. No live recorder means
+// no authority row and no client marker; no file ownership is handed to C.
+string(entity e, string opid, string basis, string wirefmt, string wirehex) SV_RecAngleOperation =
+{
+	local float before, cap;
+	if (!e.rec_rec_anglecause || !SV_RecLive(e) || e.rec_rec_full)
+		return "";
+	if (e.run_t_state != TS_RUNNING || e.run_t_frzon || !e.run_t_clock)
+		return "";
+	if (strlen(e.rec_rec_nonce) != 32)
+		return "";
+	cap = e.rec_rec_stream ? FS_RECMAX_STREAM : FS_RECMAX_BUF;
+	if (e.rec_rec_lines >= cap)
+		return "";                    // optional row cannot trigger a cap warning
+	before = e.rec_rec_lines;
+	SV_RecPut(e, strcat(sprintf("angleop %d %d %d %s ",
+		e.rec_rec_pk, e.run_movetick, e.rec_rec_in, e.rec_rec_nonce),
+		sprintf("%s %s %s %s", opid, basis, wirefmt, wirehex)));
+	if (e.rec_rec_full || e.rec_rec_lines != before + 1)
+		return "";
+	return e.rec_rec_nonce;
+};
+
 /*
   One sample.  Called from the recorder AND from the padding flush, so the
   timestamp is a parameter rather than read from the entity: the ring's
@@ -4610,6 +4634,9 @@ void(entity e, float body) SV_RecNonce =
 	local string n;
 	local float was;
 
+	// v1 only licenses a fresh declared recording, never an attached old prefix.
+	if (body) e.rec_rec_anglecause = FALSE;
+
 	/*
 	  THE BIT GOES DOWN BEFORE ANYTHING ELSE HAPPENS, and it is the first thing
 	  here because every other line below can fail.  TF_NONCE says "the client
@@ -4726,6 +4753,9 @@ void(entity e, float cold) SV_RecNoncePublish =
 	local float i;
 	local string l;
 
+	// Every warm/cold attachment is outside v1's fresh-recording capability.
+	// A map restart may reset native operation IDs while retaining this nonce.
+	e.rec_rec_anglecause = FALSE;
 	e.run_t_flags = e.run_t_flags - (e.run_t_flags & TF_NONCE);
 
 	if (cold)
@@ -5601,6 +5631,7 @@ void(entity e) SV_RecOpen =
 	e.rec_agprofile = strzone(e.run_agprofile);
 	SV_RecGenBegin(e);
 	e.rec_rec_ver = FS_REC_VERSION;
+	e.rec_rec_anglecause = FALSE;
 	e.rec_rec_views = 0;
 	e.rec_rec_parks = 0;
 	e.rec_rec_inmt = -1;
@@ -5819,6 +5850,11 @@ void(entity e) SV_RecOpen =
 	SV_RecPut(e, sprintf("clock %s", e.run_t_clock ? "counted" : "sampled"));
 	SV_RecPut(e, "holdclock 1");
 	SV_RecPut(e, "viewclock 1");
+	if (checkextension("FTE_ANGLECAUSE_V1"))
+	{
+		e.rec_rec_anglecause = TRUE;
+		SV_RecPut(e, "anglecause 1");
+	}
 	SV_RecPut(e, sprintf("owner %s", e.netname));
 	// Patch 360: kept (zoned) for stage posts and evidence. The native path
 	// creates exactly this same ID before the source so it can bind ownership.

@@ -1056,6 +1056,178 @@ def case_receipt_journal_reaches_the_database():
     check("...carrying the identity it measured", "exact" in got[1], True)
 
 
+def case_delayed_journal_angle_authority():
+    """Signed ABS reset must bind through the real late-upload scheduler."""
+    import builtins
+    import json
+    if TOOLS not in sys.path:
+        sys.path.insert(0, TOOLS)
+    from test_anglecause import fixture, rec_bytes, wire
+    from test_reccheck import view_for
+
+    nonce = "d6c6820bca16750c77166d96dcf02787"  # make_receipt's synthetic signer
+    rid = "20261006-000219-0"
+    text, _scope = fixture()
+    hid = text.replace("0" * 32, nonce).encode()
+    original_rec, _row = rec_bytes()
+    rec = original_rec.decode().replace("0" * 32, nonce).replace("20260914-000000-0", rid)
+    view = ("\n".join(view_for(rec.splitlines())) + "\n").encode()
+    for kind in ("supported", "missing", "wrong-operation", "wrong-nonce",
+                 "unreadable", "prior-fault", "key-change", "no-operation", "no-op"):
+        surfd, sweep, _runs = fresh()
+        sweep.TOOLS = TOOLS
+        conn = surfd.connect()
+        now = int(time.time())
+        age = now - 2 * surfd.EVIDENCE_SETTLE
+        payload = hid
+        if kind == "no-operation":
+            payload = "\n".join(line for line in hid.decode().splitlines()
+                                if not line.startswith("angleop ")).encode() + b"\n"
+        elif kind == "no-op":
+            no_op, _scope = fixture(no_op=True)
+            payload = no_op.replace("0" * 32, nonce).encode()
+        rp, _pub = make_receipt(surfd.EVIDENCE_DIR, rid, age=age, hid=payload, view=view)
+        os.remove(rp[:-5] + ".hid")
+        initial_rec = rec.replace(nonce, "1" * 32) if kind == "prior-fault" else rec
+        rc = with_rec(surfd, sweep, rid, initial_rec)
+        recpath = os.path.join(rc.GAME, "data", "evidence", "bhop_eazy", rid + ".rec")
+        try:
+            check(kind + ": initial read ACTS", sweep.receipt_step(conn, now=now),
+                  (1, 1 if kind == "prior-fault" else 0))
+            before = dict(conn.execute("SELECT * FROM receipts").fetchone())
+            check(kind + ": signed HID initially pending", before["journal"], "PENDING")
+            before_keys = [tuple(row) for row in conn.execute("SELECT * FROM pubkeys")]
+            with open(rp[:-5] + ".hid", "wb") as fh:
+                fh.write(payload)
+            # Optional authority changes after the original observation.
+            changed = rec
+            if kind == "wrong-operation":
+                changed = rec.replace(wire(), wire(pose=(31, 80, 0)))
+            elif kind == "wrong-nonce":
+                changed = rec.replace(nonce, "1" * 32)
+            if kind == "missing":
+                os.remove(recpath)
+            else:
+                with open(recpath, "w", encoding="utf-8") as fh:
+                    fh.write(changed)
+            if kind == "key-change":
+                make_receipt(surfd.EVIDENCE_DIR, rid, age=age, hid=payload, view=view,
+                             seed=b"\x02" * 32)
+                with contextlib.redirect_stderr(io.StringIO()), \
+                        mock.patch.object(rc, "join_rec", wraps=rc.join_rec) as joined:
+                    got = sweep.receipt_step(conn, now=now + 60)
+                check("changed pub: normal arrival defers before REC", (got, joined.call_count), ((0, 0), 0))
+                check("changed pub: entire prior row preserved",
+                      dict(conn.execute("SELECT * FROM receipts").fetchone()), before)
+                continue
+            if kind in ("supported", "prior-fault"):
+                full = sweep.read_receipt(rp)
+                check(kind + ": full-read source-bound positive", full[6], "OK")
+                check(kind + ": full-read actually judges reset",
+                      json.loads(full[14])["metrics"]["identity_judged"], 1)
+                with mock.patch.object(sweep, "join_journal_authority"):
+                    control = sweep.read_receipt(rp, journal_only=True)
+                check(kind + ": removed authority ACTS, not harmless reset", control[6], "BLIND")
+            real_open = builtins.open
+            reads = {rp: 0, rp[:-5] + ".hid": 0}
+
+            def opening(path, *args, **kwargs):
+                mode = args[0] if args else kwargs.get("mode", "r")
+                if "r" in mode:
+                    if path in reads:
+                        reads[path] += 1
+                    if path == recpath and kind == "unreadable":
+                        raise OSError(5, "synthetic selected REC read failure")
+                return real_open(path, *args, **kwargs)
+
+            with mock.patch("builtins.open", side_effect=opening), \
+                    mock.patch.object(sweep, "read_receipt", wraps=sweep.read_receipt) as entry, \
+                    mock.patch.object(rc, "join_rec", wraps=rc.join_rec) as joined:
+                got = sweep.receipt_step(conn, now=now + 60)
+            check(kind + ": normal arrival ACTS", got, (1, 0))
+            check(kind + ": actual scheduler selects journal_only",
+                  entry.call_args.kwargs.get("journal_only"), True)
+            check(kind + ": one receipt/HID snapshot", list(reads.values()), [1, 1])
+            check(kind + ": optional REC only when operation present",
+                  joined.call_count, 0 if kind in ("no-operation", "no-op") else 1)
+            after = dict(conn.execute("SELECT * FROM receipts").fetchone())
+            expected = "OK" if kind in ("supported", "prior-fault") else "BLIND"
+            check(kind + ": late source result", after["journal"], expected)
+            if expected == "OK":
+                check(kind + ": same source-bound result as full read",
+                      (after["journal_reason"], after["journal_metrics"]), (full[7], full[14]))
+            check(kind + ": historical columns unchanged",
+                  {k: v for k, v in after.items() if k not in ("journal", "journal_reason", "journal_metrics")},
+                  {k: v for k, v in before.items() if k not in ("journal", "journal_reason", "journal_metrics")})
+            check(kind + ": pubkey sightings unchanged",
+                  [tuple(row) for row in conn.execute("SELECT * FROM pubkeys")], before_keys)
+        finally:
+            rc.GAME = os.path.join(os.path.dirname(TOOLS), "ftesurf")
+            conn.close()
+
+
+def case_fresh_journal_angle_authority_without_view():
+    """Unkept receipt: no VIEW or signed duration, but captured REC custody."""
+    import builtins
+    import json
+    if TOOLS not in sys.path:
+        sys.path.insert(0, TOOLS)
+    from test_anglecause import fixture, rec_bytes, wire
+
+    nonce = "d6c6820bca16750c77166d96dcf02787"
+    rid = "20261006-000220-0"
+    data, _row = rec_bytes()
+    rec = data.decode().replace("0" * 32, nonce).replace("20260914-000000-0", rid)
+    for kind in ("supported", "removed-authority", "wrong-operation", "no-op"):
+        surfd, sweep, _runs = fresh()
+        sweep.TOOLS = TOOLS
+        conn = surfd.connect()
+        text, _scope = fixture(no_op=kind == "no-op")
+        hid = text.replace("0" * 32, nonce).encode()
+        rp, _pub = make_receipt(surfd.EVIDENCE_DIR, rid, hid=hid, age=1)
+        os.remove(rp[:-5] + ".view")
+        changed = rec.replace(wire(), wire(pose=(31, 80, 0))) if kind == "wrong-operation" else rec
+        rc = with_rec(surfd, sweep, rid, changed)
+        recpath = os.path.join(rc.GAME, "data", "evidence", "bhop_eazy", rid + ".rec")
+        if kind == "removed-authority":
+            os.remove(recpath)
+        real_open = builtins.open
+        reads = {rp: 0, rp[:-5] + ".hid": 0, recpath: 0}
+
+        def opening(path, *args, **kwargs):
+            mode = args[0] if args else kwargs.get("mode", "r")
+            if path in reads and "r" in mode:
+                reads[path] += 1
+            return real_open(path, *args, **kwargs)
+
+        try:
+            if kind == "supported":
+                with mock.patch.object(sweep, "join_journal_authority"):
+                    control = sweep.read_receipt(rp)
+                check("fresh no VIEW: removed parsing ACTS", control[6], "BLIND")
+            with mock.patch("builtins.open", side_effect=opening), \
+                    mock.patch.object(rc, "join_rec", wraps=rc.join_rec) as joined, \
+                    mock.patch.object(rc, "recording_report", wraps=rc.recording_report) as parsed:
+                got = sweep.receipt_step(conn)
+            check(kind + ": fresh absent-VIEW receipt ACTS", got, (1, 0))
+            check(kind + ": full read never rejoins REC", joined.call_count, 1)
+            check(kind + ": immutable receipt/HID/REC observations", list(reads.values()),
+                  [1, 1, 0 if kind == "removed-authority" else 1])
+            check(kind + ": optional parse only for available nontrivial authority",
+                  parsed.call_count, 1 if kind in ("supported", "wrong-operation") else 0)
+            row = dict(conn.execute("SELECT * FROM receipts").fetchone())
+            check(kind + ": fresh source result", row["journal"], "OK" if kind == "supported" else "BLIND")
+            check(kind + ": optional content does not change receipt verdict",
+                  (row["verdict"], row["sig"], row["reason"]), ("VALID", 1, ""))
+            check(kind + ": unkept duration stays signed -1", rc.signed_get(rc.read(rp), "ticks"), "-1")
+            if kind == "supported":
+                check("fresh absent VIEW: source-bound reset actually judged",
+                      json.loads(row["journal_metrics"])["metrics"]["identity_judged"], 1)
+        finally:
+            rc.GAME = os.path.join(os.path.dirname(TOOLS), "ftesurf")
+            conn.close()
+
+
 def case_receipt_journal_third_verdict():
     """A TELEPORT IS NOT A FAULT AND NOT OK.  A server angle set on a frame that
     carried counts read PITCH/YAW IDENTITY BROKEN, so 3 of the tree's 4 real PBs
@@ -1824,6 +1996,8 @@ def main():
                  case_receipt_angles_reach_the_database,
                  case_receipt_journal_reaches_the_database,
                  case_receipt_journal_third_verdict,
+                 case_delayed_journal_angle_authority,
+                 case_fresh_journal_angle_authority_without_view,
                  case_receipt_journal_diagnostics_stored,
                  case_receipt_journal_pending_until_it_arrives,
                  case_pending_reread_moves_only_the_journal,

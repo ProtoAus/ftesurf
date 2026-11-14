@@ -21,6 +21,9 @@
 
 ## next
 
+### P1565 Recording report context
+- Recording reports retain additional context without changing movement or the results of older recordings.
+
 ### P1564 TAS boards and run history
 - The community web boards have a separate TAS category. Assisted times stay separate from ordinary boards, completion counts and points.
 

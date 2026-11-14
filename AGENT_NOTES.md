@@ -6130,6 +6130,15 @@ cannot be used, ask; do not silently scatter copies elsewhere.
 
 ## Build
 
+**P1565 measured native-build/artifact traps (14 Nov 2026 UTC).** `-Full` must
+retire `*.gch` alongside objects/dependencies in both native output directories;
+otherwise an old precompiled quakedef.h can survive a header/ABI rebuild. The
+existing build entrypoint now does so. Isolated runtime actors must select the
+EXACT NoDeploy directory printed by their qualified build AND verify DAT hashes:
+an older DAT's oversized formatter dropped its last value and was initially
+misreported as a current producer defect. Actual-byte disassembly and a rebuilt
+hash-matched cohort disproved that attribution; original failures stay failed.
+
 ### Native version and historical fixture qualification — P1141, 30 Oct 2026
 
 An incremental native rebuild compiled the new normalized-takeoff controls but

@@ -32,6 +32,7 @@ would be answering them in a cron job.
 """
 
 import argparse
+import copy
 import filecmp
 import glob
 import hashlib
@@ -473,10 +474,9 @@ def receipt_identity(r):
 
 def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=None,
                  view_only=False, defer_view=False, rec_only=False):
-    """One receipt, fully joined -- or, with journal_only, everything but the
-    .rec joins: the signature, the sibling digests and the journal, for the
-    delayed-journal re-read, where a .rec pruned since the first read must not move
-    the verdict and a late .hid or .view must still be checked.
+    """One receipt, fully joined -- or, with journal_only, the signature,
+    sibling digests and journal. Optional new-schema REC authority is observed
+    separately: a pruned REC cannot move the historical receipt verdict.
     -> (verdict, pub, map, angles, reason, sig, journal, journal_reason, owed,
         partial, identity, view_missing, rec_missing, angles_reason, journal_metrics), or None. view_only checks the view and
     recording/angles without observing HID. `view_missing` is a captured absence,
@@ -556,6 +556,7 @@ def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=
     # (the angle identity on both axes, the injection counters, the counts join,
     # the device-provenance table) ran only when an operator typed a path.
     rcptcheck.join_journal(r)
+    join_journal_authority(r, rcptcheck, discover_rec=journal_only)
     if "hid" in r.digest_bad:
         # The file read is not the journal that was signed, so what its content
         # says is about some other journal (review of 70f1ea3).
@@ -571,6 +572,54 @@ def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=
             not journal_only and not r.recpath, r.angles_detail[:1000],
             json.dumps(r.journal_metrics, sort_keys=True, separators=(",", ":"), allow_nan=False)
             if r.journal_metrics is not None else "")
+
+
+def join_journal_authority(r, rcptcheck, *, discover_rec=False):
+    """Optional custody for an unbound source journal, not a receipt reread.
+
+    Clone the verified receipt and captured sibling bytes. Auxiliary REC faults
+    must neither replace historical receipt findings nor authorize an operation.
+    Only the journal-owned content result returns to the delayed observation.
+    """
+    if r.ok is not True or r.faults or r.journal != "BLIND":
+        return
+    if not discover_rec and (not r.recpath or r.rec_report is not None):
+        return  # full reads may reuse captured REC bytes, never rediscover them
+    metrics = (r.journal_metrics or {}).get("metrics", {})
+    if not metrics.get("identity_unresolved"):
+        return
+    data = r.file_bytes.get(os.path.splitext(r.path)[0] + ".hid")
+    if not isinstance(data, bytes):
+        return
+    lines = data.splitlines()
+    begin = next((i for i, line in enumerate(lines) if line.strip() == b"begin"), None)
+    if begin is None or b"anglecause 1" not in lines[:begin]:
+        return
+    # Eligibility hint only; the existing reader still owns every codec/join.
+    operations = (line.split() for line in lines[begin + 1:]
+                  if line.startswith(b"angleop "))
+    if not any(len(fields) == 15 and fields[8:11] != fields[11:14]
+               for fields in operations):
+        return
+    auxiliary = copy.deepcopy(r)
+    try:
+        if discover_rec:
+            rcptcheck.join_rec(auxiliary)
+        rcptcheck.join_ticks(auxiliary)
+        if auxiliary.ioerror or auxiliary.faults or not auxiliary.recpath:
+            return
+        rec = rcptcheck.recording_report(auxiliary)
+        if not rec.ok:
+            return
+        rcptcheck.join_journal(auxiliary)
+        if auxiliary.ioerror or auxiliary.journal not in ("OK", "BLIND", "FAULT"):
+            return
+    except Exception:
+        # Optional custody unavailable; retain the measured unbound journal.
+        return
+    r.journal = auxiliary.journal
+    r.journal_detail = auxiliary.journal_detail
+    r.journal_metrics = auxiliary.journal_metrics
 
 
 def receipt_rec_runids(mapname):

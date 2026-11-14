@@ -85,7 +85,7 @@ RUNS = os.path.join(SURFDIR, "ftesurf", "data", "runs")
 # Header keys the version is allowed to write.  Unknown keys are SKIPPED by a
 # reader rather than rejected, so an unexpected one is a note and not a fault --
 # the same additive rule the .rec and .view headers follow.
-HEAD_V1 = {"map", "base", "rawinput", "rawkbd", "synth"}
+HEAD_V1 = {"map", "base", "rawinput", "rawkbd", "synth", "anglecause"}
 
 # Engine Patch 293 appended the scale terms so the 'v' record's identity can be
 # checked against a KNOWN constant rather than merely against itself.  They are
@@ -489,7 +489,7 @@ class Report:
         return not self.faults
 
 
-def check_hid(path, verbose=False, *, data=None):
+def check_hid(path, verbose=False, *, data=None, angle_authority=None):
     r = Report(path)
     # A receipt caller has already hashed these bytes. Never reopen its path.
     stream = (open(path, "r", encoding="utf-8", errors="replace") if data is None
@@ -562,7 +562,13 @@ def check_hid(path, verbose=False, *, data=None):
                 devs.append(d)
             i += 1
             continue
-        head[parts[0]] = parts[1] if len(parts) > 1 else ""
+        hvalue = parts[1] if len(parts) > 1 else ""
+        if parts[0] == "anglecause" and (parts[0] in head or
+                lines[i] != "anglecause " + hvalue.strip()):
+            r.fault("duplicate/noncanonical anglecause declaration")
+            head[parts[0]] = "invalid"
+        else:
+            head[parts[0]] = hvalue
         if parts[0] not in HEAD_V1 and parts[0] not in HEAD_P293 \
            and parts[0] not in HEAD_P301 and parts[0] not in HEAD_P303 \
            and parts[0] not in HEAD_P307 and parts[0] not in HEAD_P310 \
@@ -730,6 +736,7 @@ def check_hid(path, verbose=False, *, data=None):
     notes_seen = []
     dts = []
     views = []           # (lineno, dx, dy, flags, pitch, yaw, kpitch, kyaw, idover)
+    angle_trace = AngleCauseTrace() if head.get("anglecause") == "1" else None
     # The identity's constants as of each 'v': {} = the header's, else the 'c'
     # overrides in force.  The engine writes a 'c' above the first 'v' that used
     # the new value (IN_Journal_View calls IN_Journal_RenderCvars first).
@@ -759,6 +766,18 @@ def check_hid(path, verbose=False, *, data=None):
             continue
         tok = s.split()
         kind = tok[0]
+
+        if angle_trace is not None and kind in angle_trace.kinds:
+            if end_seen or cap_seen:
+                angle_trace.bad = True
+                r.fault("line %d: angle annotation after closing boundary" % (lineno + 1))
+            else:
+                try:
+                    angle_trace.capture(tok, lineno + 1, len(views))
+                except (ValueError, IndexError) as exc:
+                    angle_trace.bad = True
+                    r.fault("line %d: %s" % (lineno + 1, exc))
+            continue
 
         if kind == "end":
             if end_seen:
@@ -2042,8 +2061,16 @@ def check_hid(path, verbose=False, *, data=None):
         idhead = dict(head, leftisright=lir)
     controller = bool(devids_joy) or any(
         t == "joy" and did not in ("-", "unset") for t, did, _n in devs + devmaps)
+    angle_bases, angle_unbound = {}, set()
+    if angle_trace is not None:
+        if cap_seen or not end_seen:
+            angle_trace.bad = True  # partial captures do not publish full source totals
+        scope = angle_authority or {}
+        angle_bases, angle_unbound = angle_trace.resolve(
+            r, views, scope.get("operations", {}), scope.get("nonce"))
     check_identity(r, idhead, views, controller=controller,
-                   unavailable="v" in bad_observers)
+                   unavailable="v" in bad_observers,
+                   angle_bases=angle_bases, angle_unbound=angle_unbound)
     # Patch 312, and ABOVE the same bail-out for the same reason -- plus its own:
     # the join is the one check whose most interesting subject is a file with
     # counts that reached no view at all.
@@ -2337,7 +2364,202 @@ def check_counts_join(r, joins, post312):
 # WHY THE CHECK IS SKIPPED RATHER THAN FAILED in several cases below: a check
 # that reports a fault it cannot distinguish from a configuration is worse than
 # no check, because the first false accusation is what people remember.
-def check_identity(r, head, views, controller=False, unavailable=False):
+def _angle_uint(word, bits=64, positive=False):
+    if not word or len(word) > 20 or any(c < "0" or c > "9" for c in word):
+        raise ValueError("noncanonical angle-operation integer")
+    value = int(word)
+    if str(value) != word or value >= (1 << bits) or (positive and not value):
+        raise ValueError("angle-operation integer outside canonical range")
+    return value
+
+
+def _angle_hex(word, size):
+    if len(word) != size * 2 or any(c not in "0123456789abcdef" for c in word):
+        raise ValueError("noncanonical angle-operation hex")
+    return bytes.fromhex(word)
+
+
+def _angle_pose(words):
+    if len(words) != 3:
+        raise ValueError("angle-operation pose needs three float32 words")
+    pose = tuple(struct.unpack(">f", _angle_hex(w, 4))[0] for w in words)
+    if not all(math.isfinite(v) for v in pose):
+        raise ValueError("nonfinite angle-operation pose")
+    return pose
+
+
+def angle_wire(wirefmt, wirehex):
+    """The finite v1 QW ABS subset; preserve actual encoded bytes, not endpoints."""
+    widths = {"qwabs1n": 1, "qwabs2n": 2, "qwabs4n": 4}
+    if wirefmt not in widths:
+        raise ValueError("unsupported angle-operation wire format")
+    width = widths[wirefmt]
+    wire = _angle_hex(wirehex, 1 + 3 * width)
+    if wire[0] != 10:  # svc_setangle, with no reason/seat/basis payload
+        raise ValueError("angle-operation wire is not ordinary QW ABS")
+    if width == 4:
+        pose = struct.unpack("<fff", wire[1:])
+    else:
+        values = struct.unpack("<" + ("bbb" if width == 1 else "hhh"), wire[1:])
+        pose = tuple(v * (360.0 / (1 << (8 * width))) for v in values)
+    if not all(math.isfinite(v) for v in pose):
+        raise ValueError("nonfinite angle-operation wire")
+    return tuple(pose)
+
+
+def angle_server_row(words):
+    """Shared strict REC schema; authority comes from server artifact custody."""
+    if len(words) != 9 or words[0] != "angleop":
+        raise ValueError("angleop needs pk mt row nonce opid basis wirefmt wirehex")
+    context = tuple(_angle_uint(w, 31) for w in words[1:4])
+    _angle_hex(words[4], 16)
+    opid = _angle_uint(words[5], positive=True)
+    basis = _angle_uint(words[6], 32)
+    angle_wire(words[7], words[8])
+    return {"context": context, "nonce": words[4], "opid": opid,
+            "basis": basis, "wirefmt": words[7], "wirehex": words[8]}
+
+
+class AngleCauseTrace:
+    """Sparse opt-in observations. Unbound context abstains; it is not a license.
+
+    Baseline capture precedes input but serialization follows its v. End0 never
+    refers to a v. This is arithmetic/custody correspondence, NOT attestation of
+    hardware or of the client. No endpoint/time-nearness lookup exists here.
+    """
+    kinds = {"angleop", "anglebaseline", "angleend"}
+
+    def __init__(self):
+        self.operations = []
+        self.baselines = {}
+        self.ends = {}
+        self.keys = set()
+        self.lastop = {}
+        self.lastend = 0
+        self.bad = False
+
+    def capture(self, words, line, views):
+        if len(words) < 2 or words[1] != "0":
+            raise ValueError("angle annotation requires canonical serialization dt0")
+        kind = words[0]
+        if kind == "angleop":
+            if len(words) != 15:
+                raise ValueError("angleop needs source, disposition, two poses and interval")
+            _angle_hex(words[2], 16)
+            opid = _angle_uint(words[3], positive=True)
+            basis = _angle_uint(words[4], 32)
+            angle_wire(words[5], words[6])
+            if words[7] not in {"direct", "predicted", "consumed", "interleaved"}:
+                raise ValueError("unknown angle-operation disposition")
+            pre, post = _angle_pose(words[8:11]), _angle_pose(words[11:14])
+            serial = _angle_uint(words[14], positive=True)
+            if serial <= self.lastend:
+                raise ValueError("angle operation refers to a closed interval")
+            key = (words[2], opid)
+            if key in self.keys or opid <= self.lastop.get(words[2], 0):
+                raise ValueError("duplicate or reversed angle-operation identity")
+            self.keys.add(key)
+            self.lastop[words[2]] = opid
+            self.operations.append({"nonce": words[2], "opid": opid, "basis": basis,
+                                    "wirefmt": words[5], "wirehex": words[6],
+                                    "disposition": words[7], "pre": pre, "post": post,
+                                    "interval": serial, "line": line, "views": views})
+            return
+        serial = _angle_uint(words[2], positive=True) if len(words) >= 3 else 0
+        if kind == "anglebaseline":
+            if len(words) != 6 or serial <= self.lastend or serial in self.baselines:
+                raise ValueError("duplicate/malformed anglebaseline")
+            self.baselines[serial] = (_angle_pose(words[3:6]), line, views)
+        elif kind == "angleend":
+            if len(words) != 7 or serial <= self.lastend:
+                raise ValueError("duplicate/reversed/malformed angleend")
+            pose = _angle_pose(words[3:6])
+            ordinal = _angle_uint(words[6])
+            if ordinal and ordinal != views:
+                raise ValueError("angleend is not the latest actual v ordinal")
+            self.ends[serial] = (pose, ordinal, line, views)
+            self.lastend = serial
+
+    def resolve(self, r, views, authority, nonce):
+        bases, unbound, accounted = {}, set(), 0
+        faults_before = len(r.faults)
+        r.info["anglecause_operations"] = len(self.operations)
+        r.info["anglecause_intervals"] = len(self.ends)
+        assigned = set()
+        by_interval = {}
+        for op in self.operations:
+            by_interval.setdefault(op["interval"], []).append(op)
+            if (not self.bad and op["interval"] not in self.ends
+                    and op["views"] < len(views)):
+                r.fault("angle operation crosses a recorded input without its closure")
+
+        # %.6f in the existing v loses at most half a decimal microdegree.
+        # Intermediates use the exact native float32 observations instead.
+        def close(a, b, printed=False):
+            eps = 0.000000500001 if printed else 0.0
+            return all(abs(math.remainder(x - y, 360.0)) <= eps
+                       for x, y in zip(a, b))
+
+        for serial, end in self.ends.items():
+            base = self.baselines.get(serial)
+            if base is None or base[1] >= end[2] or base[2] != end[3]:
+                r.fault("angle interval has no unique adjacent-view baseline")
+                continue
+            ep, ordinal, endline, _ = end
+            if not ordinal:
+                continue  # no v: absolutely no previous/next-frame permission
+            if ordinal > len(views) or ordinal in assigned:
+                r.fault("angle interval reuses a v ordinal")
+                continue
+            assigned.add(ordinal)
+            current = views[ordinal - 1]
+            if not (current[0] < base[1] < endline):
+                r.fault("angle baseline/end serialization does not follow its v")
+                continue
+            if ordinal == 1:
+                continue  # the existing identity's unjudged seed
+            previous = views[ordinal - 2]
+            cursor = (previous[4], previous[5], 0.0)
+            valid = close(ep, (current[4], current[5], 0.0), printed=True)
+            count = 0
+            for op in by_interval.get(serial, []):
+                server = authority.get((op["nonce"], op["opid"]))
+                bound = (server is not None and op["nonce"] == nonce
+                         and all(server[k] == op[k] for k in
+                                 ("nonce", "opid", "basis", "wirefmt", "wirehex")))
+                valid = (valid and previous[0] < op["line"] < current[0]
+                         and op["views"] == ordinal - 1 and bound
+                         and op["disposition"] == "direct"
+                         and close(op["pre"], cursor, printed=(count == 0))
+                         and op["post"] == angle_wire(op["wirefmt"], op["wirehex"])
+                         and op["pre"][2] == 0 and op["post"][2] == 0)
+                cursor = op["post"]
+                count += 1
+            valid = valid and base[0][2] == 0 and close(base[0], cursor, printed=not count)
+            if valid:
+                bases[current[0]] = (base[0][0], base[0][1], previous[0])
+                accounted += count
+            else:
+                unbound.add(current[0])
+        if set(self.baselines) != set(self.ends):
+            r.fault("unpaired angle baseline/end annotation")
+        r.info["anglecause_accounted_operations"] = accounted
+        r.info["anglecause_accounted_frames"] = len(bases)
+        r.info["anglecause_unbound_frames"] = len(unbound)
+        complete = not self.bad and len(r.faults) == faults_before
+        r.info["anglecause_observations_complete"] = complete
+        if not complete:
+            bases = {}
+            unbound = {v[0] for v in views[1:]}
+            for key in ("anglecause_operations", "anglecause_intervals",
+                        "anglecause_accounted_operations", "anglecause_accounted_frames",
+                        "anglecause_unbound_frames"):
+                r.info[key] = None
+        return bases, unbound
+
+
+def check_identity(r, head, views, controller=False, unavailable=False,
+                   angle_bases=None, angle_unbound=None):
     if not views:
         r.info["identity_blind"] = ("no view records to judge" if "sensitivity" in head
                                     else "pre-293 journal: no recorded angle identity")
@@ -2433,6 +2655,13 @@ def check_identity(r, head, views, controller=False, unavailable=False):
     # A seed is not a judged endpoint; early gates are not measured zeroes.
     y_excl = r.info["identity_yaw_exclusions"] = {}
     p_excl = r.info["identity_pitch_exclusions"] = {}
+
+    angle_bases = angle_bases or {}
+    angle_unbound = set(angle_unbound or ())
+    if head.get("anglecause") not in (None, "1"):
+        y_excl["reader_profile_gate"] = p_excl["reader_profile_gate"] = len(views)
+        r.info["identity_blind"] = "unsupported anglecause schema"
+        return
 
     if unavailable:
         y_excl["reader_profile_gate"] = p_excl["reader_profile_gate"] = len(views)
@@ -2618,19 +2847,26 @@ def check_identity(r, head, views, controller=False, unavailable=False):
                 why = "profile" if filt else "zero_scale"
                 p_excl[why] = p_excl.get(why, 0) + 1
                 continue
+            baseline = angle_bases.get(c[0])
+            if c[0] in angle_unbound or (baseline and baseline[2] != p[0]):
+                angle_unbound.add(c[0])
+                p_abst += 1
+                p_excl["angle_source"] = p_excl.get("angle_source", 0) + 1
+                continue
+            bp = baseline[0] if baseline else p[4]
             pred = kpt * c[2] + c[6]
-            if pred > PITCH_ENV - p[4] or pred < -PITCH_ENV - p[4]:
+            if pred > PITCH_ENV - bp or pred < -PITCH_ENV - bp:
                 p_abst += 1     # the clamp may have truncated it: not governed
                 p_excl["clamp"] = p_excl.get("clamp", 0) + 1
                 continue
             p_judged.add(c[0])
-            dpitch = c[4] - p[4]
+            dpitch = c[4] - bp
             if dpitch > 180.0:
                 dpitch -= 360.0
             elif dpitch < -180.0:
                 dpitch += 360.0
             err = abs(dpitch - pred)
-            if err > pitch_eps(p[4], c[4]) + abs(pred) * 1e-6:
+            if err > pitch_eps(bp, c[4]) + abs(pred) * 1e-6:
                 if c[2] == 0 and c[6] == 0.0:
                     pghost.append((c[0], dpitch))
                 else:
@@ -2656,8 +2892,15 @@ def check_identity(r, head, views, controller=False, unavailable=False):
             why = "profile" if filt else "zero_scale"
             y_excl[why] = y_excl.get(why, 0) + 1
             continue
+        baseline = angle_bases.get(c[0])
+        if c[0] in angle_unbound or (baseline and baseline[2] != p[0]):
+            angle_unbound.add(c[0])
+            y_abst += 1
+            y_excl["angle_source"] = y_excl.get("angle_source", 0) + 1
+            continue
+        by = baseline[1] if baseline else p[5]
         y_judged.add(c[0])
-        dyaw = c[5] - p[5]
+        dyaw = c[5] - by
         if dyaw > 180.0:
             dyaw -= 360.0
         elif dyaw < -180.0:
@@ -2665,7 +2908,7 @@ def check_identity(r, head, views, controller=False, unavailable=False):
         kyaw = c[7] if c[7] is not None else 0.0
         pred = kyw * c[1] + kyaw
         err = abs(dyaw - pred)
-        if err > yaw_eps(p[5], c[5]) + abs(pred) * 1e-6:
+        if err > yaw_eps(by, c[5]) + abs(pred) * 1e-6:
             if c[1] == 0 and kyaw == 0.0:
                 ghost.append((c[0], dyaw))
             else:
@@ -2688,7 +2931,10 @@ def check_identity(r, head, views, controller=False, unavailable=False):
     hidden = [v[0] for v in violations if have_kbd and v[0] not in pb
               and pitch_live and v[0] not in p_judged] + \
              [v[0] for v in pviolations if v[0] not in yb and v[0] not in y_judged]
-    unresolved = (yb | pb) - set(v[0] for v in yaw_bad + pitch_bad)
+    unresolved = ((yb | pb) - set(v[0] for v in yaw_bad + pitch_bad)) | angle_unbound
+    if angle_unbound:
+        r.note("%d input interval(s) have an unbound view baseline; no server-angle "
+               "or clean-angle attribution is made for them." % len(angle_unbound))
 
     r.info["identity_frames"] = len(applicable) - 1
     r.info["identity_violations"] = len(violations)

@@ -80,7 +80,7 @@ EXP_RE = re.compile(r"^[+-]?\d+(\.\d+)?[eE][+-]?\d+$")
 # columns (record -> token indices, keyword at 0) and still a fault in every
 # other one: integers, and the fixed-point sample/angle columns.  v8 and older
 # keep the blanket rule.
-EXP_OK_V9 = {"in": {3}, "warp": set(range(5, 11)), "ride": {4, 5, 6},
+EXP_OK_V9 = {"angleop": {4, 8}, "in": {3}, "warp": set(range(5, 11)), "ride": {4, 5, 6},
              "seed": set(range(1, 7)), "portal": set(range(4, 10)),
              "inend": {2}, "pause": {2}, "session": {3},     # Patch 364: <carry>
              "spec": set(range(4, 11)),                      # Patch 382: <carry> <o> <v>
@@ -300,7 +300,7 @@ HEAD_V8 = HEAD_V7
 #           recognise is a note, not a fault.
 # Patch 785: holdclock 1 declares cumulative frozen-tick accounting. Raw `in`
 # fields are unchanged; each `hold <mt> <frozen>` updates only the angle clock.
-HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule", "movebnd", "holdclock", "viewclock",
+HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule", "movebnd", "holdclock", "viewclock", "anglecause",
                      "inprof",      # Patch 840, additive
                      "momtrig",     # Patch 869, additive
                      "entfile",     # Patch 890, additive
@@ -815,7 +815,13 @@ def _check_rec(r, path, verbose=False, *, data=None):
         if parts[0] == "begin":
             i += 1
             break
-        head[parts[0]] = parts[1] if len(parts) > 1 else ""
+        hvalue = parts[1] if len(parts) > 1 else ""
+        if parts[0] == "anglecause" and (parts[0] in head or
+                lines[i] != "anglecause " + hvalue.strip()):
+            r.fault("duplicate/noncanonical anglecause declaration")
+            head[parts[0]] = "invalid"
+        else:
+            head[parts[0]] = hvalue
         if parts[0] not in allowed:
             r.note("header key %r is not part of v%d" % (parts[0], ver))
         i += 1
@@ -1224,6 +1230,7 @@ def _check_rec(r, path, verbose=False, *, data=None):
     session_edges = []      # only session records that passed their validation
     open_pause = None       # the pause no session has answered yet
     renonces = []           # Patch 416: body `nonce` records (lineno, mt, hex)
+    angle_ops, angle_lastop = {}, {}
     cur_horizon = in_start
     in_paused = 0           # `in` rows / samples inside a pause (reported once)
     # Patch 382: spectate windows.
@@ -1847,6 +1854,27 @@ def _check_rec(r, path, verbose=False, *, data=None):
                 ang_frozen, ang_holdmt, ang_prev = 0, None, None
                 ang_origin = None
                 open_pause = None
+        elif kind == "angleop":
+            try:
+                if head.get("anglecause") != "1":
+                    raise ValueError("angleop requires anglecause 1")
+                if trailer_at is not None or open_pause is not None or spec_open is not None:
+                    raise ValueError("angleop outside an active timed interval")
+                if lines[lineno] != " ".join(tok):
+                    raise ValueError("noncanonical physical angleop row")
+                # Same six-module reader closure: lazy only for the new schema.
+                import hidcheck
+                operation = hidcheck.angle_server_row(tok)
+                active_nonce = renonces[-1][2] if renonces else nonce
+                if operation["nonce"] != active_nonce:
+                    raise ValueError("angleop is not in the active server nonce")
+                key = (operation["nonce"], operation["opid"])
+                if key in angle_ops or operation["opid"] <= angle_lastop.get(operation["nonce"], 0):
+                    raise ValueError("duplicate/reversed server angle-operation identity")
+                angle_ops[key] = operation
+                angle_lastop[operation["nonce"]] = operation["opid"]
+            except (ValueError, ImportError, AttributeError) as exc:
+                r.fault("line %d: %s" % (lineno + 1, exc))
         elif kind == "nonce" and ver >= 10:
             # Patch 416: a SECOND client was handed this run -- a Multi-Session
             # resume, which can be another machine days later and never saw the
@@ -3392,6 +3420,9 @@ def _check_rec(r, path, verbose=False, *, data=None):
             r.angles = (mts, yaw, pit, 0, "samples (.v_angle)", ver)
 
     r.info["span"] = (samples[0][0], samples[-1][0])
+    if head.get("anglecause") == "1":
+        r.angle_ops = angle_ops if not r.faults else {}
+        r.info["anglecause_operations"] = len(angle_ops) if not r.faults else None
     return r
 
 

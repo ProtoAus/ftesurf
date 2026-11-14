@@ -926,6 +926,8 @@ void(entity e) SV_MsRecAttach =
 	local float ok;
 	local string oldroot;
 
+	e.rec_rec_anglecause = FALSE;       // an attached prefix may predate the schema
+
 	// Patch 629, BEFORE ANY OF THE RETURNS BELOW: a picked-up run keeps the key
 	// it was parked under, id or no id (an unrecorded one has none), and is
 	// posted under a key only if that is the connection's too (Lobby_RunBody).

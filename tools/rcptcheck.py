@@ -665,7 +665,17 @@ def join_journal(r):
         # imports rcptcheck at all.  A host that has rcptcheck but not hidcheck
         # still reports everything else the receipt knows.
         import hidcheck
-        h = hidcheck.check_hid(path, data=data)
+        rec = getattr(r, "rec_report", None)
+        operations = getattr(rec, "angle_ops", None)
+        # The REC is the caller's server-custody artifact, not authenticated by
+        # the client's signature. The signed nonce/digest and fault-free REC
+        # joins must already agree before its rows can license a source reset.
+        if (operations is not None and r.ok is True and not r.faults
+                and not rec.faults and signed_get(r, "nonce")):
+            h = hidcheck.check_hid(path, data=data, angle_authority={
+                "nonce": signed_get(r, "nonce"), "operations": operations})
+        else:
+            h = hidcheck.check_hid(path, data=data)
     except Exception as exc:
         # A journal too broken to parse is a finding about the file, but this
         # function must not take the receipt step down with it -- the sweep's own

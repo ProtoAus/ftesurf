@@ -280,9 +280,10 @@ if ($Engine) {
     if ($Full) {
         Step "Full rebuild: clearing objects and plugin DLLs"
         # The makefiles do not track header deps.  Removing the objects is the
-        # only way to guarantee the whole tree sees a changed header.
-        Remove-Item "$ReleaseDir\m_mgw64\*.o","$ReleaseDir\m_mgw64\*.d" -Force -EA SilentlyContinue
-        Remove-Item "$ReleaseDir\sv_mingw64\*.o","$ReleaseDir\sv_mingw64\*.d" -Force -EA SilentlyContinue
+        # only way to guarantee the whole tree sees a changed header, including
+        # definitions cached in a precompiled quakedef.h.
+        Remove-Item "$ReleaseDir\m_mgw64\*.o","$ReleaseDir\m_mgw64\*.d","$ReleaseDir\m_mgw64\*.gch" -Force -EA SilentlyContinue
+        Remove-Item "$ReleaseDir\sv_mingw64\*.o","$ReleaseDir\sv_mingw64\*.d","$ReleaseDir\sv_mingw64\*.gch" -Force -EA SilentlyContinue
         Remove-Item "$ReleaseDir\fteplug_*_x64.dll" -Force -EA SilentlyContinue
         Ok "objects and plugins cleared"
     }
