@@ -10,6 +10,7 @@ float tr_req_opsave;            // P1547: tr_req_wait is a WOP_SAVE's (-1 until 
 float wop_opsave;               // P1547: WarpOp_Save took the save being dispatched
 float() Rewind_Waiting;
 void() Trail_RequestSend;
+float() WarpOp_AnyPending;              // cl_warpop.qc
 
 void() Trail_RequestReset =
 {
@@ -198,6 +199,12 @@ void() Trail_RequestFrame =
 		if (r < 0)
 			return;
 		if (!r)
+		{
+			// P1547: a load can ride behind a save on a command; a stringcmd queued after it would run
+			// first if that command's packet were lost.
+			if (WarpOp_AnyPending())
+				return;
 			Trail_RequestSend();           // load + hold stay in one command-buffer pass
+		}
 	}
 };

@@ -611,7 +611,7 @@ float() PE_ReplayInputFrame =
 	// command; usercmd msec is a float here, a byte on the wire, and 15/1000*1000 comes back as 15.0)
 	if (pe_rp_ms[r] > 0)
 		input_timelength = pe_rp_ms[r] / 1000;
-	if (pe_rp_imp[r] && pe_rp_imp[r] < 201)
+	if (pe_rp_imp[r] && pe_rp_imp[r] < WOP_SAVE)     // P1547: warp ops (saves included) are not replayed
 		input_impulse = pe_rp_imp[r];
 	return TRUE;
 };
