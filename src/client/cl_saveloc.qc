@@ -296,23 +296,33 @@ float(string c) Trail_Request;
 float() Trail_RequestBusy;
 float() Trail_RequestDispatching;
 float() WarpOp_Charge;
+float(float charged) WarpOp_Save;
+// P1547: cltime a body-moving stringcmd went (a reset's fallback, zone_goto, ms_resume): WarpOp_Save
+// waits it out, as that reliable could still be run after a save on a later command.
+float wop_strat;
 
 void(string c) SaveLoc_Cmd =
 {
-	local float holding, key, rep, upwait, t0, preview;
+	local float holding, key, rep, upwait, t0, preview, charged;
 	if (numclientseats == 1 && LT_StatsAreMine() && getstatf(STAT_FS_TSRETURN) > 0)
 		return; // no new deferred/fallback load can cross the clean-return fence
 	if (Trail_Request(c))
 		return;
+	charged = TRUE;
 	if (substring(c, 0, 3) == "sl_")
 	{
 		SaveLoc_Resync();
 		if (c != "sl_hold" && c != "sl_holdoff")
-			WarpOp_Charge();        // Patch 759: SV_SaveLocRate's charge, mirrored
+			charged = WarpOp_Charge();      // Patch 759: SV_SaveLocRate's charge, mirrored
 	}
 	if (c == "sl_save")
 	if (!Trail_RequestDispatching())
 		c = SaveLoc_SaveCommand();
+	// P1547: the live body's save (the queue's, so not a rewind or replay pose) at one command.
+	if (c == "sl_save")
+	if (Trail_RequestDispatching())
+	if (WarpOp_Save(charged))
+		return;
 	if (c == "sl_load" || c == "sl_next" || c == "sl_prev" ||
 	    c == "sl_first" || c == "sl_last" || substring(c, 0, 8) == "sl_goto ")
 	{

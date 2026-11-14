@@ -808,6 +808,7 @@ float(string cmd) Zone_ConsoleCommand =
 		}
 		// %g of a number, not %s: a quoted `1;anything` ran `anything` at THIS
 		// VM's level, and a server can type zone_goto (Patch 617, arm M).
+		wop_strat = cltime;     // P1547
 		localcmd(sprintf("cmd zone_goto %g\n", stof(argv(1))));
 		return TRUE;
 	}
