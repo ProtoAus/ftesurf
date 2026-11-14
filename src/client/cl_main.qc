@@ -1603,6 +1603,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	if (TASOptUI_DropKey(evtype, scanx)) return TRUE;    // P1528: Esc closes an open Jargon dropdown
 	if (TASUI_Input(evtype, scanx, chary, devid)) return TRUE;
 	if (WPU_Input(evtype, scanx, chary, devid)) return TRUE;
+	if (Gfx_Input(evtype, scanx, chary, devid)) return TRUE;     // P1566: drawn after the replay chrome, so ahead of it here
 	if (av_open)
 		if (Av_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
@@ -1694,18 +1695,9 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		// (Patch 809).  After the card, which keeps ESC while one is up.
 		if (Ev_PassiveKey(scanx))
 			return TRUE;
-		/*
-		  The gfx menu is offered the press FIRST, and only while it is open --
-		  it shares the digit row with the save-lock menu, and the one that is
-		  visible is the one that should answer.  Both being open at once is
-		  the user's business; the front one wins and the other keeps its keys
-		  the moment you close this.
-		*/
-		if (Vote_Key(scanx))            // Patch 372: drawn over both menus, so asked first
+		if (Vote_Key(scanx))            // Patch 372: drawn over the save-lock menu, so asked first
 			return TRUE;
 		if (Share_Key(scanx))           // Patch 777: only while a share card is up
-			return TRUE;
-		if (Gfx_Key(scanx, TRUE))
 			return TRUE;
 		if (Timer_ResumeInputKey(evtype, scanx)) // 1/2 before save-lock digit keys
 			return TRUE;
@@ -2360,8 +2352,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		Results_DrawToast(scr);
 		MapMsg_Draw(scr);               // Patch 870: game_text and env_hudhint
 		SaveLoc_Draw(scr);
-		Gfx_Draw(scr);
-		Vote_Draw(scr);                 // Patch 372: over saveloc, gfx and the chatbox
+		Vote_Draw(scr);                 // Patch 372: over saveloc and the chatbox
 		Share_Draw(scr);                // Patch 777
 		if (HC_Begin(1))                // Patch 871: hud_fps's second layer
 		{
@@ -2394,6 +2385,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		Av_SelfMark();                  // Patch 1000
 		WPU_Draw(scr);
 		TASUI_Draw(scr);
+		Gfx_Draw(scr);                  // P1566: the last bracket before the board's, so its clicks are its own
 		Friends_Finish();
 
 		// And the leaderboard over THAT: it is opened from inside a replay to

@@ -10,11 +10,12 @@
   nothing about what it does.  Every row here spells its current mode out in
   words, so `hl2_water 1` is "Cheap reflection" rather than 1.
 
-  It is deliberately the save-lock menu's shape -- same header, same rows,
-  same digit-driven interaction, same colours -- because there is no reason
-  for a second idiom, and because the muscle memory transfers.  The one
-  difference is what a digit DOES: the save-lock menu's digits are verbs on
-  one list, and these are one verb (cycle) on twenty-six different settings.
+  P1566 made it a mouse panel (Lex, 15 Nov 2026: "a proper click and drag
+  menu with clickable options ... previous and next buttons, with readout of
+  the option currently selected, maybe tooltips telling you the console
+  command"): tabs by subject, < value > per row with the value's list one
+  click away, and the console command in each row's tooltip. It was the
+  save-lock menu's digit-driven shape (seven pages of six) until then.
 
   REBUILD/LOAD ROWS ARE MARKED, and that mark is load-bearing. Water's live
   policy rebuilds its shaders on the next frame; other generated-material
@@ -25,32 +26,14 @@
 */
 
 float ui_gfx_open;              // the menu is up
-float ui_gfx_page;              // 0-based; see the paging note below
+float ui_gfx_page;              // P1566: the tab shown, 0-based
 float ui_gfx_loadtime;          // cltime when this map's CSQC came up
 float ui_gfx_mmrsent;           // P1382: this map's missing-material report went (or was not due)
 float ui_gfx_waterbudget;       // LOCAL native renderer + loaded plugin capability
 float ui_gfx_waterscreen;       // Patch 1020: hl2_water 5 (screen-space) on this native renderer + plugin
 float gfx_movers_off;           // P1423: vbsp_movers 0, read once a frame (CSQC_UpdateView) by the mover predraws
 
-/*
-  WHY THIS PAGES, when ten rows fit on screen perfectly well.
-
-  The first cut put rows 1..9 on their own digit and hung the tenth on `-`,
-  because ten settings do not fit in nine digits.  That row was Decals, and it
-  was effectively unreachable: nothing on screen suggests `-`, and the digit it
-  looks like it wants -- 0 -- is Close.  A row you cannot press is worse than a
-  row that is not there, because it reads as a broken menu rather than a missing
-  feature.
-
-  So the digits get split by kind instead of by count: 1..6 act on the six rows
-  of the current page, and 7/8/9 are the menu's own verbs on EVERY page.  A digit
-  never means two different things depending on where you are, which is the
-  property that lets this be driven without reading it.  The list has since grown
-  from ten settings to twenty-six and cost four more keystrokes, which is the
-  whole point of having paged rather than found a tenth key.
-*/
 #define GFX_ROWS     37         // highest row index (P1458 Light glows, P1459 Post-process)
-#define GFX_PER_PAGE 6          // digits 1..6; 7 reloads, 8/9 page, 0 closes
 
 void() Gfx_WaterSupport =
 {
@@ -242,11 +225,14 @@ void(vector scr) Gfx_DrawMissing =
       2  the values it cycles through, space-separated
       3  what each value MEANS, `;`-separated, in the same order as field 2
       4  "*" when a rebuild/map load is needed (retry may reuse cached data)
+      5  P1566: what it does, for the row's tooltip (one or two sentences)
 
   Field 3 is the whole reason the menu exists.  It is positional against field 2
   rather than threshold-tested against the cvar, which is what the old
   Gfx_ValueName did: a threshold chain is a second, independent encoding of the
   same list, and the two can disagree.
+
+  P1566: the panel shows rows by Gfx_TabRows, so the page notes below are only history.
 
   ORDER IS BY WHAT YOU ARE LOOKING AT, not by which file owns the cvar: page 1
   is the surfaces you can see change while you watch, page 2 is reflections and
@@ -296,15 +282,15 @@ string(float row) Gfx_Def =
 	if (row == 1)
 	{
 		if (ui_gfx_waterscreen && ui_gfx_waterbudget)
-			return "hl2_water|Water|3 0 4 5 1 2|Dithered;Flat sheet;Budget (no captures);Screen-space;Cheap reflect;Full reflect|";
+			return "hl2_water|Water|3 0 4 5 1 2|Dithered;Flat sheet;Budget (no captures);Screen-space;Cheap reflect;Full reflect||How water surfaces draw, cheapest first. The reflection modes cost the most.";
 		if (ui_gfx_waterbudget)
-			return "hl2_water|Water|3 0 4 1 2|Dithered;Flat sheet;Budget (no captures);Cheap reflect;Full reflect|";
-		return "hl2_water|Water|3 0 1 2|Dithered;Flat sheet;Cheap reflect;Full reflect|*";
+			return "hl2_water|Water|3 0 4 1 2|Dithered;Flat sheet;Budget (no captures);Cheap reflect;Full reflect||How water surfaces draw, cheapest first. The reflection modes cost the most.";
+		return "hl2_water|Water|3 0 1 2|Dithered;Flat sheet;Cheap reflect;Full reflect|*|How water surfaces draw, cheapest first. The reflection modes cost the most.";
 	}
 	// Patch 900: 2 dithers only a pane with its own texture (P859); 879 of the 1,047 pak Refract
 	// VMTs in the 1,926-map library have none -- surf_boreas's ice among them -- and draw as 0.
-	if (row == 2)  return "hl2_refract|Glass|2 0 1|Dithered if textured;Translucent;Refracting|*";
-	if (row == 3)  return "hl2_translucent|Translucent|0 1|Opaque;As authored|e";
+	if (row == 2)  return "hl2_refract|Glass|2 0 1|Dithered if textured;Translucent;Refracting|*|How refracting glass and ice draw. Dithered applies to panes with their own texture; the rest draw translucent.";
+	if (row == 3)  return "hl2_translucent|Translucent|0 1|Opaque;As authored|e|See-through world materials: windows, grates, railings. Opaque stops sorting them, which is what they cost on maps with a lot of glass.";
 	/*
 	  BUILD 33, and it belongs on this page because it is the same kind of thing
 	  as the three above it: one read at material generation (mat_vmt.c:1114).
@@ -316,9 +302,9 @@ string(float row) Gfx_Def =
 	  what the material asked for.  It defaults to 0, which means that until this
 	  row existed the feature was both off and unreachable.
 	*/
-	if (row == 4)  return "hl2_animated|Animated|0 1|Off;On|*";
-	if (row == 5)  return "hl2_dither_alpha|Dither scale|0.15 0.30 0.55 0.80 1|15%;30%;55%;80%;100%|*";
-	if (row == 6)  return "hl2_dither_force|Dither level|0 0.15 0.25 0.40 0.55 0.70 0.85 1|Per material;15%;25%;40%;55%;70%;85%;100%|*";
+	if (row == 4)  return "hl2_animated|Animated|0 1|Off;On|*|Lets flipbook textures (smoke, screens, flowing sheets) play their frames.";
+	if (row == 5)  return "hl2_dither_alpha|Dither scale|0.15 0.30 0.55 0.80 1|15%;30%;55%;80%;100%|*|How see-through dithered water and glass are, as a share of each material's own amount.";
+	if (row == 6)  return "hl2_dither_force|Dither level|0 0.15 0.25 0.40 0.55 0.70 0.85 1|Per material;15%;25%;40%;55%;70%;85%;100%|*|One see-through level for every dithered material, replacing their own amounts.";
 	/*
 	  BUILD 20: marked map-latched, which it should always have been.
 
@@ -333,7 +319,7 @@ string(float row) Gfx_Def =
 	  save 3, but a retry keeps the BSP, and whether a batch keeps its cubemap is decided at
 	  map load (Mod_Batches_Build) -- so a map loaded with it off still needs one.
 	*/
-	if (row == 7)  return "hl2_envmap|Env maps|0 1|Off;On|*";
+	if (row == 7)  return "hl2_envmap|Env maps|0 1|Off;On|*|Materials' own reflections, decided when a material is built. Reflections switches them off at once.";
 
 	// -- page 2: reflections and surface detail -------------------------------
 	/*
@@ -346,8 +332,8 @@ string(float row) Gfx_Def =
 	  cannot be outrun by a cached BSP or a stale shader.  Not latched, and the
 	  missing `*` is the honest claim rather than an omission.
 	*/
-	if (row == 8)  return "r_reflectcube|Reflections|0 1|Off;On|";
-	if (row == 9)  return "hl2_cubemaps|Cubemaps|0 1|Off;On|*";
+	if (row == 8)  return "r_reflectcube|Reflections|0 1|Off;On||Cubemap reflections on every surface, switched where they are drawn: applies on the next frame.";
+	if (row == 9)  return "hl2_cubemaps|Cubemaps|0 1|Off;On|*|The map's baked env_cubemap reflections. Off leaves reflective surfaces flat, which is cheaper.";
 	/*
 	  Works, and stays ungreyed -- but it does NOT reach Water or Refract
 	  surfaces: mat_vmt.c:984 excludes those two material types by name, so
@@ -356,8 +342,8 @@ string(float row) Gfx_Def =
 	  when they are generated; the masked shader-system flag means cached ones
 	  need a rebuild, hence the *.
 	*/
-	if (row == 10) return "hl2_bumpmap|Bump maps|0 1|Off;On|*";
-	if (row == 11) return "vbsp_skyroom|3D skybox|0 1|Off;On|";
+	if (row == 10) return "hl2_bumpmap|Bump maps|0 1|Off;On|*|Normal maps on ordinary materials. Water and glass keep theirs.";
+	if (row == 11) return "vbsp_skyroom|3D skybox|0 1|Off;On||The map's 3D skybox: the miniature scene drawn behind the sky.";
 	/*
 	  BUILD 33: GAINED ITS `*`, which it should have had from the start.
 
@@ -367,7 +353,7 @@ string(float row) Gfx_Def =
 	  row was instant.  That is exactly the failure the `*` convention exists to
 	  prevent, committed by the convention's own table.
 	*/
-	if (row == 12) return "vbsp_decals|Decals|0 1|Off;On|*";
+	if (row == 12) return "vbsp_decals|Decals|0 1|Off;On|*|The map's decal entities: stains, sprays, signs.";
 
 	// -- page 3: what the map LOAD builds -------------------------------------
 	/*
@@ -395,7 +381,7 @@ string(float row) Gfx_Def =
 	  Patch 894: a toggle now re-runs Decal_LoadForMap on the same map (handles kept and
 	  removed), measured live == a retry on surf_rise (103 of its 105 overlays placed).
 	*/
-	if (row == 13) return "vbsp_overlays|Overlays|0 1|Off;On|";
+	if (row == 13) return "vbsp_overlays|Overlays|0 1|Off;On||Decals baked into the map file (info_overlay): signs, trims, ground detail.";
 
 	/*
 	  SPRITES and SPOTLIGHTS, Patch 248.  Source's sprite entities, which were
@@ -412,8 +398,8 @@ string(float row) Gfx_Def =
 	  likely to be the thing somebody wants gone, and folding them into one
 	  switch would have meant losing every glow to turn off the shafts.
 	*/
-	if (row == 14) return "vbsp_sprites|Sprites|0 1|Off;On|";    // Patch 894: re-run live
-	if (row == 15) return "vbsp_spotlights|Light shafts|0 1|Off;On|*";
+	if (row == 14) return "vbsp_sprites|Sprites|0 1|Off;On||Lamp glows, fires and flat billboard sprites.";    // Patch 894: re-run live
+	if (row == 15) return "vbsp_spotlights|Light shafts|0 1|Off;On|*|The large additive beams of the map's spotlights.";
 
 	/*
 	  BUILD 33, and the one row on this page that is NOT map-latched: read per
@@ -431,14 +417,14 @@ string(float row) Gfx_Def =
 	  CVAR_ARCHIVE in the plugin, and the ONLY member of the family that is --
 	  see the seta note on Gfx_Cycle for what build 33 did about the other 22.
 	*/
-	if (row == 16) return "hl2_propdist|Prop distance|4000 8000 12000 20000 0|4k;8k;12k;20k;Unlimited|";
-	if (row == 17) return "hl2_hidetools|Tool brushes|1 0|Hidden;Shown|*";
-	if (row == 18) return "hl2_areaportals|Areaportals|0 1|Closed;Open|*";
-	if (row == 19) return "hl2_propcollision|Prop collide|0 1 2 3|None;VPhysics;Bbox;Mesh|*";
-	if (row == 20) return "hl2_dispcollision|Disp collide|0 1|None;Normal|*";
+	if (row == 16) return "hl2_propdist|Prop distance|4000 8000 12000 20000 0|4k;8k;12k;20k;Unlimited||How far away static props still draw. The biggest frame-rate setting on prop-heavy maps.";
+	if (row == 17) return "hl2_hidetools|Tool brushes|1 0|Hidden;Shown|*|Clip, nodraw, skip and hint brushes, hidden as in Source. Shown helps work out why a route is blocked.";
+	if (row == 18) return "hl2_areaportals|Areaportals|0 1|Closed;Open|*|How the map's areaportals start. Open is what Source does; Closed can seal whole areas off.";
+	if (row == 19) return "hl2_propcollision|Prop collide|0 1 2 3|None;VPhysics;Bbox;Mesh|*|How props collide. The server decides this: it changes only with sv_cheats.";
+	if (row == 20) return "hl2_dispcollision|Disp collide|0 1|None;Normal|*|Collision on displacement terrain. The server decides this: it changes only with sv_cheats.";
 	// Which of a map's two lighting lumps the BSP parse READS, so it belongs
 	// with the load rather than with the prop lighting on the next page.
-	if (row == 21) return "hl2_favour_ldr|Lightmap|0 1|HDR;LDR|*";
+	if (row == 21) return "hl2_favour_ldr|Lightmap|0 1|HDR;LDR|*|Which of the map's two lightmaps to load. LDR can look less washed out on brightly lit maps.";
 
 	// -- page 4: prop and model lighting --------------------------------------
 	/*
@@ -456,11 +442,11 @@ string(float row) Gfx_Def =
 	  wrong.  Recorded because a future reader will otherwise "correct" the mark
 	  and make the menu lie again.
 	*/
-	if (row == 22) return "hl2_lt_baked|Prop light|0 1|Ambient cube;VRAD bake|*";
-	if (row == 23) return "hl2_lt_baked_scale|Prop bright|1 2 3|Raw;x2;x3|*";
-	if (row == 24) return "hl2_lt_min|Prop ambient|0 8 16 32 64|Off;8;16;32;64|*";
-	if (row == 25) return "hl2_lt_scale|Model light|160 200 255 320|160;200;255;320|*";
-	if (row == 26) return "hl2_lt_srgb_mag|Model gamma|0 1|Linear;sRGB|*";
+	if (row == 22) return "hl2_lt_baked|Prop light|0 1 2|Ambient cube;Bake, one colour;Bake per vertex|*|How static props are lit: the area's ambient light, one colour from the map's bake, or the bake per vertex as Source draws it.";   // P1566: 2 (default) was unreachable
+	if (row == 23) return "hl2_lt_baked_scale|Prop bright|1 2 3|Raw;x2;x3|*|Brightness of the baked prop lighting. x2 matches the world's lightmaps.";
+	if (row == 24) return "hl2_lt_min|Prop ambient|0 8 16 32 64|Off;8;16;32;64|*|A floor under model lighting, so props in dark corners stay visible.";
+	if (row == 25) return "hl2_lt_scale|Model light|160 200 255 320|160;200;255;320|*|Overall model brightness. 255 maps a fully lit model to white.";
+	if (row == 26) return "hl2_lt_srgb_mag|Model gamma|0 1|Linear;sRGB|*|Whether model lighting gets the sRGB encode Source's lighting expects.";
 	/*
 	  The map's own fog.  Appended rather than slotted in next to `3D skybox`
 	  where it belongs by subject, because these rows are addressed BY NUMBER --
@@ -468,33 +454,33 @@ string(float row) Gfx_Def =
 	  builds -- so inserting in the middle silently moves every row below it
 	  under someone's cursor.  Grouping is not worth that.
 	*/
-	if (row == 27) return "vbsp_fog|Map fog|0 1|Off;On|";
+	if (row == 27) return "vbsp_fog|Map fog|0 1|Off;On||The map's own fog.";
 	/*
 	  Build 49.  Appended for the reason the block above gives, not slotted in
 	  beside `Map fog` where it belongs by subject -- these rows are addressed
 	  BY NUMBER and ui_gfx_page remembers a position across builds.
 	*/
-	if (row == 28) return "vbsp_emit|Map particles|0 1|Off;On|";
-	if (row == 29) return "vbsp_sun|Sun|0 1|Off;On|";       // Patch 874, cl_sun.qc
-	if (row == 30) return "vbsp_ropes|Ropes|0 1|Off;On|";   // cl_ropes.qc
+	if (row == 28) return "vbsp_emit|Map particles|0 1|Off;On||The map's dust motes, smoke stacks, steam and particle systems.";
+	if (row == 29) return "vbsp_sun|Sun|0 1|Off;On||The map's sun disc and glow.";       // Patch 874, cl_sun.qc
+	if (row == 30) return "vbsp_ropes|Ropes|0 1|Off;On||The map's ropes and cables.";   // cl_ropes.qc
 	// Patch 898's 2x was the default until Patch 1376 made it 1x with MSAA.  Live, the next frame.
-	if (row == 31) return "r_renderscale|Render scale|1 1.5 2|1x;1.5x;2x|";
+	if (row == 31) return "r_renderscale|Render scale|1 1.5 2|1x;1.5x;2x||Draws the scene at a multiple of the screen's resolution and scales it down: sharper, much slower.";
 	// Patch 1376: P1260's scene target and P1276's capture target read these every frame.
-	if (row == 32) return "vid_multisample|Anti-aliasing|0 2 4 8|Off;2x;4x;8x|";
-	if (row == 33) return "r_reflectmultisample|Reflection AA|0 2 4 -1|Off;2x;4x;As screen|";
+	if (row == 32) return "vid_multisample|Anti-aliasing|0 2 4 8|Off;2x;4x;8x||Multisample anti-aliasing on the scene's edges.";
+	if (row == 33) return "r_reflectmultisample|Reflection AA|0 2 4 -1|Off;2x;4x;As screen||Anti-aliasing on water and glass reflections.";
 	// P1423: the movers csprogs poses every frame -- passable func_tracktrains and their riders (cl_trk.qc),
 	// non-solid func_rotating / func_movelinear chains (cl_spin.qc). Off skips their posing and drawing;
 	// solid movers are the server's and always draw (you can hit them). Live, the next frame.
-	if (row == 34) return "vbsp_movers|Movers|0 1|Off;On|";
+	if (row == 34) return "vbsp_movers|Movers|0 1|Off;On||Decorative movers your game animates (passable trains, spinners). Solid movers are the server's and always draw.";
 	// P1398's rate: how often a MOVING model re-samples the world's light (0 = every frame it moves). surf_centipedes
 	// skull swarm (tools/p1423-gfxmenu.md): 0.25/s 2.40 ms, 1/s 2.38, 4/s 2.50, every frame 5.5 -- nothing below 1/s.
-	if (row == 35) return "r_modellight_moverate|Mover light|1 4 0|1/s;4/s;Every frame|";
+	if (row == 35) return "r_modellight_moverate|Mover light|1 4 0|1/s;4/s;Every frame||How often a moving model re-reads the world's light. Every frame costs the most.";
 	// P1458: env_lightglow flares have their own switch (cl_main.qc), so Sprites off left them on and a
 	// reload faded them back in. surf_fairy (460 glows): off 273/140/122 fps against 230/93/74 (P1456 notes).
-	if (row == 36) return "vbsp_lightglow|Light glows|0 1|Off;On|";
+	if (row == 36) return "vbsp_lightglow|Light glows|0 1|Off;On||Glow flares around lamps (env_lightglow).";
 	// P1459: engine master switch; Off drops bloom, the map's colour grade, FXAA, r_postprocshader and
 	// the underwater warp. Gamma is not a post effect here and stays. Live, the next frame.
-	if (row == 37) return "r_postprocess|Post-process|0 1|Off;On|";
+	if (row == 37) return "r_postprocess|Post-process|0 1|Off;On||Bloom, the map's colour grade, FXAA and the underwater warp. Gamma stays.";
 
 	return "";
 };
@@ -710,7 +696,7 @@ string(float row) Gfx_Position =
 };
 
 /*
-  Cycle to the next value in the row's list.
+  How a row's value is set (Gfx_SetIndex below).
 
   localcmd rather than cvar_set: these are engine and plugin cvars with latch
   and shader-flush flags on them, and the console path is the one those flags
@@ -740,180 +726,531 @@ string(float row) Gfx_Position =
   It stays on the console path, so nothing above changes: latch and
   shader-flush flags are still honoured exactly as they were.
 */
+/*
+  Set the row's value to entry i of its list. localcmd + seta for the reasons above; Gfx_Field splits
+  without tokenize, so a caller's argv survives.
+*/
+void(float row, float i) Gfx_SetIndex =
+{
+	local string v;
+
+	v = Gfx_Field(Gfx_Field(Gfx_Def(row), 2, "|"), i, " ");
+	if (Gfx_Cvar(row) == "" || v == "")
+		return;
+	localcmd(sprintf("seta %s %s\n", Gfx_Cvar(row), v));
+};
+
+float(float row) Gfx_Count =
+{
+	return tokenize(Gfx_Field(Gfx_Def(row), 2, "|"));
+};
+
+// `gfx_menu cycle <n>`: the next entry, wrapping (the console's old digit behaviour).
 void(float row) Gfx_Cycle =
 {
-	local string vals;
-	local float n, i;
-
-	if (Gfx_Cvar(row) == "")
-		return;
+	local float i, n;
 
 	i = Gfx_Index(row);
-	if (i < 0)
+	n = Gfx_Count(row);
+	if (i < 0 || n < 1)
 		return;
-
-	// Re-split rather than trust the one Gfx_Index left behind.  It would be
-	// the same split, but "the tokenizer still holds what the last call put
-	// there" is exactly the assumption that breaks the first time a helper
-	// grows a tokenize of its own.
-	vals = Gfx_Field(Gfx_Def(row), 2, "|");
-	n = tokenize(vals);
-
 	i = i + 1;
 	if (i >= n)
 		i = 0;
-
-	localcmd(sprintf("seta %s %s\n", Gfx_Cvar(row), argv(i)));
+	Gfx_SetIndex(row, i);
 };
 
-float() Gfx_Pages =
+/*
+  P1566: the panel's tabs, by subject. Rows keep their numbers (`gfx_menu cycle N`); a tab is a list of
+  them. The two collision rows show only where cheats are on: anywhere else they are latched and inert.
+*/
+#define GFX_TABS 6
+
+string(float tab) Gfx_TabName =
 {
-	return floor((GFX_ROWS - 1) / GFX_PER_PAGE) + 1;
+	if (tab == 0) return "Performance";
+	if (tab == 1) return "Water and glass";
+	if (tab == 2) return "Reflections";
+	if (tab == 3) return "Atmosphere";
+	if (tab == 4) return "Map detail";
+	return "Lighting";
 };
 
-float(float scan, float down) Gfx_Key =
+float() Gfx_Cheats =
 {
-	local float row, pages;
+	return serverkey("*cheats") == "on" || cvar("sv_cheats");
+};
+
+string(float tab) Gfx_TabRows =
+{
+	if (tab == 0) return "31 32 33 16 37 34 35";
+	if (tab == 1) return "1 2 3 5 6";
+	if (tab == 2) return "8 9 7 10";
+	if (tab == 3) return "11 27 29 28 36 15";
+	if (tab == 4)
+	{
+		if (Gfx_Cheats())
+			return "14 12 13 30 4 17 18 19 20";
+		return "14 12 13 30 4 17 18";
+	}
+	return "21 22 23 24 25 26";
+};
+
+float(float tab) Gfx_TabCount =
+{
+	local float n;
+	local string s;
+
+	s = Gfx_TabRows(tab);
+	n = 0;
+	while (Gfx_Field(s, n, " ") != "")
+		n = n + 1;
+	return n;
+};
+
+// The tooltip: what it does, the console command with its current value, every value, and why it may not show.
+string(float row) Gfx_Tip =
+{
+	local string def, cv, vals, names, v, s, why;
+	local float i;
+
+	def = Gfx_Def(row);
+	cv = Gfx_Field(def, 0, "|");
+	vals = Gfx_Field(def, 2, "|");
+	names = Gfx_Field(def, 3, "|");
+	s = "";
+	i = 0;
+	v = Gfx_Field(vals, 0, " ");
+	while (v != "")
+	{
+		s = strcat(s, (i > 0) ? ",  " : "", v, " ", Gfx_Field(names, i, ";"));
+		i = i + 1;
+		v = Gfx_Field(vals, i, " ");
+	}
+	s = sprintf("%s\n\nConsole:  %s %s\nValues:  %s", Gfx_Field(def, 5, "|"), cv, cvar_string(cv), s);
+	if (Gfx_NeedsReload(row))
+		s = strcat(s, "\n* Applies after Reload map (a fresh map load if it still does not show).");
+	why = Gfx_Inert(row);
+	if (why != "")
+		s = strcat(s, "\nNot active here: ", why, ".");
+	return s;
+};
+
+float gfx_drag, gfx_mx, gfx_my;         // P1566: the title bar is held; the last absolute mouse position
+float gfx_drop;                         // the row whose value list is open, 0 none
+float gfx_titleh;
+vector gfx_pos, gfx_size, gfx_off, gfx_dpos, gfx_dsize;
+
+void() Gfx_Close =
+{
+	ui_gfx_open = FALSE;
+	gfx_drag = gfx_drop = 0;
+	UI_CursorRelease(UIC_GFX);
+	sui_reset_actions();
+	sui_tooltip_reset();
+};
+
+// Over a replay is allowed: this bracket draws after the replay's chrome, so it is the last one and owns the clicks.
+float() Gfx_OthersHeld =
+{
+	local float held;
+
+	held = UI_CursorHeld();
+	if (held & UIC_WATCH) held = held - UIC_WATCH;
+	if (held & UIC_GFX) held = held - UIC_GFX;
+	return held || rec_sb_open;
+};
+
+void() Gfx_Open =
+{
+	if (Gfx_OthersHeld())
+	{
+		print("gfx_menu: close the other panel first\n");
+		return;
+	}
+	ui_gfx_open = TRUE;
+	gfx_drag = gfx_drop = 0;
+	sui_reset_actions();
+	UI_CursorClaim(UIC_GFX);
+};
+
+// A pill like Profile_Chip (cl_profile.qc compiles later), with a disabled look. -> clicked and let go over it.
+float(string id, vector pos, vector sz, float rad, string label, float tsz, float on, float live) Gfx_Chip =
+{
+	local float hot, tw;
+
+	sui_action_element(pos, sz, id, sui_noop);
+	hot = live && sui_is_hovered(id);
+	if (hot)
+		sui_style_box(pos, sz, rad, on ? SUI_THEME_SELECTED : SUI_THEME_HOVER, SUI_THEME_EDGE_HI, 1);
+	else
+		sui_roundbox(pos, sz, rad, on ? SUI_THEME_SELECTED : SUI_THEME_CHIP, live ? 1 : 0.5);
+	tw = stringwidth(label, TRUE, [tsz, tsz]);
+	sui_text([pos_x + (sz_x - tw) * 0.5, pos_y + (sz_y - tsz) * 0.5], [tsz, tsz], label,
+	         on ? SUI_THEME_ACCENT : (hot ? SUI_THEME_TEXT : SUI_THEME_DIM), live ? 1 : 0.35, 0);
+	return live && sui_is_clicked(id);
+};
+
+void(vector scr) Gfx_Draw =
+{
+	local float sc, tsz, ttl, hint, pad, rh, bh, bw, tw, lw, vw, n, i, k, row, idx, cnt, maxrows, th, fh, gap, pw;
+	local float dropseen, a, fs;
+	local vector pos, size, at, x0, vc, dv;
+	local string rows, label, val, why, rid, pid, vid, nid;
 
 	if (!ui_gfx_open)
+		return;
+	if (Gfx_OthersHeld())
+	{
+		Gfx_Close();
+		return;
+	}
+	if (ui_gfx_page < 0 || ui_gfx_page >= GFX_TABS)
+		ui_gfx_page = 0;
+
+	maxrows = 0;
+	for (i = 0; i < GFX_TABS; i = i + 1)
+		maxrows = max(maxrows, Gfx_TabCount(i));
+
+	sc = max(0.5, ui_cv_scale);
+	while (sc > 0.5 && (Font_Px(8 * sc) * 52 > scr_x - 12 || Font_Px(8 * sc) * (maxrows * 2.3 + 11) > scr_y - 12))
+		sc = sc - 0.5;
+	Font_Set(ui_font_ui);
+	tsz = Font_Px(8 * sc); ttl = Font_Px(11 * sc); hint = Font_Px(6.5 * sc);
+	pad = tsz;
+	rh = ceil(tsz * 2.3);                       // a setting row
+	bh = rh - ceil(tsz * 0.5);                  // its buttons
+	bw = ceil(bh * 1.25);
+	tw = tsz * 10;                              // the tab column
+	lw = tsz * 9;                               // a row's label
+	vw = tsz * 11;                              // its value
+	gap = ceil(tsz * 0.3);
+	th = pad * 0.8 + ttl + hint * 1.5 + pad * 0.7;
+	fh = pad * 0.6 + rh + hint * 1.6;
+	size = [tsz * 52, th + max(maxrows * rh, GFX_TABS * (rh + gap)) + pad + fh, 0];
+	gfx_titleh = th - pad * 0.5;
+
+	pos = [cvar("hud_gfx_x") * scr_x, cvar("hud_gfx_y") * scr_y, 0];
+	if (gfx_drag)
+		pos = [gfx_mx, gfx_my, 0] - gfx_off;
+	pos_x = bound(4, pos_x, max(4, scr_x - size_x - 4));
+	pos_y = bound(4, pos_y, max(4, scr_y - size_y - 4));
+	if (gfx_drag)
+	{
+		cvar_set("hud_gfx_x", ftos(pos_x / scr_x));
+		cvar_set("hud_gfx_y", ftos(pos_y / scr_y));
+	}
+	gfx_pos = pos; gfx_size = size;
+
+	sui_begin(scr_x, scr_y);
+	sui_style_panel(pos, size, ceil(pad * 0.75), 0.97);
+	sui_text(pos + [pad, pad * 0.8, 0], [ttl, ttl], "Graphics", SUI_THEME_TEXT, 1, 0);
+	sui_text(pos + [pad, pad * 0.8 + ttl + hint * 0.4, 0], [hint, hint],
+	         "Source renderer settings.  Hover a setting for what it does and its console command.  Drag here to move.",
+	         SUI_THEME_MUTED, 1, 0);
+	if (Gfx_Chip("gfx_close", pos + [size_x - pad - bh, pad * 0.7, 0], [bh, bh, 0], bh * 0.5, "X", tsz, FALSE, TRUE))
+	{
+		Gfx_Close(); sui_end(); Font_Reset(); return;
+	}
+	sui_tooltip_for("gfx_close", "Close (Esc, or the gfx_menu key again).", sc);
+	drawfill(pos + [pad * 0.5, th - pad * 0.4, 0], [size_x - pad, 1, 0], SUI_THEME_EDGE_HI, 0.6, 0);
+
+	// Tabs, down the left.
+	at = pos + [pad, th, 0];
+	for (i = 0; i < GFX_TABS; i = i + 1)
+	{
+		if (Gfx_Chip(sprintf("gfx_tab%g", i), at + [0, i * (rh + gap), 0], [tw, rh, 0], tsz * 0.6,
+		             Gfx_TabName(i), tsz, i == ui_gfx_page, TRUE))
+		{
+			ui_gfx_page = i;
+			gfx_drop = 0;
+		}
+	}
+	drawfill(pos + [pad * 1.5 + tw, th, 0], [1, max(maxrows * rh, GFX_TABS * (rh + gap)), 0], SUI_THEME_EDGE_HI, 0.4, 0);
+
+	// The tab's settings: label, < value >, where the value sits fastest -> fullest, and why it may do nothing.
+	x0 = pos + [pad * 2 + tw, th, 0];
+	rows = Gfx_TabRows(ui_gfx_page);
+	dropseen = FALSE;
+	k = 0;
+	row = stof(Gfx_Field(rows, 0, " "));
+	while (row >= 1)
+	{
+		at = x0 + [0, k * rh, 0];
+		rid = sprintf("gfx_r%g", row);
+		pid = sprintf("gfx_p%g", row);
+		vid = sprintf("gfx_v%g", row);
+		nid = sprintf("gfx_n%g", row);
+
+		sui_action_element(at, [size_x - (at_x - pos_x) - pad, rh, 0], rid, sui_noop);
+		if (sui_hover_index(rid) >= 0 || gfx_drop == row)
+			sui_roundbox(at + [-gap, 0, 0], [size_x - (at_x - pos_x) - pad + gap * 2, rh, 0], tsz * 0.5, SUI_THEME_WELL, 0.8);
+		else if (k & 1)
+			sui_roundbox(at + [-gap, 0, 0], [size_x - (at_x - pos_x) - pad + gap * 2, rh, 0], tsz * 0.5, SUI_THEME_WELL, 0.3);
+
+		why = Gfx_Inert(row);
+		a = (why != "") ? 0.55 : 1;
+		label = Gfx_Label(row);
+		sui_text(at + [0, (rh - tsz) * 0.5, 0], [tsz, tsz], label, SUI_THEME_TEXT, a, 0);
+		if (Gfx_NeedsReload(row))
+			sui_text(at + [stringwidth(label, TRUE, [tsz, tsz]) + tsz * 0.3, (rh - tsz) * 0.5, 0], [tsz, tsz], "*",
+			         SUI_THEME_FOCUS, a, 0);
+
+		idx = Gfx_Index(row);
+		cnt = Gfx_Count(row);
+		at_x = at_x + lw;
+		at_y = at_y + (rh - bh) * 0.5;
+		if (Gfx_Chip(pid, at, [bw, bh, 0], bh * 0.5, "<", tsz, FALSE, idx > 0))
+			Gfx_SetIndex(row, idx - 1);
+		dv = at + [bw + gap, 0, 0];
+		val = Gfx_ValueName(row);
+		if (Gfx_Chip(vid, dv, [vw, bh, 0], tsz * 0.5, "", tsz, gfx_drop == row, TRUE))
+			gfx_drop = (gfx_drop == row) ? 0 : row;
+		vc = SUI_THEME_TEXT;
+		if (val == "On")  vc = SUI_THEME_GOOD;
+		if (val == "Off") vc = SUI_THEME_DIM;
+		if (why != "")    vc = SUI_THEME_MUTED;
+		fs = tsz;                               // "Budget (no captures)" shrinks to clear the arrow
+		if (stringwidth(val, TRUE, [fs, fs]) > vw - hint * 3.2)
+			fs = fs * (vw - hint * 3.2) / stringwidth(val, TRUE, [fs, fs]);
+		sui_text(dv + [(vw - hint * 1.2 - stringwidth(val, TRUE, [fs, fs])) * 0.5, (bh - fs) * 0.5, 0], [fs, fs], val, vc, 1, 0);
+		sui_text(dv + [vw - hint * 1.4, (bh - hint) * 0.5, 0], [hint, hint], "v", SUI_THEME_MUTED, 1, 0);
+		if (gfx_drop == row)
+		{
+			dropseen = TRUE;
+			gfx_dpos = dv + [-bw - gap, bh + 3, 0];       // the list spans < value >
+		}
+		if (Gfx_Chip(nid, dv + [vw + gap, 0, 0], [bw, bh, 0], bh * 0.5, ">", tsz, FALSE, idx >= 0 && idx < cnt - 1))
+			Gfx_SetIndex(row, idx + 1);
+
+		at_x = dv_x + vw + gap + bw + tsz;
+		if (why != "")
+			sui_text([at_x, at_y + (bh - hint) * 0.5], [hint, hint], why, SUI_THEME_MUTED, 1, 0);
+		else if (idx >= 0)
+		{
+			pw = ceil(tsz * 0.6);
+			for (i = 0; i < cnt; i = i + 1)
+				sui_roundbox([at_x + i * (pw + gap), at_y + (bh - pw) * 0.5], [pw, pw, 0], pw * 0.3,
+				             (i <= idx) ? SUI_THEME_ACCENT : SUI_THEME_EDGE_HI, (i == idx) ? 1 : 0.55);
+			sui_text([at_x + cnt * (pw + gap) + gap, at_y + (bh - hint) * 0.5], [hint, hint],
+			         sprintf("%g/%g", idx + 1, cnt), SUI_THEME_MUTED, 1, 0);
+		}
+
+		if (sui_is_hovered(rid) || sui_is_hovered(pid) || sui_is_hovered(vid) || sui_is_hovered(nid))
+		{
+			val = Gfx_Tip(row);
+			sui_tooltip_for(rid, val, sc);
+			sui_tooltip_for(pid, val, sc);
+			sui_tooltip_for(vid, val, sc);
+			sui_tooltip_for(nid, val, sc);
+		}
+		k = k + 1;
+		row = stof(Gfx_Field(rows, k, " "));
+	}
+	if (!dropseen)
+		gfx_drop = 0;
+
+	// Footer: what * means, the cfg_save_auto trap, Reload map and Close.
+	at = pos + [pad, size_y - fh, 0];
+	drawfill(at + [-pad * 0.5, -pad * 0.4, 0], [size_x - pad, 1, 0], SUI_THEME_EDGE_HI, 0.6, 0);
+	if (Gfx_Chip("gfx_retry", at + [size_x - pad * 2 - tsz * 16 - gap, 0, 0], [tsz * 9, rh, 0], rh * 0.5,
+	             "Reload map", tsz, FALSE, TRUE))
+	{
+		Gfx_Close(); sui_end(); Font_Reset();
+		localcmd("retry\n");
+		return;
+	}
+	sui_tooltip_for("gfx_retry", "Console:  retry\nReloads the map you are hosting, or reconnects to a server. "
+	                "It can reuse cached map data, so a * setting that still does not show needs the map loaded fresh.", sc);
+	if (Gfx_Chip("gfx_done", at + [size_x - pad * 2 - tsz * 7, 0, 0], [tsz * 7, rh, 0], rh * 0.5, "Close", tsz, FALSE, TRUE))
+	{
+		Gfx_Close(); sui_end(); Font_Reset(); return;
+	}
+	sui_text(at + [0, (rh - hint) * 0.5 - hint * 0.6, 0], [hint, hint], "*", SUI_THEME_FOCUS, 1, 0);
+	sui_text(at + [hint * 0.9, (rh - hint) * 0.5 - hint * 0.6, 0], [hint, hint],
+	         "applies after Reload map", SUI_THEME_MUTED, 1, 0);
+	if (cvar("cfg_save_auto"))
+		sui_text(at + [hint * 0.9, (rh - hint) * 0.5 + hint * 0.7, 0], [hint, hint],
+		         "settings save on quit", SUI_THEME_MUTED, 1, 0);
+	else
+		sui_text(at + [0, rh + hint * 0.4, 0], [hint, hint],
+		         "cfg_save_auto is 0: changes here will not survive a quit (seta cfg_save_auto 1, or cfg_save).",
+		         SUI_THEME_BAD, 1, 0);
+
+	// The open value list, last so it owns the hit-tests over the rows it covers.
+	if (gfx_drop)
+	{
+		n = Gfx_Count(gfx_drop);
+		idx = Gfx_Index(gfx_drop);
+		gfx_dsize = [vw + (bw + gap) * 2, n * (bh + 2) + pad * 0.6, 0];
+		gfx_dpos_y = bound(4, gfx_dpos_y, max(4, scr_y - gfx_dsize_y - 4));
+		sui_style_panel(gfx_dpos, gfx_dsize, ceil(pad * 0.5), 1);
+		rows = Gfx_Def(gfx_drop);
+		for (i = 0; i < n; i = i + 1)
+		{
+			at = gfx_dpos + [pad * 0.3, pad * 0.3 + i * (bh + 2), 0];
+			if (Gfx_Chip(sprintf("gfx_o%g", i), at, [gfx_dsize_x - pad * 0.6, bh, 0], bh * 0.5,
+			             Gfx_Field(Gfx_Field(rows, 3, "|"), i, ";"), tsz, i == idx, TRUE))
+			{
+				Gfx_SetIndex(gfx_drop, i);
+				gfx_drop = 0;
+				break;
+			}
+			val = Gfx_Field(Gfx_Field(rows, 2, "|"), i, " ");
+			sui_text(at + [gfx_dsize_x - pad * 0.6 - stringwidth(val, TRUE, [hint, hint]) - hint, (bh - hint) * 0.5, 0], [hint, hint],
+			         val, SUI_THEME_MUTED, 1, 0);
+		}
+	}
+	sui_end();
+	Font_Reset();
+	HUD_Rect("gfx", pos, size, pos);            // the box, for `hud_edit`
+};
+
+float(float evtype, float scanx, float chary, float devid) Gfx_Input =
+{
+	if (!ui_gfx_open)
 		return FALSE;
-	if (!down)
-		return FALSE;
-
-	pages = Gfx_Pages();
-
-	if (scan == '0') { ui_gfx_open = FALSE; return TRUE; }
-
-	/*
-	  7 is the map reload, and it is on this menu rather than on a bind because
-	  some rows marked `*` need map-time setup. `retry` may reuse cached BSP
-	  data, so it does NOT guarantee application of every marked setting.
-	  A fresh map/client load may be necessary; the footer says so.
-
-	  `retry` is the engine command added for this (P167).  It reloads the
-	  current map when we are hosting it -- which, on a listen server, is always
-	  -- and reconnects otherwise, matching Source.
-	*/
-	if (scan == '7') { localcmd("retry\n"); ui_gfx_open = FALSE; return TRUE; }
-
-	// Both directions wrap, so 9 alone reaches every page and 8 is a shortcut
-	// rather than a necessity.
-	if (scan == '8')
+	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE)
 	{
-		ui_gfx_page = ui_gfx_page - 1;
-		if (ui_gfx_page < 0)
-			ui_gfx_page = pages - 1;
+		if (gfx_drop)
+			gfx_drop = 0;
+		else
+			Gfx_Close();
 		return TRUE;
 	}
-	if (scan == '9')
+	if (evtype == IE_MOUSEABS)
 	{
-		ui_gfx_page = ui_gfx_page + 1;
-		if (ui_gfx_page >= pages)
-			ui_gfx_page = 0;
+		gfx_mx = scanx; gfx_my = chary;
+		sui_input_event(evtype, scanx, chary, devid);
 		return TRUE;
 	}
-
-	if (scan >= '1' && scan <= ('0' + GFX_PER_PAGE))
+	if (scanx == K_MOUSE1)
 	{
-		row = ui_gfx_page * GFX_PER_PAGE + (scan - '0');
-		// The last page is short.  Swallow the key anyway: it belongs to this
-		// menu whether or not the slot is occupied, and letting it fall through
-		// to the save-lock menu underneath would be a surprise.
-		if (row <= GFX_ROWS)
-			Gfx_Cycle(row);
+		if (evtype == IE_KEYUP && gfx_drag)
+		{
+			gfx_drag = FALSE;
+			return TRUE;
+		}
+		if (evtype == IE_KEYDOWN && gfx_drop)
+		if (gfx_mx < gfx_dpos_x || gfx_mx >= gfx_dpos_x + gfx_dsize_x || gfx_my < gfx_dpos_y || gfx_my >= gfx_dpos_y + gfx_dsize_y)
+		{
+			gfx_drop = 0;           // a press outside the open list only closes it
+			return TRUE;
+		}
+		if (evtype == IE_KEYDOWN)
+		if (gfx_mx >= gfx_pos_x && gfx_mx < gfx_pos_x + gfx_size_x - gfx_titleh * 1.2)
+		if (gfx_my >= gfx_pos_y && gfx_my < gfx_pos_y + gfx_titleh)
+		{
+			gfx_drag = TRUE;
+			gfx_off = [gfx_mx, gfx_my, 0] - gfx_pos;
+			return TRUE;
+		}
+	}
+	if (scanx == K_MOUSE1 || scanx == K_MOUSE2)
+	{
+		if (evtype == IE_KEYDOWN)
+			_sui_mouse_move(_cursor_position, FALSE);
+		sui_input_event(evtype, scanx, chary, devid);
 		return TRUE;
 	}
-
 	return FALSE;
 };
 
 /*
-  THE CONSOLE HANDLE (build 33).
+  THE CONSOLE HANDLE (build 33; P1566 tabs).
 
-  `gfx_menu` on its own still just toggles, as it has since build 14.  The
-  arguments exist because everything this menu does was previously reachable
-  only by pressing a digit while looking at it, and a thing that can only be
-  driven by hand can only be checked by hand.  A cfg can now open it, walk it,
-  cycle a row through the REAL Gfx_Cycle path -- seta and all -- and print the
-  whole table for a condump, which is what let build 33's audit be verified
-  rather than asserted.
-
-      gfx_menu             toggle
-      gfx_menu page <n>    show page n (1-based)
-      gfx_menu cycle <n>   cycle row n, exactly as pressing its digit would
-      gfx_menu status      print every row: value, latch mark, and whether it
-                           is inert right now and why
-
-  `status` is also the answer to "is this setting doing anything?" without
-  opening anything, and it prints the inert reason for every row at once, which
-  the menu itself can only show six at a time.
+      gfx_menu             toggle the panel
+      gfx_menu open|close
+      gfx_menu page <n>    show tab n (1-based); `tab` is the same
+      gfx_menu cycle <n>   step row n to its next value, wrapping
+      gfx_menu status [n]  print every row (or row n): value, position, latch mark, why it is inert
+      gfx_menu resetpos    put the panel back where it starts
+      gfx_menu move|press|release|click <x> <y>
+                           arms: the pointer at pixel x y through Gfx_Input (three moves first: sui's cursor
+                           wakes after ~10 px of motion); prints what is under it
 */
 float() Gfx_Console =
 {
-	local float i, n;
-	local string inert;
+	local float i, n, t, k, hits, x, y;
+	local string inert, a1, a2, a3;
 
-	// No tokenization here: preserve the console command's argv below.
+	// Read the arguments before anything below tokenizes (Gfx_Index, Gfx_Count).
+	a1 = argv(1);
+	a2 = argv(2);
+	a3 = argv(3);
 	Gfx_WaterSupport();
-	if (argv(1) == "page")
+	if (a1 == "move" || a1 == "press" || a1 == "release" || a1 == "click")
 	{
-		n = stof(argv(2)) - 1;
-		if (n < 0 || n >= Gfx_Pages())
+		x = stof(a2);
+		y = stof(a3);
+		for (i = 3; i >= 0; i = i - 1)
+			Gfx_Input(IE_MOUSEABS, x - i * 6, y - i * 4, 0);
+		if (a1 == "press" || a1 == "click")
+			Gfx_Input(IE_KEYDOWN, K_MOUSE1, 0, 0);
+		if (a1 == "release" || a1 == "click")
+			Gfx_Input(IE_KEYUP, K_MOUSE1, 0, 0);
+		print(sprintf("gfx_menu %s %g %g: ", a1, x, y),
+		      sprintf("open %g tab %g drop %g drag %g under %s\n", ui_gfx_open, ui_gfx_page + 1, gfx_drop, gfx_drag,
+		              (_hover_action_count > 0) ? _hover_actions[0] : "-"));
+		return TRUE;
+	}
+	if (a1 == "page" || a1 == "tab")
+	{
+		n = stof(a2) - 1;
+		if (n < 0 || n >= GFX_TABS)
 		{
-			print(sprintf("gfx_menu page: 1..%g\n", Gfx_Pages()));
+			print(sprintf("gfx_menu %s: 1..%g\n", a1, GFX_TABS));
 			return TRUE;
 		}
 		ui_gfx_page = n;
-		ui_gfx_open = TRUE;
+		gfx_drop = 0;
+		if (!ui_gfx_open)
+			Gfx_Open();
 		return TRUE;
 	}
 
-	if (argv(1) == "cycle")
+	if (a1 == "cycle")
 	{
-		n = stof(argv(2));
+		n = stof(a2);
 		if (n < 1 || n > GFX_ROWS)
 		{
 			print(sprintf("gfx_menu cycle: 1..%g\n", GFX_ROWS));
 			return TRUE;
 		}
 		Gfx_Cycle(n);
-		// The set is deferred (localcmd), so read it back from the far side of
-		// the queue rather than printing the value we are in the middle of
-		// replacing -- the same trap `ghost speed <n>` fell into in build 32.
+		// The set is deferred (localcmd): read it back from the far side of the queue (build 32's ghost speed trap).
 		localcmd(sprintf("gfx_menu status %g\n", n));
 		return TRUE;
 	}
 
-	if (argv(1) == "status")
+	if (a1 == "status")
 	{
-		// An optional row number, so `cycle` above can report just its own row.
-		if (argv(2) != "")
+		if (a2 != "")
 		{
-			i = stof(argv(2));
+			i = stof(a2);
 			n = i;
 		}
 		else
 		{
 			i = 1;
 			n = GFX_ROWS;
-		}
+			print(sprintf("^5gfx_menu^7  %g settings in %g tabs  (tab %g shown, open %g)  panel %v size %v\n",
+			              GFX_ROWS, GFX_TABS, ui_gfx_page + 1, ui_gfx_open, gfx_pos, gfx_size));
+			for (t = 0; t < GFX_TABS; t = t + 1)
+				print(sprintf("  tab %g %-16s rows %s\n", t + 1, Gfx_TabName(t), Gfx_TabRows(t)));
+			// Every row on exactly one tab (19 and 20 only where cheats are on).
+			for (k = 1; k <= GFX_ROWS; k = k + 1)
+			{
+				hits = 0;
+				for (t = 0; t < GFX_TABS; t = t + 1)
+					if (strstrofs(strcat(" ", Gfx_TabRows(t), " "), sprintf(" %g ", k), 0) >= 0)
+						hits = hits + 1;
+				if (hits != 1)
+				if (!(hits == 0 && (k == 19 || k == 20) && !Gfx_Cheats()))
+					print(sprintf("  ^1row %g is on %g tabs^7\n", k, hits));
+			}
 
-		if (argv(2) == "")
-		{
-			print(sprintf("^5gfx_menu^7  %g settings, %g pages  (page %g shown)\n",
-			              GFX_ROWS, Gfx_Pages(), ui_gfx_page + 1));
-
-			/*
-			  Build 33 made every row archive itself with `seta`.  That only
-			  reaches ftesurf.cfg if something writes ftesurf.cfg, and
-			  cfg_save_auto 0 means nothing does until you type cfg_save.
-
-			  Worth saying out loud because the failure is invisible and looks
-			  exactly like the bug this build fixed: you set a row, you quit,
-			  it is back where it was.  The cvar defaults to 1 and default.cfg
-			  sets it to 1, but a saved config execs later and wins -- and a
-			  config that once saved a 0 keeps that 0 alive forever.
-			*/
+			// Build 33: seta only reaches ftesurf.cfg if something writes it; a saved 0 here keeps itself alive.
 			if (!cvar("cfg_save_auto"))
 				print("  ^1cfg_save_auto is 0^7 -- changes here will NOT survive a quit."
 				      "  `seta cfg_save_auto 1` once, or `cfg_save` each time.\n");
@@ -922,7 +1259,7 @@ float() Gfx_Console =
 		for (; i <= n; i = i + 1)
 		{
 			inert = Gfx_Inert(i);
-			print(sprintf("  %2g %-21s %-14s %-20s %-6s %s%s\n",
+			print(sprintf("  %2g %-21s %-14s %-24s %-6s %s%s\n",
 			              i, Gfx_Cvar(i), Gfx_Label(i), Gfx_ValueName(i), Gfx_Position(i),
 			              Gfx_NeedsReload(i) ? "^3*needs rebuild/map load^7 " : "",
 			              (inert != "") ? sprintf("^1inert^7: %s", inert) : ""));
@@ -930,129 +1267,33 @@ float() Gfx_Console =
 		return TRUE;
 	}
 
-	if (argv(1) != "")
+	if (a1 == "open")
 	{
-		print("gfx_menu [page <n> | cycle <n> | status]\n");
+		if (!ui_gfx_open)
+			Gfx_Open();
+		return TRUE;
+	}
+	if (a1 == "close")
+	{
+		if (ui_gfx_open)
+			Gfx_Close();
+		return TRUE;
+	}
+	if (a1 == "resetpos")
+	{
+		cvar_set("hud_gfx_x", "0.0333");
+		cvar_set("hud_gfx_y", "0.12");
+		return TRUE;
+	}
+	if (a1 != "")
+	{
+		print("gfx_menu [open | close | page <n> | cycle <n> | status [n] | resetpos]\n");
 		return TRUE;
 	}
 
-	ui_gfx_open = !ui_gfx_open;
+	if (ui_gfx_open)
+		Gfx_Close();
+	else
+		Gfx_Open();
 	return TRUE;
-};
-
-// What a page is about, for the header. Follows Gfx_Def's page comments.
-string(float page) Gfx_PageName =
-{
-	if (page == 0) return "Surfaces";
-	if (page == 1) return "Reflections and detail";
-	if (page == 2) return "Map content";
-	if (page == 3) return "Collision and prop light";
-	if (page == 5) return "Display and movers";     // Patch 898: Render scale; P1423 movers; P1458 Light glows
-	if (page == 6) return "Post-process";           // P1459
-	return "Models, fog and particles";
-};
-
-// The rows are cl_saveloc.qc's KeyMenu_Row.
-void(vector scr) Gfx_Draw =
-{
-	local vector p, vc;
-	local float sc, w, h, lsz, ssz, y, i, row, total, hh, vx, pages;
-	local string val, inert, pos;
-
-	if (!ui_gfx_open)
-		return;
-
-	pages = Gfx_Pages();
-	// A page the row count no longer reaches (a setting deleted while this was
-	// open, or GFX_ROWS shrank across a build): snap back, not an empty page.
-	if (ui_gfx_page >= pages)
-		ui_gfx_page = 0;
-
-	sc  = ui_cv_scale;
-	Font_Set(ui_font_ui);
-	lsz = Font_Px(8 * sc);
-	ssz = Font_Px(6 * sc);
-	h   = 14 * sc;
-	hh  = 26 * sc;                      // title line + page line
-	w   = 186 * sc;                     // P1423: 168 + the "(n/m)" column
-
-	total = 3 * sc + hh + GFX_PER_PAGE * h + 4 * sc + 4 * h + 2 * ssz + 6 * sc;
-	p = [scr_x * cvar("hud_gfx_x"), scr_y * cvar("hud_gfx_y"), 0];
-	_sui_round_draw(p, [w, total, 0], 5 * sc, SUI_THEME_PANEL, 0.90);
-
-	y = p_y + 3 * sc;
-	HUD_Text([p_x + 6 * sc, y + (13 * sc - lsz) * 0.5], "Source Renderer", lsz, SUI_THEME_TEXT, 1);
-	// One dot a page, the lit one where you are.
-	for (i = 0; i < pages; i = i + 1)
-		_sui_round_draw([p_x + w - 6 * sc - (pages - i) * 6 * sc + 2 * sc, y + 5 * sc, 0],
-		                [4 * sc, 4 * sc, 0], 2 * sc,
-		                (i == ui_gfx_page) ? SUI_THEME_ACCENT : SUI_THEME_EDGE_HI, 1);
-	HUD_Text([p_x + 6 * sc, y + 13 * sc + (11 * sc - ssz) * 0.5], Gfx_PageName(ui_gfx_page),
-	         ssz, SUI_THEME_ACCENT, 1);
-	HUD_TextR([p_x + w - 6 * sc, y + 13 * sc + (11 * sc - ssz) * 0.5],
-	          sprintf("page %g of %g", ui_gfx_page + 1, pages), ssz, SUI_THEME_MUTED, 1);
-	drawfill([p_x + 4 * sc, y + hh - 2 * sc, 0], [w - 8 * sc, 1, 0], SUI_THEME_EDGE_HI, 0.7, 0);
-	y = y + hh;
-
-	// The star has a column of its own, so the values line up with or without it.
-	// Every slot takes its height, a short last page too: 7/8/9 stay under the
-	// same finger from page to page.
-	vx = p_x + w - 12 * sc;
-	for (i = 1; i <= GFX_PER_PAGE; i = i + 1)
-	{
-		row = ui_gfx_page * GFX_PER_PAGE + i;
-		if (row <= GFX_ROWS)
-		{
-			// `inert` is "" for a live row, or why it currently does nothing. The
-			// row stays pressable and the reason takes the value column: a value
-			// read off a row that is not consulted looks like a broken setting.
-			inert = Gfx_Inert(row);
-			KeyMenu_Row([p_x, y], w, h, sprintf("%g", i), Gfx_Label(row),
-			            (inert != "") ? KM_INERT : KM_NORMAL, lsz, sc);
-			if (inert != "")
-				HUD_TextR([vx, y + (h - sc - lsz) * 0.5], inert, lsz, SUI_THEME_MUTED, 1);
-			else
-			{
-				val = Gfx_ValueName(row);
-				vc = SUI_THEME_WARN;
-				if (val == "On")  vc = SUI_THEME_GOOD;
-				if (val == "Off") vc = SUI_THEME_DIM;
-				// P1423: where the value sits in the row's list, 1 = fastest.
-				pos = Gfx_Position(row);
-				HUD_TextR([vx, y + (h - sc - ssz) * 0.5], pos, ssz, SUI_THEME_MUTED, 1);
-				HUD_TextR([vx - stringwidth(pos, TRUE, [ssz, ssz]) - 3 * sc, y + (h - sc - lsz) * 0.5],
-				          val, lsz, vc, 1);
-			}
-			if (Gfx_NeedsReload(row))
-				HUD_Text([vx + 3 * sc, y + (h - sc - lsz) * 0.5], "*", lsz,
-				         SUI_THEME_FOCUS, (inert != "") ? 0.5 : 1);
-		}
-		y = y + h;
-	}
-
-	y = y + sc;
-	drawfill([p_x + 4 * sc, y, 0], [w - 8 * sc, 1, 0], SUI_THEME_EDGE_HI, 0.7, 0);
-	y = y + 3 * sc;
-
-	KeyMenu_Row([p_x, y], w, h, "7", "Reload map", KM_NORMAL, lsz, sc);
-	HUD_TextR([vx, y + (h - sc - lsz) * 0.5], "retry", lsz, SUI_THEME_MUTED, 1);
-	y = y + h;
-	KeyMenu_Row([p_x, y], w, h, "8", "Previous page", KM_NORMAL, lsz, sc);
-	HUD_TextR([vx, y + (h - sc - lsz) * 0.5],
-	          sprintf("%g", ((ui_gfx_page + pages - 1) % pages) + 1), lsz, SUI_THEME_MUTED, 1);
-	y = y + h;
-	KeyMenu_Row([p_x, y], w, h, "9", "Next page", KM_NORMAL, lsz, sc);
-	HUD_TextR([vx, y + (h - sc - lsz) * 0.5],
-	          sprintf("%g", ((ui_gfx_page + 1) % pages) + 1), lsz, SUI_THEME_MUTED, 1);
-	y = y + h;
-	KeyMenu_Row([p_x, y], w, h, "0", "Close", KM_NORMAL, lsz, sc);
-	y = y + h + sc;
-
-	HUD_Text([p_x + 6 * sc, y], "*", ssz, SUI_THEME_FOCUS, 1);
-	HUD_Text([p_x + 11 * sc, y], "needs a rebuild or a map load", ssz, SUI_THEME_MUTED, 1);
-	y = y + ssz + sc;
-	HUD_Text([p_x + 11 * sc, y], "retry may reuse cached data", ssz, SUI_THEME_MUTED, 1);
-
-	Font_Reset();
-	HUD_Rect("gfx", p, [w, total, 0], p);       // the box, for `hud_edit`
 };

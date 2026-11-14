@@ -215,6 +215,8 @@ float  rec_sb_open;             // the leaderboard is up
 #define UIC_CHAT     1024       // cl_chat.qc      -- the open chat panel (Patch 821)
 #define UIC_WEAPON   2048       // cl_weaponui.qc  -- local knife workshop
 #define UIC_TAS      4096       // cl_tasui.qc     -- paused next-command workshop
+// 8192 is UIC_REPORT, defined in cl_report.qc.
+#define UIC_GFX      16384      // cl_gfx.qc       -- the graphics panel (P1566)
 
 float ui_cursor_claims;         // bitmask of UIC_*; 0 means the game has the mouse
 
