@@ -75,8 +75,7 @@ float  *wop_blind;              // Patch 759: WOPB_* -- sent unpredicted
 float  *wop_cap;                // P1547: a WOP_SAVE's row has been taken at its command (WarpOp_Apply)
 float  wop_pmduck;              // P1547: the last predicted move's hull: 1 ducked, 0 standing, -1 neither
 float  wop_saveseq, wop_saveat; // P1547: the carried WOP_SAVE's command, and since when it is acked unanswered
-float  wop_saveafter;           // P1547: another op rode a command after it (the backstop then refuses)
-float  wop_savet0, wop_savelag; // P1547: cltime a command carried it, and the round trip then (in commands)
+float  wop_savelag;             // P1547: the round trip when a command carried it (commands in flight)
 float  wop_hst, wop_hs, wop_hd; // P1547: pm_standheight/pm_duckheight, read once a frame
 float  wop_slot;                // the slot WarpOp_Queue just filled
 vector wop_tgorg, wop_tgang, wop_tgvel;   // WarpOp_Row's answer: origin, pitch/yaw/duck, speed
@@ -717,16 +716,15 @@ void() WarpOp_SaveExpired =
 	tr_req_opsave = FALSE;
 };
 
-// P1547: a carried WOP_SAVE the server acked without answering (its command dropped: 3+ lost packets,
-// a shortened command, a pause) is sent again as the stringcmd, so the save and what the FIFO queued
-// behind it are not lost; it then saves wherever the server has the body. Not before 0.3 s plus 1.5
-// round trips (the larger of the scoreboard ping and the commands in flight at carriage, capped at 1 s)
-// past the ack: an answer lost with its packet is sent again about a round trip later (sv_ents.c
-// SV_RequeueFrame), and the save it answers did run. Refused once another op rode or waits for a command
-// after it, or a body-moving stringcmd went after it: that ran first, and the save would copy it.
+// P1547: a carried WOP_SAVE acked but not answered 0.3 s + 3 round trips (the larger of the scoreboard
+// ping and the commands in flight at carriage, capped at 1 s) past the ack. Its command may have been
+// dropped (3+ lost packets, a shortened command) -- or its answer lost and requeued (sv_ents.c
+// SV_RequeueFrame), and lost again. No resend: a timeout cannot tell the two apart, and resending a save
+// that ran doubled it at a later spot, moving the cursor there (round 4 arm, 30% loss at 500 ms). Say
+// so, and let the queue behind it go on instead of the FIFO's 5 s reset dropping it.
 void() WarpOp_SaveFrame =
 {
-	local float ping, i;
+	local float ping;
 
 	if (!tr_req_opsave || tr_req_wait <= 0 || wop_saveseq <= 0)
 		return;
@@ -741,28 +739,13 @@ void() WarpOp_SaveFrame =
 		tr_req_at = cltime;             // the FIFO's 5 s now counts from the ack, not the press
 	}
 	ping = bound(0, max(stof(getplayerkeyvalue(player_localnum, "ping")) / 1000, wop_savelag), 1);
-	if (cltime - wop_saveat <= 0.3 + 1.5 * ping)
+	if (cltime - wop_saveat <= 0.3 + 3 * ping)
 		return;
 	wop_saveseq = wop_saveat = 0;
 	PE_Expect("a save on a command was not answered");
-	if (wop_strat >= wop_savet0)
-		wop_saveafter = TRUE;
-	for (i = 0; i < WOP_RING; i = i + 1)
-		if (wop_seq[i] == -1 && wop_op[i] != WOP_SAVE)
-			wop_saveafter = TRUE;
-	if (wop_saveafter)
-	{
-		print("^3save: lost on the way to the server -- save again\n");
-		tr_req_wait = tr_req_opsave = 0;
-		Trail_ReplayClear();
-		return;
-	}
-	SaveLoc_Resync();
-	rec_sl_sent = rec_sl_sent + 1;
-	localcmd(strcat("cmd ", Trail_Command("sl_save"), "\n"));
-	tr_req_wait = tr_saveack;
-	tr_req_at = cltime;
-	tr_req_opsave = FALSE;
+	print("^3save: no answer from the server -- if it is not in your list, save again\n");
+	tr_req_wait = tr_req_opsave = 0;
+	Trail_ReplayClear();
 };
 
 /*
@@ -1137,14 +1120,11 @@ void() WarpOp_InputFrame =
 		wop_loadseq = wop_loadlast = clientcommandframe;
 	if (wop_op[best] == WOP_RELEASE)
 		wop_relseq = wop_rellast = clientcommandframe;
-	if (wop_op[best] != WOP_SAVE && wop_saveseq > 0)
-		wop_saveafter = TRUE;
 	if (wop_op[best] == WOP_SAVE)
 	{
 		Trail_OpSaveCarried(clientcommandframe);
 		wop_saveseq = clientcommandframe;
-		wop_saveat = wop_saveafter = 0;
-		wop_savet0 = cltime;
+		wop_saveat = 0;
 		// The commands in flight now, a round trip before any outage could stretch it (the
 		// scoreboard ping is only as fresh as its last `pings` request).
 		wop_savelag = (clientcommandframe - servercommandframe) / max(cvar("cl_netfps"), 10);
