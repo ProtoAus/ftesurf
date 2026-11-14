@@ -363,7 +363,7 @@ void(float idx, string s) CSEv_pe_fs =
 		return;
 	if (idx == 0)
 	{
-		SV_PeAbandon(self, "superseded by a new report");
+		SV_PeAbandon(self, "for a new begin from the player (stored or refused)");
 		SV_PeBegin(self, s);
 		return;
 	}
