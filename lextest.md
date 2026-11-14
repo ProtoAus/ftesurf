@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1559-P1563 Lex's list of 15 Nov -- owner check PENDING
+## P1559-P1563 Lex's list of 15 Nov -- LIVE (12 lobbies + both installs, tools/p1559-p1563-lexlist.md); owner check PENDING
 - surf_beyond (Momentum build): the start ramps' pattern at CS:S's size; the SH logo stays drawn when it is half off the screen edge; the hub's dust stays inside its sloped volume; the portals show the swirl rings, not a black disc.
 - surf_beyond2: the start floor reflects (triangle facets); the ramps are black under the pattern, not see-through; the portals look closer to CS:S.
 - surf_ace at your save 1: the white seam lines should be gone. surf_null: the grate on the white walls should stay visible from range (a pop-in that happens without moving is a different cause; say which).
