@@ -361,9 +361,11 @@ def run_verifier(map_dir, paths):
         cmd += ["+pm_verify", p, challenge]
     cmd += ["+quit"]
     try:
+        # The guard's explicit inheritable lease must cover native work too.
+        # Ordinary descriptors remain CLOEXEC, as for the similarity child.
         res = subprocess.run(cmd, cwd=GAME, capture_output=True, text=True,
                              errors="replace", timeout=MAP_TIMEOUT,
-                             preexec_fn=_oom_first)
+                             preexec_fn=_oom_first, close_fds=False)
         if res.returncode != 0:
             return ["sweep: verifier exited unsuccessfully (%d)" % res.returncode]
         return authenticated_sources(res.stdout.splitlines() + res.stderr.splitlines(), challenge)

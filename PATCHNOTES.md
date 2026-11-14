@@ -21,6 +21,9 @@
 
 ## next
 
+### P1546 Run-check maintenance
+- Run checks remain accounted for until their background work finishes, keeping maintenance from advancing too early.
+
 ### P1544 Save loads at high ping
 - Loading a save no longer freezes you for about a second at higher ping when you reload quickly or right after saving: you move the moment you let go.
 - A load pressed right after a save now goes as soon as the server has the save, instead of waiting twice as long.

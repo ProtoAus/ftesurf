@@ -229,10 +229,47 @@ class ProcessTests(unittest.TestCase):
 
     @unittest.skipUnless(LINUX, "actual Linux containment required")
     def test_worker_retains_explicit_lease_but_not_private_descriptor(self):
+        self._assert_inherited_lease(self.step)
+
+    @unittest.skipUnless(LINUX, "actual Linux containment required")
+    def test_native_verifier_retains_explicit_lease_but_not_private_descriptor(self):
+        engine = self.home / "lease-engine"
+        engine.write_text(
+            "#!" + sys.executable + "\n"
+            "import importlib.util, sys\n"
+            "s=importlib.util.spec_from_file_location('lease_reader', %r)\n" %
+            str(self.tools / "census/recsim.py")
+            + "m=importlib.util.module_from_spec(s); s.loader.exec_module(m)\n"
+            "verdict, data=m.compare_paths(%r, %r, max_bytes=1048576, max_moves=1000)\n" %
+            tuple(str(self.runs / "surf_control/main" / ("%07d_pb.rec" % i))
+                  for i in (1, 2))
+            + "assert verdict == 'compared' and data['compared'] > 0\n"
+            "index=sys.argv.index('+pm_verify'); path, challenge=sys.argv[index+1:index+3]\n"
+            "print('VERIFY-INPUT '+path+' SHA256 '+('a'*64)+' CHALLENGE '+challenge)\n"
+            "print('VERIFY '+path+' PASS ticks 400 rows 400')\n",
+            encoding="utf-8")
+        engine.chmod(0o700)
+
+        def run():
+            path = "data/runs/surf_control/main/0000001_pb.rec"
+            with mock.patch.object(self.sweep, "ENGINE", str(engine)), \
+                    mock.patch.object(self.sweep, "GAME", str(self.home)):
+                result = self.sweep.run_verifier("surf_control", [path])
+            self.assertEqual(result, ["VERIFY-SOURCE " + path + " SHA256 " + "a" * 64,
+                                      "VERIFY " + path + " PASS ticks 400 rows 400"])
+            return 1, 0, ""
+
+        self._assert_inherited_lease(run)
+        self.assertEqual(self.conn.execute("SELECT count(*) FROM sims").fetchone()[0], 0)
+        self.assertEqual([r[0] for r in self.conn.execute("SELECT tier FROM replays")],
+                         ["ranked", "ranked"])
+
+    def _assert_inherited_lease(self, run):
         import fcntl
 
-        lease_path = self.home / "lifetime.lock"
-        private_path = self.home / "private-fd"
+        prefix = self._testMethodName
+        lease_path = self.home / (prefix + ".lifetime.lock")
+        private_path = self.home / (prefix + ".private-fd")
         lease_path.touch()
         private_path.touch()
         lease = os.open(lease_path, os.O_RDONLY)
@@ -242,8 +279,8 @@ class ProcessTests(unittest.TestCase):
         private_identity = [os.fstat(private).st_dev, os.fstat(private).st_ino]
         fcntl.flock(lease, fcntl.LOCK_SH | fcntl.LOCK_NB)
         os.set_inheritable(lease, True)
-        ready = self.home / "lease.ready"
-        release = self.home / "lease.release"
+        ready = self.home / (prefix + ".lease.ready")
+        release = self.home / (prefix + ".lease.release")
         lease_open = [True]
         observations = []
         errors = []
@@ -278,7 +315,7 @@ class ProcessTests(unittest.TestCase):
                     "_SIMTEST_LEASE_READY": str(ready),
                     "_SIMTEST_LEASE_RELEASE": str(release)}):
                 controller.start()
-                result = self.step()
+                result = run()
         finally:
             release.touch()
             if controller.ident is not None:

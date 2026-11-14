@@ -27,6 +27,7 @@ source challenge, parsing, time limit, scheduling and ranking rules are unchange
   count tests 7/0. No compiler or recorder-format change.
 - The initial combined test exposed reused ready/release filenames across its two
   arms. Test-local names fix the fixture; original failure/control are retained.
-- This claim does not assert independent review or live deployment. Those are
-  recorded separately. No universal resource bound, player calibration, new
-  capture, native vulnerability audit, or native/build pin change is claimed.
+- Two independent narrow source/proof reviews are CLEAR for this exact change.
+  Live new-generation qualification/admission is still separate and NOT claimed.
+  No universal resource bound, player calibration, new capture, native
+  vulnerability audit, or native/build pin change is claimed.
