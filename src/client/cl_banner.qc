@@ -267,10 +267,10 @@ void(float tail) Bn_PlaceRaw =
 	cls = FS_RunClass(flags);
 	if (flags & TF_TAS)
 	{
-		ui_bn_pl1 = "TAS";
+		ui_bn_pl1 = FS_TAS_LABEL;
 		ui_bn_pl2 = "local practice";
-		ui_bn_plc = TC_PRACTICE;
-		ui_bn_placc = TC_PRACTICE;
+		ui_bn_plc = TC_TAS;
+		ui_bn_placc = TC_TAS;
 		return;
 	}
 	if ((flags & TF_SHADOW) && !(flags & TF_BANKTAINT))
@@ -498,14 +498,14 @@ vector() Bn_HeroColor =
 	local float cls;
 
 	cls = FS_RunClass(ui_bn_flags);
-	if ((ui_bn_flags & TF_SHADOW) && !(ui_bn_flags & TF_BANKTAINT))
+	if (ui_bn_flags & TF_TAS)
+		return TC_TAS;
+	if (cls == RC_SEGMENT)
 		return TC_SHADOW;
 	if (cls == RC_CHEAT)
 		return TC_CHEAT;
 	if (cls != RC_CLEAN)
 		return TC_PRACTICE;
-	if (ui_bn_pb > 0 && ui_bn_ticks > ui_bn_pb)
-		return TC_BEHIND;
 	if (!ui_bn_mine && ui_bn_pb <= 0)
 		return RSC_TEXT;
 	return TC_AHEAD;
@@ -579,6 +579,8 @@ void(float st) Bn_SoundFor =
 
 string(vector c) Bn_ChatCol =
 {
+	if (c == TC_TAS)
+		return FS_TAS_COLOUR;
 	if (c == TC_AHEAD)
 		return "^2";
 	if (c == TC_BEHIND)
@@ -607,7 +609,7 @@ void() Bn_ChatSay =
 		return;
 	Bn_Delta(FALSE);
 	Bn_Place(FALSE);
-	ln = "^5finish:^7 ";
+	ln = strcat(Bn_ChatCol(Bn_HeroColor()), "finish:^7 ");
 	if (ui_bn_track > 0 || ui_bn_leg > 0)
 		ln = strcat(ln, strtolower(Bn_LegLabel(ui_bn_track, ui_bn_leg)), " ");
 	ln = strcat(ln, Time_TickString(ui_bn_ticks, Timer_Tick()));

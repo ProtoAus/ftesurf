@@ -465,6 +465,7 @@ float(float state, float ticks, float tick, float flags) Timer_Display =
 */
 #define TC_SHADOW   '0.45 0.85 1.00'
 #define TC_PRACTICE '1.00 0.82 0.20'
+#define TC_TAS      '0.73 0.40 1.00'
 // Legacy reason bits share Practice's presentation without changing evidence.
 #define TC_CHEAT    TC_PRACTICE
 /*
@@ -516,14 +517,15 @@ vector(float state, float ticks, float pb, float flags, float pace) Timer_Color 
 	if (flags & (TF_STOPPED | TF_FROZEN))     return TC_STOPPED;
 	if (state == TS_FINISHED)
 	{
+		if (flags & TF_TAS)                   return TC_TAS;
 		if (flags & TF_CHEAT)                 return TC_CHEAT;
 		if (flags & TF_BANKTAINT)             return TC_PRACTICE;
-		if (flags & TF_SHADOW)                return TC_SHADOW;
+		if (flags & (TF_SHADOW | TF_SEGMENT)) return TC_SHADOW;
 		if (flags & TF_PRACTICE)              return TC_PRACTICE;
-		if (!(flags & TF_HAVEPB) || ticks <= pb) return TC_AHEAD;
-		return TC_BEHIND;
+		return TC_AHEAD;                      // result kind; the delta still shows pace
 	}
 	if (state == TS_ARMED)                    return '0.70 0.75 0.80';
+	if (flags & TF_TAS)                       return TC_TAS;
 	if (flags & TF_CHEAT)                     return TC_CHEAT;
 	if (flags & TF_BANKTAINT)                 return TC_PRACTICE;
 	if (flags & TF_SHADOW)                    return TC_SHADOW;
@@ -1099,7 +1101,9 @@ float(vector scr, float state, float ticks, float flags, float pb,
 	  used for it since build 17 and which `armed`, `held` and `ghost` share --
 	  cyan is a mode on this line, amber is a verdict.
 	*/
-	if (flags & (TF_CHEAT | TF_BANKTAINT))   // P1079: bank taint is practice
+	if (flags & TF_TAS)
+		s = strcat(s, (s != "") ? "  " : "", FS_TAS_COLOUR, FS_TAS_LABEL, "^7");
+	else if (flags & (TF_CHEAT | TF_BANKTAINT))   // P1079: bank taint is practice
 		s = strcat(s, (s != "") ? "  " : "", "^3practice^7");
 	else if (flags & TF_SHADOW)
 		s = strcat(s, (s != "") ? "  " : "", "^5shadow^7");

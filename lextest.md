@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1558 JARGON openings and purple TAS — owner check PENDING
+- On a map/stage where JARGON used to circle back for a second start-platform hop, watch just one opening after reloading the updated local map: it should aim the opening jump toward ramp 1. Please give the map/stage or a short clip if it still returns. No project/config/data reset is requested.
+- If convenient, watch surf_prosurf bonus 4's opening: its explicitly permitted bhop area must remain usable. The actual native smoke confirms the authored-hop branch acts, but it did not complete that bonus within its bounded search; this is not a B4 completion claim.
+- In a disposable LOCAL practice attempt, JARGON or `host_timescale 0.5` should show the full purple **Tool Assisted Speedrun** tag; an assisted finish should be purple. Return `host_timescale 1` afterward. The same already-assisted attempt stays TAS; a genuinely fresh ordinary attempt is separate. Ordinary finishes should be green and clean segments blue, without changing the pace/delta meaning.
+- Automated slow-only/save/warm-load checks used the stock zero-gravity UI fixture, not surf movement acceptance. No new human visual/feel pass is recorded. Delivery state is recorded in tools/p1558-jargon-start-tas.md.
+
 ## P1549 supported-platform handoff — dual Windows deployed; owner check PENDING
 - Owner clarification (14 Nov): tensor2 stage2's final platform is large and enclosed by walls except the entry, with a central door portal. A supported arrival is recoverable; passive drift missing the finish trigger is not proof the approach failed. This is geometry/design input, not acceptance of the new handoff.
 - Deployed to both Windows installs14Nov06:38UTC; restart/reload the local map when ready (no config/project reset). Watch one landing that previously caused a reset: JARGON should keep it, steer toward the door, and finish through the real trigger. If it cannot navigate, it should pause with a clear message instead of retrying the ramp. Report the last console message or a short clip; no config/data reset is needed.

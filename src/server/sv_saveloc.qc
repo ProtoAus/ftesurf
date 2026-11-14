@@ -1448,6 +1448,8 @@ float(entity e, float id, float seq) SV_SaveWriteState =
 	fputs(f, sprintf("flags %d\n",
 	                 (e.run_t_flags - (e.run_t_flags & (TF_FROZEN | TF_STOPPED | TF_NONCE)))
 	                 | SV_TASFlags(e)));
+	// Slow-only TAS must not acquire native-control ancestry on load/retry.
+	fputs(f, sprintf("tasnative %d\n", e.run_tas_used ? 1 : 0));
 	fputs(f, sprintf("pb %d\n", e.run_t_pb));
 	fputs(f, sprintf("dirty %d\n", e.run_t_dirty));
 	/*
@@ -1948,6 +1950,7 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	local float viewseconds;
 	local float ticks, elapsed, haveelapsed, mark, samples, padn, cps, serial;
 	local float st, tr, ss, sg, sgs, spl, dlt, flg, pbv, dty, rfrom;
+	local float tasnative, tasnseen; // absent/ambiguous TAS origin stays native
 	local float cht;                // build 44, the cheat latch
 	local float hcy;                // Patch 478 r11, run_t_handcarry
 	local float hop;                // Patch 445, the hopped-start taint
@@ -1976,6 +1979,7 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	viewseconds = 0;
 	ticks = elapsed = haveelapsed = mark = samples = padn = cps = serial = 0;
 	st = TS_IDLE; tr = ss = sg = spl = dlt = flg = pbv = dty = rfrom = 0;
+	tasnative = -1; tasnseen = 0;
 	cht = 0;                        // a pre-44 save file knows nothing about it
 	hcy = 0;
 	// Patch 445.  A pre-445 file reads 0, which is the pre-445 BEHAVIOUR rather
@@ -2031,6 +2035,17 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 			{
 				if (!strcmp(argv(1), "1")) fgv = 1;
 				else if (!strcmp(argv(1), "2")) fgv = 2;
+			}
+			continue;
+		}
+		if (!strcmp(k, "tasnative"))
+		{
+			tasnseen = tasnseen + 1;
+			tasnative = -1;
+			if (n == 2 && tasnseen == 1)
+			{
+				if (!strcmp(argv(1), "0")) tasnative = 0;
+				else if (!strcmp(argv(1), "1")) tasnative = 1;
 			}
 			continue;
 		}
@@ -2138,7 +2153,10 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	// Snapshot capture confirmed EOF. A legacy empty-line stop can still hide
 	// another grant key, so keep the same unread-tail suppression.
 	if (row != buf_getsize(rows))
+	{
 		fgv = 0;
+		tasnative = -1;
+	}
 	// Patch 735: finish old exit cleanup, then replace its abandoned progress.
 	// Legacy saves have no marker: retain their old behavior, never guess one.
 	if (hasname)
@@ -2412,9 +2430,18 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	                | (e.run_t_flags & TF_NONCE);
 	// P1055: restored movement state does not inherit a queued live-control grant.
 	SV_TASCancel(e);
-	// P1052: raise ancestry before any recorder/header restoration; never lower it.
+	// Raise ancestry before recorder/header restore; never lower either latch.
 	if (flg & TF_TAS)
-		SV_TASMark(e);
+	{
+		if (tasnative == 0)
+		{
+			e.run_ts_used = TRUE;
+			SV_TimeScaleRemember(e);
+			SV_TimerCheat(e);
+		}
+		else
+			SV_TASMark(e); // legacy, malformed or duplicate origin is conservative
+	}
 
 	/*
 	  Prefer the unrounded clock; fall back to the rounded one for a save file
@@ -2624,6 +2651,9 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	  together with nothing in it to say so.  A recording that is missing is
 	  recoverable; one that is quietly wrong is not.
 	*/
+	// A clean saved word cannot erase this connection's retained assistance.
+	// Repair after saved latches, before any recorder/header restoration.
+	if (SV_TASFlags(e)) SV_TimerCheat(e);
 	// Multi-Session (retry 2): SV_MsApply attaches the recorder and reopens the
 	// stage itself -- the slot's counters are in ms.txt, not in this file.
 	if (retry == 2)
@@ -2874,6 +2904,8 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	// Retry/void/clean-save branches may replace latches, not retained TAS ancestry.
 	if (e.run_tas_used)
 		SV_TASMark(e);
+	else if (SV_TASFlags(e))
+		SV_TimerCheat(e);
 	// P1204: last, in the attempt the load ends in: SV_SaveLoadTag's forgiveness advances it too.
 	// Only on a build PROVED the same (sl_mapsame): a brush number names another entity on
 	// another build of the map (review 2).
@@ -3374,6 +3406,7 @@ float(float base, float cnt) SV_SaveFreeID =
 float  sl_fseq, sl_fticks, sl_fgo;
 float  sl_fhasname;
 float  sl_ftas;                 // P1052: the saved file's ancestry, not the demoter's
+float  sl_ftasnative;           // optional origin; never infer it from the demoter
 string sl_fname;
 string sl_fcls;                 // Patch 865
 string sl_fctx;                 // Patch 1036: the `contexts`/`context` lines, kept verbatim
@@ -3383,7 +3416,7 @@ float(float id, float rows) SV_SaveReadIdentRows =
 {
 	local filestream f;
 	local string k;
-	local float n, dem, row;
+	local float n, dem, row, tasnseen;
 
 	f = -1;
 	if (rows < 1)
@@ -3395,6 +3428,8 @@ float(float id, float rows) SV_SaveReadIdentRows =
 	sl_fgo = 0;
 	sl_fhasname = FALSE;
 	sl_ftas = 0;
+	sl_ftasnative = -1;
+	tasnseen = 0;
 	sl_fname = "";
 	sl_fcls = "";
 	sl_fctx = "";
@@ -3415,9 +3450,20 @@ float(float id, float rows) SV_SaveReadIdentRows =
 			k = fgets(f);
 		if (!strcmp(k, "")) break;
 		n = tokenize(k);
-		if (n < 2)
-			continue;
+		if (n < 1) continue;
 		k = argv(0);
+		if (!strcmp(k, "tasnative"))
+		{
+			tasnseen = tasnseen + 1;
+			sl_ftasnative = -1;
+			if (n == 2 && tasnseen == 1)
+			{
+				if (!strcmp(argv(1), "0")) sl_ftasnative = 0;
+				else if (!strcmp(argv(1), "1")) sl_ftasnative = 1;
+			}
+			continue;
+		}
+		if (n < 2) continue;
 		if (k == "flags") { sl_ftas = (stof(argv(1)) & TF_TAS) ? (TF_TAS | TF_CHEAT | TF_PRACTICE) : 0; continue; }
 		if (k == "targetname") { sl_fname = argv(1); sl_fhasname = TRUE; continue; }
 		if (k == "srcclass")   { sl_fcls = argv(1); continue; }
@@ -3430,7 +3476,16 @@ float(float id, float rows) SV_SaveReadIdentRows =
 		if (k == "demoted") { dem = TRUE; continue; }
 		if (k == "origin")  { if (n >= 4) sl_forg = [stof(argv(1)), stof(argv(2)), stof(argv(3))]; continue; }
 	}
-	if (f >= 0) fclose(f);
+	// A legacy blank-line stop is not proof that this was the sole origin key.
+	if (rows >= 1)
+	{
+		if (row != buf_getsize(rows)) sl_ftasnative = -1;
+	}
+	else if (f >= 0)
+	{
+		if (fseek(f) != fsize(f)) sl_ftasnative = -1;
+		fclose(f);
+	}
 	if (dem)
 		sl_fticks = SL_DEMOTED;
 	return TRUE;
@@ -3555,7 +3610,10 @@ void(float row) SV_SaveDemote =
 	if (sl_fctx != "")
 		fputs(f, sl_fctx);             // Patch 1036
 	if (sl_ftas)
+	{
 		fputs(f, sprintf("flags %d\n", sl_ftas));
+		if (sl_ftasnative == 0) fputs(f, "tasnative 0\n");
+	}
 	fputs(f, "demoted 1\n");       // for the reader: everything else defaults to an idle timer
 	fclose(f);
 
@@ -4114,7 +4172,10 @@ float(entity e, float id, float seq, float go) SV_SaveWriteAt =
 	if (rw_statebase >= 0)
 		SV_RewindWriteName(e, f, rw_statebase);
 	if (SV_TASFlags(e))
+	{
 		fputs(f, sprintf("flags %d\n", SV_TASFlags(e)));
+		fputs(f, sprintf("tasnative %d\n", e.run_tas_used ? 1 : 0));
+	}
 	fputs(f, "demoted 1\n");
 	fputs(f, "rewound 1\n");
 	if (go)

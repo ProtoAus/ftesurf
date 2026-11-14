@@ -290,6 +290,7 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 	}
 	fputs(f, sprintf("flags %d\npb %d\ndirty %d\ncheat %d\nhopped %d\nfromsave %d\nhandcarry %d\n",
 	                 flags, m[b+19], m[b+20], m[b+21], m[b+22], m[b+23], m[b+50]));
+	fputs(f, sprintf("tasnative %d\n", e.run_tas_used ? 1 : 0));
 	// Patch 840: as SV_SaveWriteState spells it.
 	fputs(f, sprintf("slowclk %.4f %d %d %.4f %.4f ", m[b+55], m[b+56], m[b+57], m[b+58], m[b+59]));
 	fputs(f, sprintf("%.4f %.4f %d %.4f %.4f\n", m[b+60], m[b+61], m[b+62], m[b+63], m[b+64]));

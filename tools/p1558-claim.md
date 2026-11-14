@@ -21,5 +21,8 @@ qcbuild change. Slow-only assistance must not acquire native-control ancestry
 through local save restoration. Published P1550-P1557 work remains intact;
 uncommitted canonical peer work is not in this source tree.
 
-Implementation and bounded acting checks exist; final integrated build, commit
-and deployment are still pending. This claim is not a delivery receipt.
+Implementation and verification are complete: final integrated three-VM build
+zero warnings, acting ordinary/authored opening checks, final12-check slow-only
+smoke,949/1627reader assertions and unchanged571recording corpus. Product commit
+and deployment are still pending; tools/p1558-jargon-start-tas.md is the evidence
+and delivery-state authority. This claim is not a deployment receipt.

@@ -1091,6 +1091,8 @@ void(vector scr) Results_Draw =
 	col  = SUI_THEME_DIM;
 	if (s == "clean")    { fill = SUI_THEME_GOOD_BG; col = SUI_THEME_GOOD; }
 	if (s == "practice") col = SUI_THEME_WARN;
+	if (ui_rs_flags & TF_TAS) col = TC_TAS;
+	else if (FS_RunClass(ui_rs_flags) == RC_SEGMENT) col = TC_SHADOW;
 	_sui_round_draw([p_x + w - pad - tw, y - 1 * u, 0], [tw, tsz + 2 * u, 0], (tsz + 2 * u) * 0.5, fill, a);
 	HUD_Text([p_x + w - pad - tw + lsz * 0.7, y + (tsz - lsz) * 0.5], s, lsz, col, a);
 	HUD_Text([p_x + pad, y], Chat_Fit(serverkey("map"), w - pad * 3 - tw, tsz), tsz, SUI_THEME_TEXT, a);

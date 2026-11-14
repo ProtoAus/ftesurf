@@ -1,5 +1,13 @@
 # AGENT_NOTES.md
 
+## P1558 opening scope and assistance ancestry (14 Nov 2026)
+
+- Opening permission needs the selected course's prefix, not the whole guide and not only rows after clock zero. Capture selected-start entry separately from its exit; earlier-stage hops must not authorize a later stage, while standalone B4 pre-clock hops remain eligible. Joined plans must retain a preceding authorized floor-hop waypoint rather than jumping over it at the join. No-known-ramp fallback keeps the exact old bounded jump-count rule.
+- Releasing native search's forced jump alone does not stop a guide-exit opener that already returned to the start floor. Check the selected opener before handover; after a failed opening, drain pending/tape work and use existing legal placement, refusing safely if it cannot place. Do not zero a few body fields or keep retrying the same stale origin.
+- Tool-assisted display ancestry and native-control ancestry are different. Slow-only attempts retain TF_TAS for presentation but native-used/control mode remain0. New cold and warm states carry explicit ancestry; application and both input readers must agree, including an unread tail. Loading a clean slot while slow also needs post-restore reclassification. Native TAS snapshots keep their existing ancestry. No REC grammar/version or admission change.
+- The actual Prosurf B4 authored-hop branch and native playback acted, but reached0of9 within63seconds; this is permission retention, not a route-completion or speed claim. The outer450second observer timed out after gameplay/cleanup while hashing protected data; its original incomplete manifest stays retained. Read-only recovery found both actors absent, lease released, all18611player files plus input/canonical hashes unchanged; original exit codes were not retained and are NOT invented. Prehashing alone took151seconds. Budget existing wrappers for their actual IO/queue/cleanup as well as gameplay, and repair only the missing observer rather than replay a completed arm.
+- P1553 was the original unshipped claim/test label. After P1557 published, fetched max+1 became P1558; preserve old evidence names. Full source/build/runtime limits: tools/p1558-jargon-start-tas.md.
+
 ## P1549 JARGON continuation checks (14 Nov 2026)
 
 - Bind resumed native snapshots to the accepted promotion receipt, not a generic `current` directory name. A retained pre-P1543 trio paired with corrected QC still produced one duplicate board2 marker in each completed REC14 arm. Reusing the exact accepted422/P1543 client/server/HL2 trio gave the same13.110/12.285 finishes with6boards and strict0faults. This was a stale image pairing, not permission to relax the reader or repair unrelated recording code.

@@ -83,6 +83,7 @@ void(entity e, float z) SV_TASLegalStart;
 float as_dtrack, as_dleg;       // the guide's `track` / `leg` header lines (-1: not stated)
 float as_r0;                    // the guide's row where the course starts
 float as_rmin;                  // the nearest-row search starts here (a full-run guide may pass a stage's place earlier)
+float as_openrow;               // selected opening's prefix, including pre-clock hops but not earlier stages
 .float as_ctrack, as_cleg;      // the chain's course: track (0 main, k bonus k), leg (0 the whole track, k stage k); -1 none
 .float as_saved;                // the furthest stretch autosaved for Continue (-1 none)
 .float as_esc;                  // P1478: effort steps a stuck course chain has taken by itself (2 at most)
@@ -209,7 +210,7 @@ float(string path) SV_TASAutoRead =
 	if (!as_rows || !as_bin) return -1;
 	fh = fopen(path, FILE_READ);
 	if (fh < 0) return -1;
-	n = 0; blank = 0; as_dtrack = as_dleg = -1; as_rmin = 0; as_r0 = 0;
+	n = 0; blank = 0; as_dtrack = as_dleg = -1; as_rmin = 0; as_r0 = 0; as_openrow = 0;
 	while (n < TAS_ASROWS && blank < 64 && lines < TAS_DEMOLINES * 2)
 	{
 		line = fgets(fh); lines = lines + 1;
@@ -528,15 +529,90 @@ void() SV_TASAutoTurnsPlace =
 	}
 };
 
+// A floor hop needs the authored permission at the guide's body, not merely a
+// flat contact. This also preserves Prosurf B4's pit within its concave start.
+float(vector p, vector mx) SV_TASAutoBhopAt =
+{
+	local float z;
+	// A sample can already be above the allowed floor after jumping. Test its
+	// contact hull, not that post-jump height.
+	tracebox(p, PM_HULL_MINS, mx, p - '0 0 48', MOVE_NOMONSTERS, world);
+	if (!trace_startsolid && trace_fraction < 1 && trace_plane_normal_z > 0.72) p = trace_endpos;
+	for (z = 0; z < zone_count; z = z + 1)
+		if (zone_type[z] == ZONE_BHOP)
+		if (Zone_BoxInside(z, p, PM_HULL_MINS, mx)) return TRUE;
+	return FALSE;
+};
+
+float(float row) SV_TASAutoBhopAllowed =
+{
+	return SV_TASAutoBhopAt(SV_TASAutoRowO(row), as_bdk[row] ? PM_DUCK_MAXS : PM_HULL_MAXS);
+};
+
+// The first ride in the whole course, even when planning from mid-course. Use
+// the same duration/entry test as the planner; later floor hops are unchanged.
+float(entity e) SV_TASAutoFirstBoard =
+{
+	local float i, st, d, gdt;
+	st = -1; gdt = cvar("sv_gravity") * PM_TICK;
+	for (i = max(1, as_r0 + 1); i < as_nrows; i = i + 1)
+	{
+		d = (fabs(as_rows[i*7+6] - as_rows[i*7-1] + gdt) > 1.5);
+		if (d && st < 0) st = i;
+		if (!d && st >= 0)
+		{
+			if (as_rows[i*7-7] - as_rows[st*7] >= 0.3 - 0.0001)
+			{
+				if (as_rows[st*7+6] < -100) return st;
+				if (st > as_r0 + 2)
+				if (SV_TASAutoFace(e, st) != '0 0 0') return st;
+			}
+			st = -1;
+		}
+	}
+	return as_nrows;
+};
+
+// Some starts (Prosurf B4's pit) need authored hops BEFORE clock zero. They
+// cannot appear in a plan built from as_r0. Keep the guide's explicit opening
+// route available to the controller, not just its later floor-hop waypoints.
+float(entity e) SV_TASAutoOpeningBhop =
+{
+	local float i, end;
+	end = SV_TASAutoFirstBoard(e);
+	if (end >= as_nrows) return FALSE;
+	for (i = max(1, as_openrow + 1); i < end; i = i + 1)
+		if (as_rows[i*7+6] > 150 && as_rows[i*7+6] - as_rows[i*7-1] > 150 && as_rows[i*7-1] <= 0)
+		if (SV_TASAutoBhopAllowed(i)) return TRUE;
+	return FALSE;
+};
+
+// Continue keeps the saved plan/indices intact. Refuse an obsolete opening hop
+// rather than retrying a hop after its jump input has deliberately been removed.
+float(entity e) SV_TASAutoBadOpeningHop =
+{
+	local float i, q, first, t;
+	first = SV_TASAutoFirstBoard(e);
+	if (first >= as_nrows) return -1; // no known ramp: not a ramp-first opening
+	t = as_rows[first*7];
+	for (i = 0; i < as_n; i = i + 1)
+		if (as_wk[i] == 2 && as_wt[i] <= t + 0.0001)
+		{
+			for (q = 0; q < as_nrows - 1 && as_rows[q*7] < as_wt[i] - 0.0001; q = q + 1) ;
+			if (!SV_TASAutoBhopAt([as_wo[i*3], as_wo[i*3+1], as_wo[i*3+2]], as_bdk[q] ? PM_DUCK_MAXS : PM_HULL_MAXS)) return i;
+		}
+	return -1;
+};
+
 float as_dirpick;                // P1531: SV_TASAutoPlan's nearest sample must go the body's way (mid-course plans)
 float(entity e, float from) SV_TASAutoPlan;
 float(entity e) SV_TASAutoPlanHere = { local float s; as_dirpick = 1; s = SV_TASAutoPlan(e, -1); as_dirpick = 0; return s; };
 // from < 0: from the sample nearest the body; else from that sample (the preview's: the start box's exit)
 float(entity e, float from) SV_TASAutoPlan =
 {
-	as_rgndone = 0;
-	local float i, s, d, best, st, lastleave, gdt, j, pk;
+	local float i, s, d, best, st, lastleave, gdt, j, pk, openingend, startskips;
 	local vector n;
+	as_rgndone = 0;
 	best = 1000000; s = -1;
 	if (from >= 0) { s = from; best = 0; }
 	else
@@ -551,6 +627,12 @@ float(entity e, float from) SV_TASAutoPlan =
 		}
 	if (s < 0 || best > 400) return -1;
 	as_n = 0; st = -1; lastleave = s; gdt = cvar("sv_gravity") * PM_TICK; as_tpn = 0;
+	openingend = 0; startskips = 0;
+	if (SV_TASAutoRule(4096))
+	{
+		openingend = SV_TASAutoFirstBoard(e);
+		if (openingend >= as_nrows) openingend = 0;
+	}
 	for (i = s + 1; i < as_nrows; i = i + 1)
 	{
 		d = fabs(as_rows[i*7+6] - as_rows[i*7-1] + gdt) > 1.5;      // vz off free fall
@@ -564,11 +646,17 @@ float(entity e, float from) SV_TASAutoPlan =
 			if (as_rows[i*7-7] - as_rows[st*7] >= 0.3 - 0.0001 && (as_rows[st*7+6] < -100 || n != '0 0 0'))
 			{
 				pk = as_n;
-				if (e.as_hop && !e.as_join)
+				if (e.as_hop)
 					for (j = max(lastleave, s) + 1; j < st - 3; j = j + 1)
 						if (as_rows[j*7-1] < -100 && as_rows[j*7+6] > -1 && fabs(as_rows[j*7+3] - as_rows[j*7-4]) < 40)
 						if (as_rows[j*7+6] > 150 || as_rows[j*7+13] > 150 || as_rows[j*7+20] > 150)
+						{
+							// Join may absorb later hops, not the explicit opening permission.
+							if (e.as_join && j >= openingend) continue;
+							if (j < openingend)
+							if (!SV_TASAutoBhopAllowed(j)) { startskips = startskips + 1; continue; }
 							SV_TASAutoAdd(2, j, '0 0 1');
+						}
 				if (e.as_apex && as_n == pk && st > s + 2 && lastleave > s && as_rows[st*7] - as_rows[lastleave*7] >= 1 - 0.0001)
 					for (j = lastleave + 1; j < st; j = j + 1)
 						if (as_rows[j*7-1] > 0 && as_rows[j*7+6] <= 0)
@@ -593,6 +681,8 @@ float(entity e, float from) SV_TASAutoPlan =
 			st = -1;
 		}
 	}
+	if (startskips)
+		sprint(e, PRINT_HIGH, sprintf("tas autosurf: start: skipped %.0f guide floor hops before ramp 1 (no authored bhop region)\n", startskips));
 	if (e.as_finish) SV_TASAutoAdd(3, as_nrows - 1, '0 0 0');
 	if (SV_TASAutoRule(8192)) SV_TASAutoPortals(e, s);
 	if (e.as_air) SV_TASAutoAir(e, s);
@@ -643,7 +733,8 @@ float(float track, float from) SV_TASAutoEndRow =
 // start arms a full run there: the v3 project format has no stage-1 flag). FALSE, with a note, when it cannot be.
 float(entity e, float track, float leg) SV_TASAutoCourse =
 {
-	local float z, r, i, j, run0, own;
+	local float z, r, i, j, run0, own, openrow;
+	openrow = 0;
 	own = (track < 0);
 	if (own) { track = max(0, as_dtrack); leg = max(0, as_dleg); }
 	if (as_dtrack >= 0 && as_dtrack != track)
@@ -662,6 +753,7 @@ float(entity e, float track, float leg) SV_TASAutoCourse =
 	if (z < 0 && own && zone_count <= 0)
 	{	// a map without zones: the plan as before, from the run's first sample (a start says why it cannot)
 		for (as_r0 = 0; as_r0 < as_nrows - 1 && as_rows[as_r0*7] < 0; as_r0 = as_r0 + 1) ;
+		as_openrow = 0;
 		return TRUE;
 	}
 	if (z < 0) { SV_TASAutoNote(e, 0, sprintf("this map has no %s", SV_TASAutoCourseName(track, leg))); return FALSE; }
@@ -671,6 +763,7 @@ float(entity e, float track, float leg) SV_TASAutoCourse =
 	{
 		i = SV_TASAutoRowIn(z, run0);
 		if (i < 0) { SV_TASAutoNote(e, 0, sprintf("that guide run never passes %s's box", SV_TASAutoCourseName(track, leg))); return FALSE; }
+		openrow = i; // that stage's entry, not a permitted hop in an earlier stage
 		for (j = min(i + 1, as_nrows - 1); j < as_nrows - 1 && Zone_BoxInside(z, SV_TASAutoRowO(j), PM_HULL_MINS, PM_HULL_MAXS); j = j + 1) ;
 		r = j;
 	}
@@ -681,7 +774,7 @@ float(entity e, float track, float leg) SV_TASAutoCourse =
 	i = (j >= 0) ? SV_TASAutoRowIn(j, r + 1) : SV_TASAutoEndRow(track, r + 1);
 	if (i > r + 8) as_nrows = i + 1;
 	if (as_nrows - r < 8) { SV_TASAutoNote(e, 0, sprintf("the guide run has too little of %s", SV_TASAutoCourseName(track, leg))); return FALSE; }
-	as_r0 = r; as_rmin = max(0, r - 64);
+	as_r0 = r; as_rmin = max(0, r - 64); as_openrow = openrow;
 	e.as_szone = z;
 	e.as_ex = SV_TASAutoRowO(r);
 	e.as_exair = (as_rows[r*7+6] > 50);
@@ -712,16 +805,33 @@ void(entity e) SV_TASAutoKeysStat =
 		e.run_taskeys = 65536 + (e.run_tas_paused ? 0 : SV_RecKeys(e));
 	else e.run_taskeys = 0;
 };
-// the guide's jumps from its standstill row r until just past leaving the box (as_r0 + 4, stage 13's own handover), read
-// from the physics as stage 13 reads them. Lex: a human jumps once from the start platform to the first ramp on nearly
-// every map; replaying a guide that hopped about on the platform made the bot bhop off it (rule 4096, on by default).
-float(float r) SV_TASAutoStartJumps =
+// Replay a guide's opening only if its first jump actually leaves for ramp 1.
+// A start-box-only scan missed floor returns after clock zero; a late first jump
+// would also occur AFTER stage 13 handed over. Both use the steering start.
+float(entity e, float r) SV_TASAutoStartSafe =
 {
-	local float i, n;
-	n = 0;
-	for (i = max(1, r + 1); i < min(as_nrows, as_r0 + 5); i = i + 1)
-		if (as_rows[i*7+6] - as_rows[i*7-1] > 150 && fabs(as_rows[i*7-1]) < 1) n = n + 1;
-	return n;
+	local float i, first, end;
+	first = -1; end = SV_TASAutoFirstBoard(e);
+	if (end >= as_nrows)
+	{
+		// Preserve the former bounded replay decision when no ramp was found.
+		first = 0;
+		for (i = max(1, r + 1); i < min(as_nrows, as_r0 + 5); i = i + 1)
+			if (as_rows[i*7+6] - as_rows[i*7-1] > 150 && fabs(as_rows[i*7-1]) < 1) first = first + 1;
+		return first <= 1;
+	}
+	for (i = max(1, r + 1); i < end; i = i + 1)
+	{
+		if (as_rows[i*7+6] > 150 && as_rows[i*7+6] - as_rows[i*7-1] > 150 && as_rows[i*7-1] <= 0)
+		{
+			if (SV_TASAutoBhopAllowed(i)) continue;
+			if (first >= 0 || i > as_r0 + 4) return FALSE;
+			first = i;
+		}
+		if (first >= 0 && as_rows[i*7-1] < 0 && fabs(as_rows[i*7+6]) < 1)
+		if (!SV_TASAutoBhopAllowed(i)) return FALSE;
+	}
+	return TRUE;
 };
 
 // P1478: Continue. A course chain that began at the start zone (a legal session) saves the run as a legal-start TAS
@@ -1477,7 +1587,7 @@ string(float i) SV_TASAutoMovedNote =
 };
 void(entity e) SV_TASAutoLink =
 {
-	local float i, h, argc, r, q, fz, fz2, zq, zd, zl;
+	local float i, h, argc, r, q, fz, fz2, zq, zd, zl, hop, opening, blockjump, firstboard, jumpcleared;
 	local vector o, n, cr, cl_v, rv, zmn, zmx, zp, zo;
 	local string ps, ls, cl;
 	i = e.as_i;
@@ -1572,6 +1682,40 @@ void(entity e) SV_TASAutoLink =
 	e.topt_tgton = 0;
 	SV_TASTargetCommand(e, argc);
 	if (!e.topt_tgton) { SV_TASAutoStop(e, "this stretch's target was refused"); return; }
+	hop = e.as_hop;
+	if (!e.as_route && SV_TASAutoRule(4096))
+	{
+		firstboard = SV_TASAutoFirstBoard(e);
+		opening = FALSE;
+		if (firstboard < as_nrows) opening = (as_wt[i] <= as_rows[firstboard*7] + 0.0001);
+		if (opening)
+		{
+			blockjump = !SV_TASAutoOpeningBhop(e);
+			if (!blockjump && cvar("developer")) sprint(e, PRINT_HIGH, "tas autosurf: start: keeping the guide's authored bhop route before ramp 1\n");
+			if (as_wk[i] == 2)
+			{
+				for (q = 0; q < as_nrows - 1 && as_rows[q*7] < as_wt[i] - 0.0001; q = q + 1) ;
+				if (!SV_TASAutoBhopAt(o, as_bdk[q] ? PM_DUCK_MAXS : PM_HULL_MAXS))
+				{
+					SV_TASAutoStop(e, "opening hop is outside an authored bhop region: Undo the move or Start again");
+					return;
+				}
+				blockjump = FALSE;
+			}
+			// Omitting `hop` alone still replays the guide's jump buttons.
+			if (blockjump)
+			{
+				hop = FALSE;
+				jumpcleared = 0;
+				for (q = 0; q < e.topt_dn; q = q + 1)
+				{
+					if (topt_drow[q*5+4] & 1) jumpcleared = jumpcleared + 1;
+					topt_drow[q*5+4] = topt_drow[q*5+4] - (topt_drow[q*5+4] & 1);
+				}
+				if (cvar("developer")) sprint(e, PRINT_HIGH, sprintf("tas autosurf: start: jump released toward ramp 1 (%.0f guide jump rows cleared)\n", jumpcleared));
+			}
+		}
+	}
 	if (e.as_route)
 	{
 		as_visit[i] = as_visit[i] + 1;
@@ -1646,7 +1790,7 @@ void(entity e) SV_TASAutoLink =
 	if (as_fresh[i]) { ps = strcat(ps, " fresh"); as_fresh[i] = 0; }   // a backtrack's: not the line that led to it
 	if (as_slack[i]) ps = strcat(ps, sprintf(" slack %g", as_slack[i]));
 	e.as_lmused = as_leadmin[i];
-	cl = sprintf("tas optimize %.0f left curve 12 demo aim late tube %.0f%s%s%s energy fast", h, e.as_tube, e.as_hop ? " hop" : "", ls, ps);
+	cl = sprintf("tas optimize %.0f left curve 12 demo aim late tube %.0f%s%s%s energy fast", h, e.as_tube, hop ? " hop" : "", ls, ps);
 	}
 	if (cvar("developer")) sprint(e, PRINT_HIGH, strcat("tas autosurf: ", cl, "\n"));
 	argc = tokenize(cl);
@@ -2000,6 +2144,15 @@ void(entity e) SV_TASAutoFrame =
 			SV_TASAutoNote(e, 1, sprintf("continuing with your new air points: %.0f stretches ahead from here", as_n));
 			return;
 		}
+		if (SV_TASAutoRule(4096))
+		{
+			s = SV_TASAutoBadOpeningHop(e);
+			if (s >= 0)
+			{
+				SV_TASAutoStop(e, sprintf("saved opening hop %.0f is outside an authored bhop region: Start again (saved run and notes kept)", s + 1));
+				return;
+			}
+		}
 		SV_TASAutoSendPlan(e);      // P1531: the saved plan in the panel's list (redo picks a row by its demo time in it)
 		SV_TASAutoNote(e, 1, sprintf("continuing %s from stretch %.0f of %.0f", SV_TASAutoCourseName(e.as_ctrack, e.as_cleg), e.as_i + 1, as_n));
 		return;
@@ -2014,9 +2167,10 @@ void(entity e) SV_TASAutoFrame =
 			if (e.run_t_state == TS_RUNNING) { SV_TASAutoStop(e, "walking to the guide's start left the box"); return; }
 			rd = vlen([as_rows[e.as_ri*7+1] - e.origin_x, as_rows[e.as_ri*7+2] - e.origin_y, 0]);
 			t = vlen([e.velocity_x, e.velocity_y, 0]);
-			if (rd <= 16 && t < 1 && SV_TASAutoRule(4096) && SV_TASAutoStartJumps(e.as_ri) > 1)
+			if (rd <= 16 && t < 1 && SV_TASAutoRule(4096))
+			if (!SV_TASAutoStartSafe(e, e.as_ri))
 			{
-				SV_TASAutoNote(e, 1, sprintf("start: the guide hopped %.0f times in the box; one jump to the first ramp instead", SV_TASAutoStartJumps(e.as_ri)));
+				SV_TASAutoNote(e, 1, "start: guide opening revisits the floor or jumps late; one jump toward ramp 1 instead");
 				e.as_stage = 10; e.as_ri = -1; e.as_sn = 0;
 				return;
 			}
@@ -2082,9 +2236,9 @@ void(entity e) SV_TASAutoFrame =
 				return;
 			}
 			if (!e.as_sn && e.as_ri >= 0 && vlen(e.velocity) < 1 && SV_TASAutoRule(4096))
-			if (SV_TASAutoStartJumps(e.as_ri) > 1)      // nested: every operand runs, and this walks rows
+			if (!SV_TASAutoStartSafe(e, e.as_ri))      // nested: every operand runs, and this walks rows
 			{
-				SV_TASAutoNote(e, 1, sprintf("start: the guide hopped %.0f times in the box; one jump to the first ramp instead", SV_TASAutoStartJumps(e.as_ri)));
+				SV_TASAutoNote(e, 1, "start: guide opening revisits the floor or jumps late; one jump toward ramp 1 instead");
 				e.as_ri = -1;
 			}
 			if (!e.as_sn && e.as_ri >= 0 && vlen(e.velocity) < 1)
@@ -2235,6 +2389,31 @@ void(entity e) SV_TASAutoFrame =
 		else if ((e.flags & FL_ONGROUND) && e.as_sjk > 8 && e.as_sland < 2)
 		{	// the jump came down in the box: line up again (twice), not 240 ticks standing still
 			e.as_sland = e.as_sland + 1;
+			if (SV_TASAutoRule(4096))
+			if (SV_TASAutoFirstBoard(e) < as_nrows)
+			if (!SV_TASAutoBhopAt(e.origin, SV_RunHullMaxs(e)))
+			if (!SV_TASAutoOpeningBhop(e))
+			{
+				// This is a failed opening, not a bhop opportunity with its old speed.
+				// Use the existing legal new-attempt boundary; never reset an arbitrary here/route start.
+				if (e.as_nolegal || e.as_szone < 0)
+				{
+					SV_TASAutoStop(e, "opening returned to the start platform: choose Start to retry from rest");
+					return;
+				}
+				s = e.as_sland;
+				SV_TASLegalStart(e, e.as_szone);
+				if (!e.taslg_on || e.taslg_zone != e.as_szone || e.run_t_state != TS_ARMED)
+				{
+					SV_TASAutoStop(e, "opening returned to the start platform: a fresh legal start was unavailable");
+					return;
+				}
+				e.as_sland = s; e.as_ri = -1; e.as_smeth = 0;
+				e.as_stage = 10; e.as_sn = 0; e.as_sn2 = 0; e.as_sdrop = 0; e.as_sair = -1;
+				e.as_sph = 0; e.as_sback = 0; e.as_sbl = 0; e.as_sjmp = 0; e.as_sdk = 0; e.as_sgj = -1;
+				SV_TASAutoNote(e, 1, "start: the opening came back to the platform: a fresh placement at rest, no bhop carry");
+				return;
+			}
 			e.as_stage = 10; e.as_sn = 0; e.as_sph = 0; e.as_sbl = 0; e.as_sjmp = 0; e.as_sgj = -1;
 			SV_TASAutoNote(e, 1, "start: the jump came down in the box: lining up again");
 		}

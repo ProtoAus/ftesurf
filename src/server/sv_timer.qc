@@ -809,7 +809,9 @@ float(entity e) SV_TASConnectTaint =
 
 float(entity e) SV_TASFlags =
 {
-	return e.run_tas_used ? (TF_TAS | TF_CHEAT | TF_PRACTICE) : 0;
+	// Classification includes slow practice; native-control permission does not.
+	return (e.run_tas_used || e.run_ts_used || (e.run_timescale > 0 && e.run_timescale < 1))
+	       ? (TF_TAS | TF_CHEAT | TF_PRACTICE) : 0;
 };
 
 void(entity e) SV_TASCancel =
@@ -3194,8 +3196,9 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             happened.  Collapsing the middle case into absence
                             would be two zeroes agreeing, which is the failure
                             sv_mapcheck shipped for a decade.
-                            P1100: a TAS start (TF_TAS) takes no nudge, and the
-                            rule in force for it is 0: `startjit 0 0 0 0`, written
+                            P1100: a native TAS start takes no nudge (and carries
+                            TF_TAS). Slow-only TAS keeps the normal start rule.
+                            The native start's rule is 0: `startjit 0 0 0 0`, written
                             whenever run_startjitter is on.
 
                             THE RULE IS BESIDE THE OUTCOME on the `zonerule`
@@ -5963,7 +5966,7 @@ void(entity e) SV_RecOpen =
 	    absent           the rule was off, or the file predates build 83
 	    startjit 2 0 0 0 the rule ran and every candidate was blocked
 	    startjit 2 ...   the rule ran and moved the player
-	    startjit 0 0 0 0 P1100: a TAS start, which takes no nudge (its flags carry TF_TAS)
+	    startjit 0 0 0 0 P1100: a native TAS start; slow-only TAS keeps the normal rule
 
 	  Folding the middle one into absence is the sv_mapcheck shape exactly -- two
 	  sides that are both zero, agreeing, for as long as nobody looks.
@@ -5975,10 +5978,10 @@ void(entity e) SV_RecOpen =
 	*/
 	if (run_t_startjit > 0)
 		if (SV_DevOn())
-			dprint(sprintf("timer: startjit %.4f %.4f %.4f\n", (e.run_t_flags & TF_TAS) ? 0 : run_t_startjit,
+			dprint(sprintf("timer: startjit %.4f %.4f %.4f\n", e.run_tas_used ? 0 : run_t_startjit,
 			               e.run_t_jitter_x, e.run_t_jitter_y));
 	if (run_t_startjit > 0)
-		SV_RecPut(e, sprintf("startjit %.4f %.4f %.4f %.4f", (e.run_t_flags & TF_TAS) ? 0 : run_t_startjit,
+		SV_RecPut(e, sprintf("startjit %.4f %.4f %.4f %.4f", e.run_tas_used ? 0 : run_t_startjit,
 		                     e.run_t_jitter_x, e.run_t_jitter_y,
 		                     e.run_t_jitter_z));
 
@@ -11166,9 +11169,12 @@ void(entity e) SV_TimerClassSay =
 		return;
 
 	e.run_t_said = now;
-	sprint(e, PRINT_HIGH,
-	       sprintf("^3%s run^7 -- this run will not be saved\n",
-	               FS_RunKindName(e.run_t_flags)));
+	if (e.run_t_flags & TF_TAS)
+		sprint(e, PRINT_HIGH, strcat(FS_TAS_COLOUR, FS_TAS_LABEL, "^7 -- this run will not be saved\n"));
+	else
+		sprint(e, PRINT_HIGH,
+		       sprintf("^3%s run^7 -- this run will not be saved\n",
+		               FS_RunKindName(e.run_t_flags)));
 };
 
 float(entity e) SV_BankSourceTaint =
@@ -11283,9 +11289,9 @@ void(entity e) SV_TimerStitched =
 */
 void(entity e) SV_TimerCheat =
 {
-	// TAS exclusion is not optional under run_class 0.
+	// TAS exclusion is not optional under run_class 0, including slow-only TAS.
 	e.run_t_flags = e.run_t_flags | SV_TASFlags(e);
-	if (run_t_runclass || e.run_tas_used)
+	if (run_t_runclass || SV_TASFlags(e))
 	{
 		e.run_t_cheat  = TRUE;
 		e.run_t_flags  = e.run_t_flags | TF_CHEAT;
@@ -13674,7 +13680,9 @@ void(entity e, float ticks) SV_TimerFinish =
 	*/
 	e.run_t_pbwas = pb;
 
-	if (e.run_t_flags & TF_SHADOW)
+	if (e.run_t_flags & TF_TAS)
+		sprint(e, PRINT_HIGH, strcat(what, FS_TAS_COLOUR, SV_TimerString(ticks), "^7 (", FS_TAS_LABEL, " -- not saved)\n"));
+	else if (e.run_t_flags & TF_SHADOW)
 	{
 		// A run resumed from a save.  Still a real time for the section you
 		// were practising, and still worth printing -- it is the whole point of
@@ -14565,7 +14573,7 @@ void(entity e) SV_TimerStart =
 	  player did -- which is the mistake a later edit would otherwise make.
 	*/
 	// P1100: a TAS line is planned to the unit, and its board re-simulates it; no nudge.
-	if (e.run_t_flags & TF_TAS) e.run_t_jitter = '0 0 0';
+	if (e.run_tas_used) e.run_t_jitter = '0 0 0'; // native legal-start placement, not slow-only classification
 	else SV_RunStartJitter(e);
 
 	SV_RecOpen(e);

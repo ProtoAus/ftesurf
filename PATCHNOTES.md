@@ -21,6 +21,11 @@
 
 ## next
 
+### P1558 JARGON openings and purple TAS runs
+- JARGON aims its opening jump at the first ramp instead of deliberately returning to the start for another hop. Guide-authored bhop openings, such as surf_prosurf bonus 4, keep their hops.
+- JARGON and slow-motion assisted attempts show a purple Tool Assisted Speedrun tag and purple completions. Ordinary completions are green and segments are blue; assistance stays unranked.
+- Saving or loading a slow-motion attempt keeps its TAS label without turning on JARGON's native controls.
+
 ### P1550 Crash after story-mode map changes
 - Fixed a crash ("BZ_Malloc: Failed on allocation") that could close the game a while after a story-mode map change, most often while a map was downloading.
 

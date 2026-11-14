@@ -1,5 +1,10 @@
 # BACKLOG.md
 
+## JARGON Prosurf B4 route — bounded P1558 opening check (14 Nov)
+
+- Site: `src/server/sv_tasautosurf.qc`, selected-course start placement/steering and first-board search for surf_prosurf bonus4. The guide-authorized opening hop branch acts, including native playback, but the latest bounded63second arm reached0of9. Preserving permission is not a complete route solution; the cause of the first-board miss is not established.
+- Falsifier: with the same actual guide, legal placement, native image and matched effort, retain the authorized opening floor hop and physically reach ramp1 before claiming B4 route progress; require the actual final trigger and strict recording result for completion. Do not remove the exception, use setpos, or relabel an optimizer proposal as arrival. Evidence/limits: tools/p1558-jargon-start-tas.md.
+
 ## Prederror reports after P1508 -- leftovers of P1550-P1552 (14 Nov)
 
 - surf_fiellu (nodsnot, 13 Nov, 172 units): `!r` to "your startmark" 7 commands after "back in the start"
