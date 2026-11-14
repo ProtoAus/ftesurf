@@ -316,9 +316,10 @@ void(entity p, string why) SV_PeRefuse =
 
 void(entity p, string s) SV_PeBegin =
 {
-	local float n, t;
+	local float n, t, tf, seq;
 	local string path;
 	n = tokenize(s);
+	seq = stof(argv(4));                // before the token file's fopen (file calls can clobber argv)
 	if (n < 5 || argv(0) != "begin")
 		return SV_PeRefuse(p, "header");
 	t = stof(argv(2));
@@ -353,16 +354,24 @@ void(entity p, string s) SV_PeBegin =
 	                       strreplace("\r", " ", strreplace("\n", " ", substring(p.netname, 0, 64))),
 	                       num_for_edict(p), SV_PeSafe(infokey(p, "*ahash"), 64), infokey(p, "ping")));
 	fputs(p.pe_fh, sprintf("client %s worst %.0f seq %.0f\n", SV_PeSafe(argv(1), 96), stof(argv(3)), stof(argv(4))));
-	// P1554: the one-time key reportd takes this report's client half under over HTTP (the header is what it
-	// checks); the ack carries it. An older client ignores the extra word and sends chunks.
+	// P1554: the one-time key reportd takes this report's client half under over HTTP; the ack carries it. Its
+	// own file, closed now (this streamed report is stdio-buffered on Linux, so a header line may not be on disk
+	// when reportd looks), names the report. lobby_master_key is the part no client sees (random() is rand()).
+	// An older client ignores the extra word and sends chunks.
 	if (p.pe_token != "")
 		strunzone(p.pe_token);
-	p.pe_token = strzone(substring(strtolower(digest_hex("SHA256", sprintf("ftesurf-prederr %s %.9f %.9f %.9f %.9f %.6f %.6f",
-	                     path, random(), random(), random(), random(), time, gettime(0)))), 0, 32));
+	p.pe_token = strzone(substring(strtolower(digest_hex("SHA256", sprintf("ftesurf-prederr %s %s %.9f %.9f %.9f %.6f %.6f",
+	                     cvar_string("lobby_master_key"), path, random(), random(), random(), time, gettime(0)))), 0, 32));
 	fputs(p.pe_fh, sprintf("token %s\n", p.pe_token));
+	tf = fopen(sprintf("data/prederr/tokens/%s.tok", p.pe_token), FILE_WRITE);
+	if (tf >= 0)
+	{
+		fputs(tf, sprintf("%s\n", substring(path, strlen("data/prederr/"), strlen(path) - strlen("data/prederr/") - 4)));
+		fclose(tf);
+	}
 	fputs(p.pe_fh, sprintf("server origin %v velocity %v movetype %g flags %g run_t_flags %g\n",
 	                       p.origin, p.velocity, p.movetype, p.flags, p.run_t_flags));
-	SV_PeWriteServer(p, stof(argv(4)));     // P1238
+	SV_PeWriteServer(p, seq);               // P1238
 	fputs(p.pe_fh, "== client\n");         // what follows is the client's: the triage reads no server rows there
 	print(sprintf("prederr: report from %s -> %s\n", p.netname, path));
 	stuffcmd(p, sprintf("prederr_ack 0 %s\n", p.pe_token));

@@ -44,12 +44,14 @@ MAX_SHOT = 1520435                # 1.45 MiB decoded: base64 + 8 KiB meta + text
 MAX_BRACKETS = 2000               # '[' + '{' bytes: 2 MiB of nested [] costs ~100 MB in json.loads
 PART_AGE = 600                    # a .part younger than this may be a live worker's (HUP)
 # P1554: a prederror report's client half, POST /api/report?prederr=<token> as text/plain. The lobby writes its
-# half into PREDERR_DIR with "token <t>" in the header (sv_prederr.qc); the half lands beside it as <stem>.client.
+# half into PREDERR_DIR and, closed at once, tokens/<token>.tok naming it (sv_prederr.qc: its streamed report is
+# stdio-buffered on Linux, so a header line may not be on disk yet). The half lands in <state>/prederr/<stem>.client:
+# the unit's ProtectSystem=strict leaves only the state dir writable (review).
 PREDERR_DIR = "/srv/nvme/ftesurf-server/game/ftesurf/data/prederr"
 PREDERR_MAX = 512 * 1024          # the lobby's own chunk path stops at 400 x 1 KB (sv_prederr.qc PE_SV_CHUNKS)
-PREDERR_AGE = 900                 # a lobby file untouched this long takes no client half
-PREDERR_HEAD = 4096               # the token line sits in the lobby's header
+PREDERR_AGE = 900                 # a token file older than this takes no client half
 PREDERR_TOKEN = re.compile(r"[0-9a-f]{32}")
+PREDERR_STEM = re.compile(r"[0-9A-Za-z_.-]{1,160}")
 ENV_RECHECK = 1                   # seconds between stats of SURFD_ENV
 META_DEPTH = 3
 CATEGORIES = ("perf", "render", "bug", "map", "feature", "other")
@@ -324,33 +326,29 @@ def read_body(limit):
 
 
 def prederr_find(directory, token, now):
-    """P1554: the lobby report whose header carries `token`, touched in the last PREDERR_AGE seconds."""
-    want = ("\ntoken %s\n" % token).encode("ascii")
+    """P1554: the lobby report stem tokens/<token>.tok names, written in the last PREDERR_AGE seconds and with
+    its <stem>.txt present; or None."""
+    tok = os.path.join(directory, "tokens", token + ".tok")
     try:
-        names = os.listdir(directory)
+        st = os.lstat(tok)
+        if not os.path.isfile(tok) or os.path.islink(tok) or not 0 <= now - st.st_mtime <= PREDERR_AGE:
+            return None
+        with open(tok, "rb") as f:
+            stem = f.read(256).decode("ascii", "replace").strip()
     except OSError:
         return None
-    for name in names:
-        if not name.endswith(".txt") or name.endswith("_ctx.txt") or name.startswith("."):
-            continue
-        path = os.path.join(directory, name)
-        try:
-            st = os.lstat(path)
-            if not (os.path.isfile(path) and not os.path.islink(path)) or not 0 <= now - st.st_mtime <= PREDERR_AGE:
-                continue
-            with open(path, "rb") as f:
-                head = f.read(PREDERR_HEAD)
-        except OSError:
-            continue
-        if head.startswith(b"FTESURF-PREDERR 1\n") and want in head:
-            return path
-    return None
+    if not PREDERR_STEM.fullmatch(stem) or stem.startswith("."):
+        return None
+    report = os.path.join(directory, stem + ".txt")
+    if not os.path.isfile(report) or os.path.islink(report):
+        return None
+    return stem
 
 
-def prederr_store(path, token, tag, now, body):
-    """Write <stem>.client beside the lobby's file, once: a hard link from a private .part never replaces."""
-    dest = path[:-len(".txt")] + ".client"
-    tmp = os.path.join(os.path.dirname(path), ".%s.%s.part" % (os.path.basename(dest), secrets.token_hex(4)))
+def prederr_store(directory, stem, token, tag, now, body):
+    """Write <directory>/<stem>.client once: a hard link from a private .part never replaces."""
+    dest = os.path.join(directory, stem + ".client")
+    tmp = os.path.join(directory, ".%s.%s.part" % (stem, secrets.token_hex(4)))
     head = ("FTESURF-PREDERR-CLIENT 1\ntoken %s\nsource %s\nreceived %s\n"
             % (token, tag, time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(now)))).encode("ascii")
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
@@ -569,6 +567,8 @@ def create_app(state=None, env_file=None, clock=time.time, environ=None):
     db_path = os.path.join(state, "reports.sqlite3")
     shots = os.path.join(state, "shots")
     os.makedirs(shots, exist_ok=True)
+    halves = os.path.join(state, "prederr")      # P1554: client halves (the lobby dir is read-only to this unit)
+    os.makedirs(halves, exist_ok=True)
     for stale in glob.glob(os.path.join(shots, ".shot-*.part")):
         try:
             if clock() - os.stat(stale).st_mtime > PART_AGE:
@@ -694,11 +694,11 @@ def create_app(state=None, env_file=None, clock=time.time, environ=None):
             return fail(exc.status, str(exc))
         if b"\0" in body or not body.startswith((b"== context\n", b"== ring\n")):
             return fail(400, "not a prederror client half")
-        path = prederr_find(prederr_dir, token, now)
-        if not path:
+        stem = prederr_find(prederr_dir, token, now)
+        if not stem:
             return fail(404, "no open report has that token")
         try:
-            name = prederr_store(path, token, tag, now, body)
+            name = prederr_store(halves, stem, token, tag, now, body)
         except OSError as exc:
             log.error("prederr store failed: %s", exc)
             return fail(500, "storage error")

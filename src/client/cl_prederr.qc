@@ -520,20 +520,25 @@ void() PE_SendNext =
   text, not JSON: strreplace stops at 4096 bytes (P1391), so the body cannot be escaped here. Any failure
   falls back to the chunks, which the lobby still waits for (30 s from the begin, sv_prederr.qc).
 */
+// The engine joins a strbuf's strings for the body (pr_bgcmd.c PF_uri_get), so no QC concatenation (review:
+// a strcat loop over 400 chunks copied ~64 MB).
+float(string uril, float id, string postmimetype, string postsep, float postbuf) PE_UriPostBuf = #513;
+
 float(string token) PE_HttpPost =
 {
-	local float i;
-	local string body, url;
+	local float i, bytes;
+	local string url;
 	if (!cvar("cl_prederr_http") || strlen(token) != 32 || cvar_string("cl_report_url") == "")
 		return FALSE;
 	if (!RampWear_Allowed())            // the online consent tier (cl_online.qc)
 		return FALSE;
-	body = "";
+	bytes = 0;
 	for (i = 1; i < pe_send_n; i = i + 1)
-		body = strcat(body, bufstr_get(pe_send, i));
+		bytes = bytes + strlen(bufstr_get(pe_send, i));
 	url = strcat(cvar_string("cl_report_url"), "?prederr=", token);
-	pe_http_req = 7400000 + floor(random() * 80000);
-	if (!uri_post(url, pe_http_req, "text/plain", body))
+	pe_http_req = 5600000 + floor(random() * 400000);    // in the gap: steampic < 5.0M < this < zonepublish 6.1M
+	bufstr_set(pe_send, 0, "");         // the begin line went already; the chunks resume at 1 if this fails
+	if (!PE_UriPostBuf(url, pe_http_req, "text/plain", "", pe_send))
 	{
 		pe_http_req = 0;
 		return FALSE;
@@ -541,7 +546,7 @@ float(string token) PE_HttpPost =
 	pe_http_t = cltime;
 	pe_send_wait = FALSE;               // the HTTP timeout is PE_Frame's, not the chunk ack's
 	pe_box_end = max(pe_box_end, cltime + 20);
-	PE_Note(sprintf("upload: posting %g bytes by http", strlen(body)));
+	PE_Note(sprintf("upload: posting %g bytes by http", bytes));
 	return TRUE;
 };
 

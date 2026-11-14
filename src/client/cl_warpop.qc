@@ -528,13 +528,14 @@ void() WarpOp_Legs =
 float() WarpOp_DestMayFlip =
 {
 	local float z;
-	local vector srv;
-	if (tg_teleseq > servercommandframe)
+	// Review: a changed stat rides one datagram and is resent only after its loss is noticed, so the
+	// destination can trail servercommandframe by a round trip: allow one more (the commands in flight).
+	if (tg_teleseq + (clientcommandframe - servercommandframe) + 8 > servercommandframe)
 		return TRUE;
-	srv = getentity(player_localentnum, GE_ORIGIN);
+	// The acknowledged origin prediction starts from (P672), not getentity's lerped/extrapolated one.
 	for (z = 0; z < zone_count; z = z + 1)
 		if (zone_type[z] == ZONE_START || zone_type[z] == ZONE_STAGE)
-		if (Zone_PointInside(z, pmove_org) != Zone_PointInside(z, srv))
+		if (Zone_PointInside(z, pmove_org) != Zone_PointInside(z, predinput_origin))
 			return TRUE;
 	return FALSE;
 };

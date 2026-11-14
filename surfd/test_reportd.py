@@ -785,8 +785,9 @@ class Session(Base):
 
 
 class Prederr(Base):
-    """P1554: a prederror report's client half under the lobby's token, beside the lobby's file."""
+    """P1554: a prederror report's client half under the lobby's token, stored in <state>/prederr."""
     TOKEN = "0123456789abcdef0123456789abcdef"
+    STEM = "surf_x_20261114_090000_p27550_s1"
     HALF = b"== context\n1.000 10 map surf_x\n== ring\nFTESURF-PREDRING 2\n1 2 3\n"
 
     def setUp(self):
@@ -796,34 +797,38 @@ class Prederr(Base):
         self.app, self.home, self.clock = make_app(environ={"SURFD_ADMIN_INSECURE_COOKIE": "1",
                                                             "REPORTD_PREDERR": self.pdir})
         self.state = os.path.join(self.home, "state")
+        self.halves = os.path.join(self.state, "prederr")
         self.c = self.app.test_client(use_cookies=False)
-        self.lobby = self.write("surf_x_20261114_090000_p27550_s1.txt", self.TOKEN)
+        self.write(self.STEM, self.TOKEN)
 
-    def write(self, name, token, age=10):
-        path = os.path.join(self.pdir, name)
-        with open(path, "w", newline="\n") as f:
-            f.write("FTESURF-PREDERR 1\nlobby L port 27550\nmap surf_x\nclient s worst 50 seq 9\n"
-                    "token %s\nserver origin 0 0 0\n== server\nFTESURF-PREDSV 1\n== client\n" % token)
-        os.utime(path, (self.clock.now - age, self.clock.now - age))
-        return path
+    def write(self, stem, token, age=10, report=True, tok_text=None):
+        if report:
+            with open(os.path.join(self.pdir, stem + ".txt"), "w", newline="\n") as f:
+                f.write("FTESURF-PREDERR 1\nmap surf_x\ntoken %s\n== server\n== client\n" % token)
+        os.makedirs(os.path.join(self.pdir, "tokens"), exist_ok=True)
+        tok = os.path.join(self.pdir, "tokens", token + ".tok")
+        with open(tok, "w", newline="\n") as f:
+            f.write(stem + "\n" if tok_text is None else tok_text)
+        os.utime(tok, (self.clock.now - age, self.clock.now - age))
 
     def send(self, token=None, body=None, ctype="text/plain"):
         return self.c.post("/api/report?prederr=" + (self.TOKEN if token is None else token),
                            data=self.HALF if body is None else body, content_type=ctype,
                            headers={"X-Real-IP": IP}, environ_base={"REMOTE_ADDR": "127.0.0.1"})
 
-    def test_the_half_is_stored_once_beside_the_lobby_file_and_no_report_row(self):
+    def test_the_half_is_stored_once_in_the_state_dir_and_no_report_row(self):
         r = self.send()
         self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
         name = r.get_json()["stored"]
-        self.assertEqual(name, "surf_x_20261114_090000_p27550_s1.client")
-        with open(os.path.join(self.pdir, name), "rb") as f:
+        self.assertEqual(name, self.STEM + ".client")
+        with open(os.path.join(self.halves, name), "rb") as f:
             text = f.read()
         self.assertTrue(text.startswith(b"FTESURF-PREDERR-CLIENT 1\ntoken " + self.TOKEN.encode() + b"\n"))
         self.assertTrue(text.endswith(self.HALF))
         self.refused(self.send(), 409)
         self.assertEqual(self.sql("SELECT COUNT(*) FROM reports"), [(0,)])
-        self.assertEqual([n for n in os.listdir(self.pdir) if n.endswith(".part")], [])
+        self.assertEqual([n for n in os.listdir(self.halves) if n.endswith(".part")], [])
+        self.assertFalse(any(n.endswith(".client") for n in os.listdir(self.pdir)))   # the lobby dir is not written
 
     def test_refusals(self):
         reportd.FLOOD_MAX = 100             # seven posts from one source in a minute; Base restores it
@@ -834,24 +839,22 @@ class Prederr(Base):
         self.refused(self.send(body=b"GET / HTTP/1.1\n"), 400)
         self.refused(self.send(body=b"== context\n\0"), 400)
         self.refused(self.send(body=b"== context\n" + b"x" * reportd.PREDERR_MAX), 413)
-        self.assertFalse(any(n.endswith(".client") for n in os.listdir(self.pdir)))
+        self.assertEqual([n for n in os.listdir(self.halves) if n.endswith(".client")], [])
 
-    def test_a_stale_lobby_file_takes_nothing(self):
+    def test_a_stale_token_takes_nothing(self):
         stale = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        self.write("surf_x_20261114_080000_p27550_s1.txt", stale, age=reportd.PREDERR_AGE + 5)
+        self.write("surf_x_20261114_080000_p27550_s1", stale, age=reportd.PREDERR_AGE + 5)
         self.refused(self.send(token=stale), 404)
 
-    def test_the_token_must_be_a_header_line_of_a_lobby_report(self):
-        other = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-        path = os.path.join(self.pdir, "x_ctx.txt")
-        with open(path, "w") as f:
-            f.write("FTESURF-PREDERR 1\ntoken %s\n" % other)
-        os.utime(path, (self.clock.now, self.clock.now))
-        path = os.path.join(self.pdir, "y.txt")
-        with open(path, "w") as f:
-            f.write("not a report\ntoken %s\n" % other)
-        os.utime(path, (self.clock.now, self.clock.now))
-        self.refused(self.send(token=other), 404)
+    def test_the_token_must_name_a_present_safe_report(self):
+        reportd.FLOOD_MAX = 100
+        gone = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        self.write("surf_gone_20261114_090000_p27550_s1", gone, report=False)
+        self.refused(self.send(token=gone), 404)
+        for i, text in enumerate(("../" + self.STEM + "\n", "a/b\n", ".hidden\n", "\n", "x" * 300)):
+            token = "%032x" % (0xc0 + i)
+            self.write(self.STEM, token, report=False, tok_text=text)
+            self.refused(self.send(token=token), 404)
 
 
 def tearDownModule():

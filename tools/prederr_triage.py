@@ -32,6 +32,7 @@ from pathlib import Path
 
 PI = "proto@192.168.1.102"
 PI_DIR = "/srv/nvme/ftesurf-server/game/ftesurf/data/prederr/"
+PI_RD_DIR = "/srv/nvme/ftesurf-ops/reportd-state/prederr/"     # P1554: reportd's <stem>.client halves
 RING_COLS = ("t seq px py pz sx sy sz pvx pvy pvz svx svy svz pground sground pmtype msec "
              "pitch yaw roll fwd side up buttons").split()
 RING_V2_COLS = RING_COLS + "cmdvalid predvalid predpm seedseq seedcarry phasehit parts ticks".split()
@@ -340,11 +341,13 @@ def main():
     if a.fetch:
         out = Path(a.fetch)
         out.mkdir(parents=True, exist_ok=True)
-        r = subprocess.run(["scp", "-o", "BatchMode=yes", "-r", PI + ":" + PI_DIR, str(out)],
-                           capture_output=True, text=True)
-        if r.returncode:
-            failed = True
-            print(r.stderr.strip() or "scp failed", file=sys.stderr)
+        # P1554: reportd's client halves (<stem>.client) come from its own prederr dir into the same folder.
+        for src in (PI_DIR, PI_RD_DIR):
+            r = subprocess.run(["scp", "-o", "BatchMode=yes", "-r", PI + ":" + src, str(out)],
+                               capture_output=True, text=True)
+            if r.returncode:
+                failed = True
+                print(r.stderr.strip() or "scp failed", file=sys.stderr)
         got = out / Path(PI_DIR.rstrip("/")).name    # scp -r puts the folder itself under DIR
         paths += sorted(str(p) for p in got.rglob("*.txt") if not p.name.endswith("_ctx.txt"))
     if not paths:
