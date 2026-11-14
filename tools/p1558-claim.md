@@ -24,5 +24,8 @@ uncommitted canonical peer work is not in this source tree.
 Implementation and verification are complete: final integrated three-VM build
 zero warnings, acting ordinary/authored opening checks, final12-check slow-only
 smoke,949/1627reader assertions and unchanged571recording corpus. Product commit
-and deployment are still pending; tools/p1558-jargon-start-tas.md is the evidence
-and delivery-state authority. This claim is not a deployment receipt.
+b51f98cf is published. Dual-Windows QW/CS delivery and all12Pi lobbies are complete,
+with actual current-native12-check UI verification and independent preservation/
+rollback postflight. tools/p1558-jargon-start-tas.md records exact UTC evidence,
+limits and the earlier safely refused worker-epoch transaction. Human acceptance
+remains pending; no native/backend/menu/release/Build swap was made.

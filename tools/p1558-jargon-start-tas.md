@@ -90,6 +90,13 @@ not regress. These checks do not claim course completion or optimal energy.
   and TAS result badge are purple. This is automated fixture evidence, not owner
   visual/feel acceptance. The final4owned recordings have **0strict faults**;
   the original5recording UI epoch also has0.
+- A later native-binding readback correctly found that the canonical client had
+  advanced beyond the old frozen test client. It was not treated as a same-byte
+  pass and no native alias was overwritten. A small snapshot of the **actual
+  installed primary client / FTEQuake control client, FTEQuake server, plugin and
+  primary menu/progs** then passed the same12checks, both actor exits0 and all
+  4recordings strict0. Canonical legacy native aliases remain asymmetric and
+  untouched; they are not silently normalized by this QC change.
 - `python tools/test_reccheck.py`: **949checks,0failed**.
   `python tools/test_hidcheck.py`: **1627checks,0failed**.
 - Required canonical `data/runs` sweep: **571recordings**, unchanged historical
@@ -111,12 +118,56 @@ Qualified integrated DAT hashes:
 
 Engine documentation commit `a40db77d412c594f699ae9fbb230906ebe2788c4` is published;
 it adds the single P1558 entry without changing the native implementation/pin.
+Final engine delivery provenance is
+`1de23dfe51e12631490d312666a98fea53355718`.
 
-Implemented and verified in the owned tree. Product commit, clean-commit artifact
-comparison and development deployment are **pending**, not implied by the tests
-above. This section will be replaced with actual inspected commits, destination
-hash/rollback readback and UTC observations. No Windows/Pi/backend/native/release
-publication is claimed here yet.
+**Source published:** product commit
+`b51f98cf316eaf1b92553cc48b2a66dc900229cf`. The clean-commit three-VM build has
+0warnings and all6DAT/LNO files are byte-identical to the acting integrated
+build. Only the3temporary SRC-list output-directory directives differ; they
+normalize exactly. Final provenance-only documentation does not require a rebuild.
+
+**Both Windows installs deployed:** 14 Nov 2026 **12:09:59UTC**. The existing
+build's inspected Deploy function promoted QW+CS DAT/LNO to `C:\FTESurf` and
+`C:\FTEQuake`:8destinations and their ordinary `.prev` hashes match exactly.
+Menus, native binaries/aliases, config and player data were preservation targets,
+not delivery inputs. Actual current-native real-socket UI/lifecycle12of12 and
+4strict recordings pass as described above. Final audit **12:38:22UTC**:
+20188protected hashes unchanged, no added player file, all actual tested native/
+menu/progs sources still bound,8target/rollback pairs correct, rig lease absent.
+The earlier frozen-native mismatch observation remains retained, not relabelled.
+
+**All12Pi lobbies deployed:** transaction completed **12:33:44UTC**, followed by
+independent postflight **12:34:38UTC**. The complete existing45-statement Pi body
+executed once in order for the qualified current epoch: ordinary chat warnings,
+10second countdown, noForce, exact QW+CS hashes,12fresh native births and live
+status responses. No native, menu, config or backend generation was shipped.
+The same strict current85-source backend dependency and full payload/metadata/FD
+checks passed before upload **and after the countdown before rename**. Both
+previous live programs remain as `.prev`.
+
+The first Pi transaction stopped34of45 before rename/restart when one backend
+child recycled after its first healthy boundary. Its failed receipt, earlier
+healthy boundary and immutable source/captures remain intact. Fresh diagnosis
+proved all payloads/config/program history unchanged and closed; only the exact
+2owned staged files were withdrawn into private evidence. A genuinely new actor
+epoch then requalified with the same unchanged guards/profile, not a relaxed
+check or re-dated failure. All217payload rows, full metadata and program member
+lists matched; all3archive hashes exactly matched independently verified old
+archive bytes, permitting immutable archive reuse rather than another copy.
+
+Postflight confirms **217payloads /354315834bytes**, identity and measured full
+metadata unchanged; backend dependencies/actors and native/config unchanged;
+all12lobbies restarted and both destination/rollback hashes correct. Metadata
+coverage excludes atime/ACL/xattr and is not a general writer-audit claim. Live
+status checks are not a Linux UI/physical surf playthrough. Final Windows/native
+and Pi checks have no owned process, maintenance gate or canonical stage left.
+No release or Build decision was made; qcbuild89 is unchanged. After all owned
+actors exited,36disposable copied fixture DAT/LNO files were retired only after
+matching retained immutable products. Unique source/history, qualified images,
+logs/records/reviews/native snapshots and rollback/capture archives remain
+intentionally retained under the owned `jargon-sol-1113a` task roots; no player
+data, link, canonical asset or peer workspace was cleaned.
 
 Human checks remain explicitly pending in `lextest.md`: one formerly bad opening,
 the permitted B4 opening if convenient, and the purple/full TAS presentation.
