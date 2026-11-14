@@ -421,6 +421,7 @@ void(float z) ZoneEdit_Goto =
 	Zone_Hash();
 	if (strcmp(serverkey("fs_zegoto"), "1") || zone_npts[z] <= 0)
 	{
+		wop_strat = cltime;     // P1547
 		localcmd(sprintf("cmd zone_edit_goto %g %s\n", z, zone_crc));   // an older server refuses five words
 		ZoneEdit_Note(ze_dirty ? "Teleport requested; save/reload first if zones were edited" : "Teleport requested");
 		return;
@@ -436,6 +437,7 @@ void(float z) ZoneEdit_Goto =
 		lo_x = min(lo_x, p_x); lo_y = min(lo_y, p_y);
 		hi_x = max(hi_x, p_x); hi_y = max(hi_y, p_y);
 	}
+	wop_strat = cltime;     // P1547
 	localcmd(sprintf("cmd zone_edit_goto %g %s %.1f %.1f %.1f\n", z, (zone_crc != "") ? zone_crc : "-",
 	                 (lo_x + hi_x) * 0.5, (lo_y + hi_y) * 0.5, zone_bottom[z] + 2));
 	ZoneEdit_Note("Teleport requested");
