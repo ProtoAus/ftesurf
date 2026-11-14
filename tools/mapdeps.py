@@ -527,6 +527,39 @@ def candidates(mat):
     return outs
 
 
+def unshipped_key(path):
+    """P1560: a material or texture as data/unshipped.txt spells it and the hl2 plugin looks it up
+    (mat_vmt.c VMT_ColourKey): lowercase, '/', no leading materials/, no .vmt/.vtf."""
+    k = re.sub(r"/+", "/", path.lower().replace("\\", "/")).lstrip("/")
+    if k.startswith("materials/"):
+        k = k[len("materials/"):]
+    if k.endswith(".vmt") or k.endswith(".vtf"):
+        k = k[:-4]
+    return k
+
+
+def unshipped_keys(need):
+    """Everything no pack, mount or pakfile supplies, as keys: the '-' bucket's materials and
+    textures (models and their .vtx are not materials) and resolve_model's candidate aliases."""
+    keys = set(need.get("unshipped", ()))
+    keys.update(unshipped_key(p) for p in need.get("-", ()) if p.endswith((".vmt", ".vtf")))
+    return keys
+
+
+def write_unshipped(path, rows):
+    """data/unshipped.txt: '<map>\\t<key>' lines, byte-sorted so the plugin can bsearch a whole line."""
+    lines = sorted(("%s\t%s" % (name.lower(), k) for name, keys in rows for k in keys if "\t" not in k and "\n" not in k),
+                   key=lambda s: s.encode("latin-1", "replace"))
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "w", newline="\n", encoding="latin-1", errors="replace") as f:
+        f.write("FTESURF-UNSHIPPED 1\n")
+        f.write("# <map>\\t<material or texture> that no pack, mount or the map's own pakfile supplies,\n")
+        f.write("# written by tools/mapdeps.py --unshipped. The hl2 plugin keeps these quiet (P1560).\n")
+        for line in lines:
+            f.write(line + "\n")
+    return len(lines)
+
+
 def texpath(value):
     """A VMT texture value as the path the engine will look for."""
     v = value.strip().strip('"').replace("\\", "/").lstrip("/").lower()
@@ -716,6 +749,8 @@ def resolve_model(rs, mdl, need, seen):
         else:
             if paths:
                 resolve_material(rs, paths[0], need, seen, prefer=mine)
+                #P1560: every candidate is absent, and mod_hl2.c names the LAST one it tried
+                need.setdefault("unshipped", set()).update(unshipped_key(c) for c in paths)
 
 
 def mdl_materials(data, mdl):
@@ -944,11 +979,15 @@ def main():
     ap.add_argument("--expected-sha256", help="required predecessor digest for an existing --update-map output")
     ap.add_argument("--audit", action="store_true",
                     help="classify every map's breakage instead of writing")
+    ap.add_argument("--unshipped", metavar="PATH",
+                    help="also write data/unshipped.txt (P1560): per map, what no pack supplies; full scans only")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--no-models", action="store_true")
     a = ap.parse_args()
     if a.update_map and (not a.map or not a.output or a.audit):
         ap.error("--update-map requires --map and --output, without --audit")
+    if a.unshipped and (a.map or a.limit or a.no_models):
+        ap.error("--unshipped needs a full scan with models (no --map, --limit or --no-models)")
     if a.expected_sha256:
         if not a.update_map or not re.fullmatch(r"[0-9a-f]{64}", a.expected_sha256):
             ap.error("--expected-sha256 requires --update-map and 64 lowercase hex digits")
@@ -1014,6 +1053,7 @@ def main():
     print("\nscanning %d maps..." % len(bsps))
     rows, broken = [], 0
     classA, classC, skygap = [], [], []
+    unshipped = []
     t1 = time.time()
     for i, (name, path) in enumerate(sorted(bsps.items())):
         if a.limit and i >= a.limit:
@@ -1023,6 +1063,9 @@ def main():
             broken += 1
             continue
         specs = specs_for(need, addon_meta)
+        keys = unshipped_keys(need)
+        if keys:
+            unshipped.append((name, keys))
         if specs:
             rows.append((name, [s for _n, s in specs]))
             classA.append((name, sum(len(need.get("visible:" + n, ()))
@@ -1040,6 +1083,9 @@ def main():
           (len(rows), sum(1 for _n, s in rows if len(s) > 1)))
     print("%d have content NO pack supplies (unfixable by mounting)" % len(classC))
     print("%d have a skybox the engine cannot currently resolve" % len(skygap))
+    if a.unshipped:
+        n = write_unshipped(a.unshipped, unshipped)
+        print("wrote %s (%d maps, %d unshipped name(s))" % (a.unshipped, len(unshipped), n))
 
     if a.audit:
         print("\nworst by broken visible textures an addon would fix:")
