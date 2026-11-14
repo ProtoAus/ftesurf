@@ -5,11 +5,16 @@
 - Site: rendered window/glass material alpha under world fog; exact map/material/view not yet identified. Owner confirms P1003 authored no-fog works, but separately reports "the window alpha with fog is broken". This is not a no-fog-policy acceptance failure or a diagnosed shader root cause. No fix claimed; owner may assign another agent.
 - Falsifier: on the affected window, capture the same fixed view/material with fog on/off and the expected transparency; fog should affect colour without incorrectly changing the window's intended alpha/compositing. Identify the map/material and relevant renderer before patching. Do not disable authored fog or change global alpha/sorting as a workaround.
 
-## Save-lock at ping -- leftovers of P1544 (14 Nov)
+## Save-lock at ping -- leftovers of P1544 and P1547 (14 Nov)
 
-- A load pressed within a round trip of a save still waits for the save's answer (rig, 500 ms: 0.38 s for a load
-  0.15 s after the save). Instant needs the save itself predicted: a save riding a command (no impulse left --
-  WOP_TOP 254 is full -- and the trail ticket/ack would need another carrier), its row captured in prediction.
+- P1547 (predicted saves) leftovers, review rounds 2-4, all needing a lost packet or a rare order:
+  a save whose op was dropped (3+ lost packets in a row) is only reported, not resent, and one whose
+  answer was lost three times is reported though it exists (the user may save twice); body-moving
+  stringcmds it does not mark (raw `cmd say !r 2`, the menu VM's zone_goto, `cmd setpos`, rec_retry,
+  autosurf) can still be run after a later save command; save, save, `!r` inside a round trip sends the
+  reset as a stringcmd that can overtake the first save; Trail_Request's immediate dispatch does not wait
+  for unanswered ops (older than P1547); a load behind a pending save keeps the capture of its press, not
+  later replays of the save's command; `!r` read past WarpOp_Unanswered's 1 s can use a stale WOPR (P759).
 - Press-time WarpOp_Load zeroes wop_relseq before refusing on a busy trail FIFO, so hold -> save -> let go -> load
   inside one round trip finds STAT_FS_HOLD with no release pending and takes the stringcmd path once (round-1
   review F4; correct, slower). Keeping the backstop across the FIFO wait needs it disarmed on every later dispatch.

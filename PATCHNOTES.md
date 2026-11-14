@@ -21,6 +21,10 @@
 
 ## next
 
+### P1547 Instant load right after a save
+- A load pressed straight after saving no longer waits for the save to reach the server: you move the moment you let go, at any ping.
+- At higher ping a save is taken exactly where you press it; before, it could land a little further along your path.
+
 ### P1546 Run-check maintenance
 - Run checks remain accounted for until their background work finishes, keeping maintenance from advancing too early.
 

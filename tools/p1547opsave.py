@@ -31,6 +31,7 @@ ap.add_argument('--holdfor', type=float, default=0, help='hold the load key this
 ap.add_argument('--force-first', action='store_true', help='ARM ONLY: tap 1 of each round takes the stringcmd path')
 ap.add_argument('--port', type=int, default=27623)
 ap.add_argument('--duck', action='store_true', help='hold +duck through the save and the taps')
+ap.add_argument('--loss', type=float, default=0, help='net_fakeloss on the client (both directions)')
 ap.add_argument('--reset-after', action='store_true', help='`reset` right after the save, before the taps')
 ap.add_argument('--dropsave', action='store_true', help='ARM ONLY: the server drops the first WOP_SAVE unanswered')
 a = ap.parse_args()
@@ -229,6 +230,8 @@ def main():
         for d in [int(x) for x in a.delays.split(',')]:
             for gap in [float(x) for x in a.gaps.split(',')]:
                 cl.send(f'cl_delay_packets {d}')
+                if a.loss:
+                    cl.send(f'net_fakeloss {a.loss}')
                 cl.send(f'setpos {O[0]} {O[1]} {O[2]} 0 55 0')
                 time.sleep(2.0)
                 cl.send('+forward')                 # out of the box: the run starts; held to the end
@@ -273,6 +276,7 @@ def main():
                     cl.send('-duck')
                 time.sleep(1.0)
         cl.send('cl_delay_packets 0')
+        cl.send('net_fakeloss 0')
     finally:
         for p in (cl, sv):
             if p is not None:
