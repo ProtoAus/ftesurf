@@ -2,7 +2,7 @@
 
 ## P1545 zone editor shows every zone -- owner check PENDING
 - On a lobby map with zones, open the zone editor (or set zone_xray 1): zones behind walls should now show too; with both off, normal play still hides zones you cannot see. Since P1285 (4 Nov) the editor and xray hid them -- a bracketing slip, read and reviewed, not run on a client.
-- Nothing else in P1545 changes what the lobbies do today (tools/p1545-precedence.md).
+- The rest of P1545 changes nothing in normal play today: ent_cursor world clicks work again, menu panels (off by default) power properly (tools/p1545-precedence.md).
 
 ## P1544 save loads at ping -- owner check PENDING (ask markbeaton54)
 - On a lobby at your normal ping: save, then tap the load key several times in a row, and once straight after saving. You should move the moment you let go. Straight after a save a short "Loading save" (about your ping) is expected; a second on every load is the old fault.
