@@ -11946,7 +11946,7 @@ float(entity to, float sf) SV_SpSend =
 void() SV_SpResolve =
 {
 	local entity e, p, q;
-	local float c, more, nturn, nslide, nfollow, f, dd, ncl;
+	local float c, more, nturn, nslide, nfollow, f, dd, ncl, nsky;
 	local string pn;
 	local vector pf, pl, pu, d;
 
@@ -12129,7 +12129,7 @@ void() SV_SpResolve =
 	// engine's 20 Hz lerp would make the server-written part trail). Also kept: a chain where an
 	// ambient_generic sounds from a member that travels -- a sound follows only an ordinary entity
 	// (snd_dma.c:2776, lerpents), so on csprogs it would stay where the edict spawned.
-	ncl = 0;
+	ncl = nsky = 0;
 	for (e = nextent(world); e; e = nextent(e))
 		if (e.vbsp_sp_depth && e.solid != SOLID_NOT)
 			SV_SpRoot(e).vbsp_sp_keep = TRUE;
@@ -12172,7 +12172,7 @@ void() SV_SpResolve =
 				if (p)
 				{
 					p.vbsp_sp_reach = max(p.vbsp_sp_reach, vlen(e.vbsp_sp_lorg) + e.vbsp_sp_reach);
-					p.vbsp_sp_sky = p.vbsp_sp_sky || e.vbsp_sp_sky;
+					p.vbsp_sp_sky = (p.vbsp_sp_sky || e.vbsp_sp_sky);
 				}
 			}
 	for (e = nextent(world); e; e = nextent(e))
@@ -12190,13 +12190,16 @@ void() SV_SpResolve =
 			}
 			setsize(e, d - '1 1 1' * q.vbsp_sp_reach, d + '1 1 1' * q.vbsp_sp_reach);
 			if (q.vbsp_sp_sky)
+			{
 				e.pvsflags = (e.vbsp_sp_pvs0 & 252) | PVSF_IGNOREPVS;
+				nsky = nsky + 1;
+			}
 		}
 	for (e = nextent(world); e; e = nextent(e))
 		if (e.vbsp_sp_depth && !e.vbsp_sp_cl && (e.vbsp_sp_draw || e.vbsp_sp_kind == SPK_FOLLOW))
 			for (p = e; p && !p.vbsp_sp_srv; p = p.vbsp_sp_parent)
 				p.vbsp_sp_srv = TRUE;
-	dprint(sprintf("spin: %g turn, %g slide, %g follow (%g drawn by csprogs)\n", nturn, nslide, nfollow, ncl));
+	dprint(sprintf("spin: %g turn, %g slide, %g follow (%g drawn by csprogs, %g always sent)\n", nturn, nslide, nfollow, ncl, nsky));
 };
 
 // First frame after the lump (sv_main.qc), before the I/O build fires OnMapSpawn.

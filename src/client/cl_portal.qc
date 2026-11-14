@@ -673,7 +673,7 @@ void() Portal_LoadForMap =
 		  here too.  stof("") is 0, which does exactly that.  All 443 doors
 		  write startactive, so this is lockstep rather than a live case.
 		*/
-		e.lpd_active = (pn != "") && stof(ssa) != 0 && stof(sd) == 0;
+		e.lpd_active = ((pn != "") && stof(ssa) != 0 && stof(sd) == 0);
 
 		/*
 		  Patch 207: the signature is taken from THIS walk, not from a fresh one

@@ -635,7 +635,7 @@ void() Zone_Draw =
 
 	// P1285: not under zone_xray (see everything), in the editor, or with the eye in solid (noclip
 	// outside the map, where Source draws every leaf).
-	pvs = zone_cv_pvs && zone_cv_shader == "" && !ui_ze_state && pointcontents(eye) != CONTENT_SOLID;
+	pvs = (zone_cv_pvs && zone_cv_shader == "" && !ui_ze_state && pointcontents(eye) != CONTENT_SOLID);
 	if (pvs && (dbg || cltime >= zone_pvsnext || cltime < zone_pvsnext - 0.2 || vlen(eye - zone_pvseye) > 64))
 	{
 		zone_pvsnext = cltime + 0.1;

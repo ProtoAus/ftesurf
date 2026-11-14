@@ -2185,7 +2185,7 @@ float(float evtype, float scanx, float chary, float devid) Ev_InputEvent =
 	if (evtype != IE_KEYDOWN && evtype != IE_KEYUP)
 		return FALSE;
 
-	onpanel = ev_mouse_seen && is_2dpoint_in_bbox(ev_mouse, ev_panel_p, ev_panel_s);
+	onpanel = (ev_mouse_seen && is_2dpoint_in_bbox(ev_mouse, ev_panel_p, ev_panel_s));
 
 	if (scanx == K_MOUSE1)
 	{

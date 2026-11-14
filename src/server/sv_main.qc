@@ -155,7 +155,7 @@ void() SV_UpdateMovementServerInfo =
 		registercvar("lobby_retrigger", "1");
 		mv_cvreg = TRUE;
 	}
-	vbsp_retrigger = cvar("lobby_enable") && cvar("lobby_retrigger");
+	vbsp_retrigger = (cvar("lobby_enable") && cvar("lobby_retrigger"));
 };
 
 // Native EndFrame cannot interrupt a synchronous player command. Requests made

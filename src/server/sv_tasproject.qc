@@ -1014,7 +1014,7 @@ void(entity e, float s, float head) SV_TASPCheckpoints =
 		if (found)
 		{
 			b = n * TASP_CPSTRIDE;
-			nc[b] = t; nc[b+1] = named && t == nt;
+			nc[b] = t; nc[b+1] = (named && t == nt);
 			nc[b+2] = rw_o_x; nc[b+3] = rw_o_y; nc[b+4] = rw_o_z;
 			nc[b+5] = rw_v_x; nc[b+6] = rw_v_y; nc[b+7] = rw_v_z;
 			if (nc[b+1]) names = strcat(names, SV_TASPNameAt(tasp_cpnames[s], nk), ";");
