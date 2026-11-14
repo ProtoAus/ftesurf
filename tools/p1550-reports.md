@@ -111,3 +111,46 @@ stops, and a begin that may itself be refused. Rendering-independent, not ranked
   .prev = P1547's pair; all 12 active and spawned, 0 QC errors in the logs.
 - Both installs' QC from main + P1552 (src diff = P1552 only): qwprogs c2cfd261, csprogs 5d7c3d30, menu 5b709a6d,
   .prev kept; the lobby csprogs seeded as csprogsvers 984978d9 in both. tasrevd codes.txt 135 -> 137 (.pre1552).
+
+# P1554-P1556 (14 Nov, the same day)
+
+Lex: "that's crazy? why so slow? can it be faster?" and the three leftovers -- chose HTTP via reportd, and
+"fix 2, wait on surf_ace".
+
+## P1554: the client half over HTTP
+
+The chunked path is stop-and-wait (one 800-byte chunk a round trip) under a reliable channel that carries
+at most ~1.4 KB a round trip anyway (net_mtu 1440; a bigger sendevent can overflow cls.netchan.message, a fatal
+disconnect), so ~30 s at 350 ms was the in-game ceiling. Change (d3d7ec82): the lobby's begin writes "token
+<32 hex>" into its file header and sends it in "prederr_ack 0"; the client POSTs its whole half as text/plain to
+cl_report_url?prederr=<token> (online consent tier; plain text because strreplace stops at 4096 bytes); reportd
+stores it as <stem>.client beside the lobby file, once, for a token in the header of a lobby file touched in the
+last 15 min; the client then sends a -1 event (the lobby file ends "== http"); any refusal or 15 s of silence
+falls back to the chunks. No nginx change (the exact-match /api/report location ignores the query string).
+
+Measured: surfd/test_reportd.py 36/36 (4 new: stored once then 409, no report row, no .part left; refusals
+400/404/413 incl. path-like and upper-case tokens and NUL; stale file 404; token outside a lobby header 404).
+arms/p1554arm.py at 350 ms with a local reportd: both reports "== http" + .client, triage joins and grades them,
+report 2 notes "upload: sent by http in 0.4 s" (local HTTP: over the internet expect ~1.5 s); without reportd
+both whole by chunks (~58 s) after "http answered 0 (); sending it in-game".
+
+## P1555: `!r` across a startmark flip
+
+(fa020687) The server flags `!r`'s published angle with WOPD_FLIP when the leg has a usable startmark or a
+start-zone save (SV_WarpOpResetMayFlip mirrors SV_MovePrepReset's gates); with the flag the client sends `!r`
+blind if a predicted teleport is unacknowledged (tg_teleseq > servercommandframe) or start/stage box membership
+differs between pmove_org and the server origin. Measured (arms/p1551reset.py, surf_sodacity, 350 ms/250 fps):
+no startmark, 10 resets all to Stage1, no prederr over 50 (the server logged 9 of the 10 ops this run, 10/10 in
+sz350; unexplained, not this path); a startmark set ("startmark: set zone 0"), 10 resets land on "your
+startmark", predicted. The one 20,000-unit line in that run is a 9 s client freeze during which the server
+walked the player into the map's teleport, not `!r`. The flip itself (a fail teleport into the start from a
+later stage, then `!r` within a round trip) was not reproduced: the blind decision is by reading.
+
+## P1556: bhop_1n5an3's start (Proto, 14 Nov) -- not established
+
+The lobby's own rows: at command 315 the server moved the player from (-304 -754 64.03), grounded and sliding
+on func_door *3 (a touch-opens bhop block, top z 64; doors do not move in FTESurf), to t1 (-256 -384 97) --
+trigger_teleport *136's destination, whose brush tops out at z 58, 6 units under the player. Not reproduced
+locally on the same map with the same bhop ruleset (cfg/lobby/mode_bhop.cfg loaded): standing on the block's
+edge and middle and sliding onto it at two speeds (arms/p1556arm.py) touched nothing. Not tried: the lobby's
+zone file (its start zone's teleDest is t1) and run state, and the lobby's arm64 patch-1538 engine. BACKLOG.

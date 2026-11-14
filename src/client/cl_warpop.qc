@@ -23,6 +23,7 @@ float predinput_onground;
 float predinput_pmtype;
 float predinput_forceduck;
 float predinput_held;           // Patch 754: the engine predicts through PM_NONE (this server's holds)
+vector wop_ackorg;              // P1555: predinput_origin on a chain's first command, the acknowledged origin
 float predinput_entgravity;     // P1211: preloaded with the server's gravity; WOP_GRAVITY sets this piece's
 float predinput_version;        // P1211: 1211+ on an engine that takes WOP_GRAVITY (older ones reject the mask)
 
@@ -532,10 +533,11 @@ float() WarpOp_DestMayFlip =
 	// destination can trail servercommandframe by a round trip: allow one more (the commands in flight).
 	if (tg_teleseq + (clientcommandframe - servercommandframe) + 8 > servercommandframe)
 		return TRUE;
-	// The acknowledged origin prediction starts from (P672), not getentity's lerped/extrapolated one.
+	// The acknowledged origin, captured on the chain's first command (predinput_origin is each replayed piece's
+	// start, so it ends near pmove_org; getentity's is extrapolated).
 	for (z = 0; z < zone_count; z = z + 1)
 		if (zone_type[z] == ZONE_START || zone_type[z] == ZONE_STAGE)
-		if (Zone_PointInside(z, pmove_org) != Zone_PointInside(z, predinput_origin))
+		if (Zone_PointInside(z, pmove_org) != Zone_PointInside(z, wop_ackorg))
 			return TRUE;
 	return FALSE;
 };
@@ -1256,7 +1258,10 @@ void(float seat, float seq, float seconds, float offset) CSQC_PredictPlayerPreMo
 	if (!seat)
 	{
 		if (seq < pe_pm_seq || (seq == pe_pm_seq && offset <= pe_pm_off))
+		{
 			PE_AckSnap(seq - 1);
+			wop_ackorg = predinput_origin;      // P1555: the acknowledged origin (WarpOp_DestMayFlip)
+		}
 		pe_pm_seq = seq;
 		pe_pm_off = offset;
 	}

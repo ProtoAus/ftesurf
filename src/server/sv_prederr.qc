@@ -293,7 +293,7 @@ void(entity p) SV_PeClose =
 	p.pe_open = FALSE;
 	if (p.pe_token != "")
 		strunzone(p.pe_token);
-	p.pe_token = "";            // P1554: reportd checks the file's header, not this
+	p.pe_token = "";            // P1554: reportd checks tokens/*.tok, not this field
 };
 
 // P1552: an upload that stops says so in its file. 8 of the 8-10 Nov reports ended at "== client" with no
@@ -319,7 +319,7 @@ void(entity p, string s) SV_PeBegin =
 	local float n, t, tf, seq;
 	local string path;
 	n = tokenize(s);
-	seq = stof(argv(4));                // before the token file's fopen (file calls can clobber argv)
+	seq = stof(argv(4));
 	if (n < 5 || argv(0) != "begin")
 		return SV_PeRefuse(p, "header");
 	t = stof(argv(2));
@@ -354,27 +354,34 @@ void(entity p, string s) SV_PeBegin =
 	                       strreplace("\r", " ", strreplace("\n", " ", substring(p.netname, 0, 64))),
 	                       num_for_edict(p), SV_PeSafe(infokey(p, "*ahash"), 64), infokey(p, "ping")));
 	fputs(p.pe_fh, sprintf("client %s worst %.0f seq %.0f\n", SV_PeSafe(argv(1), 96), stof(argv(3)), stof(argv(4))));
-	// P1554: the one-time key reportd takes this report's client half under over HTTP; the ack carries it. Its
-	// own file, closed now (this streamed report is stdio-buffered on Linux, so a header line may not be on disk
-	// when reportd looks), names the report. lobby_master_key is the part no client sees (random() is rand()).
-	// An older client ignores the extra word and sends chunks.
+	// P1554: the one-time key reportd takes this report's client half under over HTTP; the ack carries it. A
+	// lobby only (lobby_master_key, the part no client sees: random() is rand()). tokens/p<port>_s<slot>.tok holds
+	// "<token> <stem>", rewritten per report and closed now: this report's own stream is stdio-buffered on
+	// Linux, and FILE_WRITE would print the name into the log (COM_WriteFile). Without a token the client
+	// sends chunks, as an older client does whatever it is given.
 	if (p.pe_token != "")
 		strunzone(p.pe_token);
-	p.pe_token = strzone(substring(strtolower(digest_hex("SHA256", sprintf("ftesurf-prederr %s %s %.9f %.9f %.9f %.6f %.6f",
-	                     cvar_string("lobby_master_key"), path, random(), random(), random(), time, gettime(0)))), 0, 32));
-	fputs(p.pe_fh, sprintf("token %s\n", p.pe_token));
-	tf = fopen(sprintf("data/prederr/tokens/%s.tok", p.pe_token), FILE_WRITE);
-	if (tf >= 0)
+	p.pe_token = "";
+	if (cvar_string("lobby_master_key") != "")
 	{
-		fputs(tf, sprintf("%s\n", substring(path, strlen("data/prederr/"), strlen(path) - strlen("data/prederr/") - 4)));
-		fclose(tf);
+		p.pe_token = strzone(substring(strtolower(digest_hex("SHA256", sprintf("ftesurf-prederr %s %s %.9f %.9f %.9f %.6f %.6f",
+		                     cvar_string("lobby_master_key"), path, random(), random(), random(), time, gettime(0)))), 0, 32));
+		fputs(p.pe_fh, sprintf("token %s\n", p.pe_token));
+		tf = fopen(sprintf("data/prederr/tokens/p%s_s%g.tok", SV_PeSafe(cvar_string("sv_port"), 8), num_for_edict(p)),
+		           FS_FILE_WRITESTREAM);
+		if (tf >= 0)
+		{
+			fputs(tf, sprintf("%s %s\n", p.pe_token,
+			                  substring(path, strlen("data/prederr/"), strlen(path) - strlen("data/prederr/") - 4)));
+			fclose(tf);
+		}
 	}
 	fputs(p.pe_fh, sprintf("server origin %v velocity %v movetype %g flags %g run_t_flags %g\n",
 	                       p.origin, p.velocity, p.movetype, p.flags, p.run_t_flags));
 	SV_PeWriteServer(p, seq);               // P1238
 	fputs(p.pe_fh, "== client\n");         // what follows is the client's: the triage reads no server rows there
 	print(sprintf("prederr: report from %s -> %s\n", p.netname, path));
-	stuffcmd(p, sprintf("prederr_ack 0 %s\n", p.pe_token));
+	stuffcmd(p, (p.pe_token != "") ? sprintf("prederr_ack 0 %s\n", p.pe_token) : "prederr_ack 0\n");
 };
 
 void(float idx, string s) CSEv_pe_fs =
@@ -390,7 +397,7 @@ void(float idx, string s) CSEv_pe_fs =
 	if (!self.pe_open)
 		return;                     // after a refusal or the end: dropped
 	if (idx == -1)
-	{	// P1554: the client half went to reportd under pe_token (<this file's name>.client beside it)
+	{	// P1554: the client half went to reportd under pe_token (its state dir, prederr/<this stem>.client)
 		if (self.pe_next != 1)
 			return SV_PeRefuse(self, "order");
 		fputs(self.pe_fh, "== http\n");

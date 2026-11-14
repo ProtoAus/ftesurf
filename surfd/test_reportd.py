@@ -801,14 +801,15 @@ class Prederr(Base):
         self.c = self.app.test_client(use_cookies=False)
         self.write(self.STEM, self.TOKEN)
 
-    def write(self, stem, token, age=10, report=True, tok_text=None):
+    def write(self, stem, token, age=10, report=True, tok_text=None, slot=None):
         if report:
             with open(os.path.join(self.pdir, stem + ".txt"), "w", newline="\n") as f:
                 f.write("FTESURF-PREDERR 1\nmap surf_x\ntoken %s\n== server\n== client\n" % token)
         os.makedirs(os.path.join(self.pdir, "tokens"), exist_ok=True)
-        tok = os.path.join(self.pdir, "tokens", token + ".tok")
+        self.slots = getattr(self, "slots", 0) + 1
+        tok = os.path.join(self.pdir, "tokens", "p27550_s%d.tok" % (self.slots if slot is None else slot))
         with open(tok, "w", newline="\n") as f:
-            f.write(stem + "\n" if tok_text is None else tok_text)
+            f.write("%s %s\n" % (token, stem) if tok_text is None else tok_text)
         os.utime(tok, (self.clock.now - age, self.clock.now - age))
 
     def send(self, token=None, body=None, ctype="text/plain"):
@@ -851,10 +852,17 @@ class Prederr(Base):
         gone = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         self.write("surf_gone_20261114_090000_p27550_s1", gone, report=False)
         self.refused(self.send(token=gone), 404)
-        for i, text in enumerate(("../" + self.STEM + "\n", "a/b\n", ".hidden\n", "\n", "x" * 300)):
+        for i, stem in enumerate(("../" + self.STEM, "a/b", ".hidden", "", "x" * 300)):
             token = "%032x" % (0xc0 + i)
-            self.write(self.STEM, token, report=False, tok_text=text)
+            self.write(self.STEM, token, report=False, tok_text="%s %s\n" % (token, stem))
             self.refused(self.send(token=token), 404)
+
+    def test_a_rewritten_slot_file_retires_the_old_token(self):
+        old, new = "dddddddddddddddddddddddddddddddd", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        self.write("surf_x_20261114_091000_p27550_s9", old, slot=9)
+        self.write("surf_x_20261114_092000_p27550_s9", new, slot=9)
+        self.refused(self.send(token=old), 404)
+        self.assertEqual(self.send(token=new).status_code, 200)
 
 
 def tearDownModule():

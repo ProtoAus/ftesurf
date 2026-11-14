@@ -44,7 +44,7 @@ MAX_SHOT = 1520435                # 1.45 MiB decoded: base64 + 8 KiB meta + text
 MAX_BRACKETS = 2000               # '[' + '{' bytes: 2 MiB of nested [] costs ~100 MB in json.loads
 PART_AGE = 600                    # a .part younger than this may be a live worker's (HUP)
 # P1554: a prederror report's client half, POST /api/report?prederr=<token> as text/plain. The lobby writes its
-# half into PREDERR_DIR and, closed at once, tokens/<token>.tok naming it (sv_prederr.qc: its streamed report is
+# half into PREDERR_DIR and, closed at once, tokens/p<port>_s<slot>.tok naming it (sv_prederr.qc: its streamed report is
 # stdio-buffered on Linux, so a header line may not be on disk yet). The half lands in <state>/prederr/<stem>.client:
 # the unit's ProtectSystem=strict leaves only the state dir writable (review).
 PREDERR_DIR = "/srv/nvme/ftesurf-server/game/ftesurf/data/prederr"
@@ -326,23 +326,35 @@ def read_body(limit):
 
 
 def prederr_find(directory, token, now):
-    """P1554: the lobby report stem tokens/<token>.tok names, written in the last PREDERR_AGE seconds and with
-    its <stem>.txt present; or None."""
-    tok = os.path.join(directory, "tokens", token + ".tok")
+    """P1554: the lobby report stem a tokens/p<port>_s<slot>.tok ("<token> <stem>", one per slot, rewritten
+    per report) names for `token`, written in the last PREDERR_AGE seconds, with its <stem>.txt present."""
+    tdir = os.path.join(directory, "tokens")
     try:
-        st = os.lstat(tok)
-        if not os.path.isfile(tok) or os.path.islink(tok) or not 0 <= now - st.st_mtime <= PREDERR_AGE:
-            return None
-        with open(tok, "rb") as f:
-            stem = f.read(256).decode("ascii", "replace").strip()
+        names = os.listdir(tdir)
     except OSError:
         return None
-    if not PREDERR_STEM.fullmatch(stem) or stem.startswith("."):
-        return None
-    report = os.path.join(directory, stem + ".txt")
-    if not os.path.isfile(report) or os.path.islink(report):
-        return None
-    return stem
+    for name in names:
+        if not name.endswith(".tok") or name.startswith("."):
+            continue
+        tok = os.path.join(tdir, name)
+        try:
+            st = os.lstat(tok)
+            if not os.path.isfile(tok) or os.path.islink(tok) or not 0 <= now - st.st_mtime <= PREDERR_AGE:
+                continue
+            with open(tok, "rb") as f:
+                parts = f.read(256).decode("ascii", "replace").split()
+        except OSError:
+            continue
+        if len(parts) != 2 or not hmac.compare_digest(parts[0], token):
+            continue
+        stem = parts[1]
+        if not PREDERR_STEM.fullmatch(stem) or stem.startswith("."):
+            return None
+        report = os.path.join(directory, stem + ".txt")
+        if not os.path.isfile(report) or os.path.islink(report):
+            return None
+        return stem
+    return None
 
 
 def prederr_store(directory, stem, token, tag, now, body):
