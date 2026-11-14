@@ -21,6 +21,9 @@
 
 ## next
 
+### P1564 TAS boards and run history
+- The community web boards have a separate TAS category. Assisted times stay separate from ordinary boards, completion counts and points.
+
 ### P1558 JARGON openings and purple TAS runs
 - JARGON aims its opening jump at the first ramp instead of deliberately returning to the start for another hop. Guide-authored bhop openings, such as surf_prosurf bonus 4, keep their hops.
 - JARGON and slow-motion assisted attempts show a purple Tool Assisted Speedrun tag and purple completions. Ordinary completions are green and segments are blue; assistance stays unranked.

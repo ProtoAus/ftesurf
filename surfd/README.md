@@ -178,7 +178,7 @@ POST /api/run         (application/x-www-form-urlencoded)   -- schema 3
           "tier":"ranked"|"community","prevms":<ms>}
         `tier` is the board the run LANDED on (after certifiable() demotion);
         `prevms` is this player's standing row before the submit, 0 if none.
-  -> 204        the run has no board at all (practice or cheated)
+  -> 204        the run has no board (non-TAS practice, cheat or bank-taint)
 
 GET /api/board?map=&track=&leg=&tier=&style=&limit=&offset=
     track/leg default 0; tier defaults "ranked"; style defaults "clean"
@@ -282,11 +282,15 @@ handing it straight to `Time_TickString` **does** — it printed 3500 ticks as
 Convert at the point of use and keep the server's units everywhere else.
 
 **`style` is derived from `flags` here, never taken from the submitter**, as a
-mirror of `FS_RunClass` including its precedence (cheat outranks segment
-outranks practice). `clean` and `segmented` are peer boards -- a player may
-hold a PB on each -- and practice and cheated runs are refused a board
-entirely, with a 204 rather than an error, because they are real runs that
-simply have nowhere to stand.
+native style classification: `TF_TAS` selects `tas` before cheat/segment/practice
+checks. TAS is always community, retains its actual flags and never certifies
+as clean verified physics (even after a pass/approval). `clean`, `segmented`
+and `tas` have independent PBs. Non-TAS practice, cheat and bank-taint remain
+refused with 204; TAS with those ancestry bits stays isolated on `tas`.
+No account link, key/proof, banned-owner, evidence binding or reject gate is
+relaxed. Native TAS reads use `tier=community&style=tas`; native replay fetches
+retain their existing indexed-file gates. TAS does not contribute to ordinary
+clean records, points, Story or completion aggregates.
 
 **`tier` is decided by who holds the key.** A leaderboard fed by player-hosted
 servers is forgeable by the host with no cheating skill at all: on a listen
@@ -978,9 +982,15 @@ change it); the read by player uses `runs_player`. THAT INDEX IS WHY
 the plus sqlite walks the index in order, 34 s for 8 on the Pi.
 `tools/plan_audit.py` lists what a new index would move.
 
-COMMUNITY RUNS ARE NEVER COUNTED OR LISTED (Patch 355). `wr` is the
-main clean board's row 1 (`BOARD_ORDER`). With no board parameters a map opens
-on main clean, else main segmented, else its first board. Rows are
+Ordinary community runs are never counted or listed (Patch 355). The isolated
+TAS style is the sole exception: `style=tas` selects community internally,
+with a separate `nt` board count and an assisted/not-verified label. It never
+adds to ranked/imported counts or map clean records. `wr` is the main clean
+board's row 1 (`BOARD_ORDER`). With no board parameters a map opens on main
+clean, else main segmented, else main TAS, else its first board. TAS replay
+links are hidden: without an affirmative public sharing grant, community
+plots/tracks still return 404. This does not change native replay access.
+Rows are
 `/api/board`'s minus `player`. Both API routes share the `web` rate bucket
 (`WEB_RATE_MAX`, 120/min per `rate_key()`); the maps list is rebuilt at most
 every 60 s. Every `/board/` response carries a strict CSP (no inline script or

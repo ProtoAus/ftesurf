@@ -94,9 +94,9 @@
   }
 
   function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
-  // KSF's styles sit beside our two (surfd.STYLES_KSF); tabbed only where held.
+  // KSF's styles sit beside native styles (surfd.STYLES_KSF); tabbed where held.
   var KSF_STYLES = ['sw', 'hsw', 'bw'];
-  var STYLE_NAMES = { clean: 'Forward (FW)', sw: 'Sideways (SW)',
+  var STYLE_NAMES = { tas: 'TAS (assisted)', clean: 'Forward (FW)', sw: 'Sideways (SW)',
                       hsw: 'Half-Sideways (HSW)', bw: 'Backwards (BW)' };
   function styleName(s) { return STYLE_NAMES[s] || cap(s); }
 
@@ -356,24 +356,30 @@
     var here = {};
     v.boards.forEach(function (b) {
       if (b.track === v.track && b.leg === v.leg) {
-        here[b.style] = v.tier === 'ranked' ? b.n
+        here[b.style] = b.style === 'tas' ? n0(b.nt)
+          : v.tier === 'ranked' || v.tier === 'community' ? b.n
           : v.tier === 'combined' ? b.n + n0(b.ni)
           : v.tier === 'momentum' ? n0(b.nm)
           : v.tier === 'ksf' ? n0(b.nk) : n0(b.ni);
       }
     });
-    ['clean', 'segmented'].concat(KSF_STYLES.filter(function (s) {
+    ['clean', 'segmented', 'tas'].concat(KSF_STYLES.filter(function (s) {
       return v.tier === 'ksf' || here[s] > 0 || s === v.style;
     })).forEach(function (s) {
       styles.appendChild(tabButton(styleName(s),
         v.tier === 'ksf' && KSF_STYLES.indexOf(s) >= 0 && !here[s] ? null : here[s] || 0, s === v.style,
         function () { go(v, v.track, v.leg, s,
-          KSF_STYLES.indexOf(s) >= 0 ? 'ksf' : v.tier); }));
+          s === 'tas' ? 'community' : KSF_STYLES.indexOf(s) >= 0 ? 'ksf'
+            : v.tier === 'community' ? 'ranked' : v.tier); }));
     });
 
     var cnt = { ranked: n0(counts.ranked), momentum: n0(counts.momentum),
                 ksf: n0(counts.ksf) };
     cnt.combined = cnt.ranked + cnt.momentum + cnt.ksf;
+    if (v.style === 'tas') {
+      srcs.appendChild(el('span', 'of', 'Community · assisted, not verified physics'));
+      return;
+    }
     TIER_TABS.forEach(function (p) {
       srcs.appendChild(tabButton(p[1],
         KSF_STYLES.indexOf(v.style) >= 0 && p[0] !== 'ksf' ? null : cnt[p[0]], p[0] === v.tier,
@@ -438,7 +444,7 @@
     var box = $('ksftopup');
     box.textContent = '';
     var ksf = body.ksf_topup || { state: 'idle' }, mom = body.mom_topup || { state: 'idle' };
-    if (v.style === 'segmented' || !(ksf.eligible || mom.eligible && v.style === 'clean')) { return; }
+    if (v.style === 'tas' || v.style === 'segmented' || !(ksf.eligible || mom.eligible && v.style === 'clean')) { return; }
     var busy = function (x) { return ['queued', 'partial'].indexOf(x.state) >= 0; };
     var button = tabButton('Fetch', null, false, function () {
       button.disabled = true;

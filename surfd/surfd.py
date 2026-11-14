@@ -433,7 +433,8 @@ TIER_EXPAND = {
 # here from `flags`, never taken from the submitter; see style_of.
 STYLE_CLEAN = "clean"
 STYLE_SEGMENTED = "segmented"
-STYLES = (STYLE_CLEAN, STYLE_SEGMENTED)
+STYLE_TAS = "tas"
+STYLES = (STYLE_CLEAN, STYLE_SEGMENTED, STYLE_TAS)
 
 # KSF's other surf styles (ksfimport.KSF_MODES; their Forward is `clean`).
 # Read-only like TIERS_IMPORTED: submit_run derives a style from flags and can
@@ -460,7 +461,7 @@ TF_NOMAP = 4096         # QC build 73 / engine Patch 321; sh_defs.qc holds the e
 TF_NOCLOCK = 8192       # QC build 76 / engine Patch 325; sh_defs.qc holds the essay
 TF_NOCOUNTS = 65536     # Patch 406: cursor data instead of mouse counts (cl_prydoncursor)
 TF_SLOWCLOCK = 524288   # Patch 840: the game clock fell behind real time (slow motion)
-TF_TAS = 4194304        # Patch 1052: assisted ancestry; local practice, no board yet
+TF_TAS = 4194304        # assisted ancestry; isolated community board only
 TF_BANKTAINT = 8388608  # inherited-effect exclusion, including segmented/shadow
 # Multi-Session (sv_resume.qc): resumed across a drop or a map change.  Display
 # and evidence only -- style_of and certifiable deliberately never read it.
@@ -2220,24 +2221,14 @@ def maps_reset():
 
 
 def style_of(flags):
-    """Which board this run belongs on, or None if it belongs on none.
+    """Derive the board from finish flags, never a submitted style.
 
-    A MIRROR OF sh_defs.qc's FS_RunClass, INCLUDING ITS PRECEDENCE, and the
-    precedence is the reason this is not four independent tests: a run that
-    saved-loaded and then cheated carries both bits, and a reader that tested
-    segment first would file the worse run under the gentler word.  Cheat
-    outranks segment outranks practice, there and here.
-
-    DERIVED FROM flags, NEVER TAKEN FROM THE SUBMITTER.  A submitter can lie
-    about the flags word -- that is what the tier is for -- but it cannot send
-    a flags word saying "segmented" and a style saying "clean" and have the
-    two disagree, because there is only one of them on the wire.
-
-    Practice and cheated runs are refused outright rather than given a board.
-    They are not ranked anywhere in this game and a board nobody reads is a
-    place for them to accumulate.
+    TAS includes cheat/practice ancestry and takes precedence, but never
+    certifies. Non-TAS cheat and bank-taint still have no ordinary board.
     """
-    if flags & (TF_CHEAT | TF_TAS | TF_BANKTAINT):
+    if flags & TF_TAS:
+        return STYLE_TAS
+    if flags & (TF_CHEAT | TF_BANKTAINT):
         return None
     if flags & (TF_SEGMENT | TF_SHADOW):
         return STYLE_SEGMENTED
@@ -3033,7 +3024,7 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None, n
             "rep": row["replay_id"],
             # Schema 6: a stage row's parent replay (_PARENT_SQL), else 0.
             "run": row["prun"] or 0,
-            "ver": row["ver"],
+            "ver": 0 if style == STYLE_TAS else row["ver"],
         })
         # ONLY on the combined board.  Adding it everywhere would change the
         # ranked board's bytes, which is the one thing test_momindex.py exists
@@ -6240,10 +6231,10 @@ WEB_CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; "
 WEB_R2_ORIGIN = "https://2a2e9751dc963919eb0896275279ba13.r2.cloudflarestorage.com"
 WEB_CSP_WATCH = WEB_CSP.replace(
     "connect-src 'self'", "connect-src 'self' https://play.proto.bar " + WEB_R2_ORIGIN)
-# The web board is ranked only, like the in-game board since Patch 355: a
-# community (demoted) run is never counted or listed here.  A map opens on the
-# first of these with rows, else the first board it has.
-WEB_DEFAULT_BOARDS = ((0, 0, STYLE_CLEAN), (0, 0, STYLE_SEGMENTED))
+# Ordinary community (demoted) runs stay private (Patch 355); only isolated
+# TAS times are public. A map opens on the first of these with rows, else
+# the first board it has.
+WEB_DEFAULT_BOARDS = ((0, 0, STYLE_CLEAN), (0, 0, STYLE_SEGMENTED), (0, 0, STYLE_TAS))
 # Which tiers a public caller may ask for by name.  `ranked` is still what
 # an absent parameter means, so every link shared before this existed opens
 # the board it opened then.
@@ -6350,6 +6341,9 @@ def _web_maps_body(now):
     imp = {r["map"]: {"n": r["n"], "reps": reps.get(r["map"], 0)} for r in db.execute(
         "SELECT map, COUNT(*) AS n FROM runs WHERE tier IN (?,?) GROUP BY map",
         TIERS_IMPORTED).fetchall()}
+    tas = {r["map"] for r in db.execute(
+        "SELECT DISTINCT map FROM runs WHERE tier=? AND style=?",
+        (TIER_COMMUNITY, STYLE_TAS))}
     tiers = map_tiers()
     wrs = {r["map"]: r for r in db.execute(
         "SELECT r.map, r.name, r.millis, " + VER_SQL + " AS ver FROM ("
@@ -6359,7 +6353,7 @@ def _web_maps_body(now):
         " WHERE r.k = 1", (TIER_RANKED, STYLE_CLEAN)).fetchall()}
     playable = set(bsp) & set(zoned)
     maps = []
-    for key in sorted(playable | set(stats) | set(imp)):
+    for key in sorted(playable | set(stats) | set(imp) | tas):
         st, wr, im = stats.get(key), wrs.get(key), imp.get(key)
         row = {
             "map": bsp.get(key, key),
@@ -6616,6 +6610,9 @@ def web_map():
         return fail(400, "bad leg")
     if style not in STYLES_READ:
         return fail(400, "bad style")
+    # TAS is an uncertifiable community style, not a ranked/imported source.
+    if style == STYLE_TAS:
+        tier = TIER_COMMUNITY
     offset = clamp_int(request.args.get("offset"), 0, MAX_RUNS, 0)
 
     bsp, zoned = map_index()
@@ -6629,16 +6626,18 @@ def web_map():
         # `nm` and `nk` are one imported game's rows each (Patch 636: under
         # one game's filter the style tabs counted both).
         boards = [{"track": r["track"], "leg": r["leg"], "style": r["style"],
-                   "n": r["nr"], "ni": r["nim"], "nm": r["nm"], "nk": r["nim"] - r["nm"]}
+                   "n": r["nr"], "ni": r["nim"], "nm": r["nm"], "nk": r["nim"] - r["nm"],
+                   "nt": r["nt"]}
                   for r in db.execute(
             "SELECT track, leg, style,"
             "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS nr,"
             "       SUM(CASE WHEN tier IN (?,?) THEN 1 ELSE 0 END) AS nim,"
-            "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS nm"
-            "  FROM runs WHERE " + scope + " AND tier IN (?,?,?)"
-            " GROUP BY 1, 2, 3 HAVING nr + nim > 0 ORDER BY 1, 2, 3",
-            (TIER_RANKED,) + TIERS_IMPORTED + (TIER_MOMENTUM,) + scope_args
-            + (TIER_RANKED,) + TIERS_IMPORTED).fetchall()]
+            "       SUM(CASE WHEN tier=? THEN 1 ELSE 0 END) AS nm,"
+            "       SUM(CASE WHEN tier=? AND style=? THEN 1 ELSE 0 END) AS nt"
+            "  FROM runs WHERE " + scope + " AND (tier IN (?,?,?) OR (tier=? AND style=?))"
+            " GROUP BY 1, 2, 3 HAVING nr + nim + nt > 0 ORDER BY 1, 2, 3",
+            (TIER_RANKED,) + TIERS_IMPORTED + (TIER_MOMENTUM, TIER_COMMUNITY, STYLE_TAS) + scope_args
+            + (TIER_RANKED,) + TIERS_IMPORTED + (TIER_COMMUNITY, STYLE_TAS)).fetchall()]
         if not boards and not (mapname in bsp and mapname in zoned):
             return fail(404, "no such map")
         # AFTER the 404, so only a map we have just agreed exists is queued and
@@ -6648,6 +6647,8 @@ def web_map():
             have = [(b["track"], b["leg"], b["style"]) for b in boards]
             track, leg, style = next(
                 (d for d in WEB_DEFAULT_BOARDS if d in have), have[0])
+        if style == STYLE_TAS:
+            tier = TIER_COMMUNITY
         counts = board_counts(db, mapname, track, leg, style, base)
         n = sum(counts[t] for t in TIER_EXPAND.get(tier, (tier,)))
         rows = board_rows(db, mapname, track, leg, tier, style,
@@ -6659,6 +6660,9 @@ def web_map():
     # The handle replaces the id in place: a profile link needs SOMETHING
     # stable per player, and `player` itself is a credential (see web_handle).
     for row in rows:
+        if style == STYLE_TAS:
+            # Community recordings have no public web sharing grant.
+            row["rep"] = row["run"] = 0
         row["who"] = web_handle(row["player"])
         row["ext"] = web_ext(row.get("tr", tier), row["player"])
         if row["player"] in pics:
@@ -7283,9 +7287,9 @@ def profile_forget():
 
 
 def _finishes(r):
-    """P1297: a main-track finish that completes its map. A segmented run (and a KSF segmented import) is not one:
-    it was put together from saved positions."""
-    return r["track"] == 0 and r["leg"] == 0 and not str(r["style"]).startswith(STYLE_SEGMENTED)
+    """P1297: a main-track finish that completes its map, not segmented or TAS."""
+    return (r["track"] == 0 and r["leg"] == 0 and r["style"] != STYLE_TAS
+            and not str(r["style"]).startswith(STYLE_SEGMENTED))
 
 
 def _completion_wos(ranked, main_maps):

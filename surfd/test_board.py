@@ -277,10 +277,10 @@ check("TF_CHEAT has no board", m.style_of(TF_CHEAT), None)
 TF_TAS = 4194304
 for flags in (TF_TAS, TF_TAS | TF_PRACTICE | TF_CHEAT,
               TF_TAS | TF_SEGMENT, TF_TAS | TF_SHADOW):
-    check("TAS flags %d have no human/segmented board" % flags, m.style_of(flags), None)
+    check("TAS flags %d have a separate assisted board" % flags, m.style_of(flags), "tas")
     check("TAS flags %d cannot certify" % flags, m.certifiable(flags), False)
-    check("TAS flags %d are refused on submission" % flags,
-          submit(m, flags=flags), "HTTP 204")
+    check("TAS flags %d land only in community" % flags,
+          submit(m, flags=flags)["tier"], "community")
 TF_BANKTAINT = 8388608
 for flags in (TF_BANKTAINT, TF_BANKTAINT | TF_PRACTICE,
               TF_BANKTAINT | TF_PRACTICE | TF_SEGMENT,
