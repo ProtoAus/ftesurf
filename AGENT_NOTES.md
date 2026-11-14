@@ -7337,6 +7337,15 @@ must require42checks and exact8baseline labels, and catch unnumbered warnings.
 
 ## Anti-cheat and run evidence
 
+### Whole-angle diagnostic scope (P1557)
+
+REC warp rows corroborate server body events, not a unique source for a client
+angle mutation. Timing, command-range overlap or two matching endpoints do not
+supply the missing causal binding. Not every teleport changes eye angles.
+Keep an unexplained whole-angle event unresolved/BLIND; do not relax a threshold
+or exempt a teleport window. `case_pitch_and_yaw_rewrite` asserts this wording
+without changing any counters or decisions. See tools/p1557-hid-angle-cause.md.
+
 ### TAS board observers must follow native restore, not just REC prefix cuts (P1543,13Nov2026)
 
 `SV_TASRewind` already restored the carried native board counter, but did not

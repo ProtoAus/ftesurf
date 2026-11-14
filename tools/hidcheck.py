@@ -2756,10 +2756,11 @@ def check_identity(r, head, views, controller=False, unavailable=False):
 
     if whole:
         r.note("%d frame(s) moved BOTH axes by something other than their recorded "
-               "causes (first at line %d). A server angle set -- every teleport -- "
-               "does that, and so does a rewrite of the whole view angle; this file "
-               "cannot tell them apart, so they are unresolved, not faulted. The "
-               ".rec's warp records can." % (len(whole), min(whole)))
+               "causes (first at line %d). A server angle set can do that, as can "
+               "a rewrite of the whole view angle; this file cannot tell them "
+               "apart, so they are unresolved, not faulted. The .rec's warp records "
+               "can corroborate server body events, but cannot uniquely attribute "
+               "a client angle change." % (len(whole), min(whole)))
     if hidden:
         r.note("%d frame(s) broke one axis while the other was not governed on "
                "that frame (the pitch clamp, +strafe, or a constant that left it "

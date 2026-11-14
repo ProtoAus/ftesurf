@@ -2844,10 +2844,10 @@ def case_pitch_only_rewrite():
 
 def case_pitch_and_yaw_rewrite():
     """A whole-angle rewrite breaks both axes, and from inside this file it is
-    the same bytes as a teleport -- a server angle set breaks both, counts or
-    not.  So it is UNRESOLVED: counted, noted, never a fault, and never OK
-    either (rcptcheck stores BLIND).  The .rec's warp records can tell them apart;
-    this file cannot."""
+    the same bytes as a server angle set, counts or not.  So it is UNRESOLVED:
+    counted, noted, never a fault, and never OK either (rcptcheck stores BLIND).
+    The .rec's warp records corroborate server body events, not a unique cause
+    for a client angle change."""
     j = Journal()
     pitch, yaw = 10.0, 90.0
     for i in range(40):
@@ -2870,6 +2870,14 @@ def case_pitch_and_yaw_rewrite():
           and r.info.get("identity_pitch_violations") == 5,
           "both axes: the raw per-axis counts are kept, as the engine counts them")
     check(has_note(r, "moved BOTH axes"), "both axes: and it is said")
+    check(has_note(r, "warp records can corroborate server body events"),
+          "both axes: warp records offer body-event corroboration only")
+    check(has_note(r, "cannot uniquely attribute a client angle change"),
+          "both axes: no unique angle-cause attribution is claimed")
+    check(not has_note(r, ".rec's warp records can."),
+          "both axes: obsolete warp-resolution claim is absent")
+    check(not has_note(r, "every teleport"),
+          "both axes: angle changes are not attributed to every teleport")
 
 
 def case_pitch_keyboard_term():
