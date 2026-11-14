@@ -57,6 +57,23 @@
 - **Boarding grade arrives a round trip late** (cl_board.qc Board_Frame reads server stats): the mover
   already latches plane/speed-in/counter in prediction; export them from CSQC_PredictPlayerMove.
 
+## Never-shipped materials -- what P1560 left (15 Nov)
+
+- A listed prop skin (data/unshipped.txt) still draws the missing checker. A neutral grey (and nothing for a "nodraw"
+  name) was built, gated on the list, a .vmt request and fs_automount_state 0/1 with every game found, and reviewed
+  through three rounds, then taken out: every listed skin measured (surf_ferros' AET001 panels, surf_beyond's
+  TOOLSNODRAW faces, surf_fairy's degenerate Alpha mesh) sat where no camera showed it, so nothing proved the ink.
+  Falsifier first: a listed skin a player can see, control vs subject at one camera. Code: engine 56e577c1e..8d6a52686.
+- mapdeps.py scans texdata, static/entity models and the sky, not entity material keys (overlays, decals, sprites):
+  surf_4am's "materials/ceiling/tar", surf_ardon's "materials/komaokc/metal3" and surf_leesriize's
+  "materials/plaster_wall_24" reach the engine from those and stay loud on maps whose other misses are listed.
+- candidates() never tries the stripped spelling of a texdata name that starts with "materials/" (the engine reads it
+  so): such a material lands in "-" with its textures unchecked, and a dep line for an addon pack holding it is missed.
+- vmt_curmap is set only by a VBSP load: Source props on a later Quake-format map look up the previous Source map.
+- The lobby reports (data/matreport) include surf_road_to_hell's "maps/surf_road_to_hell/maps/surf_road_to_hell/
+  de_guard/..._wvt_patch_14208_-8648_8752" -- a cubemap patch of a patch the engine missed with its pack mounted;
+  possibly a lookup fault, not established.
+
 ## JARGON Prosurf B4 route — bounded P1558 opening check (14 Nov)
 
 - Site: `src/server/sv_tasautosurf.qc`, selected-course start placement/steering and first-board search for surf_prosurf bonus4. The guide-authorized opening hop branch acts, including native playback, but the latest bounded63second arm reached0of9. Preserving permission is not a complete route solution; the cause of the first-board miss is not established.

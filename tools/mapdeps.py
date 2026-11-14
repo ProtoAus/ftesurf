@@ -1029,6 +1029,7 @@ def main():
         #what fs_load brings back on a PC that has it
         gone = [n for n, r in MOUNTED if not os.path.isdir(r)] + [n for n, r, _s in ADDONS if not os.path.isdir(r)]
         gone += ["%s (empty)" % p.name for p in live + addon_packs if not len(p)]   #a folder left behind (CS:GO -> CS2)
+        gone += ["%s (no VPK)" % p.name for p in addon_packs if not p.vpks and p.name not in LOOSE_ADDONS]
         if gone:
             raise SystemExit("--unshipped refused: not installed here: %s" % ", ".join(gone))
 

@@ -42,6 +42,9 @@
 - surf_beyond and surf_beyond2 restarts face along the course.
 - A bonus whose end shares the main end's box now finishes (surf_reytx bonus 2 through the hoop).
 
+### P1560 No warning for textures a map never shipped
+- Maps that use textures their author never included (about half the library) no longer print a missing-materials warning or show the red banner when they load. Misses something can fix, such as a game that is not installed, still warn as before.
+
 ### P1559 Source map visuals
 - surf_beyond and surf_beyond2: ramp patterns at their real size, the SH logo no longer vanishes at the screen edge, portal swirls draw instead of a black disc, beyond2's start floor reflects and its ramps are solid under their glow.
 - Light leaking through seams on surf_ace and similar maps is closed, and fine grates that faded with distance (surf_null) stay visible.

@@ -36,7 +36,7 @@ and `--accept` only if they are right.
 Two more generated tables ship and the Gates step refuses without them: `data/matcolours.txt`
 (P1548, `tools/matcolours.py`) and `data/unshipped.txt` (P1560,
 `python tools/mapdeps.py --dry --unshipped <release worktree>/ftesurf/data/unshipped.txt`, which
-refuses unless every addon pack is installed). Copy current ones from `C:\FTESurf\ftesurf\data`
+refuses unless every pack mapdeps.py knows, mounted and addon, is installed and indexes files). Copy current ones from `C:\FTESurf\ftesurf\data`
 or regenerate them after a game or library change.
 
 Use the existing Linux builder for the engine pin when needed:
