@@ -30,10 +30,9 @@
      Sys_EnumerateFiles2's recursion that nothing on this disk proves; build 23
      refused that guess and named best.pb the way it did to avoid it.
 
-  3. OWNER, DATE AND CLEAN-VS-STITCHED ARE IN THE FILE, NOT THE NAME.  So each
-     row costs one fopen and about nine fgets -- the header ends at `begin` and
-     nothing past it is read.  Done ONCE when a leg's list is built and cached in
-     three strbufs, never per frame.  A few dozen small reads on a click.
+  3. OWNER, DATE AND CLEAN-VS-STITCHED ARE IN THE FILE, NOT THE NAME.
+     Headers are indexed incrementally, at most four filenames per frame.
+     Pages and class filters use cached metadata, never another header sweep.
 
   WHY THE ROWS ARE NOT DRAWN FROM A SECOND COPY OF THE HUD's LIST CODE.  They are
   drawn with sui, the same widget library the map browser runs on, compiled into
@@ -70,6 +69,19 @@ float  *rec_sb_rowver;                   // FTESURF-REC version
 float  rec_sb_rown;
 float  rec_sb_rowgen;            //Local generation, including same-path replacement.
 float  rec_sb_rowover;                   // files the leg had that would not fit
+float rec_sb_localpage, rec_sb_localtotal, rec_sb_localpages, rec_sb_localfilter;
+
+#define SB_INDEX_BUDGET 4
+float rec_sb_idxpath, rec_sb_idxowner, rec_sb_idxdate, rec_sb_idxmeta;
+float *rec_sb_idxviews;           // five class views holding metadata indices
+float rec_sb_idxsearch, rec_sb_idxat, rec_sb_idxn, rec_sb_idxarchive;
+float rec_sb_idxactive, rec_sb_idxbest, rec_sb_idxstyle, rec_sb_idxframe;
+float rec_sb_idxepoch, rec_sb_idxpublished;
+vector rec_sb_idxpagekey;
+float rec_sb_idxheaders, rec_sb_idxmaxheaders, rec_sb_idxwork, rec_sb_idxmaxwork;
+string rec_sb_idxdir;
+void() Scores_IndexFrame;
+void(string path) Scores_IndexAppend;
 
 /*
   Three strbufs and not three string arrays.
@@ -100,6 +112,7 @@ float  rec_sb_best;              // the fastest CLEAN time on this leg, or 0
 #define SB_F_CLEAN     1
 #define SB_F_STITCHED  2
 #define SB_F_PRACTICE  3
+#define SB_F_TAS       4
 
 /*
 ===========================================================================
@@ -139,6 +152,7 @@ float  rec_sb_best;              // the fastest CLEAN time on this leg, or 0
 #define SB_T_SEGMENT   1
 #define SB_T_LOCAL     2
 #define SB_T_PLAYERS   3
+#define SB_T_TAS       4
 
 float rec_sb_tab;                // SB_T_*
 float sb_viewtab, sb_viewksf;    // the board and KSF style Scoreboard goes back to
@@ -206,9 +220,10 @@ float(float evtype, float scanx, float chary, float devid) Scores_NativeInput;
   home.  A second copy of `"segmented"` spelled `"segment"` would fetch an
   always-empty board and look like a server with no times on it.
 */
-float() Scores_IsOnline = { return (rec_sb_tab == SB_T_ONLINE || rec_sb_tab == SB_T_SEGMENT); };
+float() Scores_IsOnline = { return (rec_sb_tab == SB_T_ONLINE || rec_sb_tab == SB_T_SEGMENT || rec_sb_tab == SB_T_TAS); };
 string() Scores_StyleOf =
 {
+	if (rec_sb_tab == SB_T_TAS) return "tas";
 	return FS_BoardStyle(rec_sb_ksfstyle, rec_sb_tab == SB_T_SEGMENT);
 };
 
@@ -233,7 +248,7 @@ float() Scores_ImpState =
 {
 	local float f;
 
-	if (!Scores_IsOnline())
+	if (!Scores_IsOnline() || rec_sb_tab == SB_T_TAS)
 		return SB_IMP_OFF;
 	if (rec_sb_imponly)
 		return SB_IMP_ONLY;
@@ -269,6 +284,7 @@ string() Scores_TierOf =
 {
 	local float f;
 
+	if (rec_sb_tab == SB_T_TAS) return "community";
 	f = Scores_ImpState();
 	if (f == SB_IMP_ALL)  return OB_TIER_BOTH;
 	if (f == SB_IMP_MOM)  return OB_TIER_MOM;
@@ -292,6 +308,7 @@ float() Scores_ImpTotal =
 {
 	local float f;
 
+	if (rec_sb_tab == SB_T_TAS) return ob_cnt_community;
 	f = Scores_ImpState();
 	if (f == SB_IMP_ALL)  return ob_cnt_ranked + ob_cnt_imported;
 	if (f == SB_IMP_MOM)  return ob_cnt_mom;
@@ -694,6 +711,8 @@ float(float r) Scores_Passes =
 		return (c == RC_CLEAN);
 	if (rec_sb_filter == SB_F_PRACTICE)
 		return (c == RC_CHEAT || c == RC_PRACTICE);
+	if (rec_sb_filter == SB_F_TAS)
+		return (c == RC_TAS);
 	return (c == RC_SEGMENT);
 };
 
@@ -808,9 +827,16 @@ string(float idx) Scores_LegTier =
 #define AR_EV_ROW 40
 #define AR_EV_END 41
 #define AR_EV_DATA 42
+#define AR_EV_KEEP 43
 float ar_query, ar_track, ar_leg, ar_state, ar_rows, ar_owners, ar_dates, ar_flags;
 float ar_fh, ar_seq, ar_bytes, ar_at, ar_refresh, ar_transfer, ar_total;
-string ar_map, ar_path;
+string ar_map, ar_path, ar_profile;
+float ar_auto;
+void() History_AutoFrame;
+void(float status) History_Listed;
+void(float success) History_Received;
+void() History_Rescan;
+void() History_Status;
 
 void() Archive_ClientCancel =
 {
@@ -838,46 +864,70 @@ float(string leaf) Archive_ClientLeaf =
 	return FS_NameTicks(substring(leaf, 0, strlen(leaf) - 4)) > 0;
 };
 
-void() Archive_ClientNeed =
+void(float track, float leg, float offset, float automatic) Archive_ClientList =
 {
-	local string map;
-	local float track, leg;
-	if (rec_sb_tab != SB_T_LOCAL || rec_sb_leg < 0 || rec_sb_leg >= rec_sb_legn) return;
-	track = rec_sb_legtrack[rec_sb_leg]; leg = rec_sb_legnum[rec_sb_leg]; map = serverkey("map");
-	if (leg < 1 || !strcmp(map, "")) return;
-	if (!strcmp(ar_map, map) && ar_track == track && ar_leg == leg && cltime < ar_refresh) return;
-	if (ar_state == 2) return;
 	Archive_ClientCancel();
+	Scores_NoteLocal();
 	if (ar_rows > 0) { buf_del(ar_rows); buf_del(ar_owners); buf_del(ar_dates); buf_del(ar_flags); }
 	ar_rows = buf_create_ex("string", 0); ar_owners = buf_create_ex("string", 0);
 	ar_dates = buf_create_ex("string", 0); ar_flags = buf_create_ex("string", 0);
 	if (strcmp(ar_map, "")) strunzone(ar_map);
-	ar_map = strzone(map); ar_track = track; ar_leg = leg;
+	if (strcmp(ar_profile, "")) strunzone(ar_profile);
+	ar_map = strzone(serverkey("map")); ar_profile = strzone(serverkey("*movementprofile"));
+	ar_track = track; ar_leg = leg; ar_auto = automatic;
 	ar_query = ar_query + 1; ar_transfer = 0;
 	ar_state = 1; ar_at = cltime + 12; ar_refresh = cltime + 30;
-	localcmd(sprintf("cmd archive list %d %d %d\n", ar_query, track, leg));
+	if (!strcmp(serverkey("fs_runhistory"), "1"))
+		localcmd(sprintf("cmd archive list %d %d %d %d\n", ar_query, track, leg, offset));
+	else
+		localcmd(sprintf("cmd archive list %d %d %d\n", ar_query, track, leg));
+};
+
+void() Archive_ClientNeed =
+{
+	local string map;
+	local float track, leg;
+	if (ar_auto || rec_sb_tab != SB_T_LOCAL || rec_sb_leg < 0 || rec_sb_leg >= rec_sb_legn) return;
+	track = rec_sb_legtrack[rec_sb_leg]; leg = rec_sb_legnum[rec_sb_leg]; map = serverkey("map");
+	if (leg < 0 || !strcmp(map, "")) return;
+	if (leg == 0 && strcmp(serverkey("fs_runhistory"), "1")) return;
+	if (!strcmp(ar_map, map) && !strcmp(ar_profile, serverkey("*movementprofile"))
+	    && ar_track == track && ar_leg == leg && cltime < ar_refresh) return;
+	if (ar_state == 2) return;
+	Archive_ClientList(track, leg, 0, FALSE);
 };
 
 void(float row) Archive_ClientGet =
 {
 	if (!ar_rows || row < 1 || row > buf_getsize(ar_rows)) return;
-	if (strcmp(ar_map, serverkey("map"))) return;
+	if (strcmp(ar_map, serverkey("map")) || strcmp(ar_profile, serverkey("*movementprofile"))) return;
 	if (ar_transfer >= 16000000) { ar_refresh = 0; return; }
 	Archive_ClientCancel();
 	ar_transfer = ar_transfer + 1;
-	ar_path = strzone(strcat(FS_RunDir(ar_map, ar_track, ar_leg), bufstr_get(ar_rows, row - 1)));
+	if (!Archive_ClientLeaf(bufstr_get(ar_rows, row - 1))) return;
+	ar_path = strzone(FS_MovementProfilePath(ar_profile, strcat(FS_RunDir(ar_map, ar_track, ar_leg), bufstr_get(ar_rows, row - 1))));
 	ar_fh = fopen(strcat(ar_path, ".part"), FILE_WRITE) + 1;
 	if (ar_fh <= 0) { Archive_ClientCancel(); return; }
 	ar_state = 2; ar_seq = ar_bytes = ar_total = 0; ar_at = cltime + 15;
 	localcmd(sprintf("cmd archive get %d %d %d\n", ar_query, row, ar_transfer));
-	print("scores: fetching your stage recording...\n");
+	if (!ar_auto) print("scores: fetching your completed recording...\n");
 };
 
 void(float ev) Archive_ClientEvent =
 {
 	local float query, row, flags, status, seq, done, transfer, total, fh;
-	local string leaf, owner, date, data, path;
+	local string leaf, owner, date, data, path, attachment;
 	query = readlong();
+	if (ev == AR_EV_KEEP)
+	{
+		// Targeted writer completion, independent of foreground/archive queries.
+		leaf = strzone(readstring()); path = strzone(readstring());
+		owner = strzone(readstring()); date = strzone(readstring()); data = strzone(readstring());
+		attachment = strzone(readstring()); row = readlong(); flags = readlong();
+		HV_Kept(leaf, path, row, flags, owner, date, data, attachment);
+		strunzone(leaf); strunzone(path); strunzone(owner); strunzone(date); strunzone(data); strunzone(attachment);
+		return;
+	}
 	if (ev == AR_EV_ROW)
 	{
 		row = readshort(); leaf = readstring(); owner = readstring(); date = readstring(); flags = readlong();
@@ -894,12 +944,15 @@ void(float ev) Archive_ClientEvent =
 		if (ar_state == 2)
 		{
 			if (transfer != ar_transfer) return;
-			Archive_ClientCancel(); print("scores: stage recording unavailable; reopen Local to refresh.\n");
+			Archive_ClientCancel();
+			if (ar_auto) History_Received(FALSE);
+			else print("scores: recording unavailable; reopen Local to refresh.\n");
 		}
 		else if (ar_state == 1)
 		{
 			if (transfer != 0) return;
 			ar_state = 0; rec_sb_legbuilt = -2;
+			if (ar_auto) { History_Listed(status); return; }
 			if (status == 3) { ar_refresh = cltime + 2; return; }
 			print(sprintf("scores: owner archive %d rows (status %d)\n", buf_getsize(ar_rows), status));
 		}
@@ -910,11 +963,13 @@ void(float ev) Archive_ClientEvent =
 		if (query != ar_query || transfer != ar_transfer || ar_state != 2 || strcmp(ar_map, serverkey("map"))) return;
 		if (ar_total == 0) ar_total = total;
 		if (!(total >= 1 && total <= 8388608 && total == floor(total)) || total != ar_total
-		    || seq != ar_seq || ar_bytes + strlen(data) > total || strlen(data) > 900 || done > 1)
+		    || seq != ar_seq || ar_bytes + memstrsize(data) > total || memstrsize(data) > 900 || done > 1)
 		{
-			Archive_ClientCancel(); return;
+			Archive_ClientCancel();
+			if (ar_auto) History_Received(FALSE);
+			return;
 		}
-		fputs(ar_fh - 1, data); ar_seq = ar_seq + 1; ar_bytes = ar_bytes + strlen(data); ar_at = cltime + 15;
+		fputs(ar_fh - 1, data); ar_seq = ar_seq + 1; ar_bytes = ar_bytes + memstrsize(data); ar_at = cltime + 15;
 		if (!done) return;
 		fclose(ar_fh - 1); ar_fh = 0;
 		fh = fopen(strcat(ar_path, ".part"), FILE_READ);
@@ -922,11 +977,24 @@ void(float ev) Archive_ClientEvent =
 		if (fh >= 0) { status = fsize(fh); fclose(fh); }
 		if (ar_bytes != ar_total || status != ar_total)
 		{
-			Archive_ClientCancel(); print("scores: incomplete stage recording; reopen Local to retry.\n"); return;
+			Archive_ClientCancel();
+			if (ar_auto) History_Received(FALSE);
+			else print("scores: incomplete recording; reopen Local to retry.\n");
+			return;
 		}
 		if (frename(strcat(ar_path, ".part"), ar_path) != 0)
 		{
-			Archive_ClientCancel(); print("scores: could not keep stage recording.\n"); return;
+			Archive_ClientCancel();
+			if (ar_auto) History_Received(FALSE);
+			else print("scores: could not keep recording.\n");
+			return;
+		}
+		rec_sb_legbuilt = -2;
+		if (ar_auto)
+		{
+			Archive_ClientCancel(); ar_state = 0;
+			History_Received(TRUE);
+			return;
 		}
 		path = strzone(ar_path);
 		print(sprintf("scores: owner archive received %d bytes\n", ar_bytes));
@@ -938,34 +1006,41 @@ void(float ev) Archive_ClientEvent =
 void() Archive_ClientFrame =
 {
 	if (ar_state)
-	if (cltime > ar_at || strcmp(ar_map, serverkey("map")))
+	if (cltime > ar_at || strcmp(ar_map, serverkey("map")) || strcmp(ar_profile, serverkey("*movementprofile")))
 	{
 		if (ar_state == 2) localcmd(sprintf("cmd archive cancel %d\n", ar_query));
 		Archive_ClientCancel(); ar_state = 0;
-		print("scores: owner archive request expired.\n");
+		if (ar_auto) History_Received(FALSE);
+		else print("scores: owner archive request expired.\n");
 	}
+	History_AutoFrame();
+	Scores_IndexFrame();
 };
 
-void() Archive_ClientRows =
+// One existence probe per indexing work item, in the captured profile namespace.
+float() Archive_ClientRows =
 {
-	local float i, r, fh;
+	local float i, fh;
 	local string leaf, path, base;
-	if (!ar_rows || strcmp(ar_map, serverkey("map"))) return;
-	if (ar_track != rec_sb_legtrack[rec_sb_leg] || ar_leg != rec_sb_legnum[rec_sb_leg]) return;
-	for (i = 0; i < buf_getsize(ar_rows) && rec_sb_rown < SB_MAXROW; i = i + 1)
-	{
-		leaf = bufstr_get(ar_rows, i);
-		if (!Archive_ClientLeaf(leaf)) continue;
-		path = strcat(FS_RunDir(ar_map, ar_track, ar_leg), leaf);
-		fh = fopen(path, FILE_READ);
-		if (fh >= 0) { fclose(fh); continue; }
-		r = rec_sb_rown; base = substring(leaf, 0, strlen(leaf) - 4);
-		rec_sb_rowticks[r] = FS_NameTicks(base); rec_sb_rowtag[r] = FS_TagFromName(FS_NameTag(base));
-		rec_sb_rowflags[r] = stof(bufstr_get(ar_flags, i)); rec_sb_rowver[r] = 5;
-		bufstr_set(rec_sb_bpath, r, sprintf("archive:%d", i + 1));
-		bufstr_set(rec_sb_bowner, r, bufstr_get(ar_owners, i)); bufstr_set(rec_sb_bdate, r, bufstr_get(ar_dates, i));
-		rec_sb_rown = rec_sb_rown + 1;
-	}
+	if (!ar_rows || ar_state == 1 || strcmp(ar_map, serverkey("map"))) return FALSE;
+	if (strcmp(ar_profile, serverkey("*movementprofile"))) return FALSE;
+	if (ar_track != rec_sb_legtrack[rec_sb_leg] || ar_leg != rec_sb_legnum[rec_sb_leg]) return FALSE;
+	if (rec_sb_idxarchive >= buf_getsize(ar_rows)) return FALSE;
+	i = rec_sb_idxarchive; rec_sb_idxarchive = i + 1;
+	leaf = bufstr_get(ar_rows, i);
+	if (!Archive_ClientLeaf(leaf)) return TRUE;
+	path = FS_MovementProfilePath(ar_profile, strcat(FS_RunDir(ar_map, ar_track, ar_leg), leaf));
+	if (!strlen(path)) return TRUE;
+	fh = fopen(path, FILE_READ);
+	if (fh >= 0) { fclose(fh); return TRUE; }
+	base = substring(leaf, 0, strlen(leaf) - 4);
+	rec_sb_rowticks[SB_MAXROW] = FS_NameTicks(base);
+	rec_sb_rowtag[SB_MAXROW] = FS_TagFromName(FS_NameTag(base));
+	rec_sb_rowflags[SB_MAXROW] = stof(bufstr_get(ar_flags, i)); rec_sb_rowver[SB_MAXROW] = 5;
+	bufstr_set(rec_sb_bowner, SB_MAXROW, bufstr_get(ar_owners, i));
+	bufstr_set(rec_sb_bdate, SB_MAXROW, bufstr_get(ar_dates, i));
+	Scores_IndexAppend(sprintf("archive:%d", i + 1));
+	return TRUE;
 };
 
 void(float row) Scores_LocalWatch =
@@ -989,126 +1064,157 @@ void(float row) Scores_LocalWatch =
   SV_RecPrune has been running since build 23 and the one this disk has actually
   proven.  FS_NAMESORT is the ordering and it is the entire ranking.
 */
+// Scratch slot SB_MAXROW is never selectable; only complete metadata is published.
+void(string path) Scores_IndexAppend =
+{
+	local float i, n, c, filter, view;
+	n = buf_getsize(rec_sb_idxpath);
+	bufstr_set(rec_sb_idxpath, n, path);
+	bufstr_set(rec_sb_idxowner, n, bufstr_get(rec_sb_bowner, SB_MAXROW));
+	bufstr_set(rec_sb_idxdate, n, bufstr_get(rec_sb_bdate, SB_MAXROW));
+	bufstr_set(rec_sb_idxmeta, n * 4, sprintf("%.0f", rec_sb_rowticks[SB_MAXROW]));
+	bufstr_set(rec_sb_idxmeta, n * 4 + 1, ftos(rec_sb_rowtag[SB_MAXROW]));
+	bufstr_set(rec_sb_idxmeta, n * 4 + 2, sprintf("%.0f", rec_sb_rowflags[SB_MAXROW]));
+	bufstr_set(rec_sb_idxmeta, n * 4 + 3, ftos(rec_sb_rowver[SB_MAXROW]));
+	c = Scores_Clean(SB_MAXROW);
+	if (c == RC_CLEAN && rec_sb_rowticks[SB_MAXROW] > 0)
+	if (!rec_sb_idxbest || rec_sb_rowticks[SB_MAXROW] < rec_sb_idxbest)
+		rec_sb_idxbest = rec_sb_rowticks[SB_MAXROW];
+	filter = SB_F_PRACTICE;
+	if (c == RC_CLEAN) filter = SB_F_CLEAN;
+	if (c == RC_SEGMENT) filter = SB_F_STITCHED;
+	if (c == RC_TAS) filter = SB_F_TAS;
+	for (i = SB_F_ALL; i <= SB_F_TAS; i = i + 1)
+	if (i == SB_F_ALL || i == filter || c == RC_UNKNOWN)
+	{
+		view = rec_sb_idxviews[i];
+		bufstr_set(view, buf_getsize(view), ftos(n));
+	}
+};
+
+void() Scores_IndexStart =
+{
+	local float i;
+	local string dir;
+	if (rec_sb_idxsearch) search_end(rec_sb_idxsearch - 1);
+	rec_sb_idxsearch = 0;
+	if (strlen(rec_sb_idxdir)) strunzone(rec_sb_idxdir);
+	dir = FS_MovementProfilePath(serverkey("*movementprofile"),
+		FS_RunDir(serverkey("map"), rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg]));
+	rec_sb_idxdir = strzone(dir);
+	if (rec_sb_idxpath > 0)
+	{
+		buf_del(rec_sb_idxpath); buf_del(rec_sb_idxowner);
+		buf_del(rec_sb_idxdate); buf_del(rec_sb_idxmeta);
+		for (i = SB_F_ALL; i <= SB_F_TAS; i = i + 1) buf_del(rec_sb_idxviews[i]);
+	}
+	rec_sb_idxpath = buf_create_ex("string", 0); rec_sb_idxowner = buf_create_ex("string", 0);
+	rec_sb_idxdate = buf_create_ex("string", 0); rec_sb_idxmeta = buf_create_ex("string", 0);
+	for (i = SB_F_ALL; i <= SB_F_TAS; i = i + 1) rec_sb_idxviews[i] = buf_create_ex("string", 0);
+	if (strlen(dir)) rec_sb_idxsearch = search_begin(strcat(dir, "*.rec"), FS_NAMESORT, TRUE) + 1;
+	rec_sb_idxn = rec_sb_idxsearch ? search_getsize(rec_sb_idxsearch - 1) : 0;
+	rec_sb_idxat = rec_sb_idxarchive = rec_sb_idxbest = 0;
+	rec_sb_idxepoch = rec_sb_idxepoch + 1;
+	rec_sb_idxactive = TRUE;
+	rec_sb_best = 0; // no delta reference until the entire leg has been classified
+};
+
+// Bounded page materialization: no filesystem reads and no full-history walk.
 void(float leg) Scores_BuildRows =
 {
-	local float h, n, i, r, cut, dot;
-	local string fn, base, tagw;
-
-	rec_sb_rowgen = rec_sb_rowgen + 1;
-	rec_sb_rown     = 0;
-	rec_sb_rowover  = 0;
-	rec_sb_best     = 0;
-	// A rescan after a finish keeps the player's place (Patch 357); a leg
-	// change or an open starts at the top.
-	if (rec_sb_legbuilt != -2)
-		rec_sb_scroll = '0 0 0';
-	rec_sb_legbuilt = leg;
-
-	if (leg < 0 || leg >= rec_sb_legn)
-		return;
-
+	local float i, n, r, view, best;
+	local string dir;
+	local vector pagekey;
+	if (rec_sb_legbuilt != leg && rec_sb_legbuilt != -2) rec_sb_localpage = 0;
+	if (rec_sb_legbuilt != -2 && rec_sb_legbuilt != leg) rec_sb_scroll = '0 0 0';
+	if (leg < 0 || leg >= rec_sb_legn) { rec_sb_rown = rec_sb_rowover = 0; return; }
 	if (rec_sb_bpath < 1)
 	{
-		rec_sb_bpath  = buf_create_ex("string", 0);
+		rec_sb_bpath = buf_create_ex("string", 0);
 		rec_sb_bowner = buf_create_ex("string", 0);
-		rec_sb_bdate  = buf_create_ex("string", 0);
+		rec_sb_bdate = buf_create_ex("string", 0);
 	}
-	if (rec_sb_bpath < 1)
-		return;
-
-	h = search_begin(strcat(FS_RunDir(serverkey("map"),
-	                                  rec_sb_legtrack[leg], rec_sb_legnum[leg]),
-	                        "*.rec"),
-	                 FS_NAMESORT, TRUE);
-	n = (h < 0) ? 0 : search_getsize(h);
-	for (i = 0; i < n; i = i + 1)
+	dir = FS_MovementProfilePath(serverkey("*movementprofile"),
+		FS_RunDir(serverkey("map"), rec_sb_legtrack[leg], rec_sb_legnum[leg]));
+	if (!rec_sb_idxpath || rec_sb_legbuilt == -2 || strcmp(dir, rec_sb_idxdir))
+		Scores_IndexStart();
+	rec_sb_legbuilt = leg;
+	rec_sb_idxstyle = rec_sb_ksfstyle;
+	view = rec_sb_idxviews[rec_sb_filter];
+	rec_sb_localtotal = rec_sb_ksfstyle ? 0 : buf_getsize(view);
+	rec_sb_localpages = max(1, ceil(rec_sb_localtotal / SB_MAXROW));
+	rec_sb_localpage = bound(0, rec_sb_localpage, rec_sb_localpages - 1);
+	n = min(SB_MAXROW, rec_sb_localtotal - rec_sb_localpage * SB_MAXROW);
+	rec_sb_rowover = max(0, rec_sb_localtotal - (rec_sb_localpage + 1) * SB_MAXROW);
+	best = rec_sb_idxactive ? 0 : rec_sb_idxbest;
+	pagekey = [rec_sb_localpage, rec_sb_filter, rec_sb_ksfstyle];
+	if (rec_sb_idxpublished == rec_sb_idxepoch && rec_sb_idxpagekey == pagekey)
+	if (rec_sb_rown == n && rec_sb_best == best) return;
+	for (r = 0; r < n; r = r + 1)
 	{
-		if (rec_sb_rown >= SB_MAXROW)
+		i = stof(bufstr_get(view, rec_sb_localpage * SB_MAXROW + r));
+		rec_sb_rowticks[r] = stof(bufstr_get(rec_sb_idxmeta, i * 4));
+		rec_sb_rowtag[r] = stof(bufstr_get(rec_sb_idxmeta, i * 4 + 1));
+		rec_sb_rowflags[r] = stof(bufstr_get(rec_sb_idxmeta, i * 4 + 2));
+		rec_sb_rowver[r] = stof(bufstr_get(rec_sb_idxmeta, i * 4 + 3));
+		bufstr_set(rec_sb_bpath, r, bufstr_get(rec_sb_idxpath, i));
+		bufstr_set(rec_sb_bowner, r, bufstr_get(rec_sb_idxowner, i));
+		bufstr_set(rec_sb_bdate, r, bufstr_get(rec_sb_idxdate, i));
+	}
+	rec_sb_rown = n;
+	rec_sb_best = best;
+	rec_sb_idxpublished = rec_sb_idxepoch;
+	rec_sb_idxpagekey = pagekey;
+	rec_sb_rowgen = rec_sb_rowgen + 1;
+};
+
+// Only this frame seam advances the scan; repeated status/filter/page commands
+// cannot spend additional header budget in the same frame.
+void() Scores_IndexFrame =
+{
+	local float cut, dot, work;
+	local string fn, base, dir;
+	if (rec_sb_idxframe == cltime) return;
+	rec_sb_idxframe = cltime;
+	rec_sb_idxheaders = rec_sb_idxwork = 0;
+	if (!(rec_sb_open || sc_held)) return;
+	if (rec_sb_leg < 0 || rec_sb_leg >= rec_sb_legn) return;
+	if (strcmp(rec_sb_legmap, serverkey("map"))) return;
+	dir = FS_MovementProfilePath(serverkey("*movementprofile"),
+		FS_RunDir(serverkey("map"), rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg]));
+	if (rec_sb_legbuilt != rec_sb_leg || strcmp(dir, rec_sb_idxdir))
+		Scores_BuildRows(rec_sb_leg);
+	if (!rec_sb_idxactive) return;
+	for (work = 0; work < SB_INDEX_BUDGET; work = work + 1)
+	{
+		if (rec_sb_idxat >= rec_sb_idxn)
 		{
-			rec_sb_rowover = rec_sb_rowover + 1;
+			if (rec_sb_idxsearch) search_end(rec_sb_idxsearch - 1);
+			rec_sb_idxsearch = 0;
+			if (!Archive_ClientRows()) { rec_sb_idxactive = FALSE; break; }
+			rec_sb_idxwork = rec_sb_idxwork + 1;
 			continue;
 		}
-
-		fn = search_getfilename(h, i);
-
-		// The basename, for the stamp-and-tag parse.  Everything before the last
-		// '/' is the leg directory we asked for and says nothing new.
-		cut  = Scores_LastOf(fn, 47);           // '/'
-		base = (cut >= 0) ? substring(fn, cut + 1, strlen(fn) - cut - 1) : fn;
-
-		dot = strlen(base) - 4;                 // ".rec"
-		if (dot < 1)
-			continue;
+		fn = search_getfilename(rec_sb_idxsearch - 1, rec_sb_idxat);
+		rec_sb_idxat = rec_sb_idxat + 1;
+		rec_sb_idxwork = rec_sb_idxwork + 1;
+		cut = Scores_LastOf(fn, 47);
+		base = (cut >= 0) ? substring(fn, cut + 1, -1) : fn;
+		dot = strlen(base) - 4;
+		if (dot < 1) continue;
 		base = substring(base, 0, dot);
-
-		/*
-		  <ticks>[_<who>]_<tag>, or a bare <tag> for the unstamped `last`.
-
-		  BUILD 66: THE PARSE MOVED TO sh_defs.qc, beside the speller it undoes,
-		  and it grew a middle component while it was there.  It used to be
-		  written out here: "the underscore is the split and there is exactly
-		  one".  That stopped being true the moment a lobby run could be filed
-		  under who set it, and the failure was not a wrong label -- the tag
-		  would have come back as the PLAYER, FS_TagFromName would not know the
-		  word, and the `continue` below would have dropped every lobby row off
-		  the board with no gap and no count.  Two other files had the same two
-		  lines copied into them.
-
-		  `who` is read and not used HERE.  A local archive has one player by
-		  construction, so the column would be the same value on every row; the
-		  reader exists because the list is about to be shown files that were
-		  written on somebody else's machine (Phase 5 R4), and a parser that
-		  discards a field is a parser that has to be changed again to get it
-		  back.  Anything that still does not fit is skipped rather than guessed
-		  at, exactly as before.
-		*/
-		r    = rec_sb_rown;
-		tagw = FS_NameTag(base);
-		rec_sb_rowticks[r] = FS_NameTicks(base);
-
-		/*
-		  THE WORD LIST IS NOT HERE ANY MORE.  Build 45 added a fourth tag and
-		  moved the name->RT_* map to FS_TagFromName in shared/sh_defs.qc, beside
-		  the forward map it is the inverse of, because this scan and
-		  cl_watch.qc's `replay <tag>` were two copies of it.
-
-		  The `continue` is why that mattered: an unrecognised tag word does not
-		  fall back to anything, it DROPS THE ROW.  A build that writes cheat.rec
-		  and does not read it shows a leaderboard with the run simply absent --
-		  no gap, no count, nothing to notice -- which is the opposite of
-		  "written, labelled, never ranked".  It is also the argument for the
-		  class being a header BIT rather than a tag: an unknown bit degrades to
-		  a wrong word, an unknown tag degrades to silence.
-		*/
-		rec_sb_rowtag[r] = FS_TagFromName(tagw);
-		if (rec_sb_rowtag[r] == RT_NONE)
-			continue;               // not a name this game writes
-
-		bufstr_set(rec_sb_bpath, r, fn);
-		Scores_ReadHeader(r, fn);
-
-		// The unstamped one has to be read out of its own trailer; see there.
-		if (rec_sb_rowticks[r] <= 0)
-			rec_sb_rowticks[r] = Scores_TrailerTicks(fn);
-
-		rec_sb_rown = rec_sb_rown + 1;
+		rec_sb_rowtag[SB_MAXROW] = FS_TagFromName(FS_NameTag(base));
+		if (rec_sb_rowtag[SB_MAXROW] == RT_NONE) continue;
+		rec_sb_rowticks[SB_MAXROW] = FS_NameTicks(base);
+		Scores_ReadHeader(SB_MAXROW, fn);
+		rec_sb_idxheaders = rec_sb_idxheaders + 1;
+		if (rec_sb_rowticks[SB_MAXROW] <= 0)
+			rec_sb_rowticks[SB_MAXROW] = Scores_TrailerTicks(fn);
+		Scores_IndexAppend(fn);
 	}
-	if (h >= 0) search_end(h);
-	Archive_ClientRows();
-
-	/*
-	  The reference the deltas are measured against: the fastest CLEAN run on the
-	  leg, whatever the filter is currently showing.  Not "the first row" -- with
-	  the filter on stitched that would make every delta relative to a practice
-	  run, and a green +0.000 on a save-loaded attempt is exactly the wrong thing
-	  for a leaderboard to show.  Unknowns do not set it either: a `last` file
-	  from before build 24 cannot claim to be a clean best.
-	*/
-	for (i = 0; i < rec_sb_rown; i = i + 1)
-		if (Scores_Clean(i) == RC_CLEAN)
-		if (rec_sb_rowticks[i] > 0)
-		if (rec_sb_best == 0 || rec_sb_rowticks[i] < rec_sb_best)
-			rec_sb_best = rec_sb_rowticks[i];
+	rec_sb_idxmaxheaders = max(rec_sb_idxmaxheaders, rec_sb_idxheaders);
+	rec_sb_idxmaxwork = max(rec_sb_idxmaxwork, rec_sb_idxwork);
+	Scores_BuildRows(rec_sb_leg);
 };
 
 /*
@@ -1147,7 +1253,16 @@ void() Scores_Refresh =
 	if (rec_sb_open || sc_held)
 		Scores_ApplyFollow();
 	Archive_ClientNeed();
-	if (rec_sb_legbuilt != rec_sb_leg)
+	if (rec_sb_localfilter != rec_sb_filter)
+	{
+		rec_sb_localfilter = rec_sb_filter;
+		rec_sb_localpage = 0;
+		Scores_BuildRows(rec_sb_leg);
+	}
+	if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
+	if (rec_sb_legbuilt != rec_sb_leg || rec_sb_idxstyle != rec_sb_ksfstyle ||
+	    strcmp(rec_sb_idxdir, FS_MovementProfilePath(serverkey("*movementprofile"),
+	        FS_RunDir(m, rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg]))))
 		Scores_BuildRows(rec_sb_leg);
 
 	/*
@@ -1944,7 +2059,7 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 	if (rec_sb_rown <= 0)
 	{
 		Scores_Text([rp_x, rp_y + rec_sb_szhead + pad], rec_sb_szrow,
-		            "no runs recorded on this leg yet", SBC_DIM, 1);
+		            rec_sb_idxactive ? "indexing local recordings..." : "no runs recorded on this leg yet", SBC_DIM, 1);
 		return pick;
 	}
 
@@ -1958,7 +2073,7 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 				rec_sb_scroll_y = max(0, (idx - 2) * rec_sb_rowh);
 				break;
 			}
-		rec_sb_seek = FALSE;
+		if (idx < rec_sb_rown || !rec_sb_idxactive) rec_sb_seek = FALSE;
 	}
 
 	sui_list_view_begin("sb_runs", [rp_x, rp_y + rec_sb_szhead + pad * 0.5], rs,
@@ -2847,9 +2962,11 @@ string() Scores_CountLine =
 	else
 	{
 		s = sprintf("%g run(s) on %s", rec_sb_rown, Scores_LegName(rec_sb_leg));
-		if (rec_sb_rowover > 0)
-			s = sprintf("%s  (%g more than the %g this list holds)",
-			            s, rec_sb_rowover, SB_MAXROW);
+		if (rec_sb_localpages > 1)
+			s = sprintf("%s  (history %g/%g, %g total)",
+			            s, rec_sb_localpage + 1, rec_sb_localpages, rec_sb_localtotal);
+		if (rec_sb_idxactive)
+			s = sprintf("%s  indexing %g/%g (delta pending)", s, rec_sb_idxat, rec_sb_idxn);
 	}
 
 	return s;
@@ -2860,7 +2977,7 @@ float() Scores_CanFetch =
 {
 	local float f;
 	f = Scores_ImpState();
-	return (f == SB_IMP_ALL || f == SB_IMP_MOM || f == SB_IMP_KSF) && !FS_BoardSegmented(Scores_StyleOf());
+	return (f == SB_IMP_ALL || f == SB_IMP_MOM || f == SB_IMP_KSF) && !FS_BoardSegmented(Scores_StyleOf()) && rec_sb_tab != SB_T_TAS;
 };
 
 // The footer's left sentence: the count, or for four seconds what the LINE heading did.
@@ -3373,7 +3490,7 @@ void(vector scr) Scores_Draw =
 	bs = min(scale, scr_y / 432);       // a short window gets smaller type...
 	if (bs < 1) bs = 1;
 	// The tab strip: Online and Local.
-	n = 2;
+	n = 3; // Online, isolated TAS, Local history
 
 	/*
 	  WHAT FITS, tried in the order a player would choose. Steps 0-2: every column
@@ -3554,14 +3671,20 @@ void(vector scr) Scores_Draw =
 	sui_roundbox([x0 + pad, ytabs], [segw * n, tabh], tabh * 0.5, SUI_THEME_WELL, 1);
 	// A source or a leg chosen is the board asked for again: a player's times
 	// (Patch 666) give the table back.
-	if (Scores_Seg("sb_t0", [x0 + pad, ytabs], [segw, tabh], "Online", Scores_IsOnline()))
-	if (!Scores_IsOnline())
+	if (Scores_Seg("sb_t0", [x0 + pad, ytabs], [segw, tabh], "Online", rec_sb_tab == SB_T_ONLINE || rec_sb_tab == SB_T_SEGMENT))
+	if (!Scores_IsOnline() || rec_sb_tab == SB_T_TAS)
 	{
 		Scores_TabSet(SB_T_ONLINE);
 		rec_sb_tabauto = FALSE;         // the player chose; the follow leaves it
 		Profile_OnClear();
 	}
-	if (Scores_Seg("sb_t2", [x0 + pad + segw, ytabs], [segw, tabh], "Local", rec_sb_tab == SB_T_LOCAL))
+	if (Scores_Seg("sb_tas", [x0 + pad + segw, ytabs], [segw, tabh], "TAS", rec_sb_tab == SB_T_TAS))
+	{
+		Scores_TabSet(SB_T_TAS);
+		rec_sb_tabauto = FALSE;
+		Profile_OnClear();
+	}
+	if (Scores_Seg("sb_t2", [x0 + pad + segw * 2, ytabs], [segw, tabh], "Local", rec_sb_tab == SB_T_LOCAL))
 	{
 		Scores_TabSet(SB_T_LOCAL);
 		rec_sb_tabauto = FALSE;
@@ -3602,6 +3725,9 @@ void(vector scr) Scores_Draw =
 	yc = ytabs + floor((tabh - chiph) * 0.5);
 	if (!online)
 	{
+		if (Scores_Chip("sb_ftas", [x, yc], [chipw, chiph], "TAS", rec_sb_filter == SB_F_TAS))
+			rec_sb_filter = (rec_sb_filter == SB_F_TAS) ? SB_F_ALL : SB_F_TAS;
+		x = x - chipw - 6;
 		if (Scores_Chip("sb_fx", [x, yc], [chipw, chiph], "Practice", rec_sb_filter == SB_F_PRACTICE))
 			rec_sb_filter = (rec_sb_filter == SB_F_PRACTICE) ? SB_F_ALL : SB_F_PRACTICE;
 		x = x - chipw - 6;
@@ -3614,8 +3740,11 @@ void(vector scr) Scores_Draw =
 	else if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
 	{
 		if (Scores_Chip("sb_tref", [x, yc], [chipw, chiph], "refresh", FALSE))
+		{
+			Scores_NoteLocal(); ar_refresh = 0;
 			Online_Fetch(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
 			             Scores_TierOf(), Scores_StyleOf());
+		}
 		if (fetchw > 0)
 		{
 			x = x - fetchw;
@@ -3625,7 +3754,7 @@ void(vector scr) Scores_Draw =
 	}
 
 	// Patch 635: the filter, on Online, left of the refresh chip.
-	if (online)
+	if (online && rec_sb_tab != SB_T_TAS)
 		Scores_FilterDraw(x - ceil(pad * 0.75), ytabs, tabh);
 
 	// Keep direction and Segmented available on Local too; neither changes game.
@@ -3634,7 +3763,7 @@ void(vector scr) Scores_Draw =
 		yc = ytabs + tabh + pad * 0.5;
 		Scores_Text([x, yc + (chiph - rec_sb_szhead) * 0.5], rec_sb_szhead, "Styles", SBC_DIM, 1);
 		x = x + ceil(stringwidth("Styles", TRUE, [rec_sb_szhead, rec_sb_szhead]) + pad);
-		for (idx = 0; idx < 4; idx = idx + 1)
+		for (idx = 0; idx < ((rec_sb_tab == SB_T_TAS) ? 0 : 4); idx = idx + 1)
 		{
 			rid = strcat("sb_ks", ftos(idx));
 			stylew = ceil(stringwidth(Scores_KsfName(idx), TRUE, [sb_szui, sb_szui]) + pad * 1.5);
@@ -3649,6 +3778,10 @@ void(vector scr) Scores_Draw =
 			x = x + stylew + 4;
 		}
 		x = x + pad;
+		if (rec_sb_tab == SB_T_TAS)
+			Scores_Text([x, yc + (chiph - sb_szui) * 0.5], sb_szui, "TAS -- assisted, not verified", SBC_WARN, 1);
+		else
+		{
 		stylew = chiph * 1.6;
 		sui_action_element([x, yc], [stylew + pad + chipw, chiph], "sb_t1", sui_noop);
 		sui_roundbox([x, yc + 2], [stylew, chiph - 4], (chiph - 4) * 0.5, SUI_THEME_WELL, 1);
@@ -3666,6 +3799,7 @@ void(vector scr) Scores_Draw =
 			rec_sb_oscroll = '0 0 0';
 			rec_sb_scroll = '0 0 0';
 			Profile_OnClear();
+		}
 		}
 	}
 	if (online && pf_on_who == "" && rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
@@ -3792,7 +3926,10 @@ void(vector scr) Scores_Draw =
 		x = Scores_Hint(x, yfoot, "left right", "source");
 	}
 	else
+	{
 		x = Scores_Hint(x, yfoot, "click", "watch a run");
+		if (rec_sb_localpages > 1) x = Scores_Hint(x, yfoot, "pgup pgdn", "history");
+	}
 	// Patch 635: after the hints, and cut to the room they leave.  The sentence
 	// is longer now ("... every game  (top 100 of 129 shown)") and ran under the
 	// keycaps on a small window (the review, 1024x576 and under).
@@ -3818,8 +3955,11 @@ void(vector scr) Scores_Draw =
 */
 void() Scores_Close =
 {
-	if (ar_state == 2) localcmd(sprintf("cmd archive cancel %d\n", ar_query));
-	Archive_ClientCancel();
+	if (!ar_auto)
+	{
+		if (ar_state == 2) localcmd(sprintf("cmd archive cancel %d\n", ar_query));
+		Archive_ClientCancel();
+	}
 	/*
 	  CLOSING THE BOARD CANCELS A PENDING REPLAY, and this line is the whole
 	  reason rec_sb_wantrep exists.  The download itself is not cancelled --
@@ -3877,9 +4017,8 @@ void() Scores_Open =
 	Scores_NativeReset(!sc_held);
 	rec_sb_open = TRUE;
 	ar_refresh = 0;
-	// Re-read the folder every time it opens; a pin from the hold keeps the
-	// player's place (-2, Patch 357).
-	rec_sb_legbuilt = sc_held ? -2 : -1;
+	// Opening from a hold keeps its in-flight index and selected page.
+	if (!sc_held) { rec_sb_localpage = 0; rec_sb_legbuilt = -2; }
 	Profile_Reset();
 	Profile_OnClear();
 	UI_CursorClaim(UIC_SCORES);
@@ -3997,6 +4136,13 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 
 		if (evtype == IE_KEYDOWN)
 		{
+			if (rec_sb_tab == SB_T_LOCAL)
+			if (scanx == K_PGUP || scanx == K_PGDN)
+			{
+				rec_sb_localpage = bound(0, rec_sb_localpage + ((scanx == K_PGDN) ? 1 : -1), rec_sb_localpages - 1);
+				Scores_BuildRows(rec_sb_leg);
+				return TRUE;
+			}
 			if (scanx == K_UPARROW)
 			{
 				if (rec_sb_leg > 0)
@@ -4027,6 +4173,8 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 				if (rec_sb_tab == SB_T_PLAYERS)
 					Scores_ShowBoard();
 				else if (rec_sb_tab == SB_T_LOCAL)
+					Scores_TabSet(SB_T_TAS);
+				else if (rec_sb_tab == SB_T_TAS)
 					Scores_TabSet(SB_T_ONLINE);
 				rec_sb_tabauto = FALSE;
 				return TRUE;
@@ -4035,8 +4183,10 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 			{
 				if (rec_sb_tab == SB_T_LOCAL)
 					Scores_ShowPlayers();
-				else if (rec_sb_tab != SB_T_PLAYERS)
+				else if (rec_sb_tab == SB_T_TAS)
 					Scores_TabSet(SB_T_LOCAL);
+				else if (rec_sb_tab != SB_T_PLAYERS)
+					Scores_TabSet(SB_T_TAS);
 				rec_sb_tabauto = FALSE;
 				return TRUE;
 			}
@@ -4212,6 +4362,7 @@ float(string cmd) Scores_ConsoleCommand =
 			// Build 44.  `segmented` as well, because that is the word the row
 			// now shows and a console handle nobody can guess is not one.
 			else if (argv(2) == "segmented") rec_sb_filter = SB_F_STITCHED;
+			else if (argv(2) == "tas") rec_sb_filter = SB_F_TAS;
 			else if (argv(2) == "practice" || argv(2) == "cheated")
 				rec_sb_filter = SB_F_PRACTICE;
 			else                            rec_sb_filter = SB_F_ALL;
@@ -4233,7 +4384,8 @@ float(string cmd) Scores_ConsoleCommand =
 		*/
 		else if (argv(1) == "tab")
 		{
-			if (argv(2) == "segmented")  Scores_TabSet(SB_T_SEGMENT);
+			if (argv(2) == "tas") Scores_TabSet(SB_T_TAS);
+			else if (argv(2) == "segmented")  Scores_TabSet(SB_T_SEGMENT);
 			else if (argv(2) == "local") Scores_TabSet(SB_T_LOCAL);
 			else if (argv(2) == "players") Scores_TabSet(SB_T_PLAYERS);
 			else                         Scores_TabSet(SB_T_ONLINE);
@@ -4250,6 +4402,16 @@ float(string cmd) Scores_ConsoleCommand =
 			else if (argv(2) == "momentum") Scores_ImpSet(TRUE, 1);
 			else if (argv(2) == "ksf")      Scores_ImpSet(TRUE, 2);
 			else                            Scores_ImpSet(FALSE, cvar("sb_filter_src"));
+		}
+		else if (argv(1) == "history")
+		{
+			if (!strcmp(argv(2), "sync")) { History_Rescan(); History_Status(); return TRUE; }
+			if (!strcmp(argv(2), "status")) { History_Status(); return TRUE; }
+			Scores_Refresh();
+			if (!strcmp(argv(2), "next")) rec_sb_localpage = min(rec_sb_localpage + 1, rec_sb_localpages - 1);
+			else if (!strcmp(argv(2), "prev")) rec_sb_localpage = max(0, rec_sb_localpage - 1);
+			else rec_sb_localpage = bound(0, stof(argv(2)) - 1, rec_sb_localpages - 1);
+			Scores_BuildRows(rec_sb_leg);
 		}
 		else if (argv(1) == "style")
 		{
@@ -4321,6 +4483,7 @@ float(string cmd) Scores_ConsoleCommand =
 		}
 		else if (argv(1) == "refresh")
 		{
+			Scores_NoteLocal(); ar_refresh = 0;
 			/*
 			  The refresh chip's twin, and it calls Online_Fetch DIRECTLY --
 			  Online_Need would decline, because the whole point of its guard
@@ -4477,12 +4640,18 @@ void() Scores_Status =
 	*/
 	print(sprintf("  tab %s   filter %s   cols %g   type %g\n",
 	              (rec_sb_tab == SB_T_PLAYERS) ? "players" : ((rec_sb_tab == SB_T_LOCAL) ? "local"
-	                : ((rec_sb_tab == SB_T_SEGMENT) ? "segmented" : "online")),
+	                : ((rec_sb_tab == SB_T_TAS) ? "tas" : ((rec_sb_tab == SB_T_SEGMENT) ? "segmented" : "online"))),
 	              (rec_sb_filter == SB_F_CLEAN) ? "clean"
 	              : ((rec_sb_filter == SB_F_STITCHED) ? "stitched"
-	              : ((rec_sb_filter == SB_F_PRACTICE) ? "practice" : "all")),
+	              : ((rec_sb_filter == SB_F_TAS) ? "tas" : ((rec_sb_filter == SB_F_PRACTICE) ? "practice" : "all"))),
 	              rec_sb_cols, rec_sb_szrow));
 	print(sprintf("  style %s   ksf %g\n", Scores_StyleOf(), rec_sb_ksfstyle));
+	print(sprintf("  local index %s %g/%g files, %g cached, page %g/%g, %g matched\n",
+		rec_sb_idxactive ? "indexing" : "ready", rec_sb_idxat, rec_sb_idxn,
+		rec_sb_idxpath ? buf_getsize(rec_sb_idxpath) : 0,
+		rec_sb_localpage + 1, rec_sb_localpages, rec_sb_localtotal));
+	print(sprintf("  local index headers/frame %g max %g budget %g; filename work/frame %g max %g\n",
+		rec_sb_idxheaders, rec_sb_idxmaxheaders, SB_INDEX_BUDGET, rec_sb_idxwork, rec_sb_idxmaxwork));
 
 	/*
 	  THE SERVER'S ANSWER VERBATIM, then this file's reading of it.
@@ -4622,10 +4791,11 @@ void() Scores_RegisterCvars =
 	  worse than not trying.
 	*/
 	registercommand("scores");
-	rec_sb_rowticks = memalloc(sizeof(float) * SB_MAXROW);
-	rec_sb_rowtag = memalloc(sizeof(float) * SB_MAXROW);
-	rec_sb_rowflags = memalloc(sizeof(float) * SB_MAXROW);
-	rec_sb_rowver = memalloc(sizeof(float) * SB_MAXROW);
+	rec_sb_idxviews = memalloc(sizeof(float) * (SB_F_TAS + 1));
+	rec_sb_rowticks = memalloc(sizeof(float) * (SB_MAXROW + 1));
+	rec_sb_rowtag = memalloc(sizeof(float) * (SB_MAXROW + 1));
+	rec_sb_rowflags = memalloc(sizeof(float) * (SB_MAXROW + 1));
+	rec_sb_rowver = memalloc(sizeof(float) * (SB_MAXROW + 1));
 	// Patch 649: the line slots' tables, sixty-four of each.
 	sb_ln_key = memalloc(sizeof(string) * SB_LNMAX);
 	sb_ln_path = memalloc(sizeof(string) * SB_LNMAX);

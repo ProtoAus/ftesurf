@@ -2920,6 +2920,7 @@ float   rec_rewind_cold;         // SV_RecRewind's last success read its prefix 
 // and cleared in exactly the same breath as rec_rec_tag, everywhere, so the two
 // can never describe different runs.  See STAT_FS_RUNTICKS.
 .float  rec_rec_ticks;
+.string rec_rec_leaf;              // P1559: exact writer-selected completed filename
 
 /*
   BUILD 66: DID THE FILE ACTUALLY LAND, AND HOW BIG WAS IT.
@@ -2975,6 +2976,7 @@ float   rec_rewind_cold;         // SV_RecRewind's last success read its prefix 
 .string rec_hm_generation, rec_hm_source, rec_hm_destination;
 // One closed ordinary file waits for the actual enclosing native closure.
 .float  rec_hm_closing, rec_hm_closeby, rec_hm_abandoned;
+.float rec_hm_viewseq; // local presentation observer; not a recorder-prefix witness
 .float  rec_hm_ticks, rec_hm_stamp, rec_hm_tag, rec_hm_flags, rec_hm_track, rec_hm_leg, rec_hm_full;
 .float  rec_hm_rcpt, rec_hm_postflags, rec_hm_pwhy, rec_hm_ckshort;
 .string rec_hm_who, rec_hm_rid, rec_hm_nonce, rec_hm_postbody, rec_hm_posturl;
@@ -4183,6 +4185,31 @@ string(entity e, float ticks, string who, string tag) SV_RecFinalPath =
 	return FS_MovementProfilePath(e.rec_agprofile,
 		FS_RunPathWho(mapname, e.run_t_track,
 		              FS_LegOf(e.run_t_startseg, e.run_t_stagerun), ticks, who, tag, "rec"));
+};
+
+void(entity e, string leaf) SV_RecSetLeaf =
+{
+	if (strcmp(e.rec_rec_leaf, "")) strunzone(e.rec_rec_leaf);
+	e.rec_rec_leaf = strcmp(leaf, "") ? strzone(leaf) : "";
+};
+
+// Every finish gets a fresh name, including ties and restored branches. The
+// existence check preserves old recordings across restarts/counter reuse.
+string(entity e, float ticks, float tag) SV_RecHistoryWho =
+{
+	local float i, fh;
+	local string owner, who, dst;
+	owner = SV_RecWho(e);
+	if (!strcmp(owner, "")) owner = "local";
+	for (i = 0; i < 16; i = i + 1)
+	{
+		who = strcat(owner, "-", SV_RandHex(16));
+		dst = SV_RecFinalPath(e, ticks, who, FS_TagName(tag));
+		fh = fopen(dst, FILE_READ);
+		if (fh < 0) return who;
+		fclose(fh);
+	}
+	return "";
 };
 
 /*
@@ -5689,6 +5716,7 @@ void(entity e) SV_RecOpen =
 	e.rec_rec_leg = e.run_t_track * 100 + FS_LegOf(e.run_t_startseg, e.run_t_stagerun) + 1;
 	e.rec_rec_tag = RT_NONE;
 	e.rec_rec_ticks = 0;
+	SV_RecSetLeaf(e, "");
 	// BUILD 66, AND THIS IS THE RESET THAT MATTERS.  A run that records nothing
 	// at all never reaches a close, so without clearing here it would inherit
 	// the PREVIOUS run's answer and submit that run's filename as its own.
@@ -6580,6 +6608,9 @@ void(string glob, string keepme) SV_RecPruneIn =
 	local float h, n, i, keep, kl;
 	local string fn, stem;
 
+	// Completed history is never speed-pruned, including existing files.
+	if (FS_TagHistory(FS_TagFromName(FS_NameTag(substring(keepme, 0, strlen(keepme) - 4)))))
+		return;
 	keep = cvar("rec_runs_keep");
 	if (keep < 1)
 		return;                 // 0 disables pruning entirely
@@ -6689,6 +6720,13 @@ void(entity e, float published) SV_HeldFinishClose =
 		if (e.rec_hm_stamp >= 0)
 		if (FS_TagArchived(e.rec_hm_tag))
 			leaf = FS_RunLeaf(e.rec_hm_stamp, e.rec_hm_who, SV_RecTagName(e.rec_hm_tag), "rec");
+		SV_RecSetLeaf(e, leaf);
+		if (FS_HistoryLeaf(leaf))
+		{
+			Archive_SealFile(e, e.rec_hm_destination);
+			Archive_HistoryKept(e, leaf, mapname, e.rec_hm_track * 100 + e.rec_hm_leg + 1,
+				e.rec_hm_ticks, sprintf("%s-%d", e.rec_hm_rid, e.rec_hm_viewseq), e.rec_hm_nonce, e.rec_agprofile);
+		}
 		// A later arm must not make this sweep another track's archive.
 		if (e.rec_hm_stamp >= 0)
 		if (e.run_t_track == e.rec_hm_track)
@@ -6800,6 +6838,7 @@ void(entity e, float ticks, float stamp, float tag, float flags, string destinat
 	e.rec_hm_rcpt = e.rec_rec_rcpt;
 	e.rec_hm_who = strzone(who);
 	e.rec_hm_rid = strzone(e.rec_rec_rid);
+	e.rec_hm_viewseq = e.run_t_finrec + 1;
 	e.rec_hm_nonce = strzone(e.rec_rec_nonce);
 	// Only streamed ordinary sources can have selected this profile.
 	if (e.rec_rec_fh >= 0)
@@ -7004,7 +7043,17 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 	// two arguments are three uses of one answer -- and SV_RecWho hashes a GUID
 	// to produce it, so asking three times is three sha256s per finish as well
 	// as three chances for them to disagree.
+	SV_RecSetLeaf(e, "");
 	who = SV_RecWho(e);
+	if (FS_TagHistory(tag))
+	{
+		who = SV_RecHistoryWho(e, stamp, tag);
+		if (!strcmp(who, ""))
+		{
+			dprint("timer: cannot reserve a history filename; recording source preserved\n");
+			return;
+		}
+	}
 	dst = SV_RecFinalPath(e, stamp, who, SV_RecTagName(tag));
 
 	// Patch 360: a run that posted stages must not land under a fixed name its
@@ -7074,6 +7123,13 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 		else
 		{
 			e.rec_rec_saved = TRUE;
+			SV_RecSetLeaf(e, FS_RunLeaf(stamp, who, FS_TagName(tag), "rec"));
+			if (FS_TagHistory(tag))
+			{
+				Archive_SealFile(e, dst);
+				Archive_HistoryKept(e, e.rec_rec_leaf, mapname, e.rec_rec_leg, ticks,
+					sprintf("%s-%d", e.rec_rec_rid, e.run_t_finrec + 1), e.rec_rec_nonce, e.rec_agprofile);
+			}
 			if (SV_DevOn())
 				dprint(sprintf("timer: streamed %s (%g samples, %g padding)\n",
 				               dst, e.rec_rec_n, e.rec_rec_padn));
@@ -7116,6 +7172,13 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 		// The buffered recorder writes straight to its final name -- no part
 		// file, no rename -- so reaching here IS the file landing.
 		e.rec_rec_saved = TRUE;
+		SV_RecSetLeaf(e, FS_RunLeaf(stamp, who, FS_TagName(tag), "rec"));
+		if (FS_TagHistory(tag))
+		{
+			Archive_SealFile(e, dst);
+			Archive_HistoryKept(e, e.rec_rec_leaf, mapname, e.rec_rec_leg, ticks,
+				sprintf("%s-%d", e.rec_rec_rid, e.run_t_finrec + 1), e.rec_rec_nonce, e.rec_agprofile);
+		}
 
 		// Only the archived classes accumulate; `last` is one file by
 		// construction and has nothing to prune.  The basename is rebuilt here
@@ -7186,8 +7249,7 @@ string(entity e) SV_RecKeptLeaf =
 		return "";
 	if (!FS_TagArchived(e.rec_rec_tag))
 		return "";
-	return FS_RunLeaf(e.rec_rec_ticks, SV_RecWho(e),
-	                  SV_RecTagName(e.rec_rec_tag), "rec");
+	return e.rec_rec_leaf;
 };
 
 /*
@@ -11192,7 +11254,7 @@ void(entity e) SV_TimerClassSay =
 {
 	local float now;
 
-	now = (e.run_t_flags & TF_TAS) ? RC_CHEAT + 1 : FS_RunClass(e.run_t_flags);
+	now = FS_RunClass(e.run_t_flags);
 	// Notification severity only: bank practice is news after a segmented say,
 	// not a repeat of an earlier practice one, and never outranks cheat.
 	if (e.run_t_flags & TF_BANKTAINT)
@@ -11206,7 +11268,7 @@ void(entity e) SV_TimerClassSay =
 
 	e.run_t_said = now;
 	if (e.run_t_flags & TF_TAS)
-		sprint(e, PRINT_HIGH, strcat(FS_TAS_COLOUR, FS_TAS_LABEL, "^7 -- this run will not be saved\n"));
+		sprint(e, PRINT_HIGH, strcat(FS_TAS_COLOUR, FS_TAS_LABEL, "^7 -- separate TAS history, not an ordinary PB\n"));
 	else
 		sprint(e, PRINT_HIGH,
 		       sprintf("^3%s run^7 -- this run will not be saved\n",
@@ -13717,7 +13779,7 @@ void(entity e, float ticks) SV_TimerFinish =
 	e.run_t_pbwas = pb;
 
 	if (e.run_t_flags & TF_TAS)
-		sprint(e, PRINT_HIGH, strcat(what, FS_TAS_COLOUR, SV_TimerString(ticks), "^7 (", FS_TAS_LABEL, " -- not saved)\n"));
+		sprint(e, PRINT_HIGH, strcat(what, FS_TAS_COLOUR, SV_TimerString(ticks), "^7 (", FS_TAS_LABEL, " -- TAS history)\n"));
 	else if (e.run_t_flags & TF_SHADOW)
 	{
 		// A run resumed from a save.  Still a real time for the section you
@@ -13914,11 +13976,11 @@ void(entity e, float ticks) SV_TimerFinish =
 		e.run_t_flags = e.run_t_flags | TF_NOCOUNTS;
 
 	tag = RT_LAST;
-	if (ispb)
+	if (e.run_t_flags & TF_TAS)
+		tag = RT_TAS;
+	else if (ispb)
 		tag = RT_PB;
-	else if (e.run_t_flags & TF_CHEAT)
-		tag = RT_CHEAT;
-	else if (e.run_t_flags & TF_SHADOW)
+	else if ((e.run_t_flags & TF_SHADOW) && !(e.run_t_flags & TF_CHEAT))
 		tag = RT_SHADOW;
 	/*
 	  BUILD 66: ON A LOBBY THE ARCHIVE IS NOT OPTIONAL.
@@ -13941,9 +14003,8 @@ void(entity e, float ticks) SV_TimerFinish =
 	  On a personal disk it still means what it always meant, so the cvar is
 	  unchanged everywhere else.
 	*/
-	else if (Lobby_Active() || cvar("rec_runarchive"))
-	if (!(e.run_t_flags & TF_PRACTICE))
-		tag = RT_RUN;
+	else
+		tag = RT_RUN; // every completed attempt; the header retains all taints
 
 	// The flags as they stand HERE, which is after every taint has been applied
 	// and after the tag has been decided from them -- so the header line and the

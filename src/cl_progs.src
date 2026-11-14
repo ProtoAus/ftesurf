@@ -148,6 +148,8 @@ client/cl_gfx.qc
 // Patch 372: the vote box.  After cl_gfx.qc (Gfx_Row, Gfx_Field) and cl_hud.qc
 // (HUD_SK, the map clock); cl_hudedit.qc and cl_main.qc call into it.
 client/cl_vote.qc
+// P1559: durable, attempt-bound local VIEW association for delayed completion.
+client/cl_historyview.qc
 client/cl_replay.qc
 client/cl_zones.qc
 // Inferred ramp contact.  After sh_interp.qc (Interp_Fit); before cl_lines.qc,
@@ -242,6 +244,8 @@ client/cl_spectate.qc
 // Timer_Tick's rate.  Stage 2 of build 24.
 client/cl_scores.qc
 client/cl_scores_native.qc
+// P1559: owner-only automatic acquisition over the existing archive transport.
+client/cl_history.qc
 client/cl_raceghost.qc
 // Patch 779: the Comparison window.  After cl_raceghost.qc (its line choice and
 // clock) and cl_timer.qc; cl_board.qc and cl_timer.qc prototype its two hooks.

@@ -201,7 +201,7 @@
 #define TAS_OP_PLANSET 9
 #define TAS_OP_CONTROLSET 10
 #define TAS_TAPE_MAX 128
-#define TAS_EV_PAGE 50         // own retained-input page; 40-42 are sv_archive's AR_EV_*
+#define TAS_EV_PAGE 50         // own retained-input page; 40-43 are sv_archive's AR_EV_*
 #define TAS_EV_PROJECT 51      // P1082 project status, sv_tasproject/cl_tastimeline
 #define TAS_EV_PAGE2 52        // full line extent + separate current-body binding
 #define TAS_EV_SECTIONS 53    // own manual checkpoint intervals, requested only
@@ -335,6 +335,9 @@
   does after a good run.
 */
 #define STAT_FS_RUNTICKS    71
+// P1559: the writer's exact collision-safe completed leaf, not a client guess.
+#define STAT_FS_RUNFILE     210  // EV_STRING; paired with RUNLEG/RUNTAG/RUNTICKS
+#define STAT_FS_RUNID       211  // EV_STRING; local VIEW capture's attempt identity
 
 /*
 ===========================================================================
@@ -1127,6 +1130,7 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
   distribution of them would be a folder of empty files.
 */
 #define RT_LOBBY     6
+#define RT_TAS       7   // completed assisted run; separate retained history
 
 /*
   THE RECORDING TERMS, build 22.
@@ -2319,10 +2323,12 @@ string(float why) FS_ProfileText =
 #define RC_SEGMENT   2
 #define RC_CHEAT     3
 #define RC_UNKNOWN   4
+#define RC_TAS       5
 
 float(float flags) FS_RunClass =
 {
-	if (flags & (TF_CHEAT | TF_TAS)) return RC_CHEAT;
+	if (flags & TF_TAS) return RC_TAS;
+	if (flags & TF_CHEAT) return RC_CHEAT;
 	if (flags & TF_BANKTAINT) return RC_PRACTICE;
 	if (flags & TF_SEGMENT)  return RC_SEGMENT;
 	// Pre-build-44 files, and the implication in the one direction it holds.
@@ -2343,6 +2349,7 @@ string(float c) FS_RunClassName =
 	if (c == RC_CLEAN)    return "clean";
 	if (c == RC_PRACTICE) return "practice";
 	if (c == RC_SEGMENT)  return "segmented";
+	if (c == RC_TAS)      return "TAS";
 	// Keep the reason class/wire bits for old recordings; it is Practice in UI.
 	if (c == RC_CHEAT)    return "practice";
 	return "--";
@@ -3143,6 +3150,7 @@ string(float tag) FS_TagName =
 	if (tag == RT_SHADOW) return "shadow";
 	if (tag == RT_CHEAT)  return "cheat";
 	if (tag == RT_RUN)    return "run";     // build 48
+	if (tag == RT_TAS)    return "tas";
 	// Build 57, stage T.  No underscore -- see the block over RT_LOBBY, where
 	// that is a requirement of the two readers rather than a style choice.
 	if (tag == RT_LOBBY)  return "lobby";
@@ -3176,6 +3184,7 @@ float(string w) FS_TagFromName =
 	// the whole reason this function exists -- the paragraph above is about a
 	// fourth tag that reached the writer and not the scan, and this is the fifth.
 	if (w == "run")    return RT_RUN;
+	if (w == "tas")    return RT_TAS;
 	// Build 57, stage T, and the sixth one makes the paragraph above literal: the
 	// tag is written by the CLIENT and read by the client's own scoreboard and
 	// rank count, so a word taught to the writer and not to this function would
@@ -3258,11 +3267,34 @@ float(float tag) FS_TagArchived =
 	  the other three is not what bounds this.
 	*/
 	if (tag == RT_LOBBY)  return TRUE;
+	if (tag == RT_TAS)    return TRUE;
 	// RT_LAST and RT_CHEAT both fall through: one fixed name each, overwritten
 	// every time.  Written as the fall-through rather than as two more tests
 	// because the question is "does this class accumulate on disk", and a tag
 	// added later should have to argue its way to TRUE rather than inherit it.
 	return FALSE;
+};
+
+// A completed replay, unlike a PB-only lobby receipt or unfinished scratch.
+float(float tag) FS_TagHistory =
+{
+	return (tag == RT_PB || tag == RT_SHADOW || tag == RT_RUN || tag == RT_TAS);
+};
+
+// Remote names are leaves only. Never turn a server string into a local path.
+float(string leaf) FS_HistoryLeaf =
+{
+	local float i, c;
+	local string stem;
+	if (strlen(leaf) < 8 || strlen(leaf) > 180) return FALSE;
+	if (strcmp(substring(leaf, strlen(leaf) - 4, 4), ".rec")) return FALSE;
+	for (i = 0; i < strlen(leaf) - 4; i = i + 1)
+	{
+		c = str2chr(leaf, i);
+		if (!(c >= 48 && c <= 57) && !(c >= 97 && c <= 122) && c != 45 && c != 95) return FALSE;
+	}
+	stem = substring(leaf, 0, strlen(leaf) - 4);
+	return (FS_NameTicks(stem) > 0 && FS_TagHistory(FS_TagFromName(FS_NameTag(stem))));
 };
 
 /*

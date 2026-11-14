@@ -73,6 +73,8 @@ float rec_rp_view;               // strbuf, or 0
 float rec_rp_lines;
 float rec_rp_t0;                 // Patch 438: the cold read's start, gettime(1)
 float rec_rp_wasrec;             // TF_RECORDING as of last frame
+string rec_rp_histmap, rec_rp_histrid, rec_rp_histattach;
+float rec_rp_histfin;
 float rec_rp_ms;                 // this recording is Multi-Session: no sidecars
 
 /*
@@ -213,6 +215,7 @@ string() Rec_MapName = { return serverkey("map"); };
 string(float runleg, float ticks, string tag, string ext) Rec_ViewPath =
 {
 	local float track, leg;
+	local string leaf;
 
 	// RUNLEG is track*100 + leg + 1; see shared/sh_defs.qc for the +1.  BUILD 57:
 	// a LEG (0 the full run, k stage k), where it used to be the 0-based segment
@@ -222,6 +225,14 @@ string(float runleg, float ticks, string tag, string ext) Rec_ViewPath =
 	leg    = runleg - track * 100;
 
 	if (strcmp(rec_rp_agprofile, serverkey("*movementprofile"))) return "";
+	leaf = getstats(STAT_FS_RUNFILE);
+	if (FS_TagHistory(FS_TagFromName(tag)))
+	if (FS_HistoryLeaf(leaf))
+	if (runleg + 1 == getstatf(STAT_FS_RUNLEG) && ticks == getstatf(STAT_FS_RUNTICKS))
+	if (FS_NameTicks(leaf) == ticks)
+	if (!strcmp(FS_NameTag(substring(leaf, 0, strlen(leaf) - 4)), tag))
+		return FS_MovementProfilePath(rec_rp_agprofile,
+			strcat(FS_RunDir(Rec_MapName(), track, leg), substring(leaf, 0, strlen(leaf) - 3), ext));
 	return FS_MovementProfilePath(rec_rp_agprofile, FS_RunPath(Rec_MapName(), track, leg, ticks, tag, ext));
 };
 
@@ -794,6 +805,14 @@ void() Rec_ViewBegin =
 
 	if (strlen(rec_rp_agprofile)) strunzone(rec_rp_agprofile);
 	rec_rp_agprofile = strzone(serverkey("*movementprofile"));
+	if (strcmp(rec_rp_histmap, "")) strunzone(rec_rp_histmap);
+	if (strcmp(rec_rp_histrid, "")) strunzone(rec_rp_histrid);
+	rec_rp_histmap = strzone(Rec_MapName());
+	rec_rp_histrid = strzone(getstats(STAT_FS_RUNID));
+	if (strcmp(rec_rp_histattach, "")) strunzone(rec_rp_histattach);
+	rec_rp_histattach = strzone(HV_Attachment());
+	rec_rp_histfin = getstatf(STAT_FS_FINREC);
+	localcmd("setinfo histview 1\n");
 	rec_rp_lines = 0;
 	rec_rp_full  = FALSE;
 	// Patch 808: no mark is a line of the buffer begun here; those saves load cold.
@@ -995,6 +1014,21 @@ void() Rec_ViewEnd =
 	tag = getstatf(STAT_FS_RUNTAG);
 	leg = getstatf(STAT_FS_RUNLEG);
 
+	// A finish can precede native/held filename publication. Preserve the
+	// rendered view; only matching writer metadata can attach it later.
+	if (!strcmp(serverkey("fs_runhistory"), "1") && rec_rp_lines > FS_VIEWHEAD)
+	if (getstatf(STAT_FS_FINREC) != rec_rp_histfin)
+	{
+		dst = HV_Capture(rec_rp_view, rec_rp_lines, rec_rp_histmap, rec_rp_agprofile,
+			sprintf("%s-%d", rec_rp_histrid, getstatf(STAT_FS_FINREC)), rec_rp_nonce, rec_rp_histattach);
+		// Only a confirmed immutable association supplies the queued signer.
+		if (strcmp(dst, ""))
+		{
+			if (strcmp(rec_rp_lastview, "")) strunzone(rec_rp_lastview);
+			rec_rp_lastview = strzone(dst);
+		}
+	}
+
 	if (tag == RT_NONE || leg < 1)
 	{
 		// Voided, or the server was not keeping this one either.  Patch 817: back
@@ -1096,6 +1130,13 @@ void() Rec_ViewEnd =
 	  RUNTAG and standing exactly as long, precisely so that this line cannot
 	  read a clock that has already moved on to the next attempt.
 	*/
+	// New writers use the attempt-bound metadata above; never guess a late
+	// filename from stats already cleared or replaced by the next attempt.
+	if (!strcmp(serverkey("fs_runhistory"), "1"))
+	{
+		Rec_ViewDrop();
+		return;
+	}
 	dst = Rec_ViewPath(leg,
 	                   FS_TagArchived(tag) ? getstatf(STAT_FS_RUNTICKS) : -1,
 	                   Rec_TagName(tag), "view");
@@ -2104,6 +2145,12 @@ void() Rec_ViewFrame =
 		  start the stuffcmd has landed long before, so this costs nothing on the
 		  path it is not for.
 		*/
+		if (!strcmp(rec_rp_histrid, ""))
+		if (strcmp(getstats(STAT_FS_RUNID), ""))
+			rec_rp_histrid = strzone(getstats(STAT_FS_RUNID));
+		if (!strcmp(rec_rp_histattach, ""))
+		if (strcmp(HV_Attachment(), ""))
+			rec_rp_histattach = strzone(HV_Attachment());
 		if (!rec_rp_asked && rec_rp_nonce == "" && time - rec_rp_recat > 1)
 		{
 			rec_rp_asked = TRUE;
@@ -2386,6 +2433,8 @@ void(string keep, string keep2) Rec_StagedMapClear =
 void() Rec_ViewInit =
 {
 	local float i;
+
+	localcmd("setinfo histview 1\n");
 
 	// A map change can retain uploads. Preserve any still-known two-run nonces
 	// before resetting this VM's bookkeeping; deletion remains best effort.

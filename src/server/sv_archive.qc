@@ -3,9 +3,11 @@
 #define AR_EV_ROW 40
 #define AR_EV_END 41
 #define AR_EV_DATA 42
+#define AR_EV_KEEP 43
 #define AR_ROWS 128
 #define AR_BYTES 8388608
 .float ar_search, ar_scan, ar_listing, ar_rate, ar_rows, ar_query, ar_until, ar_fh, ar_size, ar_seq, ar_next, ar_deadline, ar_transfer;
+.float ar_offset, ar_seen;
 .string ar_identity, ar_scratch;
 float ar_checked_size;
 
@@ -70,6 +72,18 @@ string(string kind, void *data, int size) digest_ptr = #0:digest_ptr;
 
 // GUIDs/userinfo and the eight-hex filename mark are NOT authentication.
 // Account_ProvenKey is populated only by this connection's verified proof.
+void(entity e, string leaf, string map, float runleg, float ticks, string ridseq, string nonce, string profile) Archive_HistoryKept =
+{
+	if (strcmp(infokey(e, "histview"), "1") || !FS_HistoryLeaf(leaf)) return;
+	Archive_Event(e, AR_EV_KEEP);
+	WriteString(MSG_MULTICAST, leaf); WriteString(MSG_MULTICAST, map);
+	WriteString(MSG_MULTICAST, ridseq); WriteString(MSG_MULTICAST, nonce);
+	WriteString(MSG_MULTICAST, profile);
+	WriteString(MSG_MULTICAST, strcat(serverkey("fs_historyepoch"), "-", infokey(e, "*userid")));
+	WriteLong(MSG_MULTICAST, runleg); WriteLong(MSG_MULTICAST, ticks);
+	Archive_Send(e);
+};
+
 string(entity e) Archive_Identity =
 {
 	local string pub, id;
@@ -165,6 +179,35 @@ void(entity e, string path, float buf) Archive_Seal =
 };
 
 // One captured seal supplies identity/path AND the copied-content expectation.
+// P1559: called only by a successful writer-owned completion, never a request.
+// A unique final name cannot displace another recording while this is sealed.
+void(entity e, string path) Archive_SealFile =
+{
+	local string id, hash, partial;
+	local float fh, size;
+	if (!Lobby_Active()) return;
+	id = Archive_Identity(e);
+	if (!strcmp(id, "")) return;
+	id = strzone(id);
+	hash = strzone(Archive_Digest(path));
+	if (!strcmp(hash, "")) { strunzone(id); strunzone(hash); return; }
+	fh = fopen(path, FILE_READ);
+	if (fh < 0) { strunzone(id); strunzone(hash); return; }
+	size = fsize(fh); fclose(fh);
+	partial = strzone(sprintf("%s.owner-p%d-%d.part", path, cvar("sv_port"), num_for_edict(e)));
+	fh = fopen(partial, FILE_WRITE);
+	if (fh >= 0)
+	{
+		fputs(fh, strcat("owner-stage-v2\n", id, "\n", hash, "\n"));
+		fputs(fh, sprintf("%d\n", size));
+		fputs(fh, strcat(digest_hex("SHA256", "FTESurf owner-stage path v1|", path), "\n"));
+		fclose(fh);
+		// No remove/replace: a completed history path is immutable.
+		if (frename(partial, strcat(path, ".owner")) != 0) fremove(partial);
+	}
+	strunzone(partial); strunzone(hash); strunzone(id);
+};
+
 string(entity e, string path) Archive_CheckedSeal =
 {
 	local float fh, size;
@@ -282,10 +325,15 @@ float(entity e, string fn) Archive_Row =
 		if (!strcmp(argv(0), "runid")) date = substring(argv(1), 0, 15);
 	}
 	fclose(fh);
-	if (flags < 0 || FS_RunClass(flags) != RC_CLEAN || version != 5)
+	leaf = substring(fn, FS_LastOf(fn, 47) + 1, strlen(fn));
+	// Known schemas v4..15 include ordinary, native and restored streams.
+	// Do not silently admit a future writer schema this reader has not inspected.
+	if (flags < 0 || !FS_HistoryLeaf(leaf) || !(version >= 4 && version <= 15 && version == floor(version)))
 	{
 		strunzone(fn); return FALSE;
 	}
+	e.ar_seen = e.ar_seen + 1;
+	if (e.ar_seen <= e.ar_offset) { strunzone(fn); return FALSE; }
 	row = buf_getsize(e.ar_rows) + 1;
 	bufstr_set(e.ar_rows, row - 1, fn);
 	leaf = substring(fn, FS_LastOf(fn, 47) + 1, strlen(fn));
@@ -300,14 +348,14 @@ float(entity e, string fn) Archive_Row =
 	return TRUE;
 };
 
-void(entity e, float query, float track, float leg) Archive_List =
+void(entity e, float query, float track, float leg, float offset) Archive_List =
 {
 	local float h;
 	local string id;
 	Archive_Reset(e);
 	e.ar_query = query;
 	id = Archive_Identity(e);
-	if (!Lobby_Active() || !strcmp(id, "") || leg < 1 || leg > 128 || track < 0 || track > 64)
+	if (!Lobby_Active() || !strcmp(id, "") || leg < 0 || leg > 128 || track < 0 || track > 64)
 	{
 		Archive_End(e, 1);
 		return;
@@ -316,7 +364,8 @@ void(entity e, float query, float track, float leg) Archive_List =
 	e.ar_rows = buf_create_ex("string", 0);
 	if (e.ar_rows < 1) { Archive_End(e, 2); return; }
 	e.ar_until = time + 60;
-	h = search_begin(strcat(FS_RunDir(mapname, track, leg), "*.rec"), FS_NAMESORT, TRUE);
+	e.ar_offset = offset; e.ar_seen = 0;
+	h = search_begin(FS_MovementProfilePath(serverkey("*movementprofile"), strcat(FS_RunDir(mapname, track, leg), "*.rec")), FS_NAMESORT, TRUE);
 	e.ar_search = h + 1;
 	e.ar_scan = 0;
 	e.ar_listing = 1;
@@ -347,11 +396,12 @@ void(entity e, float row) Archive_Get =
 void(entity e, float argc) Archive_Command =
 {
 	local string verb;
-	local float query, track, leg, row, transfer;
+	local float query, track, leg, row, transfer, offset;
 	verb = argv(1); query = stof(argv(2)); track = stof(argv(3)); leg = stof(argv(4)); row = track; transfer = leg;
+	offset = (argc == 6) ? stof(argv(5)) : 0;
 	if (clienttype(e) != CLIENTTYPE_REAL) return;
 	if (!(query >= 1 && query <= 16000000 && query == floor(query))) return;
-	if (!strcmp(verb, "list") && argc == 5)
+	if (!strcmp(verb, "list") && (argc == 5 || argc == 6))
 	{
 		if (time < e.ar_until - 58)
 		{
@@ -364,7 +414,8 @@ void(entity e, float argc) Archive_Command =
 			return;
 		}
 		if (track != floor(track) || leg != floor(leg)) return;
-		Archive_List(e, query, track, leg);
+		if (!(offset >= 0 && offset <= 16000000 && offset == floor(offset))) return;
+		Archive_List(e, query, track, leg, offset);
 		return;
 	}
 	if (query != e.ar_query) return;
@@ -385,7 +436,9 @@ void() Archive_Frame =
 {
 	local entity e;
 	local float fh, i, pos, done, h;
-	local string data, line, path;
+	local int bytes;
+	local void *chunk;
+	local string data, path;
 	e = world;
 	while ((e = SV_AcNext(e)))
 	{
@@ -396,11 +449,16 @@ void() Archive_Frame =
 			h = e.ar_search - 1;
 			for (i = 0; i < 8 && e.ar_listing; i = i + 1)
 			{
-				if (h < 0 || e.ar_scan >= 4096 || buf_getsize(e.ar_rows) >= AR_ROWS)
+				if (h < 0 || buf_getsize(e.ar_rows) >= AR_ROWS)
 				{
-					if (h >= 0) search_end(h);
+					done = 0;
+					if (h >= 0)
+					{
+						if (e.ar_scan < search_getsize(h)) done = 4; // another page
+						search_end(h);
+					}
 					e.ar_search = e.ar_listing = 0;
-					Archive_End(e, 0); break;
+					Archive_End(e, done); break;
 				}
 				if (e.ar_scan >= search_getsize(h))
 				{
@@ -421,17 +479,18 @@ void() Archive_Frame =
 		}
 		if (time < e.ar_next) continue;
 		if (time > e.ar_deadline) { Archive_End(e, 2); Archive_Reset(e); continue; }
-		fh = e.ar_fh - 1; data = ""; done = 0;
-		for (i = 0; i < 16; i = i + 1)
+		// Raw bounded fragments: full physics pins exceed a packet, and fgets
+		// would discard CR bytes. Addressable memory is also a QC string offset.
+		fh = e.ar_fh - 1;
+		chunk = memalloc(884i); // zero tail terminates even a partial fragment
+		bytes = fread(fh, chunk, 880i);
+		data = (string)chunk;
+		pos = fseek(fh);
+		done = (pos == e.ar_size);
+		if (bytes < 0i || memstrsize(data) != (float)bytes || (!done && bytes == 0i))
 		{
-			pos = fseek(fh);
-			if (pos >= e.ar_size) { done = 1; break; }
-			line = fgets(fh);
-			if (strlen(line) > 880) { done = 2; break; }
-			if (strlen(data) + strlen(line) + 1 > 900) { fseek(fh, (int)pos); break; }
-			data = strcat(data, line, "\n");
+			memfree(chunk); Archive_End(e, 2); Archive_Reset(e); continue;
 		}
-		if (done == 2) { Archive_End(e, 2); Archive_Reset(e); continue; }
 		Archive_Event(e, AR_EV_DATA);
 		WriteLong(MSG_MULTICAST, e.ar_transfer);
 		WriteLong(MSG_MULTICAST, e.ar_size);
@@ -439,6 +498,7 @@ void() Archive_Frame =
 		WriteByte(MSG_MULTICAST, done);
 		WriteString(MSG_MULTICAST, data);
 		Archive_Send(e);
+		memfree(chunk);
 		e.ar_seq = e.ar_seq + 1;
 		e.ar_next = time + 0.05;
 		if (done) Archive_Close(e);

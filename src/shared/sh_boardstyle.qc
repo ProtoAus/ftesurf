@@ -23,6 +23,7 @@ float(string style) FS_BoardSegmented =
 
 string(string style) FS_BoardStyleName =
 {
+	if (!strcmp(style, "tas")) return "TAS";
 	return strcat(FS_BoardSegmented(style) ? "Segmented " : "", FS_BoardDirectionName(FS_BoardDirection(style)));
 };
 

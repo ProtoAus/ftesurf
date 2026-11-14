@@ -1954,6 +1954,18 @@ void() Watch_Scan =
 
 	Watch_InferScan();              // after rec_wt_v4 and the tick rate are known
 
+	// P1559: assisted runs use the mover's actual aim. A rendered human VIEW
+	// can follow a different direction while native TAS supplies the commands.
+	// This is a TAS camera policy, not a claim that every TAS used native aim.
+	if (rec_wt_recflags >= 0)
+	if (rec_wt_recflags & TF_TAS)
+	if (rec_wt_view >= 1)
+	{
+		buf_del(rec_wt_view);
+		rec_wt_view = rec_wt_viewn = 0;
+		rec_wt_vown = FALSE;
+		print("replay: TAS camera uses recorded mover angles, not the client sidecar\n");
+	}
 	// ---- the .view's index -----------------------------------------------
 	rec_wt_view0  = 0;
 	rec_wt_vxn    = 0;

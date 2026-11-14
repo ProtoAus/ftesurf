@@ -6476,6 +6476,15 @@ measurements are valid bounded observations, not quiet/portable acceptance.
 
 ## Run and test
 
+### P1564 native history controls — 14 Nov 2026 UTC
+
+- A TAS mode announcement is NOT a completion. The generic `Tool Assisted Speedrun` text matched the startup announcement while both attempts were still running. Require the actual finish suffix and a distinct completed native body; preserve the premature report and rerun only the missing TAS cases, not already-passed ordinary/segmented/camera checks.
+- Native REC14 `flags` has intentional trailing padding. A strict `^flags (digits)$` observer misread it as absent. Read its numeric token, and use the declared `TF_SHADOW` bit8 for a save-resumed segment, not bit1. These were observer defects, not missing class flags.
+- The existing dedicated-socket fixture produced a 1,063-byte native header line. Linewise QC string copying can truncate it; retain raw bytes and verify the complete copy's digest. The integrated history check retained two ordinary, one segmented and two actual TAS completions and matched all five remote copies.
+- `SV_RandHex` takes BYTES: `SV_RandHex(16)` yields the 32 hex characters required by history attachment validation. Asking for32 made64 characters and correctly refused metadata. Keep the strict validator.
+- An old TAS VIEW cache can load during negative pre-roll while status still says REC angles at that instant. Cache-loaded is a valid file-selection control, NOT proof VIEW angles were displayed then. The candidate's explicit REC policy and zero VIEW rows are separate observations; owner visual confirmation remains manual.
+
+
 - **P1542 headless legacy-context checks (13 Nov 2026).** Keep timed carried-state
   review and map-switch cycles in separate cases: a map reset interrupts the
   review phases. A cold CSQC start consumed most of the original25-second world

@@ -475,7 +475,7 @@ TF_NORULESET = 1024
 # TF_SHADOW unless a save was ALSO loaded -- so build 44 wrote it as `last` and
 # it overwrote the most recent ordinary attempt.  Unstamped like `last`, because
 # there is no version of "keep every cheated run on this leg" that anyone wants.
-TAGS = ("pb", "last", "shadow", "cheat")
+TAGS = ("pb", "last", "shadow", "cheat", "run", "lobby", "tas")
 
 
 def tag_from_name(path):
@@ -2917,6 +2917,9 @@ def _check_rec(r, path, verbose=False, *, data=None):
             tw = tag_from_name(path)
             if tw == "cheat" and not (fv & TF_CHEAT):
                 r.fault("named cheat.rec but header flags %d does not say cheat"
+                        % fv)
+            if tw == "tas" and not (fv & TF_TAS):
+                r.fault("named tas history but header flags %d does not say TAS"
                         % fv)
 
             # Build 30.  The header and the sample stream have to agree about

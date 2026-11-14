@@ -3484,6 +3484,13 @@ def case_tas_ancestry():
     tas, practice, cheat = 4194304, 1, 256
     f, _, report = run(head(build(), "flags", tas | practice | cheat), report=True)
     check(not f and "TAS" in report, "TAS practice envelope is accepted and labeled TAS")
+    f, _, report = run(head(build(), "flags", tas | practice | cheat),
+                       name="0000040_local-0123456789abcdef_tas.rec", report=True)
+    check(not f and "TAS" in report, "a unique TAS-history leaf retains its assisted class")
+    f, _ = run(build(), name="0000040_local-0123456789abcdef_tas.rec")
+    check(any("named tas history" in x for x in f), "a TAS filename cannot promote an unassisted header")
+    f, _ = run(head(build(), "flags", tas | practice | cheat), name="cheat.rec")
+    check(not f, "legacy TAS cheat.rec remains valid without renaming historical evidence")
     for flags in (tas, tas | practice, tas | cheat, tas | 128):
         faults_with(head(build(), "flags", flags), "TAS without practice/cheat",
                     "TAS flags %d cannot omit the practice/cheat envelope" % flags)

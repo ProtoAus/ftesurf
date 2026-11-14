@@ -25,7 +25,9 @@
 - Recording reports retain additional context without changing movement or the results of older recordings.
 
 ### P1564 TAS boards and run history
-- The community web boards have a separate TAS category. Assisted times stay separate from ordinary boards, completion counts and points.
+- TAS has its own scoreboard tab and community web category. Assisted times stay separate from ordinary boards, completion counts and points.
+- Completed ordinary, segmented and TAS runs are kept in replay history, including slower finishes. The Local tab has filters to find them.
+- TAS replays follow the recorded mover angles instead of the live mouse-camera track.
 
 ### P1563 Once-per-attempt boosters predicted at high ping
 - Boosters that rename you on entry and push you on exit (surf_tendies' start pad) are now predicted, so at high ping the push arrives when you leave the pad instead of snapping you forward a moment later.

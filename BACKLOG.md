@@ -1,5 +1,10 @@
 # BACKLOG.md
 
+## Completed-history remote transfer size boundary — P1564
+
+- Site: `src/server/sv_archive.qc` `AR_BYTES`, `Archive_Digest` / `Archive_CheckedSeal` / `Archive_VerifiedCopy`, and the matching client archive receiver. The existing authenticated protocol allocates/checks a complete file and refuses files over 8 MiB. P1564 retains those server originals but cannot automatically acquire them into a remote client's history. Do not remove the cap or silently raise unbounded QC allocation.
+- Falsifier: retain an actual owned completed REC over 8 MiB, then acquire it after a fresh connection with unchanged ownership/path/content checks, bounded memory/work and a whole-file digest. Require byte-identical local output, retry/resume without truncation and no automatic replay opening. A larger allocation or server-only retention is not a full large-file transfer pass. Design a bounded streaming/digest seam before claiming all-size remote history.
+
 ## Lex's list of 15 Nov -- leftovers of P1559-P1563 (ftesurf-16, root lexlist-20261115-16)
 
 - **STAGE/checkpoint overlaps across tracks** (`src/server/sv_timer.qc` SV_ZoneScan): P1561 ranks only the

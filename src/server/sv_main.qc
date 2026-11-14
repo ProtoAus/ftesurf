@@ -428,6 +428,8 @@ void() SV_RegisterStats =
 	clientstat(STAT_FS_RUNLEG,      EV_FLOAT,  rec_rec_leg);
 	clientstat(STAT_FS_RUNTAG,      EV_FLOAT,  rec_rec_tag);
 	clientstat(STAT_FS_RUNTICKS,    EV_FLOAT,  rec_rec_ticks);
+	clientstat(STAT_FS_RUNFILE,     EV_STRING, rec_rec_leaf);
+	clientstat(STAT_FS_RUNID,       EV_STRING, rec_rec_rid);
 
 	/*
 	  BUILD 24: a stage lifted out of a main run, and the four values the client
@@ -585,6 +587,8 @@ void() worldspawn =
 	// P924: this progs declares input_cmd_later; clients may mirror sv_tickparts.
 	forceinfokey(world, "fs_tickparts", "1");
 	forceinfokey(world, "fs_sourcephase", "1");
+	forceinfokey(world, "fs_runhistory", "1");
+	forceinfokey(world, "fs_historyepoch", SV_RandHex(16)); // 32 hex chars, fresh OS entropy
 	forceinfokey(world, "fs_savelead", "3"); // P1437: coherent E8 saved / L14 loaded capsules; 2 added STAT_FS_SLCURID
 	vbsp_conveyor_any = 0;
 	registercvar("tas_viz_rate", "4");      // P1449: Jargon's candidate lines sent a second (sv_tasoptimize.qc); set before a search
