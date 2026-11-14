@@ -227,6 +227,26 @@ def print_comparison(r, mark, binding):
             print("       movement-mode boundary observed; not automatically expected or excused")
 
 
+def upload_verdict(path):
+    """P1552: what became of a lobby-stored report's client half, from the lobby's own end markers.
+    None for a client's local pair (nothing was uploaded)."""
+    text = Path(path).read_text(encoding="utf-8", errors="replace")
+    if not text.startswith("FTESURF-PREDERR"):
+        return None
+    if "\n== client\n" not in text:
+        return "no client section: the lobby stopped before it"
+    half = text.split("\n== client\n", 1)[1]
+    marker = re.search(r"^== (end|refused [^\n]*|abandoned [^\n]*)$", half, re.M)
+    body = half[:marker.start()] if marker else half
+    size = "EMPTY" if not body.strip() else "%d KB" % (len(body) // 1024)
+    if marker and marker.group(1) == "end":
+        return "client half whole (%s)" % size
+    if marker:
+        return "client half %s, not whole: %s" % (size, clean(marker.group(1)))
+    return ("client half %s with no end line: a lobby from before P1552, a map change or a server stop"
+            % size)
+
+
 def triage(path, eps, window, around):
     head, ctx, rows, sv = load(path)
     print("=" * 78)
@@ -234,6 +254,12 @@ def triage(path, eps, window, around):
     for line in head:
         if line.startswith(("utc ", "map ", "client ")):
             print("  " + clean(line))
+    verdict = upload_verdict(path)
+    if verdict:
+        print("  upload: " + verdict)
+    # P1552: this player's earlier uploads, from the client's notes (cl_prederr.qc PE_Note "upload ...")
+    for line in [l for l in ctx if re.search(r"^\S+ \S+ upload\b", l)][-6:]:
+        print("  earlier upload note: " + clean(line))
     binding = provenance(head, ctx)
     if not rows:
         print("  no valid ring rows for the declared schema; report not graded")

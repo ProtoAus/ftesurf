@@ -25,6 +25,7 @@ var float pe_send = -1;           // strbuf of chunks being sent; -1 = idle
 float  pe_send_i, pe_send_n;    // next chunk, chunk count (chunk 0 is the begin line)
 float  pe_send_wait, pe_send_t; // waiting for the ack of chunk pe_send_i - 1, sent at
 float  pe_sent_ok;              // 1 stored, -1 failed, 0 neither
+float  pe_up_t0;                // P1552: cltime the upload's begin went
 float  pe_tseq[TG_MAX];         // last seq a mirror trigger fired, for enter-only notes
 float  pe_name_err, pe_name_seq; // the last report written: its worst line
 float  pe_box_pending;          // a report written during an upload gets its box after it
@@ -443,6 +444,8 @@ void() PE_Frame =
 	if (pe_send >= 0 && pe_send_wait && cltime > pe_send_t + 10)
 	{
 		print("prederr: the server stopped answering; report not sent\n");
+		PE_Note(sprintf("upload: no answer to chunk %g of %g in 10 s (%.1f s in)", pe_send_i - 1, pe_send_n - 1,
+		                cltime - pe_up_t0));
 		pe_sent_ok = -1;
 		PE_SendStop();
 	}
@@ -515,6 +518,10 @@ void() PE_Send =
 	pe_send_i = 0;
 	pe_sent_ok = 0;
 	pe_box_end = max(pe_box_end, cltime + 20);
+	pe_up_t0 = cltime;
+	// P1552: each upload's course goes in the notes, so the NEXT report says how this one went (8 of the
+	// 8-10 Nov uploads stopped after the begin and nothing anywhere said why).
+	PE_Note(sprintf("upload %s: %g chunks, begin sent", pe_name, pe_send_n - 1));
 	PE_SendNext();
 };
 
@@ -636,6 +643,7 @@ float(string cmd) PE_ConsoleCommand =
 	if (argv(1) == "refused")
 	{
 		print(sprintf("prederr: the lobby did not take the report (%s)\n", argv(2)));
+		PE_Note(sprintf("upload: refused (%s) after chunk %g of %g", argv(2), pe_send_i - 1, pe_send_n - 1));
 		pe_sent_ok = -1;
 		PE_SendStop();
 		return TRUE;
@@ -643,6 +651,8 @@ float(string cmd) PE_ConsoleCommand =
 	if (stof(argv(1)) != pe_send_i - 1)
 		return TRUE;
 	pe_send_wait = FALSE;
+	if (pe_send_i == 1)
+		PE_Note(sprintf("upload: first answer after %.2f s", cltime - pe_up_t0));
 	if (pe_send_i < pe_send_n)
 	{
 		PE_SendNext();
@@ -651,6 +661,7 @@ float(string cmd) PE_ConsoleCommand =
 	pe_sent_ok = 1;
 	pe_box_end = cltime + 4;
 	print("prederr: report sent, thank you\n");
+	PE_Note(sprintf("upload: sent, %g chunks in %.1f s", pe_send_n - 1, cltime - pe_up_t0));
 	PE_SendStop();
 	return TRUE;
 };

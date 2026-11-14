@@ -19,6 +19,8 @@
 #define PE_SV_STORE    600
 
 .float pe_open, pe_fh, pe_next, pe_total, pe_count, pe_last;
+.float pe_chunkt;                // P1552: when its begin or last chunk arrived
+void(entity p, string why) SV_PeAbandon;
 float  pe_lobby_n, pe_lobby_last;
 
 #define PE_SV_ROWS     512      // ~7.7 s at 66 commands a second
@@ -133,6 +135,9 @@ void(entity p) SV_PeRow =
 	local float b, slot, k;
 	local float *r;
 	p.pe_cpend = FALSE;
+	if (p.pe_open)
+	if (time > p.pe_chunkt + 30 || time < p.pe_chunkt)
+		SV_PeAbandon(p, "no chunk for 30 s");
 	slot = num_for_edict(p) - 1;
 	if (slot >= 0 && slot < FS_MAXPLAYERS)
 	{
@@ -287,6 +292,16 @@ void(entity p) SV_PeClose =
 	p.pe_open = FALSE;
 };
 
+// P1552: an upload that stops says so in its file. 8 of the 8-10 Nov reports ended at "== client" with no
+// word of why; the triage can tell superseded, disconnected and silent apart from a cut-off file.
+void(entity p, string why) SV_PeAbandon =
+{
+	if (!p.pe_open)
+		return;
+	fputs(p.pe_fh, sprintf("== abandoned %s after chunk %g of %g\n", why, p.pe_next - 1, p.pe_total));
+	SV_PeClose(p);
+};
+
 void(entity p, string why) SV_PeRefuse =
 {
 	if (p.pe_open)
@@ -323,6 +338,7 @@ void(entity p, string s) SV_PeBegin =
 	p.pe_next = 1;
 	p.pe_count = p.pe_count + 1;
 	p.pe_last = time;
+	p.pe_chunkt = time;
 	pe_lobby_n = pe_lobby_n + 1;
 	pe_lobby_last = time;
 	fputs(p.pe_fh, "FTESURF-PREDERR 1\n");
@@ -347,7 +363,7 @@ void(float idx, string s) CSEv_pe_fs =
 		return;
 	if (idx == 0)
 	{
-		SV_PeClose(self);
+		SV_PeAbandon(self, "superseded by a new report");
 		SV_PeBegin(self, s);
 		return;
 	}
@@ -359,6 +375,7 @@ void(float idx, string s) CSEv_pe_fs =
 		return SV_PeRefuse(self, "chunk");
 	fputs(self.pe_fh, s);
 	self.pe_next = self.pe_next + 1;
+	self.pe_chunkt = time;
 	if (idx == self.pe_total)
 	{
 		fputs(self.pe_fh, "== end\n");
