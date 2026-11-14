@@ -15876,6 +15876,7 @@ void(entity e) SV_TimerFrame =
 	mn = SV_RunHullMins(e);
 	mx = SV_RunHullMaxs(e);
 
+	bhoptrack = e.run_t_track;      // P1561: the track this scan ranked ENDs for
 	SV_ZoneScan(lastp, p, mn, mx, e.run_t_track);	// build 88: the scan, shared with the verifier
 	az = zs_az;
 	ez = zs_ez;
@@ -16254,7 +16255,6 @@ void(entity e) SV_TimerFrame =
 	  movetype.  The counter is explicitly one because Arm zeroes it after the
 	  watcher counted this jump.
 	*/
-	bhoptrack = e.run_t_track;
 	if (bhopz >= 0)
 	{
 		if (bhopstate == TS_ARMED)
@@ -16298,7 +16298,7 @@ void(entity e) SV_TimerFrame =
 		// so re-take it before the zseed below or the next packet reads a fresh END entry.
 		if (e.run_t_track != bhoptrack)
 		{
-			SV_ZoneScan(p, p, mn, mx, e.run_t_track);
+			SV_ZoneScan(e.origin, e.origin, mn, mx, e.run_t_track);
 			e.run_t_evzone = zs_ez;
 			e.run_t_cpzone = zs_cp;
 		}

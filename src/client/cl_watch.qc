@@ -3409,7 +3409,7 @@ void() Watch_ZoneEvents =
 					// P1561: as SV_ZoneScan, the replay's own track's covered END outranks another's
 					if (ez >= 0)
 					if (zone_type[ez] == ZONE_END)
-					if (zone_track[ez] == rec_wt_track || zone_track[z] != rec_wt_track || !zone_ecov[z])
+					if (zone_track[z] != rec_wt_track || !zone_ecov[z] || (zone_track[ez] == rec_wt_track && zone_ecov[ez]))
 						continue;
 				}
 				else if (ez >= 0)

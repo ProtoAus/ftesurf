@@ -185,9 +185,11 @@ float  zone_td_yaw[ZONE_MAX];
 string zone_td_name[ZONE_MAX];
 
 vector zone_pt[ZONE_MAX_POINTS];    // x,y used; z always 0
-// P1561: this END lies wholly inside another track's END (Zone_EndCover), so before P1561 its own
-// runs could never finish there; only such an END outranks another track's in the scans.  A partial
-// overlap keeps the first-END rule, so a recording made before P1561 verifies the same.
+// P1561: this END lies wholly inside an EARLIER END of another track (Zone_EndCover), which the
+// first-END rule always chose, so before P1561 its own runs could never finish there; only such an END
+// outranks another track's in the scans.  A partial overlap, or a cover later in the table (the old
+// rule already chose this END: surf_parc_colore b1 under bonus 4, with main's END above it), keeps the
+// first-END rule, so a recording made before P1561 verifies the same.
 float  zone_ecov[ZONE_MAX];
 
 float  zone_count;
@@ -563,8 +565,8 @@ void(float z) Zone_Finish =
   well defined on the axis-aligned quads that are most of this data.
 */
 float(float z, float px, float py) Zone_XYInRing;
-// P1561: each point of END z, pulled 1 u towards z's centre (identical boxes share edges), inside
-// another track's END e, and z's span within e's (1 u slack).
+// P1561: each point of END z, pulled 1 u towards z's centre (identical boxes share edges), inside an
+// earlier END e of another track, and z's span within e's (1 u slack).
 void() Zone_EndCover =
 {
 	local float z, e, i, inside;
@@ -579,11 +581,11 @@ void() Zone_EndCover =
 		for (i = 0; i < zone_npts[z]; i = i + 1)
 			c = c + zone_pt[zone_first[z] + i];
 		c = c * (1 / zone_npts[z]);
-		for (e = 0; e < zone_count; e = e + 1)
+		for (e = 0; e < z; e = e + 1)
 		{
 			if (zone_ecov[z])
 				break;
-			if (e == z || zone_type[e] != ZONE_END || zone_track[e] == zone_track[z])
+			if (zone_type[e] != ZONE_END || zone_track[e] == zone_track[z])
 				continue;
 			if (zone_bottom[z] < zone_bottom[e] - 1 || zone_top[z] > zone_top[e] + 1)
 				continue;
