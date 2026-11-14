@@ -59,7 +59,7 @@ void() SV_WarpOpCommand =
 	op = input_impulse;
 	if (input_cmd_kind != 1 && input_cmd_kind != 2)
 	{
-		if (op >= WOP_RESET && op <= WOP_TOP)
+		if ((op >= WOP_RESET && op <= WOP_TOP) || op == WOP_SAVE)
 			if (SV_DevOn())
 				dprint(sprintf("warpop: %g dropped, not a decoded command\n", op));
 		return;
@@ -68,7 +68,9 @@ void() SV_WarpOpCommand =
 	{
 		wop_live = TRUE;
 		forceinfokey(world, "fs_wop", "1");
+		forceinfokey(world, "fs_wopsave", "1");     // P1547
 	}
+	if (op != WOP_SAVE)
 	if (op < WOP_RESET || op > WOP_TOP)
 		return;
 	if (input_cmd_sequence_hi < self.wop_hi)
@@ -87,6 +89,20 @@ void() SV_WarpOpCommand =
 	if (op == WOP_RELEASE)
 	{
 		SV_SaveLocHold(self, FALSE);
+		return;
+	}
+	if (op == WOP_SAVE)
+	{
+		// P1547: sl_save's preamble (SV_ParseClientCommand) under this command's ticket -- a terminal
+		// answer even when refused -- but no STAT_FS_SLACK count: no stringcmd was sent.
+		self.rec_sl_requesttag = FS_SaveOpTag(self.wop_ack);
+		self.rec_sl_answer_tag = self.rec_sl_requesttag;
+		self.rec_sl_answer_op = SLOP_NONE;
+		self.rec_sl_answer_tick = -1;
+		if (!SV_SaveLocRate(self))
+			return;
+		self.rec_sl_auto = FALSE;
+		SV_SaveLocCreate(self);
 		return;
 	}
 	if (op == WOP_LOAD)
