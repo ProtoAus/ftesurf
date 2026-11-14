@@ -5,9 +5,9 @@
 The platform objective, event-aligned seed and supported-ground doorway handoff
 have genuine native finish/strict-recording acceptance on the accepted P1543 trio.
 The acting handoff finishes14.280/0backtracks; normal production12.285/4backtracks.
-Current-installed renderer compatibility, clean-source proof and deployment are
-still **pending**. No owner visual/feel acceptance is recorded. No native/Build/
-release change. P1548 was concurrently published for missing-texture rendering;
+Current-installed renderer compatibility, clean-source proof and dual-Windows
+QW deployment are **verified**. No owner visual/feel acceptance is recorded.
+No native/Build/release change. P1548 was concurrently published for missing-texture rendering;
 this feature was renumbered before publication, not its historical evidence.
 
 ## Why a platform landing was retried
@@ -103,15 +103,31 @@ obstacles are not established by the tensor2 diagnosis.
   or recorder semantics changed.
 - Three scoped source reviews; the latest identified the waypoint-distance
   shortcut defect, corrected before compiling the doorway-face arm.
-- Latest acting-control and production builds: all3VMs,0warnings. Production has
+- Latest acting-control and clean isolated production builds: all3VMs,0warnings;
+  all6DAT/LNObytes match the qualified production. Production has
   the ride-aligned seed; the private acting arm changes only the seed split back
   to midpoint to reproduce the measured first grounded landing.
 - Earlier failed handoff arms prove movement/pause, not a finish. The corrected
   doorway-face and normal production arms now both genuinely finish with strict
-  0fault recordings. Clean-source proof, current-installed renderer compatibility
-  and promotion remain pending. Shared-rig admission is enforced; no other
-  process, lease or data is changed to obtain a test slot.
-- Once the actual finish passes, publish the inspected clean source, use the
-  existing guarded Windows/fleet deployment entrypoints, verify destinations and
-  live behavior, then record UTC provenance. No backend generation change is
-  needed for this QC-only feature. Owner-only acceptance remains in lextest.md.
+  0fault recordings. Current dual-installed P1548 renderer/plugin checks reproduce
+  both finishes. Shared-rig admission is enforced; no other process, lease or
+  data is changed to obtain a test slot.
+
+## Delivery (14 Nov 2026 UTC)
+
+Published clean source3a1351b55ce8884c69a508767a4923705a809559. At06:38:45UTC the
+existing supported `build.ps1` Deploy function, through the guarded owned caller,
+promoted only `qwprogs.dat` and `qwprogs.lno` to both `C:\FTESurf` and `C:\FTEQuake`.
+All4destinations match qualified bytes and normal `.prev` matches each preimage;
+private older preimages remain.81native/config/CSQC/menu files and18,528player-data
+files remain unchanged. No native or unrelated client/menu program was replaced.
+The shared cache epoch is local state, not a stat/network/recording interface.
+
+At06:46:17UTC destination/protected/data readback still passes. An actual run using
+the **installed** QW/client/menu cohort and current native trio finishes12.285/
+4backs,819inputs/6boards/strict0faults; all owned actors exit0. Thus component
+preservation is runtime-tested, not inferred from the different control CSQC.
+
+Autosurf/optimizer explicitly reject `Lobby_Active()`, so this local-practice
+change does not need a lobby/backend restart. No Pi, backend, release or Build
+promotion was performed. Owner-only acceptance remains pending in lextest.md.
