@@ -121,30 +121,50 @@ Lex: "that's crazy? why so slow? can it be faster?" and the three leftovers -- c
 
 The chunked path is stop-and-wait (one 800-byte chunk a round trip) under a reliable channel that carries
 at most ~1.4 KB a round trip anyway (net_mtu 1440; a bigger sendevent can overflow cls.netchan.message, a fatal
-disconnect), so ~30 s at 350 ms was the in-game ceiling. Change (d3d7ec82): the lobby's begin writes "token
-<32 hex>" into its file header and sends it in "prederr_ack 0"; the client POSTs its whole half as text/plain to
-cl_report_url?prederr=<token> (online consent tier; plain text because strreplace stops at 4096 bytes); reportd
-stores it as <stem>.client beside the lobby file, once, for a token in the header of a lobby file touched in the
-last 15 min; the client then sends a -1 event (the lobby file ends "== http"); any refusal or 15 s of silence
-falls back to the chunks. No nginx change (the exact-match /api/report location ignores the query string).
+disconnect), so ~30 s at 350 ms was the in-game ceiling. Change, as shipped after two review rounds: a lobby
+(lobby_master_key set) makes a one-time token at the begin -- 32 hex of SHA-256 over the key, the report's path,
+three random() draws and both clocks -- writes it into its file header and into data/prederr/tokens/
+p<port>_s<slot>.tok ("<token> <stem>", replaced per report and closed at once: the report itself streams through
+stdio on Linux), and sends it in "prederr_ack 0 <token>". The client (online consent tier, cl_prederr_http 1)
+POSTs its whole half as text/plain to cl_report_url?prederr=<token> (uri_post's buffer form over the chunk
+strbuf; plain text because strreplace stops at 4096 bytes). reportd takes it only for a token in a slot file
+touched in the last 15 min (constant-time compare) naming an existing, non-link <stem>.txt, and stores it once
+(O_EXCL .part, then a hard link) as /srv/nvme/ftesurf-ops/reportd-state/prederr/<stem>.client -- its unit
+(ProtectSystem=strict) can write nothing else. The client then sends a -1 event and the lobby file ends
+"== http"; any refusal or 15 s of silence falls back to the chunks. No nginx change (the exact-match /api/report
+location ignores the query string). A server without lobby_master_key issues no token: chunks, as before.
 
-Measured: surfd/test_reportd.py 36/36 (4 new: stored once then 409, no report row, no .part left; refusals
-400/404/413 incl. path-like and upper-case tokens and NUL; stale file 404; token outside a lobby header 404).
-arms/p1554arm.py at 350 ms with a local reportd: both reports "== http" + .client, triage joins and grades them,
-report 2 notes "upload: sent by http in 0.4 s" (local HTTP: over the internet expect ~1.5 s); without reportd
-both whole by chunks (~58 s) after "http answered 0 (); sending it in-game".
+Review, two rounds, three lenses (control flow; stored evidence; a hostile client), never my conclusions.
+Round 1: the unit could not write beside the lobby files; the header could still be in the lobby's stdio
+buffer when reportd read it; reportd searched the first 4 KB, where client text can sit; random() is rand()
+seeded by time, so the token needed the lobby secret; a 400-step strcat built the body; the request ids
+overlapped another band. Round 2: FILE_WRITE prints the token file's name into the log (COM_WriteFile); a file
+per token grew without bound (now one per slot); a keyless server still issued tokens; P1555's origin (below).
+All fixed; surfd/test_reportd.py 37/37.
+
+Measured on the shipped build (main 069886ba + these commits, QC c3c28ffa/aae6269a, the same bytes the
+lobbies got): surfd/test_reportd.py 37/37 (stored once then 409, no report row, no .part left; refusals
+400/404/413 incl. path-like and upper-case tokens and NUL; a stale slot file 404). arms/p1554arm.py at 350 ms
+with a local reportd (runs/http350m): both reports "== http" + .client (115/118 KB), the triage joins and grades
+them, report 2 notes "upload: sent by http in 0.4 s" (local HTTP: over the internet expect ~1.5 s), one token
+file (p27593_s1.tok) for two reports; without reportd (http350m_noreportd) both whole by chunks after "sending it
+in-game". The same HTTP arm on the 0.1.45 release exe 9c1e5275 with its own plugin 8be64184 (http350m_rel0145):
+all 8 checks pass, "sent by http in 0.4 s" -- uri_post's buffer form is in the released engine.
 
 ## P1555: `!r` across a startmark flip
 
 (fa020687) The server flags `!r`'s published angle with WOPD_FLIP when the leg has a usable startmark or a
 start-zone save (SV_WarpOpResetMayFlip mirrors SV_MovePrepReset's gates); with the flag the client sends `!r`
-blind if a predicted teleport is unacknowledged (tg_teleseq > servercommandframe) or start/stage box membership
-differs between pmove_org and the server origin. Measured (arms/p1551reset.py, surf_sodacity, 350 ms/250 fps):
+blind if a predicted teleport is within a round trip plus 8 commands of servercommandframe (a lost stat is
+resent only once its loss is seen; review round 1 widened it from "unacknowledged") or start/stage box
+membership differs between pmove_org and the acknowledged origin, captured beside PE_AckSnap at chain start
+(round 2: predinput_origin is not it by the time the op is tried). Measured (arms/p1551reset.py, surf_sodacity, 350 ms/250 fps):
 no startmark, 10 resets all to Stage1, no prederr over 50 (the server logged 9 of the 10 ops this run, 10/10 in
 sz350; unexplained, not this path); a startmark set ("startmark: set zone 0"), 10 resets land on "your
 startmark", predicted. The one 20,000-unit line in that run is a 9 s client freeze during which the server
 walked the player into the map's teleport, not `!r`. The flip itself (a fail teleport into the start from a
-later stage, then `!r` within a round trip) was not reproduced: the blind decision is by reading.
+later stage, then `!r` within a round trip) was not reproduced: the blind decision is by reading. On the
+shipped build (runs/p1555m_*): startmark 11 server ops, plain 10, both 0 not predicted and 0 prederr.
 
 ## P1556: bhop_1n5an3's start (Proto, 14 Nov) -- not established
 
@@ -154,3 +174,20 @@ trigger_teleport *136's destination, whose brush tops out at z 58, 6 units under
 locally on the same map with the same bhop ruleset (cfg/lobby/mode_bhop.cfg loaded): standing on the block's
 edge and middle and sliding onto it at two speeds (arms/p1556arm.py) touched nothing. Not tried: the lobby's
 zone file (its start zone's teleDest is t1) and run state, and the lobby's arm64 patch-1538 engine. BACKLOG.
+
+## Delivery of P1554/P1555 (14 Nov 2026, ~17:05-17:12Z)
+
+- Base: P1558 (another session) had put main b51f98cf on the lobbies and both installs at 12:33Z (qw cee57870,
+  cs 423321f5), so these commits were rebased onto main 069886ba (no file overlap with P1557/P1558) and every
+  test above re-run on that build; deploy/p1552-upload is superseded, not pushed further. The live lobby source
+  is branch deploy/p1554-http.
+- reportd: reportd.py bb46e2e2 (the committed bytes) over 2ce39a3f (= main's, kept as reportd.py.pre1554), HUP of
+  the gunicorn master, new worker up; <state>/prederr created 0700. Smoke: a well-formed unknown token 404
+  locally and through https://play.proto.bar, a non-report body 400, nothing stored. The unit's
+  REPORTD_SOURCE label still names 2e3333d5 (changing it needs sudo; it is a label only).
+- Lobbies, all 12 (build.ps1 -Pi -QuakeDir <absent>, nobody on): qwprogs c3c28ffa, csprogs aae6269a, .prev =
+  P1558's pair; all 12 active, a fresh start banner each, 0 QC errors after. lobby_master_key is set in
+  cfg/lobby/lobby.cfg, so they issue tokens.
+- Both installs: the same qw/cs (+lno), .prev = P1558's pair; the lobby csprogs seeded as csprogsvers/8e3f7c48
+  (folded MD4, tools/seed_csprogs.py; checked on 423321f5 -> 8809726, the existing cache file). Menu not shipped.
+- tasrevd codes.txt 137 -> 139 (.pre1554): P1558's 423321f5, which its deploy did not append, and aae6269a.

@@ -2199,6 +2199,12 @@ Root: C:\FTESurf-worktrees\skyroom1202-20261102T0620Z.
   `python tools/prederr_triage.py --fetch <dir>` copies them (scp) and prints, per report, the
   worst line, the seq where client and server first disagree, the rows around it and the context
   (server prints, mirror triggers by seq, gates, warp ops). Clear the Pi copies after reading.
+- HTTP (P1554): with lobby_master_key set, the begin issues a one-time token (written to
+  data/prederr/tokens/p<port>_s<slot>.tok, replaced each begin) in `prederr_ack 0 <token>`; the
+  client POSTs its half to cl_report_url?prederr=<token>. reportd (ProtectSystem=strict: it can
+  write only its state dir) keeps it as /srv/nvme/ftesurf-ops/reportd-state/prederr/<stem>.client
+  and the lobby file ends "== http". `--fetch` copies both folders and the triage joins the halves.
+  "Clear the Pi copies" includes those .client files and data/prederr/tokens/.
 - Arm: C:/FTESurf-worktrees/prederr1195-20261102T0125Z/artifacts/p1195report.py (server+client on
   surf_network2008; cfg-driven: the client ignored stdin commands in this setup).
 

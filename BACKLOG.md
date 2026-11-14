@@ -8,16 +8,20 @@
 ## Prederror reports after P1508 -- leftovers of P1550-P1552 (14 Nov)
 
 - surf_fiellu (nodsnot, 13 Nov, 172 units): `!r` to "your startmark" 7 commands after "back in the start"
-  re-armed the run (SV_TimerAtRunOrigin flips); the republished STAT_FS_WOPR was still in flight at 60 ms. The
-  client could predict the flip (publish the startmark beside the destination and pick by its own start-zone
-  state) or send blind there. Falsifier: a run that falls back into a start with a startmark, `!r` within one RTT.
-- bhop_1n5an3 (Proto, 14 Nov, 376 units): the server moved the player at the start ("run cancelled (back in
-  the start)") with no client trigger fired. Find the server-side mover (IO teleport/SetOrigin?) on that map.
+  re-armed the run (SV_TimerAtRunOrigin flips). P1555 sends `!r` blind when the published destination may flip
+  (WOPD_FLIP) and a teleport is within a round trip or the start/stage box membership differs; startmark and
+  plain resets measured predicted, but the flip itself was never reproduced -- the blind branch is by reading.
+  Falsifier still owed: a run that falls back into a start with a startmark, `!r` within one RTT, no report.
+- bhop_1n5an3 (Proto, 14 Nov, 376 units; P1556, not established): at command 315 the lobby moved the player,
+  grounded on func_door *3 at z 64, to t1 -- trigger_teleport *136's destination, whose brush tops out at z 58.
+  Not reproduced locally standing or sliding on the block with mode_bhop.cfg (arms in reports-20261114). Next:
+  the lobby's zone file (start zone teleDest t1) and run state, and the lobby's arm64 engine.
 - surf_ace (MetalGio, 13 Nov, 10.8k): parked at a MOVETYPE_NONE spot (-3712 -128 -6880) ~14 s after joining,
   beside a 221 ms server stall; cause not established.
-- Uploads: one 800-byte chunk a round trip (~55 s at 350 ms); a map change inside it leaves no end line. Client
-  upload notes ride only on the same map (CSQC ring). Several chunks in flight would not fit a non-fragmented
-  1430-byte reliable message.
+- Uploads: P1554 sends the client half over HTTP (lobby token, reportd). The chunk fallback -- no online
+  consent, cl_prederr_http 0, reportd down, a server without lobby_master_key -- is still one 800-byte chunk a
+  round trip (~55 s at 350 ms) and a map change inside it leaves no end line. Client upload notes ride only on
+  the same map (CSQC ring).
 - The qclib temp-string cap covers PR_AllocTempStringLen only; PR_QCGC_Finish and the unthreaded collector
   still double uncapped (a collecting VM that keeps half its temps live).
 

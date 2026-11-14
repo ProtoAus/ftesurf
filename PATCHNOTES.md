@@ -26,6 +26,12 @@
 - JARGON and slow-motion assisted attempts show a purple Tool Assisted Speedrun tag and purple completions. Ordinary completions are green and segments are blue; assistance stays unranked.
 - Saving or loading a slow-motion attempt keeps its TAS label without turning on JARGON's native controls.
 
+### P1555 Steadier !r just after falling back into the start
+- At higher ping, !r pressed just after a teleport back into a start that has your startmark waits for the server instead of guessing, so it no longer snaps you to the wrong spot for a moment.
+
+### P1554 Prediction reports upload in seconds
+- A prediction error report (F6) now uploads in a second or two instead of up to a minute at high ping, so changing map straight after sending no longer cuts it off. If the fast route fails it still goes the old way.
+
 ### P1550 Crash after story-mode map changes
 - Fixed a crash ("BZ_Malloc: Failed on allocation") that could close the game a while after a story-mode map change, most often while a map was downloading.
 
