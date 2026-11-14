@@ -612,7 +612,7 @@ void() Vote_Frame =
 	}
 	if (lobby_cyc_moving)
 		return;                                 // the change is issued: nothing opens on its frame
-	vote_on = cvar("lobby_cycle") > 0 && Lobby_RotNext() != "";
+	vote_on = (cvar("lobby_cycle") > 0 && Lobby_RotNext() != "");
 	if (!vote_on || !cvar("lobby_vote"))
 	{
 		if (lobby_vt_kind)

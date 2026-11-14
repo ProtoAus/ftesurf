@@ -184,7 +184,7 @@ void(string pre, string scene, string warp, string comp) Milk_Init =
 		milk_ud = (float*)memalloc(MILK_UDBYTES);
 	if (!milk_vis)
 		milk_vis = (float*)memalloc(16 * 4);
-	milk_hasvis = checkbuiltin(snd_getvis) && checkbuiltin(snd_visimage);
+	milk_hasvis = (checkbuiltin(snd_getvis) && checkbuiltin(snd_visimage));
 	milk_ready = FALSE;
 
 	milk_tanfov = 0.62;

@@ -1978,7 +1978,7 @@ void(float seq) TG_ChainStart =
 				tracebox(predmove_org0, predmove_mins, predmove_maxs,
 				         predmove_org0,
 				         MOVE_TRIGGERS | MOVE_OTHERONLY, TG_Probe());
-				probe = trace_startsolid || trace_allsolid || trace_fraction < 1;
+				probe = (trace_startsolid || trace_allsolid || trace_fraction < 1);
 			}
 			if (tg_cv_debug >= 2)
 				print(sprintf("trig: seed #%g seq %g ring %g probe %g eff %g lastin %g in %g\n",
@@ -2776,7 +2776,7 @@ float(string cmd) Trig_ConsoleCommand =
 				continue;
 			other = tg_ent[i];
 			tracebox(o, tg_pmins, tg_pmaxs, o, MOVE_TRIGGERS | MOVE_OTHERONLY, TG_Probe());
-			hit = trace_startsolid || trace_allsolid;
+			hit = (trace_startsolid || trace_allsolid);
 			print(sprintf("trig: #%g kind %g %s target '%s' flags %g%s\n",
 			              i, tg_kind[i], hit ? "INSIDE" : "box only",
 			              tg_kind[i] == TG_TELE ? tg_target[i] : "",
@@ -2885,7 +2885,7 @@ float(string cmd) Trig_ConsoleCommand =
 				continue;
 			other = tg_ent[i];
 			tracebox(o, tg_pmins, tg_pmaxs, o, MOVE_TRIGGERS | MOVE_OTHERONLY, TG_Probe());
-			hit = trace_startsolid || trace_allsolid;
+			hit = (trace_startsolid || trace_allsolid);
 			print(sprintf("trig: at #%g kind %g model '%s' target '%s' box %v..%v -> %s\n",
 			              i, tg_kind[i], tg_ent[i].model,
 			              tg_kind[i] == TG_TELE ? tg_target[i] : "",

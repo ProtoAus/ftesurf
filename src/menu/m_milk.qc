@@ -526,7 +526,7 @@ void(float now, float dt) MM_PanelPower =
 		arrive = (now - mm_dive0) / MM_DIVE * 2 - 1;
 	for (s = 0; s < 2; s++)
 	{
-		want = (s == mm_pslot) && MM_PanelScreen() && arrive > 0.6;
+		want = ((s == mm_pslot) && MM_PanelScreen() && arrive > 0.6);
 		if (want)
 		{
 			mm_pdir[s] = 1;
@@ -731,7 +731,7 @@ void(float now, float dt) MM_Camera =
 	// only while the cursor is outside the panel; otherwise it turns its head
 	// (the pre-panel mouse look).  Nothing while travelling.
 	m = MM_Mouse();
-	orbit = MM_InWorld() && mm_prect1_x > 0 && MM_PanelW(mm_pslot) > 0;
+	orbit = (MM_InWorld() && mm_prect1_x > 0 && MM_PanelW(mm_pslot) > 0);
 	ty = 0;
 	tp = 0;
 	sway = '0 0 0';
