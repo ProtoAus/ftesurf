@@ -259,6 +259,15 @@ float  tf_ctxmode;              // Patch 1037: TF_EvalD as if the server judges 
 float  tf_rtmode;               // P1405: judge filter_activator_name against tf_rtname (the lobby's *tn)
 string tf_rtname;
 string tg_myname;               // P1405: *tn, read once per predicted command
+// P1563: the name this chain judges with -- *tn, or a rename the server has run and not yet published,
+// then this chain's own renames (TG_IOFireEv). The last predicted rename: its io row (-1 none), its
+// command, the crc16 of the *tn it met, and the name before it (zoned): *tn can carry the rename one
+// command before the ack does, and a chain starting at the rename must judge its touch on the old name.
+string tg_pname;
+float  tg_rnrow;                // set -1 at each load (an initialised global is const here, P969)
+float  tg_rnseq, tg_rntn;
+string tg_rnprev;
+float  tg_rnprevz;
 float  tg_tnlive;               // P1405: serverinfo fs_tn is "1", read with it
 float  tg_c_fname;              // P1405: triggers kept behind a name filter, judged per touch
 float  tg_ctx_live;             // serverinfo fs_contexts is not "0", read each frame
@@ -538,6 +547,7 @@ float  io_delay[TIO_MAX];
 float  io_times[TIO_MAX];
 float  io_fired[TIO_MAX];       // committed fires; mapspawn rows: 1 = done
 string io_tgt[TIO_MAX];
+string io_tnv[TIO_MAX];         // P1563: an AddOutput targetname row's new name ("" for classname)
 vector *io_bv;                  // Patch 1025: an IOP_BVEL row's vector (memalloc: globals are full)
 float  *io_gv;                  // P1211: an IOP_GRAV row's value
 float  tg_pc_rows;              // P1211: the map has rows TG_PcAdd takes
@@ -702,10 +712,14 @@ void(string key, string val) TG_IOParse =
 		else if (w == "origin" || w == "angles")
 			parm = IOP_PMOVE;
 		else if (w == "targetname")
+		{
 			parm = IOP_TNAME;
+			io_tnv[io_n] = (sp < 0) ? "" : substring(p0, sp + 1, -1);
+		}
 		else if (w == "classname")
 		{
 			parm = IOP_TNAME;
+			io_tnv[io_n] = "";
 			tf_clsdyn = 1;
 		}
 		else if (w == "target")
@@ -756,6 +770,32 @@ float(float s) TG_IOSource =
 		if (io_src[o] == s)
 			return TRUE;
 	return FALSE;
+};
+
+// P1563: an event whose every own row the mirror pays -- a delay-0 rename of the player, a basevelocity
+// write it can set -- is judged per touch on tg_pname (surf_tendies' bhopfilter booster: renamed on
+// entry, paid on exit, refused on re-entry).
+float(float s) TG_IONameEventOK =
+{
+	local float o, n;
+
+	n = 0;
+	for (o = 0; o < io_n; o = o + 1)
+	{
+		if (io_src[o] != s)
+			continue;
+		n = n + 1;
+		if (!FS_IsActivator(io_tgt[o]) || io_delay[o] != 0 || io_times[o] >= 0)
+			return FALSE;
+		if (io_ev[o] != EV_START && io_ev[o] != EV_END)
+			return FALSE;
+		if (io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_TNAME && io_tnv[o] != "")
+			continue;
+		if (io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_BVEL && tg_bvel_ok)
+			continue;
+		return FALSE;
+	}
+	return n > 0;
 };
 
 // Rule-2 matching: exact OR case-insensitive, deliberately broader than
@@ -1154,6 +1194,26 @@ void(float i, float ev, float seq) TG_IOFireEv =
 			}
 			continue;
 		}
+		if (io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_TNAME)
+		{
+			if (io_tnv[o] != "" && io_delay[o] == 0 && FS_IsActivator(io_tgt[o]))
+			{
+				if (tg_rnrow != o || tg_rnseq != seq)
+				{	// P1563: a new rename, not this one re-fired by a replay
+					if (tg_rnprevz)
+						strunzone(tg_rnprev);
+					tg_rnprev = strzone(tg_pname);
+					tg_rnprevz = TRUE;
+					tg_rnrow = o;
+					tg_rntn = crc16(FALSE, tg_myname);
+					tg_rnseq = seq;
+				}
+				tg_pname = io_tnv[o];
+				if (tg_cv_debug)
+					print(sprintf("^5trig^7: seq %g IO #%g renames the player '%s'\n", seq, i, tg_pname));
+			}
+			continue;
+		}
 		if (io_inp[o] != IN_EN && io_inp[o] != IN_DIS)
 			continue;
 		if (io_delay[o] != 0)
@@ -1215,6 +1275,8 @@ void(float seq) TG_IOEndSweep =
 			continue;
 		tg_io_endf[i] = 1;
 		tg_io_in[i]   = 0;
+		if (tg_cv_debug >= 2)
+			print(sprintf("trig: seq %g #%g end edge\n", seq, i));
 		TG_IOFireEv(i, EV_END, seq);
 	}
 };
@@ -1930,6 +1992,28 @@ void(float seq) TG_ChainStart =
 	local float i, probe, r, trust;
 	local vector base;
 
+	// P1563: a rename the server has run (before seq) stands until *tn changes; later ones re-fire.
+	if (tg_rnrow >= 0)
+	{
+		if (!strcasecmp(tg_myname, io_tnv[tg_rnrow]))
+		{
+			if (tg_rnseq < seq)
+				tg_rnrow = -1;      // published and acked: *tn from here on (a later rename back is real)
+		}
+		else if (crc16(FALSE, tg_myname) != tg_rntn)
+			tg_rnrow = -1;          // the lobby published a third name: trust it
+		else if (seq - tg_rnseq > 200)
+			tg_rnrow = -1;          // 3 s acked and never published: the server did not rename
+	}
+	tg_pname = tg_myname;
+	if (tg_rnrow >= 0)
+	{
+		if (tg_rnseq < seq)
+			tg_pname = io_tnv[tg_rnrow];
+		else
+			tg_pname = tg_rnprev;   // the replay re-fires it, from the name before it
+	}
+
 	// Acked IO events fold into the committed state; the speculative rest
 	// is dropped and the replay re-derives it.  See THE IO MIRROR.
 	TG_IOCommit(seq);
@@ -2115,14 +2199,20 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 		{
 			if (!tg_tnlive)
 				continue;
-			tf_rtmode = 1;              // P1405: the name the lobby last published
+			tf_rtmode = 1;              // P1405: the name the lobby last published (P1563: as predicted)
 			tf_ctxmode = 1;
-			tf_rtname = tg_myname;
+			tf_rtname = tg_pname;
 			hit = TF_EvalD(TF_Find(tg_filt[i]), 0);
 			tf_rtmode = 0;
 			tf_ctxmode = 0;
+			// P1563: SV_TouchFilter keeps an event's toucher that is already inside (its OnEndTouch)
 			if (hit != TFR_PASS)
+			if (!(tg_kind[i] == TG_EVENT && tg_io_in[i]))
+			{
+				if (tg_cv_debug >= 2)
+					print(sprintf("trig: seq %g #%g name '%s' refused\n", seq, i, tg_pname));
 				continue;
+			}
 		}
 
 		// The server's gate: a disabled trigger_teleport returns at its
@@ -2245,6 +2335,7 @@ void() Trig_LoadForMap =
 	tg_sk_n = 0;
 	tg_needload = 0;
 	io_n = 0;
+	tg_rnrow = -1;
 	io_over = 0;
 	tg_pc_rows = tg_pc_n = tg_pc_now = 0;   // P1211
 	tg_pm_gravon = tg_pm_seq = tg_pm_off = 0;
@@ -2608,7 +2699,8 @@ void() Trig_LoadForMap =
 		// (contexts judged as the server would, so a context part keeps it the server's). Events, slots whose
 		// own rows the mirror replays, zone boxes and lobbies without names stay the server's.
 		if (r == TFR_UNKNOWN && !tf_over)   // fs_tn is read per touch: it can arrive after a changelevel's load
-		if (!tg_ent[i].tg_isbox && tg_kind[i] != TG_EVENT && !TG_IOSource(i))
+		if (!tg_ent[i].tg_isbox)
+		if ((tg_kind[i] != TG_EVENT && !TG_IOSource(i)) || (tg_kind[i] == TG_EVENT && TG_IONameEventOK(i)))
 		{
 			tf_rtmode = 1;
 			tf_ctxmode = 1;
