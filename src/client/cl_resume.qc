@@ -7,7 +7,6 @@ float ui_ms_answered, ui_ms_answerat, ui_ms_refused;
 float ui_ms_key1, ui_ms_key2;
 float ui_ms_hold, ui_ms_holdseq, ui_ms_holdseen, ui_ms_ignorecount;
 string ui_ms_why;               // P1004: the server's refusal (resume_why), until the next Yes
-float ui_gfx_open;              // cl_gfx.qc's (fteqcc merges a repeated global); its menu sits here too
 vector ui_ms_holdang;
 
 void() Timer_ResumeRegister = { registercommand("resume_why"); };
@@ -233,7 +232,7 @@ void(vector scr) Timer_DrawResumeOffer =
 		else total = 3 * sc + hh + 5 * h + 3 * sc + wl * (h - 3 * sc);
 
 		p = [scr_x * cvar("hud_saveloc_x"), scr_y * cvar("hud_saveloc_y"), 0];
-		if (rec_sl_open || ui_gfx_open) p_x = p_x + 102 * sc;
+		if (rec_sl_open) p_x = p_x + 102 * sc;
 		_sui_round_draw(p, [w, total, 0], 5 * sc, SUI_THEME_PANEL, 0.90);
 
 		y = p_y + 3 * sc;

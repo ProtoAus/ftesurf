@@ -366,20 +366,21 @@ def run(a, base, check, bound, saves, shot, start, VK):
         cl.send('set rec_savelock 1')
 
         # An owned hold's release is taken by SaveLoc_Key, so keys.c keeps `-sl_hold 50`; a later 2
-        # whose press the graphics menu takes hands its release to the engine, which runs it.
+        # whose press the asking vote box takes hands its release to the engine, which runs it.
+        # (P1566: the graphics panel took digits until it became a mouse panel.)
         cl.post(VK['2'], 'down', .5)
         cl.post(VK['2'], 'up', .5)
         m = cl.query('saveloc', r'saveloc: locked \S+ refkey \S+ hold \S+ holding (\S+)')
         check(m.group(1) == '0', 'an owned hold lets go on its release (leaves -sl_hold 50 behind)', m.group(0))
         cl.send('+sl_hold')
         time.sleep(.5)
-        cl.send('gfx_menu')
-        time.sleep(.3)
+        cl.send('vote fake open 2 30 3')
+        time.sleep(1.0)                         # past VOTE_ARM, so the box takes the press
         cl.key(VK['2'], .5)
         m = cl.query('saveloc', r'saveloc: locked \S+ refkey \S+ hold \S+ holding (\S+)')
         check(m.group(1) == '1', "a stale -sl_hold 50 does not release a typed +sl_hold's hold", m.group(0))
         cl.send('-sl_hold')
-        cl.send('gfx_menu')
+        cl.send('vote fake off')
         time.sleep(.5)
 
         # A click away from the waiting chip cancels instead of binding Mouse 1.

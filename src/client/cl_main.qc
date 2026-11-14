@@ -1603,7 +1603,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	if (TASOptUI_DropKey(evtype, scanx)) return TRUE;    // P1528: Esc closes an open Jargon dropdown
 	if (TASUI_Input(evtype, scanx, chary, devid)) return TRUE;
 	if (WPU_Input(evtype, scanx, chary, devid)) return TRUE;
-	if (Gfx_Input(evtype, scanx, chary, devid)) return TRUE;     // P1566: drawn after the replay chrome, so ahead of it here
+	if (Gfx_Input(evtype, scanx, chary, devid)) return TRUE;     // P1566: the replay's chrome yields to its claim
 	if (av_open)
 		if (Av_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;

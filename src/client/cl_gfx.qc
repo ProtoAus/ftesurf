@@ -21,7 +21,7 @@
   policy rebuilds its shaders on the next frame; other generated-material
   policies need an explicit rebuild, and BSP-time settings need a fresh load.
   Seeing nothing happen is indistinguishable from a broken setting unless
-  the menu says so first. Key 7 retries, but may reuse cached BSP data.
+  the menu says so first. Reload map retries, but may reuse cached BSP data.
 ===========================================================================
 */
 
@@ -61,10 +61,7 @@ void() Gfx_WaterSupport =
 void() Gfx_RegisterCvars =
 {
 	registercvar("hud_gfx_x", "0.0333", CVAR_ARCHIVE);
-	// Header + six rows + four verbs + a footer is a tall block; 0.10 is the
-	// highest start that still clears the timer, and it has to clear the strafe
-	// bar at the bottom.  Paging keeps this height fixed however many settings
-	// the table grows to.  Patch 637: 0.338, where the owner has it.
+	// Patch 637: 0.338, where the owner has it. P1566: the panel's top left; the title bar drags it.
 	registercvar("hud_gfx_y", "0.338", CVAR_ARCHIVE);
 
 	// Bindable, so it does not have to live on one key we chose.
@@ -364,10 +361,10 @@ string(float row) Gfx_Def =
 	  THE ROW IS ON vbsp_overlays, AND THAT IS DELIBERATE.  There are two switches
 	  and only one of them can work from this menu:
 
-	    vbsp_overlays   read by the CSQC entity walk, once per map load.  Key 7
+	    vbsp_overlays   read by the CSQC entity walk, once per map load.  Reload map
 	                  restarts the map, which re-initialises CSQC, so the walk
 	                  runs again and the row applies.  Hence the `*`.
-	    hl2_overlays  read inside the BSP loader, which key 7 does NOT re-run:
+	    hl2_overlays  read inside the BSP loader, which Reload map does NOT re-run:
 	                  `retry` is `map_restart`, and Mod_ForName hands back the
 	                  CACHED world model unless the .bsp's mtime moved.  So no
 	                  amount of pressing 7 can change it, and it is console-only
@@ -836,6 +833,7 @@ string(float row) Gfx_Tip =
 	return s;
 };
 
+float sc_held;                          // cl_scores.qc's (fteqcc merges a repeated global): Tab is down
 float gfx_drag, gfx_mx, gfx_my;         // P1566: the title bar is held; the last absolute mouse position
 float gfx_drop;                         // the row whose value list is open, 0 none
 float gfx_titleh;
@@ -850,7 +848,8 @@ void() Gfx_Close =
 	sui_tooltip_reset();
 };
 
-// Over a replay is allowed: this bracket draws after the replay's chrome, so it is the last one and owns the clicks.
+// Over a replay is allowed: Watch_Draw hides its chrome while another cursor claim is held, so this
+// bracket is the frame's last and owns the clicks.
 float() Gfx_OthersHeld =
 {
 	local float held;
@@ -905,6 +904,8 @@ void(vector scr) Gfx_Draw =
 		Gfx_Close();
 		return;
 	}
+	if (sc_held)
+		return;                         // the held board's bracket draws later and owns the clicks
 	if (ui_gfx_page < 0 || ui_gfx_page >= GFX_TABS)
 		ui_gfx_page = 0;
 
@@ -912,10 +913,10 @@ void(vector scr) Gfx_Draw =
 	for (i = 0; i < GFX_TABS; i = i + 1)
 		maxrows = max(maxrows, Gfx_TabCount(i));
 
+	Font_Set(ui_font_ui);
 	sc = max(0.5, ui_cv_scale);
 	while (sc > 0.5 && (Font_Px(8 * sc) * 52 > scr_x - 12 || Font_Px(8 * sc) * (maxrows * 2.3 + 11) > scr_y - 12))
-		sc = sc - 0.5;
-	Font_Set(ui_font_ui);
+		sc = max(0.5, sc - 0.5);
 	tsz = Font_Px(8 * sc); ttl = Font_Px(11 * sc); hint = Font_Px(6.5 * sc);
 	pad = tsz;
 	rh = ceil(tsz * 2.3);                       // a setting row
@@ -1103,12 +1104,11 @@ void(vector scr) Gfx_Draw =
 	}
 	sui_end();
 	Font_Reset();
-	HUD_Rect("gfx", pos, size, pos);            // the box, for `hud_edit`
 };
 
 float(float evtype, float scanx, float chary, float devid) Gfx_Input =
 {
-	if (!ui_gfx_open)
+	if (!ui_gfx_open || sc_held)
 		return FALSE;
 	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE)
 	{
@@ -1131,11 +1131,19 @@ float(float evtype, float scanx, float chary, float devid) Gfx_Input =
 			gfx_drag = FALSE;
 			return TRUE;
 		}
+		// A press outside the open list closes it and still lands where it was aimed, except on the
+		// list's own value box, whose click would open it again.
 		if (evtype == IE_KEYDOWN && gfx_drop)
 		if (gfx_mx < gfx_dpos_x || gfx_mx >= gfx_dpos_x + gfx_dsize_x || gfx_my < gfx_dpos_y || gfx_my >= gfx_dpos_y + gfx_dsize_y)
 		{
-			gfx_drop = 0;           // a press outside the open list only closes it
-			return TRUE;
+			_sui_mouse_move(_cursor_position, FALSE);
+			if (_hover_action_count > 0)
+			if (_hover_actions[0] == sprintf("gfx_v%g", gfx_drop))
+			{
+				gfx_drop = 0;
+				return TRUE;
+			}
+			gfx_drop = 0;
 		}
 		if (evtype == IE_KEYDOWN)
 		if (gfx_mx >= gfx_pos_x && gfx_mx < gfx_pos_x + gfx_size_x - gfx_titleh * 1.2)
@@ -1153,6 +1161,10 @@ float(float evtype, float scanx, float chary, float devid) Gfx_Input =
 		sui_input_event(evtype, scanx, chary, devid);
 		return TRUE;
 	}
+	// Over the panel the wheel is the panel's: surfers bind it to +jump.
+	if (scanx == K_MWHEELUP || scanx == K_MWHEELDOWN)
+	if (gfx_mx >= gfx_pos_x && gfx_mx < gfx_pos_x + gfx_size_x && gfx_my >= gfx_pos_y && gfx_my < gfx_pos_y + gfx_size_y)
+		return TRUE;
 	return FALSE;
 };
 
@@ -1282,12 +1294,12 @@ float() Gfx_Console =
 	if (a1 == "resetpos")
 	{
 		cvar_set("hud_gfx_x", "0.0333");
-		cvar_set("hud_gfx_y", "0.12");
+		cvar_set("hud_gfx_y", "0.338");
 		return TRUE;
 	}
 	if (a1 != "")
 	{
-		print("gfx_menu [open | close | page <n> | cycle <n> | status [n] | resetpos]\n");
+		print("gfx_menu [open | close | page|tab <n> | cycle <n> | status [n] | resetpos | move|press|release|click <x> <y>]\n");
 		return TRUE;
 	}
 
