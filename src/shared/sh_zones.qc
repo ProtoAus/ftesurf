@@ -565,8 +565,9 @@ void(float z) Zone_Finish =
   well defined on the axis-aligned quads that are most of this data.
 */
 float(float z, float px, float py) Zone_XYInRing;
-// P1561: each point of END z, pulled 1 u towards z's centre (identical boxes share edges), inside an
-// earlier END e of another track, and z's span within e's (1 u slack).
+// P1561: each point of END z, pulled 0.01 u towards z's centre (identical boxes share edges; surf_doodles
+// b1 sticks out of main's END by 0.033 u and stays on the old rule), inside an earlier END e of another
+// track, and z's span within e's (0.01 u).
 void() Zone_EndCover =
 {
 	local float z, e, i, inside;
@@ -587,14 +588,14 @@ void() Zone_EndCover =
 				break;
 			if (zone_type[e] != ZONE_END || zone_track[e] == zone_track[z])
 				continue;
-			if (zone_bottom[z] < zone_bottom[e] - 1 || zone_top[z] > zone_top[e] + 1)
+			if (zone_bottom[z] < zone_bottom[e] - 0.01 || zone_top[z] > zone_top[e] + 0.01)
 				continue;
 			inside = TRUE;
 			for (i = 0; i < zone_npts[z]; i = i + 1)
 			{
 				p = zone_pt[zone_first[z] + i];
-				if (vlen(c - p) > 1)
-					p = p + normalize(c - p);
+				if (vlen(c - p) > 0.02)
+					p = p + normalize(c - p) * 0.01;
 				if (!Zone_XYInRing(e, p_x, p_y))
 				{
 					inside = FALSE;

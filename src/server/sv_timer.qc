@@ -16298,7 +16298,7 @@ void(entity e) SV_TimerFrame =
 		// so re-take it before the zseed below or the next packet reads a fresh END entry.
 		if (e.run_t_track != bhoptrack)
 		{
-			SV_ZoneScan(e.origin, e.origin, mn, mx, e.run_t_track);
+			SV_ZoneScan(lastp, p, mn, mx, e.run_t_track);   // the packet's sweep: a no-op where the rank ignores the track
 			e.run_t_evzone = zs_ez;
 			e.run_t_cpzone = zs_cp;
 		}
