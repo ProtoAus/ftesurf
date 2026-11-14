@@ -2,7 +2,7 @@
 
 ## P1564 TAS boards / completed local history — owner check PENDING, delivery not yet recorded
 - After the development update is installed, open Scores > Local. Check that two ordinary finishes (including a slower one), a segmented finish and two TAS finishes remain as separate entries after a normal restart; use the Segmented/TAS filters. Do not delete/reset existing data to test this.
-- Watch the TAS replay that previously looked disconnected, especially the original Prosurf bonus 4 clip if convenient. Does the camera now follow the recorded movement instead of the mouse swings? A short clip or the first wrong-looking moment is enough. Automated REC-policy selection is not this visual confirmation.
+- Watch the TAS replay that previously looked disconnected, especially the original surf_sandtrap2 bonus 4 clip if convenient. Does the camera now follow the recorded movement instead of the mouse swings? A short clip or the first wrong-looking moment is enough. Automated REC-policy selection is not this visual confirmation.
 - Once the matching backend is activated, open the separate TAS tab: only TAS community results should appear, with no ordinary ranked points. Backend activation is a separate delivery step; an old backend may leave this tab unavailable.
 - Actual dedicated-socket checks retained five recordings and copied them byte-identically. They do not establish human menu/visual acceptance, physics, performance or native certification. Remote files over the existing 8 MiB Archive limit stay on the server rather than being automatically downloaded.
 
