@@ -69,10 +69,11 @@ After review round 1 (src 2fb5fbda, qwprogs from build 3037c264), the same arms 
 Final build (src 9677dd5e, qwprogs build e008afd8): taps 0/250/500 x 2 s/0.15 s all released in the press
 frame, landings 0.09-4.9 u, prederr 0; `--loss 0.3` at 500 ms, 12 presses: 11 saves and one "no answer
 from the server" for the save that was lost, no duplicate (the round-1 build made 15 saves for 12, the
-round-4 build doubled one); `--dropsave`: 4 dropped, 4 reported, 0 saves. Holds, crouched saves and
-`--reset-after` were last run on the round-3 build (unchanged since but for the backstop): parked to
-key-up 0.81-0.85 s; crouched landings 0.07-1.03 u; the reset (now blind) corrected once, the load after
-it 0.42-2.36 u from the saved spot.
+round-4 build doubled one); `--dropsave`: 4 dropped, 4 reported, 0 saves. Holds 0/500: parked to key-up
+0.81-0.84 s, landings 0.75-1.49 u, prederr 0. `--duck` 250/500: instant, landings 0.01-0.81 u, prederr 0.
+`--reset-after` 250/500: the reset (blind by design) corrected once, the loads after it 0.74-4.48 u from
+the saved spot. No server errors in any run. Install smoke (C:/FTEQuake, 25 s headless local game):
+server spawned, CSQC loaded, no errors.
 
 Not measured: a save the server refuses after the client predicted it (list full at 999, resume phase,
 lobby_nosaveloc): the load behind it is corrected, as in the dropped case. TAS states are refused by
@@ -102,4 +103,12 @@ recorded; same rate bucket; TAS steps and redundant usercmd copies cannot double
 
 ## Delivery
 
-DELIVERY
+LIVE 14 Nov 2026 ~04:00Z (15:00 local). Main d13785e4 (code be4f6b91; compiler 1f2efd06, 0 warnings).
+- 12 lobbies: `build.ps1 -Pi -QuakeDir <missing>` from deploy/p1547-opsave 30a0d41a = deploy/p1545-precedence
+  21167906 (the live P1545 source; P1542/P1543 still not lobby-delivered) + P1547's six code commits; src diff
+  patch-id a8bd2135 = main's. Live hashes checked first (0aa19d14 / 8df4b1bf); nobody on; all 12 restarted,
+  active, logs clean. Live qwprogs 1ff3e138 / csprogs ab0e1948, .prev = P1545's pair. fs_wopsave is
+  published on each lobby's first decoded command.
+- Both Windows installs: qwprogs f637277e, csprogs c72957aa, menu 5b709a6d (+ .lno) from main's build,
+  .prev = P1545's (bcb6f7c6 / d27da0a6 / eb072f13); csprogsvers seeded (d04ab0b7).
+- tasrevd codes.txt 133 -> 135 (ab0e1948, c72957aa; backup codes.txt.pre1547).
