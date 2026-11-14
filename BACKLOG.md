@@ -17,7 +17,11 @@
   published *tn, which lags a round trip after any rename; chained renamers (bhop_futile, ~92 maps with a
   name filter) would need a ring of (command, row) folded at the ack and trimmed to what *tn shows. A
   rename-only slot is not owned (its OnStartTouch rename fires once per map in the mirror): harmless now that
-  nothing else reads it.
+  nothing else reads it. A save load restores the saved name on the server (sv_saveloc.qc SV_SaveLocLoad)
+  but the predicted load does not: for a round trip after loading, the pad is judged on the old *tn, so the
+  practice loop "save before the pad, use it, load" still gets the late boost at high ping, and a save made
+  past the pad then loaded after a name reset can predict a refused boost. Fix: carry the save's name into
+  the predicted load (WOP_SAVE), or refuse these slots until *tn reflects the load (round-3 review, P1563).
 - **16 u spawn test can catch a deliberate Set spawn** (`sv_zones.qc` SV_ZoneSpawnYaws): a zoner standing
   within 16 u of the zone centre loses yaw and position to the map's destination. Better: the editor marks
   automatic spawns or re-centres them on a shape edit (cl_zoneedit_extra.qc :893, :1297).

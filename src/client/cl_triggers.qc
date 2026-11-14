@@ -778,14 +778,15 @@ float(float s) TG_IOSource =
 // own latch cannot see them) is judged per touch (TG_NameFor; surf_tendies' bhopfilter pad).
 float(float s) TG_IONameEventOK =
 {
-	local float o, n, bv, rn, r;
+	local float o, bv, rn, r;
 
-	n = bv = rn = 0;
+	if (io_over)
+		return FALSE;               // a truncated row table cannot show every other rename
+	bv = rn = 0;
 	for (o = 0; o < io_n; o = o + 1)
 	{
 		if (io_src[o] != s)
 			continue;
-		n = n + 1;
 		if (!FS_IsActivator(io_tgt[o]) || io_delay[o] != 0 || io_times[o] >= 0)
 			return FALSE;
 		if (io_ev[o] != EV_START && io_ev[o] != EV_END)
@@ -802,8 +803,8 @@ float(float s) TG_IONameEventOK =
 		}
 		return FALSE;
 	}
-	if (!rn || !bv)
-		return FALSE;
+	if (rn != 1 || !bv)
+		return FALSE;               // one rename: a START and an END latch would judge each other's command
 	for (o = 0; o < io_n; o = o + 1)
 	{
 		if (io_src[o] == s || io_inp[o] != IN_ADDOUT || io_parm[o] != IOP_TNAME)
@@ -2017,6 +2018,11 @@ void(float seq) TG_ChainStart =
 	local vector base;
 
 	// P1563: a rename the server has run (before seq) stands until *tn changes; later ones re-fire.
+	for (i = 0; i < tg_n; i = i + 1)    // P1563: latches the last chain passed without re-firing
+		if (tg_kind[i] && tg_ent[i].tg_rnrow)
+		if (tg_ent[i].tg_rnseq >= tg_chain0 && tg_ent[i].tg_rnseq <= tg_chain0 + tg_chainspan)
+		if (tg_ent[i].tg_rnchain != tg_chainid)
+			tg_ent[i].tg_rnrow = 0;
 	tg_chain0 = seq;                // P1563: TG_NameFor
 	tg_chainid = tg_chainid + 1;
 	tg_rttcmds = tg_chainspan;
@@ -2115,9 +2121,10 @@ void(float seq) TG_ChainStart =
 void(float seat, float seq) WarpOp_PostMove;   // cl_warpop.qc, Patch 753
 
 // P1563: the name slot i's filter is judged on at command seq. Its own predicted rename (TG_IOFireEv)
-// stands from the command after it until *tn shows it acked, a third name, or 200 acked commands; at or
-// before that command its entry is judged on the name it was entered on (*tn can carry the rename one
-// command before the ack, and a chain starting there would refuse its own entry and never pay the exit).
+// stands from the command after it until *tn shows it acked, a third name while it is unacked, three
+// round trips, or a replay that passed it without re-firing it; at or before that command its entry is
+// judged on the name it had there (*tn can carry the rename one command before the ack, and a chain
+// starting there would refuse its own entry and never pay the exit).
 string(float i, float seq) TG_NameFor =
 {
 	local float r;
@@ -2129,9 +2136,10 @@ string(float i, float seq) TG_NameFor =
 	r = t.tg_rnrow - 1;
 	if (crc16(FALSE, tg_myname) != t.tg_rntn)
 	if (strcasecmp(tg_myname, io_tnv[r]))
+	if (t.tg_rnseq >= tg_chain0)
 	{
-		t.tg_rnrow = 0;                 // the lobby published a third name: trust it
-		return tg_myname;
+		t.tg_rnrow = 0;                 // a third name before its command is acked: the lobby's
+		return tg_myname;               // (after the ack it can be a late older name: keep the latch)
 	}
 	if (seq <= t.tg_rnseq)
 		return t.tg_rnpre;
