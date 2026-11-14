@@ -327,6 +327,7 @@ __pycache__/
 #  personal.  runs/ and saves/ are your recorded times and saveloc state.
 #  mapmeta.txt and mapdeps.txt are tool output, but regenerating them needs the
 #  mounted Steam libraries and a walk of every BSP, so they ship on the Release.
+#  matcolours.txt (tools/matcolours.py, P1548) the same: it reads every mounted game's materials.
 #  consent.txt is a local acceptance record and must never ship pre-accepted.
 #
 #  `!/ftesurf/data/` above is REQUIRED for the same reason as gfx/ -- do not
