@@ -2,7 +2,7 @@
 
 ## Current online beta — owner feedback received (14 Nov; acceptance incomplete)
 
-Lex reports normal runs on bhop_1n5an3 with input journals ON and OFF both submitted, without a recording-disabled warning. This is a real observation, not a confirmed unwanted journal upload or privacy pass. ON/OFF order, upload delivery, disclosure/status and Stop persistence still need their own evidence; do not ask for another run before checking the existing ones.
+Lex reports normal runs on bhop_1n5an3 with input journals ON and OFF both submitted, without a recording-disabled warning. Lex then confirmed OFF first, ON second, usual keyboard/mouse, and no Stop immediately after ON. **Stopping afterward was optional, not an extra required test step.** Upload delivery, disclosure/status and OFF persistence still need their own evidence; these ordinary submissions alone prove neither unwanted journal sharing nor a privacy pass. Do not request another run before exhausting the existing evidence.
 
 **The F2 Input journal uploads choice controls optional raw-journal sharing, not ordinary timer/replay recording or score submission.** A normal run may still submit with this choice OFF; no recording-disabled warning is expected solely from that choice. A board entry alone cannot show whether an extra journal uploaded. The earlier test instructions did not make this distinction clear enough.
 
