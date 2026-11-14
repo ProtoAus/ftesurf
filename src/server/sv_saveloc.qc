@@ -2877,7 +2877,7 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 		{
 			SV_TimerVoid(e, "the save's recording could not be restored");
 			sl_voided = TRUE;
-			SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
+			SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e), e.run_t_track);
 			e.run_t_azone  = zs_az;
 			e.run_t_evzone = zs_ez;
 			e.run_t_cpzone = zs_cp;
@@ -4776,7 +4776,7 @@ void(entity e, float n) SV_SaveLocLoad =
 	// (rounds 7-8).  An honest row's are where it stands -- a split re-fires only
 	// for the next stage, a checkpoint only above cpmax.  The gate below still
 	// grants the one arm a load off the clock may take: slow, grounded, in a start.
-	SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
+	SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e), e.run_t_track);
 	e.run_t_azone  = zs_az;
 	e.run_t_evzone = zs_ez;
 	e.run_t_cpzone = zs_cp;
@@ -4797,7 +4797,7 @@ void(entity e, float n) SV_SaveLocLoad =
 	*/
 	if (dem)
 	{
-		SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
+		SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e), e.run_t_track);
 		e.run_t_azone  = zs_az;
 		e.run_t_evzone = zs_ez;
 		e.run_t_cpzone = zs_cp;
@@ -6645,7 +6645,7 @@ void(entity e) SV_RetryPoint =
 		if (!SV_RecLive(e))
 		{
 			SV_TimerVoid(e, "retry recording could not be prepared");
-			SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
+			SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e), e.run_t_track);
 			e.run_t_azone = zs_az;
 			e.run_t_evzone = zs_ez;
 			e.run_t_cpzone = zs_cp;

@@ -1257,7 +1257,7 @@ void(entity e) SV_MsAbort =
 void(entity e) SV_MsAbortHere =
 {
 	SV_MsAbort(e);
-	SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e));
+	SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e), e.run_t_track);
 	e.run_t_azone  = zs_az;
 	e.run_t_evzone = zs_ez;
 	e.run_t_cpzone = zs_cp;

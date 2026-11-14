@@ -273,9 +273,13 @@ void(string action) SV_StartMarkCommand =
 // with no spawn at all takes it too.  zone_edit shows it (ZoneEdit_SpawnDest).
 // Momentum's mirrored files (zone_stamped) keep their zoners' yaws: of the shipped
 // library's 44 centred spawns only 3 would turn, and surf_shape's b1 -45 may be meant.
+// P1561: 16 u, not 1 -- the editor kept an auto spawn when a shape edit moved the centre
+// (surf_beyond2 s1/s3/s5 sit 8-12 u off it, facing 148/158/38 against the map's 0/0/270);
+// and several destinations in one zone count when they share a yaw (surf_beyond s5's
+// stage5_t/stage5_ct), the one nearest the centre standing for them.
 void() SV_ZoneSpawnYaws =
 {
-	local float n, i, cnt, d;
+	local float n, i, cnt, d, best, dist;
 	local vector c, o;
 	local entity e, hit;
 
@@ -285,20 +289,21 @@ void() SV_ZoneSpawnYaws =
 	{
 		if (zone_npts[n] < 1 || (zone_type[n] != ZONE_START && zone_type[n] != ZONE_STAGE))
 			continue;
+		c = '0 0 0';
+		for (i = 0; i < zone_npts[n]; i = i + 1)
+			c = c + zone_pt[zone_first[n] + i];
+		c = c * (1 / zone_npts[n]);
 		if (zone_td_kind[n] == ZTD_POS)
 		{
-			c = '0 0 0';
-			for (i = 0; i < zone_npts[n]; i = i + 1)
-				c = c + zone_pt[zone_first[n] + i];
-			c = c * (1 / zone_npts[n]);
 			o = zone_td_pos[n];
-			if (fabs(o_x - c_x) > 1 || fabs(o_y - c_y) > 1)
+			if (fabs(o_x - c_x) > 16 || fabs(o_y - c_y) > 16)
 				continue;
 		}
 		else if (zone_td_kind[n] != ZTD_NONE)
 			continue;
 		cnt = 0;
 		hit = world;
+		best = 0;
 		for (e = find(world, classname, "info_teleport_destination"); e;
 		     e = find(e, classname, "info_teleport_destination"))
 		{
@@ -306,8 +311,23 @@ void() SV_ZoneSpawnYaws =
 				continue;
 			if (!Zone_XYInRing(n, e.origin_x, e.origin_y))
 				continue;
-			cnt = cnt + 1;
-			hit = e;
+			if (hit)
+			{
+				d = e.angles_y - hit.angles_y;
+				d = d - 360 * floor(d / 360);
+				if (d >= 0.5 && d <= 359.5)
+				{
+					cnt = 2;        // two yaws: the map does not say which way
+					break;
+				}
+			}
+			dist = vlen([e.origin_x - c_x, e.origin_y - c_y, 0]);
+			if (!hit || dist < best)
+			{
+				hit = e;
+				best = dist;
+			}
+			cnt = 1;
 		}
 		if (cnt != 1)
 			continue;
@@ -631,7 +651,12 @@ vector(entity who, float n, __out float yaw, __out float haveyaw, __out float fa
 	  did not need it.
 	*/
 	down = dest - [0, 0, ZONE_SNAP_DROP];
-	tracebox(dest, PM_HULL_MINS, PM_HULL_MAXS, down, FALSE, who);
+	// P1561: from a unit up.  Editors write teleDestPos flush on the floor, and a box resting
+	// exactly on a face is inside that brush (com_bih.c d1 == 0), so the drop skipped it and fell
+	// to the next floor down: surf_mesa 800 u, ahop_coast 563, 17 regions on 17 maps.
+	tracebox(dest + '0 0 1', PM_HULL_MINS, PM_HULL_MAXS, down, FALSE, who);
+	if (trace_startsolid)
+		tracebox(dest, PM_HULL_MINS, PM_HULL_MAXS, down, FALSE, who);
 	snapped = trace_endpos;
 
 	/*

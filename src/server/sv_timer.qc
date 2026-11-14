@@ -15382,9 +15382,9 @@ void(entity e) SV_TimerRecFrame =
   test stays with the code below; the order of the tests is the ranking.
 */
 float zs_az, zs_ez, zs_cp, zs_cancel;
-void(vector lastp, vector p, vector mn, vector mx) SV_ZoneScan =
+void(vector lastp, vector p, vector mn, vector mx, float track) SV_ZoneScan =
 {
-	local float z, ty, az, ez, azpri, ezpri, cp, cancel;
+	local float z, ty, az, ez, azpri, ezpri, cp, cancel, pri;
 
 	az = ez = cp = -1;
 	azpri = ezpri = 0;
@@ -15412,11 +15412,18 @@ void(vector lastp, vector p, vector mn, vector mx) SV_ZoneScan =
 		}
 		if (ty == ZONE_END)
 		{
-			if (ezpri < 2)
+			// P1561: the runner's own track's END outranks another track's.  surf_reytx's
+			// bonus-2 END is the main END's box, the main track is first in the table, and
+			// SV_TimerEvent ignores another track's END -- so bonus 2 could never finish
+			// (25 maps have END boxes of different tracks overlapping).
+			pri = 2;
+			if (zone_track[z] == track)
+				pri = 3;
+			if (ezpri < pri)
 				if (SV_ZoneHit(z, lastp, p, mn, mx))
 				{
 					ez = z;
-					ezpri = 2;
+					ezpri = pri;
 				}
 			continue;
 		}
@@ -15533,7 +15540,7 @@ float(vector lastp, vector p, vector pmaxs) SV_VerifyStep =
 	mx = PM_HULL_MAXS;
 	if (run_t_hulllive)
 		mx = pmaxs;
-	SV_ZoneScan(lastp, p, PM_HULL_MINS, mx);
+	SV_ZoneScan(lastp, p, PM_HULL_MINS, mx, vf_track);
 	if (zs_cancel)
 		return 2;
 
@@ -15609,7 +15616,7 @@ void(entity e) SV_TimerGhostEnd =
 	if (e.run_t_pendarm >= 0)
 	if (!SV_ZoneInBox(e.run_t_pendarm, e.origin, mn, mx))
 		SV_TimerGhostLeft(e);
-	SV_ZoneScan(e.origin, e.origin, mn, mx);
+	SV_ZoneScan(e.origin, e.origin, mn, mx, e.run_t_track);
 	if (zs_az >= 0)
 	if (zs_az != e.run_t_azone)         // an entry: a latch the body already had moves nothing
 	{
@@ -15869,7 +15876,7 @@ void(entity e) SV_TimerFrame =
 	mn = SV_RunHullMins(e);
 	mx = SV_RunHullMaxs(e);
 
-	SV_ZoneScan(lastp, p, mn, mx);	// build 88: the scan, shared with the verifier
+	SV_ZoneScan(lastp, p, mn, mx, e.run_t_track);	// build 88: the scan, shared with the verifier
 	az = zs_az;
 	ez = zs_ez;
 	cp = zs_cp;
