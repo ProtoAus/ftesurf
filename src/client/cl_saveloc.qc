@@ -297,6 +297,9 @@ float() Trail_RequestBusy;
 float() Trail_RequestDispatching;
 float() WarpOp_Charge;
 float(float charged) WarpOp_Save;
+// P1547: cltime a body-moving stringcmd went (a reset's fallback, zone_goto, ms_resume): WarpOp_Save
+// waits it out, as that reliable could still be run after a save on a later command.
+float wop_strat;
 
 void(string c) SaveLoc_Cmd =
 {

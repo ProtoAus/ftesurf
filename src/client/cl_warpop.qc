@@ -75,7 +75,8 @@ float  *wop_blind;              // Patch 759: WOPB_* -- sent unpredicted
 float  *wop_cap;                // P1547: a WOP_SAVE's row has been taken at its command (WarpOp_Apply)
 float  wop_pmduck;              // P1547: the last predicted move's hull: 1 ducked, 0 standing, -1 neither
 float  wop_saveseq, wop_saveat; // P1547: the carried WOP_SAVE's command, and since when it is acked unanswered
-float  wop_strat;               // P1547: cltime a reset fell back to its stringcmd (WarpOp_Save waits it out)
+float  wop_savet0;              // P1547: cltime a command carried it (its round trip scales the backstop)
+float  wop_hst, wop_hs, wop_hd; // P1547: pm_standheight/pm_duckheight, read once a frame
 float  wop_slot;                // the slot WarpOp_Queue just filled
 vector wop_tgorg, wop_tgang, wop_tgvel;   // WarpOp_Row's answer: origin, pitch/yaw/duck, speed
 float  wop_tok, wop_tokt;       // SV_SaveLocRate's bucket, mirrored
@@ -284,7 +285,8 @@ float(float what) WarpOp_Pending =
 		if (!WarpOp_Unanswered(i))
 			continue;
 		op = wop_op[i];
-		if (what == WOPP_MOVE && op != WOP_RELEASE && op != WOP_SAVE)    // P1547: a save moves nothing
+		// P1547: a save too -- `!r` goes to the newest idle save in the leg's start zone (P415).
+		if (what == WOPP_MOVE && op != WOP_RELEASE)
 			return TRUE;
 		if (what == WOPP_ANY)
 			return TRUE;
@@ -715,8 +717,10 @@ void() WarpOp_SaveExpired =
 };
 
 // P1547: a carried WOP_SAVE the server acked without answering (its command dropped: 3+ lost packets,
-// a shortened command, a pause) is sent again as the stringcmd, 0.3 s after the ack, so the save and
-// what the FIFO queued behind it are not lost. It then saves wherever the server has the body.
+// a shortened command, a pause) is sent again as the stringcmd, so the save and what the FIFO queued
+// behind it are not lost; it then saves wherever the server has the body. Not before 0.3 s plus 1.5
+// round trips past the ack: an answer lost with its packet is sent again about a round trip later
+// (sv_ents.c SV_RequeueFrame), and the save it answers did run.
 void() WarpOp_SaveFrame =
 {
 	if (!tr_req_opsave || tr_req_wait <= 0 || wop_saveseq <= 0)
@@ -728,7 +732,7 @@ void() WarpOp_SaveFrame =
 	}
 	if (!wop_saveat || cltime < wop_saveat)
 		wop_saveat = cltime;
-	if (cltime - wop_saveat <= 0.3)
+	if (cltime - wop_saveat <= 0.3 + 1.5 * max(0, wop_saveat - wop_savet0))
 		return;
 	wop_saveseq = wop_saveat = 0;
 	PE_Expect("a save on a command was not answered");
@@ -1117,6 +1121,7 @@ void() WarpOp_InputFrame =
 		Trail_OpSaveCarried(clientcommandframe);
 		wop_saveseq = clientcommandframe;
 		wop_saveat = 0;
+		wop_savet0 = cltime;
 	}
 	dprint(sprintf("warpop: %g on command %g\n", wop_op[best], clientcommandframe));
 	// P1238: blind, and the cursor stats the prediction read (they can arrive in different packets).
@@ -1273,19 +1278,23 @@ void(float seat, float seq, float seconds, float offset) CSQC_PredictPlayerPreMo
 // later is recognized instead of undoing the mouse movement made since.
 void(float seat, float seq) WarpOp_PostMove =
 {
-	local float i, h, hs, hd;
+	local float i, h;
 	local vector a;
 
 	if (seat)
 		return;
-	// P1547: the engine's hulls (pm_standheight/pm_duckheight, cl_main.c); another (the AG profile's)
-	// is neither, and then no save is predicted.
+	// P1547: against the hulls the engine builds (pm_standheight/pm_duckheight, cl_main.c; the AG
+	// profile publishes its 72/36 there); a hull that is neither predicts no save.
+	if (wop_hst != cltime)
+	{
+		wop_hst = cltime;
+		wop_hs = serverkeyfloat("pm_standheight");
+		wop_hd = serverkeyfloat("pm_duckheight");
+		if (wop_hs <= 0) wop_hs = 62;
+		if (wop_hd <= 0) wop_hd = 45;
+	}
 	h = predmove_maxs_z - predmove_mins_z;
-	hs = serverkeyfloat("pm_standheight");
-	hd = serverkeyfloat("pm_duckheight");
-	if (hs <= 0) hs = 62;
-	if (hd <= 0) hd = 45;
-	wop_pmduck = (fabs(h - hd) < 0.5) ? 1 : ((fabs(h - hs) < 0.5) ? 0 : -1);
+	wop_pmduck = (fabs(h - wop_hd) < 0.5) ? 1 : ((fabs(h - wop_hs) < 0.5) ? 0 : -1);
 	if (!wop_seq)
 		return;
 	for (i = 0; i < WOP_RING; i = i + 1)
@@ -1458,6 +1467,7 @@ float() WarpOp_Console =
 		if (!WarpOp_Able())
 		{
 			PE_Expect("goto_start, not predicted here");     // P1238
+			wop_strat = cltime;                             // P1547
 			localcmd("cmd zone_start\n");        // spectating, replays: the server decides on your own leg
 			return TRUE;
 		}
@@ -1467,7 +1477,10 @@ float() WarpOp_Console =
 			if (n > 0)
 			{
 				if (n > WOP_BONUSES)
+				{
+					wop_strat = cltime;                     // P1547
 					localcmd(sprintf("cmd say \"!b %g\"\n", n));
+				}
 				else if (!WarpOp_Reset(WOP_BONUS1 + n - 1))
 					localcmd(sprintf("cmd say \"!b %g\"\n", n));
 			}

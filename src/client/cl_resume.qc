@@ -72,6 +72,7 @@ float(float typ, float scan) Timer_ResumeInputKey =
 		ui_ms_answerat = cltime;
 		if (ui_ms_why != "") strunzone(ui_ms_why);
 		ui_ms_why = "";
+		wop_strat = cltime;     // P1547
 		localcmd("cmd ms_resume\n");
 	}
 	else
