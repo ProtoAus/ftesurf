@@ -8,12 +8,6 @@
 - Press-time WarpOp_Load zeroes wop_relseq before refusing on a busy trail FIFO, so hold -> save -> let go -> load
   inside one round trip finds STAT_FS_HOLD with no release pending and takes the stringcmd path once (round-1
   review F4; correct, slower). Keeping the backstop across the FIFO wait needs it disarmed on every later dispatch.
-- `=` binds tighter than `&&`/`||` (id's table): 12 more assignments store only their first operand
-  (scan of src/{client,server,shared,menu}, 14 Nov): cl_entview.qc:2188 onpanel, cl_portal.qc:676 lpd_active,
-  cl_triggers.qc:1981 probe, :2779 hit, :2888 hit, cl_zones.qc:638 pvs, m_milk.qc:529 want, :734 orbit,
-  sv_entities.qc:12175 vbsp_sp_sky, sv_main.qc:158 vbsp_retrigger, sv_tasproject.qc:1017 nc[b+1], sv_vote.qc:615
-  vote_on. Each is a different behaviour (trigger prediction, votes, zone PVS...): check what each was meant to be
-  before bracketing; some may have been tuned against the broken value.
 - A stringcmd hold released on a command predicts walk afterwards (wop_heldmode NONE); a noclip hold is corrected
   once (round-2 N2). With cl_sl_leadin 0 the 0.15 s wait for the held row can start at key-up, not at the answer,
   when the D string never arrives (past WOPCHAIN_MAX): bounded extra latency (round-3 R2).

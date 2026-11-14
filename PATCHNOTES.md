@@ -24,6 +24,11 @@
 ### P1546 Run-check maintenance
 - Run checks remain accounted for until their background work finishes, keeping maintenance from advancing too early.
 
+### P1545 Zone editor and console tool fixes
+- The zone editor and zone_xray show every zone again, including ones behind walls; normal play still hides zones you cannot see.
+- ent_cursor: clicking the world picks an entity again, and the mouse wheel away from the panel jumps as normal.
+- With the in-world menu panels on, a panel lights up as the camera arrives and powers down on screens without one.
+
 ### P1544 Save loads at high ping
 - Loading a save no longer freezes you for about a second at higher ping when you reload quickly or right after saving: you move the moment you let go.
 - A load pressed right after a save now goes as soon as the server has the save, instead of waiting twice as long.
