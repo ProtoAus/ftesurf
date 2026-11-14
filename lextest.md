@@ -1,5 +1,16 @@
 # lextest.md — things waiting on a human
 
+## P1559-P1563 Lex's list of 15 Nov -- owner check PENDING
+- surf_beyond (Momentum build): the start ramps' pattern at CS:S's size; the SH logo stays drawn when it is half off the screen edge; the hub's dust stays inside its sloped volume; the portals show the swirl rings, not a black disc.
+- surf_beyond2: the start floor reflects (triangle facets); the ramps are black under the pattern, not see-through; the portals look closer to CS:S.
+- surf_ace at your save 1: the white seam lines should be gone. surf_null: the grate on the white walls should stay visible from range (a pop-in that happens without moving is a different cause; say which).
+- surf_legends: thinner, further fog. surf_leesriize: are the moongate props there now, and if not, where were you standing?
+- !r on surf_mesa, surf_mesa_revo and ahop_coast lands on the platform. ahop_coast still faces the credits board (the zone file's own yaw); re-set its spawn facing the dock if you want that.
+- surf_beyond / beyond2: restarts and stage teleports face the course. Fails on beyond were not reproduced as wrong: tell me a stage if a fail still faces the wrong way.
+- surf_reytx bonus 2 through the hoop should finish. surf_network2008_final: a fall faces the drop. surf_forbidden_tomb: after 7+ minutes or touching the finish, !r and !s still work. surf_1day stage 6's booster ~2100.
+- surf_tendies at high ping (or with sv_minping 500): the start pad's push should come when you leave it, with no snap.
+- A replay on bhop_tranquility through its low ceilings: the camera should dip under them, not look through (a rig trace of one imported run drew eyes of 33-63 under them; the old build never went below 47).
+
 ## P1558 JARGON openings and purple TAS — owner check PENDING
 - On a map/stage where JARGON used to circle back for a second start-platform hop, watch just one opening after reloading the updated local map: it should aim the opening jump toward ramp 1. Please give the map/stage or a short clip if it still returns. No project/config/data reset is requested.
 - If convenient, watch surf_prosurf bonus 4's opening: its explicitly permitted bhop area must remain usable. The actual native smoke confirms the authored-hop branch acts, but it did not complete that bonus within its bounded search; this is not a B4 completion claim.

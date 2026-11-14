@@ -1,5 +1,36 @@
 # AGENT_NOTES.md
 
+## P1559-P1563 Lex's list of 15 Nov (ftesurf-16, root lexlist-20261115-16)
+
+- **`build.ps1 -NoDeploy` writes the .dat files to `<qc>/rig/build-nodeploy-<guid>/`**, not to
+  `<qc>/ftesurf/`. A conbridge rig rooted at the worktree ran the PREVIOUS progs ("Bad user command:
+  viewpos", "no csprogs") until they were copied in. The worktree root also lacks the ignored ship data
+  (particles/, data/mapparticles.txt, matcolours, mapdeps): copy those or every info_particle_system is
+  "off" and textures resolve differently (a purple text that did not reproduce with the data present).
+- **conbridge: a second client does not start beside the first** (single instance): stop one session to
+  run the control. `send -- "-forward"` -- argparse eats a line that starts with `-`. `send --sv "map X"`
+  reloads csprogs when its bytes changed; a same-map reload keeps the client's model cache, so a load-time
+  census (Con_DPrintf, needs log_developer 1) only prints after a different map in between.
+- **The first prederr line cannot size a misprediction.** An unpredicted boost and a one-tick-late one both
+  read "off by 20.05" (one tick of 1337 u/s), and reports are rate-limited. Grade the subject's own action
+  instead (cl_trigdebug 1: "renames the player", "OnEndTouch -> basevelocity") against the control's
+  silence; `prederr_dump <name>.txt` writes the ring on demand.
+- **`*tn` can carry a rename one command before the ack does** (P1563): a chain that restarts exactly at the
+  rename's command judged its touch on the new name, refused it, wrote "not inside" into the ring and every
+  later chain inherited it. TG_NameFor judges a booster's entry, at or before its own rename's command, on
+  the name it was entered on. A first cut kept ONE global predicted name: review found chained renamers (~92
+  maps) would judge earlier commands on an intermediate name -- a false teleport where P1405 had read *tn
+  correctly -- so the prediction is per slot and read only by that slot.
+- **A rule change in the shared zone scan reaches old recordings.** The verifier replays pre-change runs with
+  the current QC and no rule pin, so P1561 limits the own-track END rank to an END lying wholly inside an
+  EARLIER END of another track (Zone_EndCover in Zone_Hash), where the old first-END rule always took the
+  tick. Round 2 caught a later cover (surf_parc_colore b1 under bonus 4, main's END 48 u above): a swept
+  hull touching both used to give the packet to main.
+- **surf_leesriize auto-mounts TF2 and Portal 2 content; the client reached 2.5 GB** and free memory fell
+  to 0.76 GB during a rig tour. Leave it out of multi-map tours.
+- Momentum's LDR cubemaps that read black are endpoints 0x0000/0x0001, not exact zeros; the .hdr.vtf beside
+  them is RGBA16161616F (Patch 887 encodes it).
+
 ## P1558 opening scope and assistance ancestry (14 Nov 2026)
 
 - Opening permission needs the selected course's prefix, not the whole guide and not only rows after clock zero. Capture selected-start entry separately from its exit; earlier-stage hops must not authorize a later stage, while standalone B4 pre-clock hops remain eligible. Joined plans must retain a preceding authorized floor-hop waypoint rather than jumping over it at the join. No-known-ramp fallback keeps the exact old bounded jump-count rule.

@@ -1,5 +1,53 @@
 # BACKLOG.md
 
+## Lex's list of 15 Nov -- leftovers of P1559-P1563 (ftesurf-16, root lexlist-20261115-16)
+
+- **STAGE/checkpoint overlaps across tracks** (`src/server/sv_timer.qc` SV_ZoneScan): P1561 ranks only the
+  runner's own COVERED END first. Any END still outranks the run's own STAGE, and the first STAGE/checkpoint of
+  any track wins, so another track's box over a stage boundary swallows the split or a stage run's finish
+  (review 1). Falsifier: a map with a bonus END over a main stage start; a whole run's split there.
+- **Partial END overlaps stay on the first-END rule** (surf_parc_colore b1, surf_aircontrol b2,
+  kz_bhop_dementia b1): their bonus still finishes only once out of the main END. A fix needs a recorded rule
+  key (`zonerank`) the verifier branches on, so pre-P1561 runs keep the old rule (evidence review 1).
+- **Identical non-convex ENDs are not covered** (`sh_zones.qc` Zone_EndCover): an L-shape's centroid is a
+  corner, so pulled-in points land on edges and test outside; bhop_greenbox END 9 and bhop_rockthevote_final
+  END 6 match their main END point for point and their bonus 1 still cannot finish (both only in dl/, which
+  the server does not read). Fix: a corner within 1 u of an edge of e counts, and no edge of z crosses e's.
+- **P1563 predicts a booster's own rename only.** Other name filters (P1405's teleports) still judge the
+  published *tn, which lags a round trip after any rename; chained renamers (bhop_futile, ~92 maps with a
+  name filter) would need a ring of (command, row) folded at the ack and trimmed to what *tn shows. A
+  rename-only slot is not owned (its OnStartTouch rename fires once per map in the mirror): harmless now that
+  nothing else reads it.
+- **16 u spawn test can catch a deliberate Set spawn** (`sv_zones.qc` SV_ZoneSpawnYaws): a zoner standing
+  within 16 u of the zone centre loses yaw and position to the map's destination. Better: the editor marks
+  automatic spawns or re-centres them on a shape edit (cl_zoneedit_extra.qc :893, :1297).
+- **ahop_coast start faces the credits board**: its zone file is Momentum's (stamped), yaw 0; the course is
+  at 90 (c01_start_dest, 152 u outside the zone). P1181 keeps stamped yaws. Re-set the spawn in zone_edit
+  facing the dock and publish, or decide a rule for stamped files.
+- **ahop_coast detail grass** (`plugins/hl2/mod_vbsp.c` VBSP_DetailBuild): the map's sprite rectangles fit
+  HL2's 512x512 detailsprites; the CS:S 1024x1024 sheet mounts first, so 30% of sprites draw sliced. Score
+  every mounted copy by opaque texels on the rectangle edges and take the best; add Source's non-square V
+  correction (detailobjectsystem.cpp:1505-1516).
+- **Scaled static props collide at scale 1** (mod_vbsp.c VBSP_PhyBrushes, BIH leaf bounds, com_bih.h
+  bihtransform_s): surf_beyond's platform_frame (scale 2) renders 32 u above where the player stands. Needs a
+  movement-version gate; ~3.5k of 32k props are scaled.
+- **NOMIP acts on DXT/BC only** (img_vtf.c): an uncompressed TEXTUREFLAGS_NOMIP texture gets its chain
+  regenerated (no IF_NOMIPMAP reaches the upload). surf_null's grate format not checked.
+- **surf_leesriize props not rendering: unreproduced.** The moongate model loads and nothing caps it; P1559
+  scales gl_alias's LOD/near radius and cl_ents' leaf box. Needs Lex's spot (the map costs 2.5 GB to load in a
+  rig). Also: portal_warp's base-less brush texcoords (texdata 128 against a 512 normal map) left as is.
+- **Replay roof eye**: traced against the world only (a func_brush/mover ceiling clips live, not in replay),
+  and applied whatever the recording's movement version (KSF's 72-unit hull gets up to 4 u of clip it never
+  had). Not yet graded tick by tick against a Momentum demo's own m_vecViewOffset (momreplay.py decodes it;
+  bhop_tranquility's demos lower it on 170-538 standing ticks each).
+- **Dust boxes of other brush emitters** (`cl_emit.qc` Emit_LoadForMap): only dust/cloud take the brush
+  origin now; the other brush classes still use the model-space box.
+- **KSF named-trigger zones** (sh_zones.qc / sv_zones.qc / cl_zones.qc, surfd zonefit `_timer_in`): with no
+  zone file, map_start/stageN_start/bN_start trigger_multiples are never read, so surf_interstellar has no
+  stages or bonus and 53 maps with a named start/end pair are untimed. Changes zonecrc on 12 legacy maps.
+- **Boarding grade arrives a round trip late** (cl_board.qc Board_Frame reads server stats): the mover
+  already latches plane/speed-in/counter in prediction; export them from CSQC_PredictPlayerMove.
+
 ## JARGON Prosurf B4 route — bounded P1558 opening check (14 Nov)
 
 - Site: `src/server/sv_tasautosurf.qc`, selected-course start placement/steering and first-board search for surf_prosurf bonus4. The guide-authorized opening hop branch acts, including native playback, but the latest bounded63second arm reached0of9. Preserving permission is not a complete route solution; the cause of the first-board miss is not established.
@@ -3105,12 +3153,6 @@ Fixed items are removed; remaining reader contracts need acting controls.
   Refused rather than drawn wrong: a spawn box with spread (Source zigzags), a timed
   emitter, operators outside pcf.py ROPE_OPS. The fade follows C_OP_FadeAndKill as read
   (closed source); inverted or reordered fade windows are taken literally.
-- **Child systems stay off** (`vbsp_emit_psys_children 0`). The saturated dome
-  `tendies_endparticle04` drew over the pit was FTE's built-in ball: its effects/tesla_glow
-  has no .vmt and the bake named it without materials/. P1012's re-bake draws the image, a
-  compact glow (task root pcfcolour-20261025T0540Z, artifacts/cmp_1012a.png); turning children
-  on by default is still open.
-  The default also waits on surf_tensor2's budget (cl_emit.qc, the cvar's comment).
 - **Outputs aimed at a classname** (Source's fallback, cbase.cpp:944-958). Patch 790
   takes it for `momentary_rot_button` only. The rest, census of 1,349 maps (35 maps):
   `player_speedmod ModifySpeed` 24 on 1 map, `player SetDamageFilter` 13 on 10,

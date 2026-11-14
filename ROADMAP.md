@@ -1,5 +1,18 @@
 # ROADMAP.md — maps, demos, run lines and rewind
 
+## Sending a save with its run (segments, demo line, helper's name) -- requested 15 Nov 2026
+
+Lex: "when you send a save, allow the segmenting to work and transfer the demo line over so they can continue
+it, but keep the player's name attached to the loc ... so we can see who completed the map with the help of
+someone else." Today `cmd share offer` sends five values and the receiver gets a position-only practice row;
+the sender's name is only printed. Proposed (investigation 15 Nov, ftesurf-16): the server copies the
+sender's state.txt and run.rec into the receiver's save (taint bits as they are, TAS refused as today),
+rewrites the owner and runid, and adds an `assist <ticks> <guid> <key> <name>` header line built from the
+sender's connection; the sender's client streams seq.txt and a thinned trail.txt (not run.view); surfd
+shows the assist chain. QC both VMs, one header key (reccheck.py learns it), a surfd column; recorder
+changes need the review rounds. Decisions owed: does a helped run count as a completion or a new "with help"
+status; which boards show the helper; offer both "position only" and "with run"?
+
 ## JARGON useful final-ramp entries — requested13Nov2026, UNRESOLVED
 
 Lex wants earlier edge-side boarding that reduces impact without sacrificing the

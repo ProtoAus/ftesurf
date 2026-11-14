@@ -24,6 +24,25 @@
 ### P1564 TAS boards and run history
 - The community web boards have a separate TAS category. Assisted times stay separate from ordinary boards, completion counts and points.
 
+### P1563 Once-per-attempt boosters predicted at high ping
+- Boosters that rename you on entry and push you on exit (surf_tendies' start pad) are now predicted, so at high ping the push arrives when you leave the pad instead of snapping you forward a moment later.
+
+### P1562 Map fixes: surf_1day, surf_forbidden_tomb, surf_network2008_final
+- surf_1day: stage 6's booster gives about 2100 speed and stage 8's side push is off, as on KSF.
+- surf_forbidden_tomb: the jail teleports no longer switch on after 7 minutes or at the finish, so restarts and stages keep working.
+- surf_network2008_final: falling back to the start faces the drop instead of the corner. Times set on these three maps before this update were on the old layout.
+
+### P1561 Restarts land on the platform and face the course
+- !r no longer drops you to the floor below where a start's spawn sits exactly on its platform (surf_mesa, surf_mesa_revo, ahop_coast and others).
+- surf_beyond and surf_beyond2 restarts face along the course.
+- A bonus whose end shares the main end's box now finishes (surf_reytx bonus 2 through the hoop).
+
+### P1559 Source map visuals
+- surf_beyond and surf_beyond2: ramp patterns at their real size, the SH logo no longer vanishes at the screen edge, portal swirls draw instead of a black disc, beyond2's start floor reflects and its ramps are solid under their glow.
+- Light leaking through seams on surf_ace and similar maps is closed, and fine grates that faded with distance (surf_null) stay visible.
+- Dust motes stay inside their volumes, and surf_legends' fog is thinner and further away.
+- Replays, rewinds and save loads lower the camera under a low roof the way live play does.
+
 ### P1558 JARGON openings and purple TAS runs
 - JARGON aims its opening jump at the first ramp instead of deliberately returning to the start for another hop. Guide-authored bhop openings, such as surf_prosurf bonus 4, keep their hops.
 - JARGON and slow-motion assisted attempts show a purple Tool Assisted Speedrun tag and purple completions. Ordinary completions are green and segments are blue; assistance stays unranked.
