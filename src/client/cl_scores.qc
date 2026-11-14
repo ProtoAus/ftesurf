@@ -2800,6 +2800,7 @@ float() Scores_TpHandOff =
 {
 	if (!pl_tppick)
 		return FALSE;
+	wop_strat = cltime;     // P1547
 	localcmd(sprintf("cmd tp_player %g\n", pl_tppick));
 	pl_tppick = 0;
 	Scores_Close();

@@ -75,7 +75,7 @@ float  *wop_blind;              // Patch 759: WOPB_* -- sent unpredicted
 float  *wop_cap;                // P1547: a WOP_SAVE's row has been taken at its command (WarpOp_Apply)
 float  wop_pmduck;              // P1547: the last predicted move's hull: 1 ducked, 0 standing, -1 neither
 float  wop_saveseq, wop_saveat; // P1547: the carried WOP_SAVE's command, and since when it is acked unanswered
-float  wop_savet0;              // P1547: cltime a command carried it (its round trip scales the backstop)
+float  wop_saveafter;           // P1547: another op rode a command after it (the backstop then refuses)
 float  wop_hst, wop_hs, wop_hd; // P1547: pm_standheight/pm_duckheight, read once a frame
 float  wop_slot;                // the slot WarpOp_Queue just filled
 vector wop_tgorg, wop_tgang, wop_tgvel;   // WarpOp_Row's answer: origin, pitch/yaw/duck, speed
@@ -719,10 +719,13 @@ void() WarpOp_SaveExpired =
 // P1547: a carried WOP_SAVE the server acked without answering (its command dropped: 3+ lost packets,
 // a shortened command, a pause) is sent again as the stringcmd, so the save and what the FIFO queued
 // behind it are not lost; it then saves wherever the server has the body. Not before 0.3 s plus 1.5
-// round trips past the ack: an answer lost with its packet is sent again about a round trip later
-// (sv_ents.c SV_RequeueFrame), and the save it answers did run.
+// pings (capped at 1 s) past the ack: an answer lost with its packet is sent again about a round trip
+// later (sv_ents.c SV_RequeueFrame), and the save it answers did run. Refused once another op rode a
+// command after it: that op ran first, and the save would copy where it put the body.
 void() WarpOp_SaveFrame =
 {
+	local float ping;
+
 	if (!tr_req_opsave || tr_req_wait <= 0 || wop_saveseq <= 0)
 		return;
 	if (servercommandframe < wop_saveseq || getstatf(STAT_FS_SLSAVEACK) == tr_req_wait)
@@ -731,11 +734,22 @@ void() WarpOp_SaveFrame =
 		return;
 	}
 	if (!wop_saveat || cltime < wop_saveat)
+	{
 		wop_saveat = cltime;
-	if (cltime - wop_saveat <= 0.3 + 1.5 * max(0, wop_saveat - wop_savet0))
+		tr_req_at = cltime;             // the FIFO's 5 s now counts from the ack, not the press
+	}
+	ping = bound(0, stof(getplayerkeyvalue(player_localnum, "ping")) / 1000, 1);
+	if (cltime - wop_saveat <= 0.3 + 1.5 * ping)
 		return;
 	wop_saveseq = wop_saveat = 0;
 	PE_Expect("a save on a command was not answered");
+	if (wop_saveafter)
+	{
+		print("^3save: lost on the way to the server -- save again\n");
+		tr_req_wait = tr_req_opsave = 0;
+		Trail_ReplayClear();
+		return;
+	}
 	SaveLoc_Resync();
 	rec_sl_sent = rec_sl_sent + 1;
 	localcmd(strcat("cmd ", Trail_Command("sl_save"), "\n"));
@@ -1116,12 +1130,13 @@ void() WarpOp_InputFrame =
 		wop_loadseq = wop_loadlast = clientcommandframe;
 	if (wop_op[best] == WOP_RELEASE)
 		wop_relseq = wop_rellast = clientcommandframe;
+	if (wop_op[best] != WOP_SAVE && wop_saveseq > 0)
+		wop_saveafter = TRUE;
 	if (wop_op[best] == WOP_SAVE)
 	{
 		Trail_OpSaveCarried(clientcommandframe);
 		wop_saveseq = clientcommandframe;
-		wop_saveat = 0;
-		wop_savet0 = cltime;
+		wop_saveat = wop_saveafter = 0;
 	}
 	dprint(sprintf("warpop: %g on command %g\n", wop_op[best], clientcommandframe));
 	// P1238: blind, and the cursor stats the prediction read (they can arrive in different packets).
@@ -1342,23 +1357,35 @@ float(string text) WarpOp_Chat =
 		w = substring(text, 0, sp);
 		tail = substring(text, sp + 1, strlen(text) - (sp + 1));
 	}
+	// P1547: these go to `say`, a stringcmd that moves the body (WarpOp_Save waits it out).
+	if (w == "!r" || w == "!m" || w == "!resume" || w == "!restart")
+		wop_strat = cltime;
 	if (w != "!s" && w != "!b")
 		return FALSE;
 	for (i = 0; i < strlen(tail); i = i + 1)
 	{
 		c = str2chr(tail, i);
 		if (c < '0' || c > '9')
+		{
+			wop_strat = cltime;     // P1547: to `say`
 			return FALSE;
+		}
 	}
 	n = max(1, stof(tail));
 	if (w == "!s")
 	{
 		if (n > WOP_STAGES)
+		{
+			wop_strat = cltime;     // P1547: to `say`
 			return FALSE;
+		}
 		return WarpOp_Reset(WOP_STAGE1 + n - 1);
 	}
 	if (n > WOP_BONUSES)
+	{
+		wop_strat = cltime;         // P1547: to `say`
 		return FALSE;
+	}
 	return WarpOp_Reset(WOP_BONUS1 + n - 1);
 };
 
