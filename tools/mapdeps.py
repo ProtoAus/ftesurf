@@ -529,11 +529,12 @@ def candidates(mat):
 
 def unshipped_key(path):
     """P1560: a material or texture as data/unshipped.txt spells it and the hl2 plugin looks it up
-    (mat_vmt.c VMT_ColourKey): lowercase, '/', no leading materials/, no .vmt/.vtf."""
+    (mat_vmt.c VMT_ColourKey, Mat_VMT_Unshipped): lowercase, '/', one leading materials/ dropped, no .vmt;
+    a texture keeps .vtf so a missing image never vouches for a missing material of the same name."""
     k = re.sub(r"/+", "/", path.lower().replace("\\", "/")).lstrip("/")
     if k.startswith("materials/"):
         k = k[len("materials/"):]
-    if k.endswith(".vmt") or k.endswith(".vtf"):
+    if k.endswith(".vmt"):
         k = k[:-4]
     return k
 
@@ -685,6 +686,8 @@ def resolve_material(rs, mat, need, seen, depth=0, prefer=None):
     #No candidate resolved anywhere at all
     need.setdefault("-", set()).add(candidates(mat)[0])
     need.setdefault("visible:-", set()).add(candidates(mat)[0])
+    #P1560: the engine keys the name itself, which can carry its own materials/ (surf_4am's "materials/ceiling/tar")
+    need.setdefault("unshipped", set()).add(unshipped_key(mat))
     return False
 
 
@@ -749,8 +752,11 @@ def resolve_model(rs, mdl, need, seen):
         else:
             if paths:
                 resolve_material(rs, paths[0], need, seen, prefer=mine)
-                #P1560: every candidate is absent, and mod_hl2.c names the LAST one it tried
-                need.setdefault("unshipped", set()).update(unshipped_key(c) for c in paths)
+                #P1560: every candidate is absent, and mod_hl2.c names the LAST one it tried; a key the
+                #engine would find under its stripped spelling (a "materials/..." cdmaterials) is not listed
+                need.setdefault("unshipped", set()).update(
+                    k for k in (unshipped_key(c) for c in paths)
+                    if rs.find("materials/" + k + ".vmt")[0] is None)
 
 
 def mdl_materials(data, mdl):
@@ -980,7 +986,8 @@ def main():
     ap.add_argument("--audit", action="store_true",
                     help="classify every map's breakage instead of writing")
     ap.add_argument("--unshipped", metavar="PATH",
-                    help="also write data/unshipped.txt (P1560): per map, what no pack supplies; full scans only")
+                    help="also write data/unshipped.txt (P1560): per map, what no pack supplies; full scans "
+                         "only, every pack installed; written even with --dry")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--no-models", action="store_true")
     a = ap.parse_args()
@@ -1014,6 +1021,12 @@ def main():
         addon_meta.append((name, root, spec))
         print("  %-10s %7d files" % (name, len(p)))
     print("  %.1fs" % (time.time() - t0))
+    if a.unshipped:
+        #P1560: a pack absent here would put its content on the list, and the plugin would quiet and grey
+        #what fs_load brings back on a PC that has it
+        gone = [n for n, r in MOUNTED if not os.path.isdir(r)] + [n for n, r, _s in ADDONS if not os.path.isdir(r)]
+        if gone:
+            raise SystemExit("--unshipped refused: not installed here: %s" % ", ".join(gone))
 
     bsps = {}
     for _n, root in MOUNTED:
