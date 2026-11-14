@@ -369,6 +369,30 @@ void(entity e) SV_WarpOpCur =
 	}
 };
 
+/*
+  P1555: whether `!r`'s answer could change with the run's state alone. SV_MovePrepReset takes the leg's
+  startmark only while the run is at its origin (SV_TimerAtRunOrigin) and a start-zone save only while `!r`
+  would not restart a segment, so with either present a teleport or box crossing the client has not had
+  answered can flip the destination under a press (surf_fiellu, 172 units). Mirrors its gates, nothing more.
+*/
+float(entity e) SV_WarpOpResetMayFlip =
+{
+	local float z, blk, yaw, pit, row;
+	local vector org;
+	z = e.run_leg_zone;
+	if (z < 0 || z >= zone_count)
+		return FALSE;
+	if (SV_StartMarkUsable(e, SV_StartMarkFind(e, z)))
+		return TRUE;
+	blk = SL_Blk(e);
+	if (SV_SaveLocAllowed(e, TRUE))
+	if (rec_sl_org) if (rec_sl_pit) if (rec_sl_yaw) if (rec_sl_id) if (rec_sl_seq) if (rec_sl_tick)
+	if (SL_Fresh(e, blk))
+	if (SV_SaveLocPickInZoneRead(e, z, org, yaw, pit, row))
+		return TRUE;
+	return FALSE;
+};
+
 void(entity e) SV_WarpOpPublish =
 {
 	local float blk, sig, sig2, sig3, moved;
@@ -395,6 +419,9 @@ void(entity e) SV_WarpOpPublish =
 	SV_WarpOpDest(e, "!r", 0);
 	e.wop_rorg = wop_dorg;
 	e.wop_rang = wop_dang;
+	if (e.wop_rang_z == WOPD_KEEP || e.wop_rang_z == WOPD_ANG)
+	if (SV_WarpOpResetMayFlip(e))
+		e.wop_rang_z = e.wop_rang_z + WOPD_FLIP;
 	SV_WarpOpDest(e, "!m", 0);
 	e.wop_morg = wop_dorg;
 	e.wop_mang = wop_dang;

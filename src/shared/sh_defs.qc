@@ -632,6 +632,8 @@
 #define WOPD_NONE  0                // no prediction: the server would refuse or cannot say
 #define WOPD_KEEP  1                // destination, angles kept
 #define WOPD_ANG   2                // destination and angles
+#define WOPD_FLIP  4                // P1555: added to `!r`'s KEEP/ANG: it is a startmark or start-zone save, which
+                                    // holds only while the run is at its origin (an older client: "none")
 // The ops ride a usercmd's impulse, so the server applies each at that command.
 #define WOP_RESET   201
 #define WOP_SPAWN   202

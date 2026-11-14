@@ -516,13 +516,37 @@ void() WarpOp_Legs =
 	}
 };
 
+/*
+  P1555: `!r`'s published destination (STAT_FS_WOPR) is the startmark only while the run is at its origin
+  (sv_timer.qc SV_TimerAtRunOrigin), so a teleport or a start/stage box crossing the server has not answered
+  yet can flip it under the press: surf_fiellu's fail teleport back into the start, then `!r` 7 commands later,
+  predicted the map start and landed on the startmark (172 units). Then the op goes blind: sent on the command,
+  not predicted, the server's answer moves you. Only when the server flags the destination as one that can
+  flip (WOPD_FLIP: a startmark or start-zone save, sv_warpop.qc SV_WarpOpResetMayFlip), so a reset without
+  either keeps its instant prediction after a teleport.
+*/
+float() WarpOp_DestMayFlip =
+{
+	local float z;
+	local vector srv;
+	if (tg_teleseq > servercommandframe)
+		return TRUE;
+	srv = getentity(player_localentnum, GE_ORIGIN);
+	for (z = 0; z < zone_count; z = z + 1)
+		if (zone_type[z] == ZONE_START || zone_type[z] == ZONE_STAGE)
+		if (Zone_PointInside(z, pmove_org) != Zone_PointInside(z, srv))
+			return TRUE;
+	return FALSE;
+};
+
 // `!r`, `!m`, `!s N`, `!b N` (WOP_RESET, WOP_SPAWN, WOP_STAGE1 + N - 1,
 // WOP_BONUS1 + N - 1).  FALSE: send the old command instead.
 float(float op) WarpOp_ResetTry =
 {
 	local vector org, ang;
-	local float i, blind, opsave, nodest;
+	local float i, blind, opsave, nodest, flip;
 
+	flip = FALSE;
 	if (!WarpOp_Able())
 		return FALSE;
 	wop_why = "a trail request is busy";
@@ -542,6 +566,9 @@ float(float op) WarpOp_ResetTry =
 	{
 		org = [getstatf(STAT_FS_WOPR), getstatf(STAT_FS_WOPR + 1), getstatf(STAT_FS_WOPR + 2)];
 		ang = [getstatf(STAT_FS_WOPRANG), getstatf(STAT_FS_WOPRANG + 1), getstatf(STAT_FS_WOPRANG + 2)];
+		flip = (ang_z == WOPD_KEEP + WOPD_FLIP || ang_z == WOPD_ANG + WOPD_FLIP);     // P1555
+		if (flip)
+			ang_z = ang_z - WOPD_FLIP;
 	}
 	else
 	{
@@ -566,6 +593,12 @@ float(float op) WarpOp_ResetTry =
 	// Patch 759: any op still unanswered can move the leg or restore the run state
 	// `!r`'s published destination was read from: sent in order, unpredicted.
 	blind = (rec_sl_holding || (op == WOP_RESET && WarpOp_Pending(WOPP_MOVE)) || nodest);
+	if (flip && !blind)
+	if (WarpOp_DestMayFlip())
+	{
+		blind = TRUE;
+		PE_Expect("a reset whose destination may flip (an unanswered teleport or start-box crossing)");
+	}
 	if (blind)
 		ang_z = 0;
 	wop_why = "the op queue is full";
