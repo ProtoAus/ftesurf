@@ -21,6 +21,9 @@
 
 ## next
 
+### P1550 Crash after story-mode map changes
+- Fixed a crash ("BZ_Malloc: Failed on allocation") that could close the game a while after a story-mode map change, most often while a map was downloading.
+
 ### P1549 JARGON platform arrivals
 - JARGON can aim for a physically checked final-platform area instead of a single endpoint, with conservative fallback when the area is ambiguous.
 - After a supported final-platform landing, JARGON keeps it and uses a checked doorway approach instead of retrying the ramp because passive coasting misses the portal.

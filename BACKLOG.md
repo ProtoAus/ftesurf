@@ -1,5 +1,21 @@
 # BACKLOG.md
 
+## Prederror reports after P1508 -- leftovers of P1550-P1552 (14 Nov)
+
+- surf_fiellu (nodsnot, 13 Nov, 172 units): `!r` to "your startmark" 7 commands after "back in the start"
+  re-armed the run (SV_TimerAtRunOrigin flips); the republished STAT_FS_WOPR was still in flight at 60 ms. The
+  client could predict the flip (publish the startmark beside the destination and pick by its own start-zone
+  state) or send blind there. Falsifier: a run that falls back into a start with a startmark, `!r` within one RTT.
+- bhop_1n5an3 (Proto, 14 Nov, 376 units): the server moved the player at the start ("run cancelled (back in
+  the start)") with no client trigger fired. Find the server-side mover (IO teleport/SetOrigin?) on that map.
+- surf_ace (MetalGio, 13 Nov, 10.8k): parked at a MOVETYPE_NONE spot (-3712 -128 -6880) ~14 s after joining,
+  beside a 221 ms server stall; cause not established.
+- Uploads: one 800-byte chunk a round trip (~55 s at 350 ms); a map change inside it leaves no end line. Client
+  upload notes ride only on the same map (CSQC ring). Several chunks in flight would not fit a non-fragmented
+  1430-byte reliable message.
+- The qclib temp-string cap covers PR_AllocTempStringLen only; PR_QCGC_Finish and the unthreaded collector
+  still double uncapped (a collecting VM that keeps half its temps live).
+
 ## Window alpha with fog — owner report (14 Nov 2026)
 
 - Site: rendered window/glass material alpha under world fog; exact map/material/view not yet identified. Owner confirms P1003 authored no-fog works, but separately reports "the window alpha with fog is broken". This is not a no-fog-policy acceptance failure or a diagnosed shader root cause. No fix claimed; owner may assign another agent.
