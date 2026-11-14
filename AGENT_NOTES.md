@@ -1,5 +1,13 @@
 # AGENT_NOTES.md
 
+## P1548 JARGON continuation checks (14 Nov 2026)
+
+- Bind resumed native snapshots to the accepted promotion receipt, not a generic `current` directory name. A retained pre-P1543 trio paired with corrected QC still produced one duplicate board2 marker in each completed REC14 arm. Reusing the exact accepted422/P1543 client/server/HL2 trio gave the same13.110/12.285 finishes with6boards and strict0faults. This was a stale image pairing, not permission to relax the reader or repair unrelated recording code.
+- The shared `rig.lock` is a DIRECTORY; read its `owner.txt`. Trying to read the directory as a file gives Windows PermissionError, not proof of an exclusive file lock. No games running does not authorize deleting a peer's lease, even if its named PID has exited; coordinate release. Do not grow OS-handle diagnostics around a misidentified path.
+- Default catch/flick options were off in the first event-split comparison: all18partitions stayed6->6 and both runs13.110. Printed trials without changed knot predicates were non-acting. The existing ride `kex` is available without enabling those optional controller constraints; its timestamp-based split changed16of17eligible partitions6->7.
+- A grounded final-platform arrival and a passive coast hitting the finish are different questions. The old finish preview simulates400no-key ticks and can reject a safe enclosed landing simply because friction stops it short of a door. New ground guidance must preserve actual end-trigger authority and pause rather than rewind if blocked; a larger timeout alone is not ground planning. Native acceptance of the new handoff is still pending; source review/compilation are not a played pass.
+- Keep watchdog conversions on the latched `run_t_tick`, not fixed15ms `PM_TICK`; native TAS supports10ms too. Synthetic geometry predicates and endpoint parity do not establish first-impact loss, full hidden-state parity, generic hole-free support or all-map optimality.
+
 ## P1541 JARGON CEM state and rejected ramp experiments (13 Nov 2026)
 
 - Initialize the full active best/mean/spread after aim/lead dimensions are finalized: an all-invalid grid otherwise inherits old `topt_kbest`. Explicit warm seeds/priors/archive vectors are separate, not a blanket-reset target.

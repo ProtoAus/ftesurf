@@ -114,7 +114,8 @@ float topt_r1,topt_r2,topt_r3,topt_wmapn;
         'baseline_commit': baseline_sha, 'mutate_nonnegative': args.mutate_nonnegative,
         'functions': {name: hashlib.sha256(body.encode()).hexdigest() for name, body in parts.items()},
         'limits': 'Synthetic scores, no movement/scoring/game. Side effects stubbed; BatchHeld selected externally; '
-                  'KnotTick=j with catch/flick disabled. No warm/demo/memory grid or main-dispatcher claim.'}
+                  'KnotTick=j for synthetic event-partition eligibility; not physical event timing. '
+                  'No warm/demo/memory grid or main-dispatcher claim.'}
     (out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
     env = dict(os.environ)
     env['PATH'] = str(vm.parent) + os.pathsep + 'C:/msys64/ucrt64/bin' + os.pathsep + env.get('PATH', '')

@@ -87,6 +87,7 @@ float as_rmin;                  // the nearest-row search starts here (a full-ru
 .float as_saved;                // the furthest stretch autosaved for Continue (-1 none)
 .float as_esc;                  // P1478: effort steps a stuck course chain has taken by itself (2 at most)
 .float as_fintry;               // P1483: the try the last stretch reached on: a failed coast goes on from it (each visit its tries)
+.float as_fbest, as_flast;       // grounded finish: closest portal distance and last progress tick
 .float as_cseed;               // P1483: Continues of this course this session (a Continue after "stuck" searched exactly as before: review F)
 float as_visit[TAS_ASMAX];      // P1483: searches of each stretch this chain (in the seed)
 // a set tas_jargon_seed reproduces a chain exactly (the benchmark); unset, each new chain searches anew
@@ -1874,6 +1875,20 @@ float(entity e) SV_TASAutoCoastPredict =
 	return (SV_TASAutoRule(262144) && ran >= n) ? -2 : 0;     // a prediction that stopped short says nothing
 };
 
+// An enclosed goal platform is progress, not a failed ramp because passive drift misses a door.
+float(entity e) SV_TASAutoPlatformFinish =
+{
+	local vector q;
+	if (!e.topt_plon) return FALSE;
+	if (!SV_TASOptPlatformOwnerValid(e))
+	{ SV_TASAutoStop(e, "platform binding changed; paused without backtracking"); return TRUE; }
+	if (!SV_TASOptPlatformStanding(e)) return FALSE;
+	q = 0.5 * (e.topt_plpmn + e.topt_plpmx); q_z = e.origin_z;
+	e.as_stage = 33; e.as_sn = 0; e.as_flast = 0; e.as_fbest = vlen(q - e.origin);
+	SV_TASAutoNote(e, 1, sprintf("platform reached: steering to the end portal (%.0f u away), keeping this approach", e.as_fbest));
+	return TRUE;
+};
+
 // After SV_TASDemoFrame (SV_TASOptFrame): the next step of the chain once no search is running.
 void(entity e) SV_TASAutoFrame =
 {
@@ -2251,9 +2266,26 @@ void(entity e) SV_TASAutoFrame =
 		e.as_sn = e.as_sn + 2;
 		return;
 	}
-	if (e.as_stage == 31)
-	{	// no keys, 4 ticks a step, at most 6 s; the finish check above ends it
+	if (e.as_stage == 33)
+	{	// Ground navigation has a progress watchdog, not the passive coast's six-second deadline.
 		if (e.run_tas_pending || e.run_tas_replaystate == TAS_TAPE_ACTIVE || e.run_tas_replaystate == TAS_TAPE_STAGING) return;
+		if (!SV_TASOptPlatformOwnerValid(e))
+		{ SV_TASAutoStop(e, "platform binding changed; paused without backtracking"); return; }
+		if (!SV_TASOptPlatformStanding(e))
+		{ SV_TASAutoStop(e, "finish navigation left the supported platform; paused without backtracking"); return; }
+		u = 0.5 * (e.topt_plpmn + e.topt_plpmx); u_z = e.origin_z;
+		d = vlen(u - e.origin);
+		if (d < e.as_fbest - 4) { e.as_fbest = d; e.as_flast = e.as_sn; }
+		if (e.as_sn - e.as_flast >= 2 / run_t_tick)
+		{ SV_TASAutoStop(e, "end portal approach is blocked; platform held, not backtracked"); return; }
+		SV_TASAutoGuide(e, 400, 0, vectoyaw(u - e.origin), 0, 4);
+		e.as_sn = e.as_sn + 4;
+		return;
+	}
+	if (e.as_stage == 31)
+	{	// Airborne/unbound finishes retain passive coast; a supported platform gets active ground guidance.
+		if (e.run_tas_pending || e.run_tas_replaystate == TAS_TAPE_ACTIVE || e.run_tas_replaystate == TAS_TAPE_STAGING) return;
+		if (SV_TASAutoPlatformFinish(e)) return;
 		if (e.as_sn >= 400)
 		{
 			e.as_on = 0;
@@ -2266,7 +2298,7 @@ void(entity e) SV_TASAutoFrame =
 		{	// the coast would fall into a teleport that is not the end (or miss the end: -2): the last stretch failed, tried
 			// again or backtracked
 			SV_TASAutoNote(e, 1, sprintf("stretch %.0f: from where it ends, the run would %s: again", as_n,
-				(cp == -2) ? "coast past the end" : "fall into a teleport, not the end"));
+				(cp == -2) ? "miss the end trigger without steering" : "fall into a teleport, not the end"));
 			e.as_i = as_n - 1; e.as_tprev = as_wp[as_n - 1];    // the reach had moved it to its own end (rig t2chain9: no rows left)
 			e.as_try = e.as_fintry;     // that try failed: the next searches longer, the last backtracks (bench p14)
 			e.topt_outcome = 1; e.topt_lowneed = e.topt_earlycut = e.topt_trigcut = 0; e.topt_over = e.topt_briefn = 0;

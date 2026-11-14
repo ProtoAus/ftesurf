@@ -1,5 +1,7 @@
 # BACKLOG.md
 
+- JARGON supported-platform finish / `SV_TASAutoFrame` phase31, tensor2 stage2 (14 Nov): the matched current-native control reaches a grounded platform, predicts passive drift missing the end trigger, then retries the ramp. Owner confirms a large enclosed platform with a central door; this is recoverable, not proof of a bad launch. P1548's phase33 handoff is implemented/source-reviewed/zero-warning compiled, but runtime acceptance and deployment remain blocked on a stale foreign shared-rig lease awaiting release permission. Falsifier: reproduce the same qualified landing, execute active native ground guidance to a genuine stage finish without post-platform ramp backtracking and with strict recording0faults; a blocked path must pause honestly, not claim completion or discard the approach. Remove this item after that acceptance, not merely compilation.
+
 ## Save-lock at ping -- leftovers of P1544 (14 Nov)
 
 - A load pressed within a round trip of a save still waits for the save's answer (rig, 500 ms: 0.38 s for a load

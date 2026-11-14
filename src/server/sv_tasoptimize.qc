@@ -81,6 +81,11 @@
 .float topt_boarddir;           // `boarddir`: a board is judged by its arrival heading too (Lex: fly into the ramp parallel)
 .float topt_hardq;              // `hardq`: past QMAX only where the demo itself went (its own strength, up to QHARD)
 .float topt_endsafe;            // `endsafe`: any way into the course's end, the nearest, and no time preference (Jargon `safe`)
+// A permission polygon is a platform goal only after course/static-support checks.
+.float topt_plon, topt_plzone, topt_plfloor, topt_pllandk, topt_plendhit, topt_plmodel;
+.int topt_plgeneration;
+.entity topt_plportal;
+.vector topt_plmn, topt_plmx, topt_plzmn, topt_plzmx, topt_planchor, topt_plgoal, topt_plpmn, topt_plpmx;
 #define TOPT_SAFER 300          // ...a line this near one of them is near the end
 float topt_een;
 vector topt_eemin[8], topt_eemax[8];
@@ -1660,14 +1665,167 @@ float(entity e, entity t) SV_TASOptEndTele =
 	return -1;
 };
 
+float(entity e, string why) SV_TASOptPlatformUnavailable =
+{
+	e.topt_plon = 0;
+	sprint(e, PRINT_HIGH, strcat("tas optimize: platform unavailable: ", why, "; legacy safe objective\n"));
+	return FALSE;
+};
+
+// Permission polygons are not floors. This pilot accepts only a true rectangle.
+float(float z) SV_TASOptPlatformRect =
+{
+	local float k, mask, corner;
+	local vector p, q, mn, mx;
+	if (z < 0 || z >= zone_count) return FALSE;
+	if (zone_type[z] != ZONE_BHOP || zone_npts[z] != 4) return FALSE;
+	mn = zone_zmins[z]; mx = zone_zmaxs[z]; mask = 0;
+	for (k = 0; k < 4; k = k + 1)
+	{
+		p = zone_pt[zone_first[z] + k]; q = zone_pt[zone_first[z] + ((k + 1) % 4)];
+		if (fabs(p_x - q_x) > 0.125 && fabs(p_y - q_y) > 0.125) return FALSE;
+		if (min(fabs(p_x - mn_x), fabs(p_x - mx_x)) > 0.125) return FALSE;
+		if (min(fabs(p_y - mn_y), fabs(p_y - mx_y)) > 0.125) return FALSE;
+		corner = (fabs(p_x - mx_x) < 0.125) + 2 * (fabs(p_y - mx_y) < 0.125);
+		mask = mask | (1 << corner);
+	}
+	return (mask == 15);
+};
+
+float(entity e, entity t, vector p) SV_TASOptPlatformPortal =
+{
+	local vector c, q;
+	if (strcmp(t.classname, "trigger_teleport") || strcmp(t.landmark, "") || !strcmp(t.target, "")) return FALSE;
+	if (SV_TASOptEndTele(e, t) != 1) return FALSE;
+	c = p + 0.5 * (PM_HULL_MINS + PM_HULL_MAXS);
+	q = [bound(t.absmin_x, c_x, t.absmax_x), bound(t.absmin_y, c_y, t.absmax_y), bound(t.absmin_z, c_z, t.absmax_z)];
+	return (vlen(q - c) <= 64);
+};
+
+float(entity e) SV_TASOptPlatformValid =
+{
+	local float z;
+	local entity t;
+	if (!e.topt_plon) return FALSE;
+	if (e.topt_plgeneration != zone_generation) return FALSE;
+	z = e.topt_plzone;
+	if (!SV_TASOptPlatformRect(z)) return FALSE;
+	if (zone_zmins[z] != e.topt_plzmn || zone_zmaxs[z] != e.topt_plzmx) return FALSE;
+	if (e.topt_tgt != e.topt_plgoal) return FALSE;
+	t = e.topt_plportal;
+	if (!t) return FALSE;
+	if (t.absmin != e.topt_plpmn || t.absmax != e.topt_plpmx || t.modelindex != e.topt_plmodel) return FALSE;
+	return TRUE;
+};
+
+// Recheck course ownership once per frame, not for every native rollout row.
+float(entity e) SV_TASOptPlatformOwnerValid =
+{
+	local entity t;
+	local float n;
+	if (!SV_TASOptPlatformValid(e)) return FALSE;
+	n = 0;
+	for (t = nextent(world); t; t = nextent(t))
+		if (SV_TASOptPlatformPortal(e, t, e.topt_planchor))
+		{
+			if (t != e.topt_plportal) return FALSE;
+			n = n + 1;
+		}
+	return (n == 1);
+};
+
+void(entity e) SV_TASOptPlatformBind =
+{
+	local float z, count, pick, portals, k, floorz;
+	local entity t, portal;
+	local vector p, q, mn, mx, normal, hull, hullmin;
+	e.topt_plon = 0; hull = PM_HULL_MAXS; hullmin = PM_HULL_MINS;
+	if (!e.topt_endsafe) return;
+	if (e.mins_z != hullmin_z || e.mins_x < hullmin_x || e.mins_y < hullmin_y || e.maxs_x > hull_x || e.maxs_y > hull_y || e.maxs_z > hull_z)
+	{ SV_TASOptPlatformUnavailable(e, "not a compatible feet-origin hull"); return; }
+	p = e.topt_tgt; pick = -1; count = 0; portal = world;
+	for (z = 0; z < zone_count; z = z + 1)
+		if (zone_type[z] == ZONE_BHOP)
+		if (Zone_XYInRing(z, p_x, p_y))
+		if (p_z >= zone_bottom[z] && p_z <= zone_top[z] + hull_z + 16)
+		{ count = count + 1; pick = z; }
+	if (count != 1) { SV_TASOptPlatformUnavailable(e, "not one local endpoint region"); return; }
+	if (!SV_TASOptPlatformRect(pick)) { SV_TASOptPlatformUnavailable(e, "not rectangular"); return; }
+	// Course ownership is not encoded in allowBhop. Require one nearby plain
+	// portal already recognized by the unchanged actual-end eligibility rule.
+	portals = 0;
+	for (t = nextent(world); t; t = nextent(t))
+		if (SV_TASOptPlatformPortal(e, t, p))
+		{ portals = portals + 1; portal = t; }
+	if (portals != 1) { SV_TASOptPlatformUnavailable(e, "not one nearby course-end portal"); return; }
+	mn = zone_zmins[pick]; mx = zone_zmaxs[pick];
+	tracebox(p + '0 0 2', PM_HULL_MINS, PM_HULL_MAXS, [p_x, p_y, mn_z - 2], MOVE_NOMONSTERS, e);
+	if (trace_fraction >= 1 || trace_startsolid || trace_allsolid || trace_ent != world || trace_plane_normal_z < 0.99)
+	{ SV_TASOptPlatformUnavailable(e, "endpoint has no static walkable support"); return; }
+	floorz = trace_endpos_z; normal = trace_plane_normal;
+	if (floorz < mn_z - 0.125 || floorz > mx_z + 0.125 || p_z < floorz - 0.125)
+	{ SV_TASOptPlatformUnavailable(e, "support outside authored slab or above endpoint"); return; }
+	mn = mn - PM_HULL_MINS + '2 2 0'; mx = mx - PM_HULL_MAXS - '2 2 0';
+	if (mn_x >= mx_x || mn_y >= mx_y) { SV_TASOptPlatformUnavailable(e, "no full-hull interior"); return; }
+	// Interior extremes and centre must agree with the measured support. Actual
+	// rollout grounding remains necessary: these probes do not prove no holes.
+	for (k = 0; k < 5; k = k + 1)
+	{
+		q = [(k & 1) ? mx_x : mn_x, (k & 2) ? mx_y : mn_y, floorz];
+		if (k == 4) q = [(mn_x + mx_x) * 0.5, (mn_y + mx_y) * 0.5, floorz];
+		tracebox(q + '0 0 2', PM_HULL_MINS, PM_HULL_MAXS, q - '0 0 2', MOVE_NOMONSTERS, e);
+		if (trace_fraction >= 1 || trace_startsolid || trace_allsolid || trace_ent != world || trace_plane_normal_z < 0.99 || fabs(trace_endpos_z - floorz) > 0.125)
+		{ SV_TASOptPlatformUnavailable(e, "interior supports do not agree"); return; }
+	}
+	e.topt_plzone = pick; e.topt_plfloor = floorz; e.topt_plzmn = zone_zmins[pick]; e.topt_plzmx = zone_zmaxs[pick];
+	e.topt_plgeneration = zone_generation; e.topt_plportal = portal;
+	e.topt_plpmn = portal.absmin; e.topt_plpmx = portal.absmax; e.topt_plmodel = portal.modelindex;
+	mn_z = mx_z = floorz; e.topt_plmn = mn; e.topt_plmx = mx; e.topt_planchor = p; e.topt_plon = 1;
+	// The immediate steering goal is the nearest usable platform, not the
+	// guide's portal sample. The scoring target is the full verified footprint.
+	e.topt_tgt = [bound(mn_x, e.origin_x, mx_x), bound(mn_y, e.origin_y, mx_y), floorz];
+	e.topt_plgoal = e.topt_tgt;
+	sprint(e, PRINT_HIGH, sprintf("tas optimize: platform bound region %.0f, interior %v..%v, floor %.3f n %v, aim %v\n",
+		pick, mn, mx, floorz, normal, e.topt_tgt));
+};
+
+float(entity e, vector p) SV_TASOptPlatformNear =
+{
+	local vector q;
+	q = [bound(e.topt_plmn_x, p_x, e.topt_plmx_x), bound(e.topt_plmn_y, p_y, e.topt_plmx_y), e.topt_plfloor];
+	if (p_z < q_z) q_z = q_z + 2 * (q_z - p_z);
+	return vlen(p - q);
+};
+
+float(entity e, vector p, float grounded, float kind, float aired) SV_TASOptPlatformLanded =
+{
+	if (!aired || !grounded) return FALSE;
+	if (kind == 1 || kind == 2 || kind == 3) return FALSE;
+	if (fabs(p_z - e.topt_plfloor) > 0.125) return FALSE;
+	return (p_x >= e.topt_plmn_x && p_x <= e.topt_plmx_x && p_y >= e.topt_plmn_y && p_y <= e.topt_plmx_y);
+};
+
+// Actual standing support for the finish handoff, not a predicted reach alone.
+float(entity e) SV_TASOptPlatformStanding =
+{
+	if (!SV_TASOptPlatformValid(e)) return FALSE;
+	if (!(e.flags & FL_ONGROUND)) return FALSE;
+	if (!SV_TASOptPlatformLanded(e, e.origin, TRUE, 0, TRUE)) return FALSE;
+	tracebox(e.origin, e.mins, e.maxs, e.origin - '0 0 2', MOVE_NOMONSTERS, e);
+	return (!trace_startsolid && !trace_allsolid && trace_fraction < 1 && trace_ent == world
+		&& trace_plane_normal_z >= 0.99 && fabs(trace_endpos_z - e.topt_plfloor) <= 0.125);
+};
+
 float(entity e, float ran) SV_TASOptTargetScore =
 {
-	local float i, d, best, bk, hit, lim, tx, dh, eg, hj, endhit, held, dmin, dmk, j, de, desm, desk, air, aired;
+	local float i, d, best, bk, hit, lim, tx, dh, eg, hj, endhit, held, dmin, dmk, j, de, desm, desk, air, aired, platform, plair, plairn;
 	best = 1000000; bk = -1; hit = FALSE; e.topt_candeg = 0; e.topt_candbr = 0; endhit = FALSE; held = FALSE; dmin = 1000000; dmk = 0; de = 0; desm = 1000000; desk = -1;
 	// `landed`: surf_tensor2 stage 6's revisit board (the ramp ridden before the flick and the 180) counted at tick 1 while the
 	// body still slid on that face from the first visit, and the next stretch began nowhere near the route (bench broad2)
 	air = 0; aired = (topt_out[8] == 0 || topt_out[8] == 4);       // in the air (or only brushing a wall) from the start
 	e.topt_waybad = FALSE;
+	platform = SV_TASOptPlatformValid(e); plair = plairn = 0; e.topt_pllandk = e.topt_plendhit = 0;
+	if (e.topt_plon && !platform) return -1;    // never mix legacy fitness into a live population
 	lim = (e.topt_rollcut == 1) ? ran - 1 : ran;        // the tick QC acts on is not one the prediction holds
 	tx = SV_TASOptLimit(e, lim);
 	if (tx >= 0) lim = tx;                              // a wall touched or the tube left: a cut there
@@ -1679,11 +1837,27 @@ float(entity e, float ran) SV_TASOptTargetScore =
 			if (topt_out[i*13-5] == 0 || topt_out[i*13-5] == 4) air = air + 1; else air = 0;
 			if (air >= 2) aired = TRUE;
 		}
+		if (!topt_out[i*13+6] && (topt_out[i*13+8] == 0 || topt_out[i*13+8] == 4)) plairn = plairn + 1; else plairn = 0;
+		if (plairn >= 2) plair = TRUE;
 		if (e.topt_endz >= 0 || e.topt_endtrack >= 0)
 		if (SV_TASOptInEnd(e, (i > 0) ? [topt_out[i*13-13], topt_out[i*13-12], topt_out[i*13-11]] : e.origin, [topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]]))
 			{ best = 0; bk = i; hit = TRUE; endhit = TRUE; break; }
 		d = vlen([topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]] - e.topt_tgt);
-		if (e.topt_endsafe) { de = SV_TASOptEndNear([topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]]); if (de < desm) { desm = de; desk = i; } }
+		if (e.topt_endsafe)
+		{
+			de = platform ? SV_TASOptPlatformNear(e, [topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]]) : SV_TASOptEndNear([topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]]);
+			if (de < desm) { desm = de; desk = i; }
+		}
+		if (platform)
+		{
+			if (!held)
+			{
+				if (SV_TASOptPlatformLanded(e, [topt_out[i*13], topt_out[i*13+1], topt_out[i*13+2]], topt_out[i*13+6], topt_out[i*13+8], plair))
+				{ best = 0; bk = i; hit = held = TRUE; dmin = 0; dmk = i; e.topt_pllandk = i + 1; }
+				else if (de < best) { best = de; bk = i; }
+			}
+			continue;     // neither a 300u near-volume nor the old point radius is a platform landing
+		}
 		if (held)       // a reach held: only an end hit after it counts
 		{
 			if (e.topt_endsafe) { if (de < dmin) { dmin = de; dmk = i; } }
@@ -1719,6 +1893,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 		if (!(dmk == lim - 1 && e.topt_rollcut == 1)) bk = dmk;
 		best = dmin;
 	}
+	e.topt_plendhit = endhit;
 	hj = bk;        // a hop's jump tick, before the link moves past it
 	if (hit && e.topt_tgtn_z >= 0.99)
 	{	// a hop: the link goes on past the jump until the hull stands (farsh ducks over a platform's lip
@@ -1760,6 +1935,7 @@ float(entity e, float ran) SV_TASOptTargetScore =
 					e.topt_edgen = e.topt_edgen + 1; e.topt_candeg = 1;
 					return SV_TASOptBand(TOPT_WEAK, d - 3000);
 				}
+		if (held && platform) return SV_TASOptBand(TOPT_REACH, 20000 - (bk + 1) + 0.0001 * e.topt_cande);
 		if (held)       // near the end, not in it: nearer the end's first guide row is better, energy a tiebreak (scored on
 		                // energy, every 400 u line tied and none was pulled in: t2s2's finish coasted into the fail teleport,
 		                // bench p13; an end-only reach had finished it in 0:12.420). Energy and wall terms do not apply here.
@@ -2059,6 +2235,9 @@ void(entity e, float v) SV_TASOptResult =
 			else
 				sprint(e, PRINT_HIGH, sprintf("tas optimize: target not reached: closest %.1f u at tick %.0f of %.0f\n",
 					e.topt_reachd, e.topt_reachk, e.topt_n));
+			if (e.topt_plon)
+				sprint(e, PRINT_HIGH, sprintf("tas optimize: played platform endpoint %v velocity %v grounded %.0f; predicted landing tick %.0f, true-end %.0f\n",
+					e.origin, e.velocity, (e.flags & FL_ONGROUND) != 0, e.topt_pllandk, e.topt_plendhit));
 			if (fabs(e.topt_reachv - e.topt_bestv) > 0.05)
 				sprint(e, PRINT_HIGH, "tas optimize: the played best's rollout differs from the search: the world moved between them\n");
 			if (e.topt_pn == e.topt_play && e.topt_pcut != 1 && (e.origin != e.topt_po || e.velocity != e.topt_pv))
@@ -2529,7 +2708,7 @@ void(entity e) SV_TASOptCurveReset =
 };
 void(entity e) SV_TASOptCurveNext =
 {
-	local float j, u, g, c;
+	local float j, u, g, c, cut, split;
 	if (SV_TASOptBatchHeld(e))
 	{	// P1467: drawn already, in this order, by the batch
 		for (j = 0; j < e.topt_kd; j = j + 1) topt_kcur[j] = topt_bat_kcur[e.topt_kidx * TOPT_KMAX + j];
@@ -2583,7 +2762,25 @@ void(entity e) SV_TASOptCurveNext =
 			u = e.topt_kidx - 13;                                   // 5 x 5: q1, q2 in -90..90
 			c = -90 + 45 * floor(u / 5); g = -90 + 45 * (u - 5 * floor(u / 5));
 			if (e.topt_mode & 64) { u = e.topt_efol ? TOPT_DQOFF : TOPT_DOFF; c = c * u / 120; g = g * u / 120; }
-			for (j = 0; j < e.topt_kn; j = j + 1) topt_kcur[j] = (j < e.topt_kn / 2) ? c : g;
+			split = e.topt_kn / 2; cut = -1;
+			if ((e.topt_mode & 64) && e.topt_efol)
+			{
+				if (e.topt_flick > 12) cut = e.topt_flick - 12;
+				else if (e.topt_flick <= 0 && e.topt_catch > 0) cut = e.topt_tgtj - e.topt_catch;
+				else if (e.topt_flick <= 0 && e.topt_catch <= 0 && e.topt_kex > 0) cut = e.topt_kex;
+				if (cut > 0)
+				{
+					// Separate the approach/dip from the existing event window.
+					split = 0;
+					for (j = 0; j < e.topt_kn; j = j + 1)
+						if (SV_TASOptKnotTick(e, j) < cut) split = split + 1;
+					if (split <= 0 || split >= e.topt_kn) split = e.topt_kn / 2;
+				}
+			}
+			for (j = 0; j < e.topt_kn; j = j + 1) topt_kcur[j] = (j < split) ? c : g;
+			if (e.topt_kidx == 14 && cvar("developer") >= 2)
+				sprint(e, PRINT_HIGH, sprintf("tas optimize: event seed flick %.0f catch %.0f ride %.0f cut %.0f split %.1f->%.1f knots %.0f\n",
+					e.topt_flick, e.topt_catch, e.topt_kex, cut, e.topt_kn / 2, split, e.topt_kn));
 		}
 		return;
 	}
@@ -2763,6 +2960,8 @@ void(entity e) SV_TASOptFrame =
 	SV_TASAutoFrame(e);             // P1449: an autosurf's next stretch, between its searches
 	if (e.topt_on || e.tdem_on || e.as_on) topt_busyt = time;   // the chain holds the guard across its rewinds, armed too (it owns as_rows)
 	if (!e.topt_on) return;
+	if (e.topt_plon)
+		if (!SV_TASOptPlatformOwnerValid(e)) { SV_TASOptStop(e, "platform binding changed; start a fresh search"); return; }
 	if (!e.run_tas_paused || e.run_t_state != TS_RUNNING) { SV_TASOptStop(e, "TAS play/off, or the run ended"); return; }
 	if (e.run_tas_replaystate == TAS_TAPE_ACTIVE || e.run_tas_pending) return;
 	head = SV_TimerTicks(e);
@@ -3446,7 +3645,8 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_bestr2 = -1; e.topt_bests = 0.5;
 	e.topt_mo = e.origin; e.topt_mv = e.velocity; e.topt_kwiden = 0;
 	e.topt_endz = (endz >= 0) ? endz : -1; e.topt_endtrack = (endtr >= 0) ? endtr : -1; e.topt_startz = (startz >= 0) ? startz : -1; e.topt_startz2 = (startz2 >= 0) ? startz2 : -1;
-	if (endsafe && (e.topt_endz >= 0 || e.topt_endtrack >= 0)) { e.topt_endsafe = 1; SV_TASOptSimStart(e); SV_TASOptEndWays(e); }
+	e.topt_plon = 0;
+	if (endsafe && (e.topt_endz >= 0 || e.topt_endtrack >= 0)) { e.topt_endsafe = 1; SV_TASOptSimStart(e); SV_TASOptEndWays(e); SV_TASOptPlatformBind(e); }
 	SV_TASOptSeed(e, max(0, seed), seed >= 0);
 	e.topt_playk = (playk >= 0) ? playk + 1 : 0;
 	if (!e.topt_playk) { topt_arcn = 0; topt_arcmo = e.origin; topt_arcmv = e.velocity; topt_arctgt = e.topt_tgt; topt_arckd = e.topt_kd; topt_arcnn = n; topt_arcmode = mode; }

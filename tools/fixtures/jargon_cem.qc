@@ -122,5 +122,39 @@ void() main =
 		same(topt_r1, r1, "held RNG1"); same(topt_r2, r2, "held RNG2"); same(topt_r3, r3, "held RNG3"); held = 0;
 	}
 	puts("PASS pristine all20, kd16 lead, generic/demo, freeq off/on and held retrieval\n");
+	// KnotTick=j here: partition/eligibility only, not physical event timing.
+	for (pass = 0; pass < 13; pass = pass + 1)
+	{
+		e.topt_mode = 64; e.topt_efol = 1; e.topt_kn = 12; e.topt_kd = 16;
+		e.topt_kgen = -1; e.topt_kidx = 14; e.topt_flick = 21;
+		e.topt_catch = 0; e.topt_tgtj = 11; e.topt_kex = 0; w = 9;
+		if (pass == 1) { e.topt_flick = 0; e.topt_catch = 3; w = 8; }
+		if (pass == 2) { e.topt_flick = 12; e.topt_catch = 3; w = 6; }
+		if (pass == 3) { e.topt_flick = 13; w = 1; }
+		if (pass == 4) { e.topt_flick = 50; w = 6; }
+		if (pass == 5) { e.topt_flick = 0; w = 6; }
+		if (pass == 6) { e.topt_flick = 0; e.topt_catch = 12; w = 6; }
+		if (pass == 7) { e.topt_mode = 0; w = 6; }
+		if (pass == 8) { e.topt_efol = 0; w = 6; }
+		if (pass == 9) { e.topt_kn = 11; e.topt_flick = 0; w = 5.5; }
+		if (pass == 10) { e.topt_flick = 0; e.topt_kex = 8; w = 8; }
+		if (pass == 11) { e.topt_flick = 0; e.topt_kex = 50; w = 6; }
+		if (pass == 12) { e.topt_flick = 0; e.topt_kex = 1; w = 1; }
+		v = -90;
+		if (e.topt_mode & 64) v = v * (e.topt_efol ? TOPT_DQOFF : TOPT_DOFF) / 120;
+		if (pass == 0)
+		{
+			BaselineNext(e);
+			near(topt_kcur[6], v * 0.5, "acting pristine midpoint at knot6");
+			near(topt_kcur[8], v * 0.5, "acting pristine midpoint at knot8");
+		}
+		rng(); SV_TASOptCurveNext(e);
+		for (j = 0; j < e.topt_kn; j = j + 1)
+			near(topt_kcur[j], (j < w) ? v : v * 0.5, "event grid partition and exact fallback");
+		same(topt_r1, 123, "grid unchanged RNG1");
+		same(topt_r2, 456, "grid unchanged RNG2");
+		same(topt_r3, 789, "grid unchanged RNG3");
+	}
+	puts("PASS acting launch/catch partitions and all eligibility fallbacks (synthetic KnotTick)\n");
 	if (!failures) { puts("PASS CEM checks="); puts(ftos(checks)); puts("\n"); }
 };

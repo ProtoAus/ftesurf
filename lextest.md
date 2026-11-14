@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1548 supported-platform handoff — implemented; runtime/deployment and owner check PENDING
+- Owner clarification (14 Nov): tensor2 stage2's final platform is large and enclosed by walls except the entry, with a central door portal. A supported arrival is recoverable; passive drift missing the finish trigger is not proof the approach failed. This is geometry/design input, not acceptance of the new handoff.
+- After verified deployment, watch one landing that previously caused a reset: JARGON should keep it, steer toward the door, and finish through the real trigger. If it cannot navigate, it should pause with a clear message instead of retrying the ramp. Report the last console message or a short clip; no config/data reset is needed.
+- No new human pass is recorded. The event-aligned pre-handoff run is measured at12.285seconds versus13.110 for the matched midpoint control, on the accepted native family; both complete recordings pass the strict reader. Neither timer finish nor this measurement establishes optimal boarding impact or new handoff behavior.
+
 ## P1545 zone editor shows every zone -- owner check PENDING
 - On a lobby map with zones, open the zone editor (or set zone_xray 1): zones behind walls should now show too; with both off, normal play still hides zones you cannot see. Since P1285 (4 Nov) the editor and xray hid them -- a bracketing slip, read and reviewed, not run on a client.
 - The rest of P1545 changes nothing in normal play today: ent_cursor world clicks work again, menu panels (off by default) power properly (tools/p1545-precedence.md).
@@ -16,7 +21,8 @@
 - Return to default Source and confirm the normal save/replay list is still there. Practice runs must stay visibly unranked and separate; do not delete/reset existing data to test it. Report any cross-profile state appearing or a refusal that replaced an existing save.
 - The existing full-reader/corpus results do not substitute for these observations. No human pass, authentic 1000 schedule, full HL1/AG equivalence or HL2 implementation is claimed. Operational/runtime gates remain in `tools/p1542-legacy-movement.md`.
 
-## P1541/P1543 JARGON ramp behavior — issue reported; improved-route acceptance PENDING
+## P1541/P1543 JARGON ramp behavior — platform observation received; improved-route acceptance PENDING
+- Owner follow-up (14 Nov): "the final platform detection seem to work, please continue". Record this as their qualitative platform-detection observation; the specific arm/build was not identified. It does not confirm faster completion, improved ramp boarding/takeoff, universal detection or measured energy/impact. Continue approach/launch work without re-litigating that observation.
 - Owner's observations (13 Nov; existing JARGON, arm not identified): tensor2 stage2 often boards the short last ramp late/deep or high/slow, leaving insufficient useful dip/launch speed. The post-launch direction can look wrong for clearing the physical platform; the immediate landing region is not the portal target. A useful line needs low-loss early entry, enough speed through the dip, and upward launch with a usable direction. This is confirmed qualitative design input, not acceptance of a changed candidate or measured impact/optimal-energy evidence.
 - P1543's isolated platform-region and energy-feedback pilots were tested but were slower or did not finish within the cap, so all pathing changes were removed. No owner has accepted an improved launch/path from those prototypes. P1543 retains only the separately tested recording-restore correction; tools/p1543-tas-board-restore.md keeps that distinction.
 - P1541 retains only search-state and invalid-elite correctness fixes. The joint and boarding-window experiments did not beat the control and were removed; no new option or improved boarding/launch is claimed. The retained correction is installed in both Windows trees (13 Nov10:36UTC) and live on all12 Pi lobbies (11:59UTC, postflight12:00UTC). Existing local games were not hot-reloaded. This does not mark the human characterization below as passed.

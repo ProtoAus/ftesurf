@@ -21,6 +21,9 @@
 
 ## next
 
+- JARGON can aim for a physically checked final-platform area instead of a single endpoint, with conservative fallback when the area is ambiguous.
+- After a supported final-platform landing, JARGON steers toward the end portal instead of discarding the approach because passive coasting misses it.
+- JARGON's initial steering trials separate ramp and exit corrections at the existing ride boundary rather than an arbitrary halfway split.
 ### P1546 Run-check maintenance
 - Run checks remain accounted for until their background work finishes, keeping maintenance from advancing too early.
 

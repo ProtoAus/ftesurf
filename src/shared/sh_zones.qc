@@ -187,6 +187,7 @@ string zone_td_name[ZONE_MAX];
 vector zone_pt[ZONE_MAX_POINTS];    // x,y used; z always 0
 
 float  zone_count;
+int zone_generation;           // local table cache epoch; never serialized into evidence
 float  zone_ptcount;
 float  zone_source;                 // ZSRC_*
 string zone_mapname;                // what the tables were built for
@@ -282,6 +283,7 @@ void() Zone_Hash =
 	local float z, p, e, b;
 	local vector v;
 
+	zone_generation = zone_generation + 1i;
 	if (zone_crc != "")
 	{
 		strunzone(zone_crc);
@@ -446,6 +448,7 @@ void() Zone_Clear =
 {
 	local float z;
 
+	zone_generation = zone_generation + 1i;
 	// Release the destination names before the count goes, or they leak a
 	// zoned string per region per map change.
 	for (z = 0; z < zone_count; z = z + 1)
@@ -484,6 +487,7 @@ void(float z) Zone_Finish =
 	local float i, n, first;
 	local vector mn, mx, p;
 
+	zone_generation = zone_generation + 1i;
 	first = zone_first[z];
 	n = zone_npts[z];
 	if (n < 1)

@@ -12,8 +12,13 @@ The tested joint-horizon and localized native-contact-window prototypes did not
 beat the matched12.450s control and were removed. Details and failed outcomes:
 `tools/p1541-jargon-search.md`. Do not resurrect them as accepted improvements or
 infer optimality/unreachability from failed searches. A future launch-aware
-handoff/value design remains unbuilt and must earn its own acting, same-budget
-comparison plus a small owner check of the actual ramp and platform behavior.
+handoff/value design is not yet a proven general solution. P1548's current work
+adds a physically probed rectangular platform goal, event-aligned CEM seeds and
+an active ground-to-portal handoff. The seed-only accepted-native comparison
+improved13.110to12.285seconds; the active handoff still needs acting runtime
+acceptance and deployment. These do not establish optimal entry/impact or close
+this broader request. A small owner check of the actual ramp/platform behavior
+remains pending; `tools/p1548-jargon-platform.md` separates the evidence.
 
 ## Optional GoldSrc/HL2 movement profiles — requested 11 Nov 2026, IN PROGRESS
 
