@@ -21,9 +21,9 @@
 
 ## next
 
-### P1548 JARGON platform arrivals
+### P1549 JARGON platform arrivals
 - JARGON can aim for a physically checked final-platform area instead of a single endpoint, with conservative fallback when the area is ambiguous.
-- After a supported final-platform landing, JARGON steers toward the end portal instead of discarding the approach because passive coasting misses it.
+- After a supported final-platform landing, JARGON keeps it and uses a checked doorway approach instead of retrying the ramp because passive coasting misses the portal.
 - JARGON's initial steering trials separate ramp and exit corrections at the existing ride boundary rather than an arbitrary halfway split.
 
 ### P1547 Instant load right after a save

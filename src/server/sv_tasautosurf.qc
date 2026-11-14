@@ -87,7 +87,8 @@ float as_rmin;                  // the nearest-row search starts here (a full-ru
 .float as_saved;                // the furthest stretch autosaved for Continue (-1 none)
 .float as_esc;                  // P1478: effort steps a stuck course chain has taken by itself (2 at most)
 .float as_fintry;               // P1483: the try the last stretch reached on: a failed coast goes on from it (each visit its tries)
-.float as_fbest, as_flast;       // grounded finish: closest portal distance and last progress tick
+.float as_fbest, as_flast;       // grounded finish: closest current-goal distance and last progress tick
+.vector as_fvia; .float as_fvia_on; // a clear face approach before entering a framed doorway
 .float as_cseed;               // P1483: Continues of this course this session (a Continue after "stuck" searched exactly as before: review F)
 float as_visit[TAS_ASMAX];      // P1483: searches of each stretch this chain (in the seed)
 // a set tas_jargon_seed reproduces a chain exactly (the benchmark); unset, each new chain searches anew
@@ -1875,6 +1876,39 @@ float(entity e) SV_TASAutoCoastPredict =
 	return (SV_TASAutoRule(262144) && ran >= n) ? -2 : 0;     // a prediction that stopped short says nothing
 };
 
+float(entity e, vector p, vector q) SV_TASAutoFinishClear =
+{
+	tracebox(p, e.mins, e.maxs, q, MOVE_NOMONSTERS, e);
+	return (!trace_startsolid && !trace_allsolid && trace_fraction == 1);
+};
+
+// A door's bounding-box centre can sit behind a side post. Try its four clear face approaches.
+float(entity e, vector goal) SV_TASAutoFinishRoute =
+{
+	local float i, cost, best;
+	local vector q;
+	e.as_fvia_on = 0;
+	if (SV_TASAutoFinishClear(e, e.origin, goal)) return TRUE;
+	best = 100000000;
+	for (i = 0; i < 4; i = i + 1)
+	{
+		q = goal;
+		if (i == 0) q_x = e.topt_plpmn_x - e.maxs_x - 2 * (e.maxs_x - e.mins_x);
+		if (i == 1) q_x = e.topt_plpmx_x - e.mins_x + 2 * (e.maxs_x - e.mins_x);
+		if (i == 2) q_y = e.topt_plpmn_y - e.maxs_y - 2 * (e.maxs_y - e.mins_y);
+		if (i == 3) q_y = e.topt_plpmx_y - e.mins_y + 2 * (e.maxs_y - e.mins_y);
+		if (q_x < e.topt_plzmn_x || q_x > e.topt_plzmx_x || q_y < e.topt_plzmn_y || q_y > e.topt_plzmx_y) continue;
+		tracebox(q, e.mins, e.maxs, q - '0 0 2', MOVE_NOMONSTERS, e);
+		if (trace_startsolid || trace_allsolid || trace_fraction >= 1 || trace_ent != world) continue;
+		if (trace_plane_normal_z < 0.99 || fabs(trace_endpos_z - e.topt_plfloor) > 0.125) continue;
+		if (!SV_TASAutoFinishClear(e, e.origin, q)) continue;
+		if (!SV_TASAutoFinishClear(e, q, goal)) continue;
+		cost = vlen(q - e.origin) + vlen(goal - q);
+		if (cost < best) { best = cost; e.as_fvia = q; e.as_fvia_on = 1; }
+	}
+	return e.as_fvia_on;
+};
+
 // An enclosed goal platform is progress, not a failed ramp because passive drift misses a door.
 float(entity e) SV_TASAutoPlatformFinish =
 {
@@ -1882,10 +1916,15 @@ float(entity e) SV_TASAutoPlatformFinish =
 	if (!e.topt_plon) return FALSE;
 	if (!SV_TASOptPlatformOwnerValid(e))
 	{ SV_TASAutoStop(e, "platform binding changed; paused without backtracking"); return TRUE; }
-	if (!SV_TASOptPlatformStanding(e)) return FALSE;
+	if (!SV_TASOptPlatformStanding(e, TRUE)) return FALSE;
 	q = 0.5 * (e.topt_plpmn + e.topt_plpmx); q_z = e.origin_z;
-	e.as_stage = 33; e.as_sn = 0; e.as_flast = 0; e.as_fbest = vlen(q - e.origin);
-	SV_TASAutoNote(e, 1, sprintf("platform reached: steering to the end portal (%.0f u away), keeping this approach", e.as_fbest));
+	e.as_stage = 33; e.as_sn = 0; e.as_flast = 0;
+	if (!SV_TASAutoFinishRoute(e, q))
+	{ SV_TASAutoStop(e, "no clear doorway approach; platform held, not backtracked"); return TRUE; }
+	if (e.as_fvia_on) q = e.as_fvia;
+	e.as_fbest = vlen(q - e.origin);
+	SV_TASAutoNote(e, 1, sprintf("platform reached: steering %sto the end portal (%.0f u away), keeping this approach",
+		e.as_fvia_on ? "via a clear doorway approach " : "", e.as_fbest));
 	return TRUE;
 };
 
@@ -2271,14 +2310,36 @@ void(entity e) SV_TASAutoFrame =
 		if (e.run_tas_pending || e.run_tas_replaystate == TAS_TAPE_ACTIVE || e.run_tas_replaystate == TAS_TAPE_STAGING) return;
 		if (!SV_TASOptPlatformOwnerValid(e))
 		{ SV_TASAutoStop(e, "platform binding changed; paused without backtracking"); return; }
-		if (!SV_TASOptPlatformStanding(e))
-		{ SV_TASAutoStop(e, "finish navigation left the supported platform; paused without backtracking"); return; }
+		if (!SV_TASOptPlatformStanding(e, FALSE))
+		{
+			if (cvar("developer") >= 2)
+			{
+				sprint(e, PRINT_HIGH, sprintf("tas autosurf: finish support check position %v velocity %v grounded %.0f floor %.4f\n",
+					e.origin, e.velocity, (e.flags & FL_ONGROUND) != 0, e.topt_plfloor));
+				sprint(e, PRINT_HIGH, sprintf("tas autosurf: finish bounds inset %v..%v portal %v..%v\n",
+					e.topt_plmn, e.topt_plmx, e.topt_plpmn, e.topt_plpmx));
+			}
+			SV_TASAutoStop(e, "finish navigation support/corridor check changed; paused without backtracking"); return;
+		}
 		u = 0.5 * (e.topt_plpmn + e.topt_plpmx); u_z = e.origin_z;
+		if (e.as_fvia_on)
+		{
+			if (vlen(e.as_fvia - e.origin) <= 32)
+			{
+				if (SV_TASAutoFinishClear(e, e.origin, u))
+				{
+					e.as_fvia_on = 0;
+					e.as_fbest = vlen(u - e.origin); e.as_flast = e.as_sn;
+				}
+			}
+			if (e.as_fvia_on) u = e.as_fvia;
+		}
 		d = vlen(u - e.origin);
 		if (d < e.as_fbest - 4) { e.as_fbest = d; e.as_flast = e.as_sn; }
 		if (e.as_sn - e.as_flast >= 2 / run_t_tick)
 		{ SV_TASAutoStop(e, "end portal approach is blocked; platform held, not backtracked"); return; }
-		SV_TASAutoGuide(e, 400, 0, vectoyaw(u - e.origin), 0, 4);
+		argc_pl = tokenize(sprintf("tas next manual 400 0 0 %.4f 0 4", vectoyaw(u - e.origin)));
+		SV_TASPlanCommand(e, argc_pl);
 		e.as_sn = e.as_sn + 4;
 		return;
 	}

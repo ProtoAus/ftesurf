@@ -1,7 +1,5 @@
 # BACKLOG.md
 
-- JARGON supported-platform finish / `SV_TASAutoFrame` phase31, tensor2 stage2 (14 Nov): the matched current-native control reaches a grounded platform, predicts passive drift missing the end trigger, then retries the ramp. Owner confirms a large enclosed platform with a central door; this is recoverable, not proof of a bad launch. P1548's phase33 handoff is implemented/source-reviewed/zero-warning compiled, but runtime acceptance and deployment remain blocked on a stale foreign shared-rig lease awaiting release permission. Falsifier: reproduce the same qualified landing, execute active native ground guidance to a genuine stage finish without post-platform ramp backtracking and with strict recording0faults; a blocked path must pause honestly, not claim completion or discard the approach. Remove this item after that acceptance, not merely compilation.
-
 ## Window alpha with fog — owner report (14 Nov 2026)
 
 - Site: rendered window/glass material alpha under world fog; exact map/material/view not yet identified. Owner confirms P1003 authored no-fog works, but separately reports "the window alpha with fog is broken". This is not a no-fog-policy acceptance failure or a diagnosed shader root cause. No fix claimed; owner may assign another agent.

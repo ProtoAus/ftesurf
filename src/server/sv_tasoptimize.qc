@@ -1806,14 +1806,31 @@ float(entity e, vector p, float grounded, float kind, float aired) SV_TASOptPlat
 };
 
 // Actual standing support for the finish handoff, not a predicted reach alone.
-float(entity e) SV_TASOptPlatformStanding =
+float(entity e, float arrival) SV_TASOptPlatformStanding =
 {
+	local float area, door, ok;
 	if (!SV_TASOptPlatformValid(e)) return FALSE;
 	if (!(e.flags & FL_ONGROUND)) return FALSE;
-	if (!SV_TASOptPlatformLanded(e, e.origin, TRUE, 0, TRUE)) return FALSE;
+	if (fabs(e.origin_z - e.topt_plfloor) > 0.125) return FALSE;
+	if (arrival)
+	{
+		if (!SV_TASOptPlatformLanded(e, e.origin, TRUE, 0, TRUE)) return FALSE;
+	}
+	else
+	{	// The inset is a landing target, not a cage around a supported walk to the door.
+		area = (e.origin_x >= e.topt_plzmn_x && e.origin_x <= e.topt_plzmx_x
+			&& e.origin_y >= e.topt_plzmn_y && e.origin_y <= e.topt_plzmx_y);
+		door = (e.origin_x + e.maxs_x >= e.topt_plpmn_x && e.origin_x + e.mins_x <= e.topt_plpmx_x
+			&& e.origin_y + e.maxs_y >= e.topt_plpmn_y && e.origin_y + e.mins_y <= e.topt_plpmx_y);
+		if (!area && !door) return FALSE;
+	}
 	tracebox(e.origin, e.mins, e.maxs, e.origin - '0 0 2', MOVE_NOMONSTERS, e);
-	return (!trace_startsolid && !trace_allsolid && trace_fraction < 1 && trace_ent == world
+	ok = (!trace_startsolid && !trace_allsolid && trace_fraction < 1 && trace_ent == world
 		&& trace_plane_normal_z >= 0.99 && fabs(trace_endpos_z - e.topt_plfloor) <= 0.125);
+	if (!ok && cvar("developer") >= 2)
+		sprint(e, PRINT_HIGH, sprintf("tas optimize: standing trace refused: fraction %.4f start %.0f all %.0f normal %v world %.0f floor delta %.4f\n",
+			trace_fraction, trace_startsolid, trace_allsolid, trace_plane_normal, trace_ent == world, trace_endpos_z - e.topt_plfloor));
+	return ok;
 };
 
 float(entity e, float ran) SV_TASOptTargetScore =

@@ -1,9 +1,9 @@
 # lextest.md — things waiting on a human
 
-## P1548 supported-platform handoff — implemented; runtime/deployment and owner check PENDING
+## P1549 supported-platform handoff — native finish passed; deployment and owner check PENDING
 - Owner clarification (14 Nov): tensor2 stage2's final platform is large and enclosed by walls except the entry, with a central door portal. A supported arrival is recoverable; passive drift missing the finish trigger is not proof the approach failed. This is geometry/design input, not acceptance of the new handoff.
 - After verified deployment, watch one landing that previously caused a reset: JARGON should keep it, steer toward the door, and finish through the real trigger. If it cannot navigate, it should pause with a clear message instead of retrying the ramp. Report the last console message or a short clip; no config/data reset is needed.
-- No new human pass is recorded. The event-aligned pre-handoff run is measured at12.285seconds versus13.110 for the matched midpoint control, on the accepted native family; both complete recordings pass the strict reader. Neither timer finish nor this measurement establishes optimal boarding impact or new handoff behavior.
+- No new human pass is recorded. Acting native handoff:14.280seconds/0backtracks, strict0faults; normal production:12.285seconds/4backtracks, strict0faults. The matched pre-handoff midpoint was13.110seconds/4backtracks. These are single-seed controlled runs, not optimal boarding/impact or a general speed guarantee.
 
 ## P1547 instant load right after a save -- owner check PENDING (ask markbeaton54)
 - On a lobby at your normal ping: save, then tap load straight away (within your ping), a few times over. You should move the moment you let go -- no "Loading save" pause even right after saving -- and land exactly where you pressed save.
