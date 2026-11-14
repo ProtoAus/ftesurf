@@ -3,7 +3,8 @@
 Lex: surf_ferros prints "2 material(s) did not resolve" -- "figure out why the texture isn't resolving and fix it,
 or remove the error", and automated reporting if we need it. Task root C:/FTESurf-worktrees/reports-20261114
 (arms/: bspmdl.py, mdlmesh.py, propwhere.py, meshwhere.py, misscross.py, mmrcross.py, shots1560.py, pxdiff.py,
-chain19-23.sh; runs/p1560*). Engine ftequakers afe2be9ec..800f91a1d; game repo cae3eb3a..(this commit).
+chain19-24.sh, grade24.sh; runs/p1560*). Engine ftequakers 2a61e9731..5811e2cc6; game repo: the P1560 commits
+(mapdeps --unshipped .. this record).
 
 ## Why it does not resolve
 
@@ -57,9 +58,28 @@ warning printed on about half of all maps.
     "1 material ... TOOLSNODRAW") differs by 9358 / 7562 px at two fixed cameras; with it, absent.
   - shipped build e360c363 with the list (chain23, run 1): no block, visible 0; its frames match chain22's list
     frames to the FPS counter (71 / 161 px) and differ from the no-list frames by the banner (9357 / 7577 px).
-    Its no-list, developer 1 and control runs were stopped by the system for low memory and not re-run.
+    Its no-list, developer 1 and control runs were stopped by the system for low memory.
+  - shipped build 33568e70, rebased onto patch-1559 (chain24, all four runs, installed exe 35d8dbfa): with the list
+    no load-time block on surf_ferros or surf_beyond at developer 0 and visible 0; at developer 1 the block with
+    "None of these ever shipped"; without the list both maps print the pre-P1560 wording and visible 1, the same
+    lines and cvar as the installed patch-1559 plugin 3b05bfe8. Pixels: control vs no-list 0 px at ferros_m0 and
+    only the FPS counter (88-170 px) at ferros_m0back, ferros_m1, beyond_nd; no-list vs list 9418 px at ferros_m0
+    and 7489 at beyond_nd, the banner (looked at: "2 materials did not resolve on this map ... AET001_078_A.vmt" and
+    "1 material ... TOOLSNODRAW" without the list, nothing with it), and the FPS counter only at the later cameras,
+    where the banner has timed out. The spawn and map-load shots differ by 260k+ px between any two runs, the
+    control included: not a fixed view.
 - Reviews: four rounds (lenses: control flow, visual consequences, diagnostics; then key agreement, behaviour of
   anything unlisted, the tool). Round 1: state 0 is not "proven never shipped" (the first cut silenced engine lookup
   faults too) and particle-script names reach the same loader -- redesigned around the list. Round 2: the list did
   not ship, states 2/3 could go half quiet, a list made short of a pack, key collisions, the banner. Round 3: a dead
   8-byte missing-game test, an unguarded alias, empty packs, the release Gates step. Round 4: no medium or high.
+
+## Delivery (15 Nov)
+
+- Both installs: fteplug_hl2_x64.dll 33568e70 (built from 647693873, whose plugins/ tree is identical to 5811e2cc6;
+  .prev = patch-1559 3b05bfe8, .pre1559 = 82fd0d3d) and ftesurf/data/unshipped.txt a4b3ca3f. C:\FTEQuake runs
+  fteqw64.exe 35d8dbfa, the exe the rig used; its ftesurf64.exe (5 Nov) is not the one launched.
+- Engine ftequakers main 5811e2cc6 (on P1564/P1565). No lobby change: the warning and the banner are client-side, and
+  the lobby report is sent only when hl2_unresolved_visible is above 0.
+- Players get it with the next release, which ships data/unshipped.txt; until then a release-installed client keeps
+  the old plugin and the old wording.

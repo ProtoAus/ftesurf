@@ -63,7 +63,7 @@
   name) was built, gated on the list, a .vmt request and fs_automount_state 0/1 with every game found, and reviewed
   through three rounds, then taken out: every listed skin measured (surf_ferros' AET001 panels, surf_beyond's
   TOOLSNODRAW faces, surf_fairy's degenerate Alpha mesh) sat where no camera showed it, so nothing proved the ink.
-  Falsifier first: a listed skin a player can see, control vs subject at one camera. Code: engine 56e577c1e..8d6a52686.
+  Falsifier first: a listed skin a player can see, control vs subject at one camera. Code: engine 2a61e9731..8fe2b48fc (taken out in c2955585b).
 - mapdeps.py scans texdata, static/entity models and the sky, not entity material keys (overlays, decals, sprites):
   surf_4am's "materials/ceiling/tar", surf_ardon's "materials/komaokc/metal3" and surf_leesriize's
   "materials/plaster_wall_24" reach the engine from those and stay loud on maps whose other misses are listed.
