@@ -686,8 +686,11 @@ def resolve_material(rs, mat, need, seen, depth=0, prefer=None):
     #No candidate resolved anywhere at all
     need.setdefault("-", set()).add(candidates(mat)[0])
     need.setdefault("visible:-", set()).add(candidates(mat)[0])
-    #P1560: the engine keys the name itself, which can carry its own materials/ (surf_4am's "materials/ceiling/tar")
-    need.setdefault("unshipped", set()).add(unshipped_key(mat))
+    #P1560: the engine keys the name itself, which can carry its own materials/ (surf_4am's "materials/ceiling/tar"),
+    #and reads that file without a second prefix -- so list it only if that spelling is absent everywhere too
+    k = unshipped_key(mat)
+    if rs.find("materials/" + k + ".vmt")[0] is None:
+        need.setdefault("unshipped", set()).add(k)
     return False
 
 
@@ -1025,6 +1028,7 @@ def main():
         #P1560: a pack absent here would put its content on the list, and the plugin would quiet and grey
         #what fs_load brings back on a PC that has it
         gone = [n for n, r in MOUNTED if not os.path.isdir(r)] + [n for n, r, _s in ADDONS if not os.path.isdir(r)]
+        gone += ["%s (empty)" % p.name for p in live + addon_packs if not len(p)]   #a folder left behind (CS:GO -> CS2)
         if gone:
             raise SystemExit("--unshipped refused: not installed here: %s" % ", ".join(gone))
 

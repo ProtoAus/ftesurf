@@ -33,6 +33,12 @@ packs thumbnails fetched since the last release into a new atlas page and copies
 ship set reads them from. Exit 2 means a table was refused: read the names it lost,
 and `--accept` only if they are right.
 
+Two more generated tables ship and the Gates step refuses without them: `data/matcolours.txt`
+(P1548, `tools/matcolours.py`) and `data/unshipped.txt` (P1560,
+`python tools/mapdeps.py --dry --unshipped <release worktree>/ftesurf/data/unshipped.txt`, which
+refuses unless every addon pack is installed). Copy current ones from `C:\FTESurf\ftesurf\data`
+or regenerate them after a game or library change.
+
 Use the existing Linux builder for the engine pin when needed:
 
 ```powershell
