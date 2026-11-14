@@ -43,11 +43,10 @@ skychains.py over the 2204 .bsp in Momentum's maps folder -> 65. Dedicated fteqw
 svarm.py, `developer 1`, the spin line now ending "(N drawn by csprogs, M always sent)". Fix qwprogs
 bcb6f7c6 against a control (the same tree with only line 12175 unbracketed, e043650a).
 - One server for all 65 died at map 17 on the dedicated server's model table (MAX_MOD_KNOWN); batches of
-  10 after that. The last control batch was stopped by Claude Code for low memory and not rerun.
+  10 after that. The last control batch was stopped by Claude Code for low memory; rerun on Lex's word
+  (same control build, all 9 maps).
 - 61 maps print the line (the other 4 have no csprogs chain: three are func_door_rotating roots, one
-  movelinear's only child is a trigger). Fix and control agree on all 54 both reached. The 7 the control
-  did not reach read 0 or 1 always sent with the fix; propagation only adds, and a count of 1 is a
-  one-member chain, so the control cannot differ there.
+  movelinear's only child is a trigger). Fix and control print the same line on all 61.
 - The counter discriminates as far as counting goes: surf_destruction 6, surf_hourglass(_css) 4,
   surf_happyhug / surf_surreal(_css) 1 always sent -- chains whose root carries the mark itself.
 So no map in today's library changes; the fix is for a chain whose rider alone is in the sky.
