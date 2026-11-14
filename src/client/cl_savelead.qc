@@ -419,6 +419,7 @@ float() SaveLead_Camera =
 	savedvh = serverkeyfloat(sl_lead_angles_z ? "pm_duckviewheight" : "pm_viewheight");
 	if (savedvh <= 0) savedvh = vo_z;
 	vh += (savedvh - vh) * endmix;
+	vh = Line_ClipEye(p, vh, duck ? 1 : 0);   // P1559
 	p += [0, 0, vh];
 	setproperty(VF_ORIGIN, p);
 	setproperty(VF_ANGLES, [aim_x, aim_y, 0]);

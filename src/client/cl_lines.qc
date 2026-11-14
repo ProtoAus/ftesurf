@@ -1031,6 +1031,32 @@ float(vector o, vector n, float ducked) Line_OnRamp =
 	return TRUE;
 };
 
+// P1559: P916's roof clearance (PMSrc_ClipEye, pm_source.c) for a DRAWN eye -- 12 u under a
+// ceiling, view only -- traced at the drawn feet each frame, as P917 does for live play.
+// A slab at the crown, not the engine's whole body: an interpolated sample can sit a hair
+// inside a ramp, and a body box reads that as startsolid (the eye drops 14 u).
+float(vector feet, float eyeh, float ducked) Line_ClipEye =
+{
+	local vector mn, mx;
+	local float top;
+
+	if (!ln_probe)
+	{
+		ln_probe = spawn();
+		ln_probe.hitcontentsmaski = CONTENTBITS_BOXSOLID;
+	}
+	mn = PM_HULL_MINS;
+	mx = ducked ? PM_DUCK_MAXS : PM_HULL_MAXS;
+	top = min(mx_z, eyeh);
+	tracebox(feet, [mn_x, mn_y, top - 2], [mx_x, mx_y, top],
+	         feet + [0, 0, eyeh + 12 - top], LN_XMOVE, ln_probe);
+	if (trace_startsolid)
+		return min(eyeh, max(0, top - 12));
+	if (trace_fraction < 1)
+		return min(eyeh, max(0, top + trace_endpos_z - feet_z - 12));
+	return eyeh;
+};
+
 void(float s, float r, float i, float t, vector o, vector v, vector n) Line_EdgeSet =
 {
 	ln_xi[s * 4 + r] = i;

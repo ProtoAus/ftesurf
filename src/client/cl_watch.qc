@@ -4335,6 +4335,7 @@ void() Watch_Sample =
 	if (f < 0)
 		f = rec_wt_cfa + (db - rec_wt_cfa) * s;
 	rec_wt_eyeh = rec_wt_vh + (rec_wt_dvh - rec_wt_vh) * f;
+	rec_wt_eyeh = Line_ClipEye(rec_wt_org, rec_wt_eyeh, rec_wt_ducked);   // P1559
 
 	/*
 	  v4: the plane, the ramp contact and the wishdir, all from rcur and not

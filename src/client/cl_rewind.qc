@@ -806,6 +806,7 @@ void() Rewind_Camera =
 	eye = (tr_vis_flags & WT_F_DUCKED) ? cvar("pm_duckviewheight") : cvar("pm_viewheight");
 	if (eye <= 0)
 		eye = (tr_vis_flags & WT_F_DUCKED) ? 47 : 64;
+	eye = Line_ClipEye(rw_visualp, eye, (tr_vis_flags & WT_F_DUCKED) ? 1 : 0);   // P1559
 	cam = rw_visualp + '0 0 1' * eye;
 	if (cvar("hud_rewind_chase"))
 	{

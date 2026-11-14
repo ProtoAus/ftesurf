@@ -210,11 +210,26 @@ float  em_bactive;              // some emitter has particles pending
 float  em_bfired;               // starts fired this map, for emit_list,
 float  em_bfsrv;                //   of them by the server's Start
 float  em_n;
+// P1559: Source spawns a mote only inside the brush (c_func_dust.cpp:211-235: ten random points,
+// the first inside wins); a box sample put 89% of surf_beyond's sloped slab's motes outside it.
+// A non-box dust brush keeps points found inside it, and its rate is the share of Source's tries
+// that land, 1-(1-fill)^10.
+#define EM_PINS     64
+#define EM_PINPOOL  16384
+vector *em_pin;                 // [EM_PINPOOL]
+float  *em_pin0;                // [EM_MAX] first pooled point, and
+float  *em_pinn;                //   how many; 0 = sample the box
+float  em_pinused, em_pinned;
+entity em_pinprobe;
+#define EM_SOLID_BSPTRIGGER 22  // cl_triggers.qc TG_SOLID_BSPTRIGGER: MOVE_TRIGGERS traces clip the brush itself
 
 void() Emit_Alloc =
 {
 	if (em_mins)
 		return;
+	em_pin   = memalloc(sizeof(vector) * EM_PINPOOL);
+	em_pin0  = memalloc(sizeof(float) * EM_MAX);
+	em_pinn  = memalloc(sizeof(float) * EM_MAX);
 	em_mins  = memalloc(sizeof(vector) * EM_MAX);
 	em_size  = memalloc(sizeof(vector) * EM_MAX);
 	em_mid   = memalloc(sizeof(vector) * EM_MAX);
@@ -2455,14 +2470,12 @@ void() Emit_RegisterCvars =
 	// instead of papered over -- cfg/test/b51e.cfg needs it off to timestamp
 	// the kill.  Bisection cvar, not archived: nobody should keep it off.
 	registercvar("vbsp_emit_heal",    "1", 0);
-	// Child systems of a baked .pcf parent (build 53).  0 is build 52 exactly:
-	// the parent alone, and the default, because it is not a pure correctness
-	// fix -- surf_tensor2 already runs at throttle 0.456 (logs/t2rain.log,
-	// demand 4390/sec) and its 12 water_splash02 children add 480/sec to every
-	// emitter's cut.  On surf_boreas the end-zone glow and laser ARE the
-	// children, so flip this once cfg/test/psboreas.cfg arms C/D have shown
-	// them.  Read once per map load in Emit_LoadForMap; not archived.
-	registercvar("vbsp_emit_psys_children", "0", 0);
+	// Child systems of a baked .pcf parent (build 53).  0 is build 52 exactly: the parent alone.
+	// P1559: on by default -- surf_beyond's portal swirls (and surf_boreas's end-zone glow and
+	// laser) ARE children, and custom_particle_003 alone is a black disc.  The cost is surf_tensor2's
+	// throttle, 0.456 (demand 4390/sec) to ~0.41 with its 12 water_splash02 children's 480/sec.
+	// Read once per map load in Emit_LoadForMap; not archived.
+	registercvar("vbsp_emit_psys_children", "1", 0);
 	// Patch 791: render_rope ribbons (Emit_RopeFrame), whatever the line above says.
 	registercvar("vbsp_emit_ropes", "1", 0);
 	registercvar("vbsp_emit_orbits", "1", 0);      // P1263
@@ -3334,6 +3347,7 @@ void(entity e) Emit_PsysNet =
 
 vector() Emit_RandDir;
 vector(float i) Emit_PointIn;
+void(float j, entity probe, vector org) Emit_PinBrush;
 
 // P1433: one SparkOnce -- one burst of the emitter's own sparks, whatever its rate.
 void(float i) Emit_SparkOnce =
@@ -3667,6 +3681,7 @@ void() Emit_LoadForMap =
 		em_ratemax = EM_RATE_MAX;
 
 	em_n = 0;
+	em_pinused = em_pinned = 0;
 	em_gen = em_gen + 1;                // P1432: a template copy's emitters went with them
 	tplr_n = 0;
 	em_trn = 0;
@@ -4456,6 +4471,8 @@ void() Emit_LoadForMap =
 		j = Emit_Add(bmin, bmax, vel, jit, rate, burst, dist, eff, kind);
 		if (j >= 0)
 		{
+			if (kind == EK_DUST || kind == EK_CLOUD)
+				Emit_PinBrush(j, probe, org);
 			if (look >= 0)
 				em_life[j] = (lmin + lmax) * 0.5;
 			em_sph[j] = sph;
@@ -4600,8 +4617,55 @@ vector(vector b) Emit_ShellDir =
 vector(float i) Emit_PointIn =
 {
 	local vector s;
+	if (em_pinn[i] > 0)
+		return em_pin[em_pin0[i] + floor(random() * em_pinn[i])]
+		       + [random() * 8 - 4, random() * 8 - 4, random() * 8 - 4];
 	s = em_size[i];
 	return em_mins[i] + [random() * s_x, random() * s_y, random() * s_z];
+};
+
+// `probe` carries the brush model; it is linked as a brush trigger only for these traces.
+void(float j, entity probe, vector org) Emit_PinBrush =
+{
+	local float tries, hit, n, miss;
+	local vector p, s;
+
+	em_pinn[j] = 0;
+	if (em_pinused + EM_PINS > EM_PINPOOL)
+		return;
+	if (!em_pinprobe)
+	{
+		em_pinprobe = spawn();
+		em_pinprobe.hitcontentsmaski = -1i;
+	}
+	probe.solid = EM_SOLID_BSPTRIGGER;
+	setorigin(probe, org);
+	s = em_size[j];
+	hit = n = 0;
+	for (tries = 0; tries < EM_PINS * 8 && n < EM_PINS; tries = tries + 1)
+	{
+		if (tries == 16 && hit == 16)
+			break;                  // a box: the box sample is already exact
+		p = em_mins[j] + [random() * s_x, random() * s_y, random() * s_z];
+		other = probe;
+		tracebox(p, '0 0 0', '0 0 0', p, MOVE_TRIGGERS | MOVE_OTHERONLY, em_pinprobe);
+		if (trace_startsolid || trace_allsolid)
+		{
+			em_pin[em_pinused + n] = p;
+			n = n + 1;
+			hit = hit + 1;
+		}
+	}
+	probe.solid = SOLID_NOT;
+	setorigin(probe, org);
+	if (hit == tries || !n)
+		return;                     // a box, or a probe that saw nothing: keep the box
+	em_pin0[j] = em_pinused;
+	em_pinn[j] = n;
+	em_pinused = em_pinused + n;
+	em_pinned = em_pinned + 1;
+	miss = 1 - hit / tries;
+	em_rate[j] = em_rate[j] * (1 - pow(miss, 10));
 };
 
 /*
@@ -5268,6 +5332,8 @@ void() Emit_List =
 					tot = tot + 1;
 			print(sprintf("  func_dustmotes: Source's motes, %g looks asked, %g answering\n", dm_n, tot));
 			print(sprintf("  motes are lit at exposure %g: %s\n", em_expo, Emit_ExposureWhy()));
+			print(sprintf("  %g dust brushes are not boxes: motes from %g points inside them (P1559)\n",
+			              em_pinned, em_pinused));
 			print(sprintf("  motes in range would keep %g alive; Source's pool is %g, so %.3f of them spawn\n",
 			              rint(dm_alive), DM_POOL, dm_thr));
 			if (dm_over)

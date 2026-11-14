@@ -125,13 +125,16 @@ vector(string s) Fog_ParseColour =
 void(string cmd, entity c, float scale) Fog_EmitOne =
 {
 	local float m, r, e2, distance_mul, density_mul;
-	local float sidistic;
+	local float thin;
 
-	sidistic = (strcmp(serverkey("map"), "surf_sidistic") == 0);
+	// Maps whose authored fog the owner thinned: half the opacity, twice the distance.
+	thin = (strcmp(serverkey("map"), "surf_sidistic") == 0);
+	if (strcmp(serverkey("map"), "surf_legends") == 0 || strcmp(serverkey("map"), "surf_legends_css") == 0)
+		thin = 1;
 	distance_mul = cvar("vbsp_fog_distance");
 	density_mul = cvar("vbsp_fog_density");
-	if (distance_mul < 0) distance_mul = sidistic ? 2 : 1;
-	if (density_mul < 0) density_mul = sidistic ? 0.5 : 1;
+	if (distance_mul < 0) distance_mul = thin ? 2 : 1;
+	if (density_mul < 0) density_mul = thin ? 0.5 : 1;
 	distance_mul = bound(0.1, distance_mul, 16);
 	density_mul = bound(0, density_mul, 1);
 
