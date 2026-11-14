@@ -6,6 +6,8 @@ string tr_req_cmd[TR_REQUESTS];
 float tr_req_raw[TR_REQUESTS], tr_req_tick[TR_REQUESTS], tr_req_end[TR_REQUESTS];
 float tr_req_save[TR_REQUESTS];
 float tr_req_head, tr_req_n, tr_req_at, tr_req_dispatch;
+float tr_req_opsave;            // P1547: tr_req_wait is a WOP_SAVE's (-1 until its command carries it)
+float wop_opsave;               // P1547: WarpOp_Save took the save being dispatched
 float() Rewind_Waiting;
 void() Trail_RequestSend;
 
@@ -21,10 +23,24 @@ void() Trail_RequestReset =
 		tr_req_raw[i] = 0;
 		tr_req_cmd[i] = "";
 	}
-	tr_req_head = tr_req_n = tr_req_wait = tr_req_dispatch = 0;
+	tr_req_head = tr_req_n = tr_req_wait = tr_req_dispatch = tr_req_opsave = 0;
 };
 
 float() Trail_RequestBusy = { return tr_req_wait || tr_req_n; };
+// P1547: busy only with a save that rides a command: a later op is carried after it, in order.
+float() Trail_RequestOpSave = { return (tr_req_wait && tr_req_opsave && !tr_req_n); };
+
+// P1547: the WOP_SAVE rode command `seq`; its ticket is that command's (SV_WarpOpCommand).
+void(float seq) Trail_OpSaveCarried =
+{
+	local float tag;
+	tag = FS_SaveOpTag(seq);
+	if (tr_req_opsave && tr_req_wait == -1)
+		tr_req_wait = tag;
+	tr_ticket = tr_saveack = tag;
+	if (tr_rep_ack == -1)
+		tr_rep_ack = tag;
+};
 float() Trail_RequestDispatching = { return tr_req_dispatch; };
 
 float(string c) Trail_Request =
@@ -91,6 +107,7 @@ void() Trail_RequestSend =
 	if (!skip)
 	{
 		tr_req_dispatch = TRUE;
+		wop_opsave = FALSE;
 		SaveLoc_Cmd(c);
 		tr_req_dispatch = FALSE;
 		if (!strcmp(c, "sl_hold"))
@@ -106,8 +123,10 @@ void() Trail_RequestSend =
 	if (saving)
 	{
 		tr_req_wait = tr_saveack;
+		tr_req_opsave = wop_opsave;
 		tr_req_at = cltime;
 	}
+	wop_opsave = FALSE;
 };
 
 // P1544: the load key's sl_load + sl_hold as the queue's whole tail go as one predicted command
@@ -169,7 +188,7 @@ void() Trail_RequestFrame =
 			}
 			return;
 		}
-		tr_req_wait = 0;
+		tr_req_wait = tr_req_opsave = 0;
 		Trail_ReplayClear();
 	}
 	if (!Rewind_Waiting())

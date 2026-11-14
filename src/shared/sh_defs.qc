@@ -646,6 +646,11 @@
 #define WOP_BONUS1  239             // `!b N` is WOP_BONUS1 + N - 1, N up to WOP_BONUSES
 #define WOP_BONUSES 16
 #define WOP_TOP     254             // the impulse is a byte
+// P1547: sl_save at one command. Below WOP_RESET, so a server without it ignores the impulse: sent
+// only under serverinfo fs_wopsave. Its picture ticket is its command's (FS_SaveOpTag), as no
+// stringcmd carries one.
+#define WOP_SAVE    200
+float(float seq) FS_SaveOpTag = { return seq - 16000000 * floor(seq / 16000000) + 1; };
 
 
 /*

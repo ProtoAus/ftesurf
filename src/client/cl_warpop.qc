@@ -72,6 +72,8 @@ vector *wop_legorg;
 vector *wop_legang;             // pitch, yaw, WOPD_* (WOPD_NONE: no answer)
 string wop_legsrc;              // the six strings they were parsed from
 float  *wop_blind;              // Patch 759: WOPB_* -- sent unpredicted
+float  *wop_cap;                // P1547: a WOP_SAVE's row has been taken at its command (WarpOp_Apply)
+float  wop_pmduck;              // P1547: the last predicted move's hull was the ducked one (WarpOp_PostMove)
 float  wop_slot;                // the slot WarpOp_Queue just filled
 vector wop_tgorg, wop_tgang, wop_tgvel;   // WarpOp_Row's answer: origin, pitch/yaw/duck, speed
 float  wop_tok, wop_tokt;       // SV_SaveLocRate's bucket, mirrored
@@ -124,6 +126,7 @@ float() WarpOp_Able =
 		wop_vel  = memalloc(sizeof(vector) * WOP_RING);
 		wop_ang  = memalloc(sizeof(vector) * WOP_RING);
 		wop_blind = memalloc(sizeof(float) * WOP_RING);
+		wop_cap   = memalloc(sizeof(float) * WOP_RING);
 	}
 	return TRUE;
 };
@@ -319,6 +322,21 @@ float(float idx, float cnt, float delta) WarpOp_Offset =
 	return idx;
 };
 
+// P1547: the newest WOP_SAVE the server has not answered, or -1.
+float() WarpOp_SaveSlot =
+{
+	local float i, j;
+
+	j = -1;
+	if (!wop_seq)
+		return j;
+	for (i = 0; i < WOP_RING; i = i + 1)
+		if (wop_op[i] == WOP_SAVE && WarpOp_Unanswered(i))
+		if (j < 0 || wop_q[i] > wop_q[j])
+			j = i;
+	return j;
+};
+
 /*
   The row a load or step lands on, after every load and step still unanswered,
   into wop_tgorg/tgang/tgvel (zero when FALSE).  FALSE when it is not one the
@@ -332,6 +350,23 @@ float(float op) WarpOp_Row =
 	wop_tgorg = '0 0 0';
 	wop_tgang = '0 0 0';
 	wop_tgvel = '0 0 0';
+	// P1547: behind a save not yet answered the cursor is that save, its row the one this client took at
+	// the save's command. A step's row count is not known here; a row not taken yet goes blind.
+	j = WarpOp_SaveSlot();
+	if (j >= 0)
+	{
+		if (op != WOP_LOAD || !wop_cap[j])
+			return FALSE;
+		for (i = 0; i < WOP_RING; i = i + 1)
+			if (wop_op[i] >= WOP_NEXT && wop_op[i] <= WOP_LAST)
+			if (wop_q[i] > wop_q[j] && WarpOp_Unanswered(i))
+				return FALSE;
+		wop_tgorg = wop_org[j];
+		wop_tgang = wop_ang[j];
+		wop_tgang_z = wop_duck[j];
+		wop_tgvel = wop_vel[j];
+		return TRUE;
+	}
 	// P1238: string stats follow the numeric ones, so a fresh sl_save's ack (STAT_FS_SLACK) can land a
 	// packet before the cursor string that answers it: predict nothing until they agree.
 	if (wop_c_ok && wop_c_slack != getstatf(STAT_FS_SLACK))
@@ -559,7 +594,8 @@ float() WarpOp_Load =
 	wop_loadpred = FALSE;
 	if (!WarpOp_Able())
 		return FALSE;
-	if (Trail_RequestBusy() && !wop_fifoload)     // P1544: SaveLoc_FifoLoad's pair is the queue
+	// P1544: SaveLoc_FifoLoad's pair is the queue. P1547: a save on a command is carried before this.
+	if (Trail_RequestBusy() && !wop_fifoload && !Trail_RequestOpSave())
 		return FALSE;
 	// A pending reset also releases the old hold, before this load's command.
 	if (getstatf(STAT_FS_HOLD) && !relpending && !WarpOp_Pending(WOPP_RESET))
@@ -567,6 +603,7 @@ float() WarpOp_Load =
 	SaveLoc_Resync();
 	if (rec_sl_sent != getstatf(STAT_FS_SLACK))
 		return FALSE;                   // a list command is in flight: the row may be stale
+	if (WarpOp_SaveSlot() < 0)          // P1547: else that save is the cursor
 	if (getstatf(STAT_FS_SAVECOUNT) < 1 || getstatf(STAT_FS_SAVEINDEX) < 1)
 		return FALSE;
 	// Patch 759: after any load or step still unanswered.  Sent in order either
@@ -595,6 +632,54 @@ float() WarpOp_Load =
 		rec_sl_holdang_ok = TRUE;
 	}
 	return TRUE;
+};
+
+/*
+  P1547: the live save at one command (SV_WarpOpCommand's WOP_SAVE), so a load pressed before its answer
+  rides behind it, predicted from the row taken at the save's command (WarpOp_Apply). Only where the
+  server's PlayerPreThink row is the one predicted here: not held (a held save keeps its row's speed),
+  nothing blind and no sl_ stringcmd unanswered ahead of it (a reliable can run after a later command).
+  FALSE: send sl_save. Its ticket is bound when a command carries it (Trail_OpSaveCarried).
+*/
+float(float charged) WarpOp_Save =
+{
+	local float i;
+
+	if (!charged || serverkey("fs_wopsave") != "1" || !WarpOp_Able())
+		return FALSE;
+	if (rec_sl_holding || (getstatf(STAT_FS_HOLD) && !wop_relseq))
+		return FALSE;
+	SaveLoc_Resync();
+	if (rec_sl_sent != getstatf(STAT_FS_SLACK))
+		return FALSE;
+	for (i = 0; i < WOP_RING; i = i + 1)
+		if (wop_blind[i] == WOPB_BLIND && WarpOp_Unanswered(i))
+			return FALSE;
+	if (!WarpOp_Queue(WOP_SAVE, '0 0 0', '0 0 0', '0 0 0', 0))
+		return FALSE;
+	wop_cap[wop_slot] = FALSE;
+	wop_opsave = TRUE;
+	tr_saveack = -1;
+	if (tr_rep_raw >= 1)
+	{
+		tr_rep_ack = -1;
+		tr_rep_go = FALSE;
+	}
+	return TRUE;
+};
+
+// P1547: a WOP_SAVE no command carried in time (WarpOp_Frame): the stringcmd it stood for, on its own ticket.
+void() WarpOp_SaveExpired =
+{
+	SaveLoc_Resync();
+	rec_sl_sent = rec_sl_sent + 1;
+	localcmd(strcat("cmd ", Trail_Command("sl_save"), "\n"));
+	if (tr_req_opsave && tr_req_wait == -1)
+	{
+		tr_req_wait = tr_saveack;
+		tr_req_at = cltime;
+	}
+	tr_req_opsave = FALSE;
 };
 
 /*
@@ -859,6 +944,8 @@ void() WarpOp_Frame =
 					if (!rw_on)
 						SaveLoc_Cmd("sl_holdoff");
 				}
+				else if (op == WOP_SAVE)
+					WarpOp_SaveExpired();
 			}
 		}
 
@@ -895,7 +982,9 @@ float() WarpOp_LoadLead =
 {
 	if (!wop_loadpred)
 		return FALSE;
+	// P1547: behind a save not yet answered the cursor picture is the previous save's: the plain hold.
 	if (!wop_loadsteps)
+	if (WarpOp_SaveSlot() < 0)
 		SaveLead_Press(wop_tgorg, wop_tgang);
 	return TRUE;
 };
@@ -962,6 +1051,8 @@ void() WarpOp_InputFrame =
 		wop_loadseq = wop_loadlast = clientcommandframe;
 	if (wop_op[best] == WOP_RELEASE)
 		wop_relseq = wop_rellast = clientcommandframe;
+	if (wop_op[best] == WOP_SAVE)
+		Trail_OpSaveCarried(clientcommandframe);
 	dprint(sprintf("warpop: %g on command %g\n", wop_op[best], clientcommandframe));
 	// P1238: blind, and the cursor stats the prediction read (they can arrive in different packets).
 	PE_Note(sprintf("warpop %g on command %g%s ack %g save %g of %g", wop_op[best], clientcommandframe,
@@ -971,8 +1062,25 @@ void() WarpOp_InputFrame =
 };
 
 // The server's body for op `op` (ring slot i), at the first piece of its command.
+// P1547: state.txt's %.4f (SV_SaveWriteState), so the row is the one the server reads back.
+vector(vector v) WarpOp_Round4 = { return stov(sprintf("'%.4f %.4f %.4f'", v_x, v_y, v_z)); };
+
 void(float op, float i) WarpOp_Apply =
 {
+	if (op == WOP_SAVE)
+	{
+		// P1547: SV_SaveWriteState's row at this command's PlayerPreThink. The first command a replay
+		// runs starts from the server's snapshot, whose duck is its flags stat; any later one from the
+		// move before it.
+		wop_org[i] = WarpOp_Round4(predinput_origin);
+		wop_vel[i] = WarpOp_Round4(predinput_velocity);
+		if (wop_seq[i] == servercommandframe + 1)
+			wop_duck[i] = ((getstatf(STAT_FS_PMFLAGS) & PMF_DUCKED) != 0);
+		else
+			wop_duck[i] = wop_pmduck;
+		wop_cap[i] = TRUE;
+		return;
+	}
 	if (wop_blind[i])
 		return;
 	if (op == WOP_RESET || op == WOP_SPAWN || op >= WOP_STAGE1)
@@ -1099,11 +1207,20 @@ void(float seat, float seq) WarpOp_PostMove =
 	local float i;
 	local vector a;
 
-	if (seat || !wop_seq)
+	if (seat)
+		return;
+	wop_pmduck = (predmove_maxs_z < 53.5);      // P1547: PM_DUCK_MAXS 45 against PM_HULL_MAXS 62
+	if (!wop_seq)
 		return;
 	for (i = 0; i < WOP_RING; i = i + 1)
 		if (wop_seq[i] == seq)
 		{
+			// P1547: the save's aim is its command's (v_angle at PlayerPreThink), z 0: no turn.
+			if (wop_op[i] == WOP_SAVE)
+			{
+				wop_ang[i] = WarpOp_Round4([predmove_cmdangles_x, predmove_cmdangles_y, 0]);
+				return;
+			}
 			a = wop_ang[i];
 			if (a_z)
 			if (wop_op[i] != WOP_RELEASE)
