@@ -262,9 +262,12 @@ string tg_myname;               // P1405: *tn, read once per predicted command
 // P1563: a self-renaming booster's last predicted own rename (TG_IONameEventOK slots): its io row + 1
 // (0 none), command, the crc16 of the *tn it met, and the name its entry was judged on (zoned). Only that
 // slot's own judging reads it (TG_NameFor); every other name filter keeps the published *tn (P1405).
-.float  tg_rnrow, tg_rnseq, tg_rntn;
+.float  tg_rnrow, tg_rnseq, tg_rntn, tg_rnchain;
 .string tg_rnpre;
 float   tg_chain0;              // the first command of the chain being predicted
+float   tg_chainid;             // counts chains: a latch no replay of this chain re-fired is stale
+float   tg_chainspan, tg_rttcmds;   // commands the last chain replayed: the round trip, in commands
+string(float i, float seq) TG_NameFor;
 float  tg_tnlive;               // P1405: serverinfo fs_tn is "1", read with it
 float  tg_c_fname;              // P1405: triggers kept behind a name filter, judged per touch
 float  tg_ctx_live;             // serverinfo fs_contexts is not "0", read each frame
@@ -769,14 +772,15 @@ float(float s) TG_IOSource =
 	return FALSE;
 };
 
-// P1563: a booster whose every own row the mirror pays -- a delay-0 unlimited rename of the player, a
-// basevelocity write it can set, at least one of those -- is judged per touch (TG_NameFor; surf_tendies'
-// bhopfilter pad: renamed on entry, paid on exit, refused on re-entry).
+// P1563: a booster whose every own row the mirror pays -- delay-0 unlimited renames of the player and
+// basevelocity writes it can set, at least one of each -- and whose filter no OTHER rename on the map can
+// turn to a refusal (surf_carbon_css's touching b1 pads rename to each other's refused name; the slot's
+// own latch cannot see them) is judged per touch (TG_NameFor; surf_tendies' bhopfilter pad).
 float(float s) TG_IONameEventOK =
 {
-	local float o, n, bv;
+	local float o, n, bv, rn, r;
 
-	n = bv = 0;
+	n = bv = rn = 0;
 	for (o = 0; o < io_n; o = o + 1)
 	{
 		if (io_src[o] != s)
@@ -787,7 +791,10 @@ float(float s) TG_IONameEventOK =
 		if (io_ev[o] != EV_START && io_ev[o] != EV_END)
 			return FALSE;
 		if (io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_TNAME && io_tnv[o] != "")
+		{
+			rn = rn + 1;
 			continue;
+		}
 		if (io_inp[o] == IN_ADDOUT && io_parm[o] == IOP_BVEL && tg_bvel_ok)
 		{
 			bv = bv + 1;
@@ -795,7 +802,22 @@ float(float s) TG_IONameEventOK =
 		}
 		return FALSE;
 	}
-	return n > 0 && bv > 0;
+	if (!rn || !bv)
+		return FALSE;
+	for (o = 0; o < io_n; o = o + 1)
+	{
+		if (io_src[o] == s || io_inp[o] != IN_ADDOUT || io_parm[o] != IOP_TNAME)
+			continue;
+		tf_rtmode = 1;
+		tf_ctxmode = 1;
+		tf_rtname = io_tnv[o];
+		r = TF_EvalD(TF_Find(tg_filt[s]), 0);
+		tf_rtmode = 0;
+		tf_ctxmode = 0;
+		if (r != TFR_PASS)
+			return FALSE;
+	}
+	return TRUE;
 };
 
 // Rule-2 matching: exact OR case-insensitive, deliberately broader than
@@ -1202,7 +1224,7 @@ void(float i, float ev, float seq) TG_IOFireEv =
 			{
 				if (tg_ent[i].tg_rnrow != o + 1 || tg_ent[i].tg_rnseq != seq)
 				{	// P1563: a new rename by this slot, not one a replay re-fires
-					pre = strzone(tf_rtname);       // the name its entry was just judged on
+					pre = strzone(TG_NameFor(i, seq));   // the name it is judged on at this command
 					if (tg_ent[i].tg_rnpre != "")
 						strunzone(tg_ent[i].tg_rnpre);
 					tg_ent[i].tg_rnpre = pre;
@@ -1210,6 +1232,7 @@ void(float i, float ev, float seq) TG_IOFireEv =
 					tg_ent[i].tg_rnseq = seq;
 					tg_ent[i].tg_rntn = crc16(FALSE, tg_myname);
 				}
+				tg_ent[i].tg_rnchain = tg_chainid;  // re-fired by this chain's replay
 				if (tg_cv_debug)
 					print(sprintf("^5trig^7: seq %g IO #%g renames the player '%s'\n", seq, i, io_tnv[o]));
 			}
@@ -1995,6 +2018,9 @@ void(float seq) TG_ChainStart =
 
 	// P1563: a rename the server has run (before seq) stands until *tn changes; later ones re-fire.
 	tg_chain0 = seq;                // P1563: TG_NameFor
+	tg_chainid = tg_chainid + 1;
+	tg_rttcmds = tg_chainspan;
+	tg_chainspan = 0;
 
 	// Acked IO events fold into the committed state; the speculative rest
 	// is dropped and the replay re-derives it.  See THE IO MIRROR.
@@ -2109,10 +2135,15 @@ string(float i, float seq) TG_NameFor =
 	}
 	if (seq <= t.tg_rnseq)
 		return t.tg_rnpre;
-	if (t.tg_rnseq < tg_chain0)
-	if (!strcasecmp(tg_myname, io_tnv[r]) || tg_chain0 - t.tg_rnseq > 200)
+	if (t.tg_rnseq >= tg_chain0 && t.tg_rnchain != tg_chainid)
 	{
-		t.tg_rnrow = 0;                 // published and acked, or never published
+		t.tg_rnrow = 0;                 // this chain's replay passed its command and did not re-fire it
+		return tg_myname;
+	}
+	if (t.tg_rnseq < tg_chain0)
+	if (!strcasecmp(tg_myname, io_tnv[r]) || tg_chain0 - t.tg_rnseq > 3 * tg_rttcmds + 20)
+	{
+		t.tg_rnrow = 0;                 // published and acked, or not published in three round trips
 		return tg_myname;
 	}
 	return io_tnv[r];
@@ -2135,6 +2166,8 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 
 	if (seq < tg_lastseq || (seq == tg_lastseq && predmove_offset <= tg_lastoffset))
 		TG_ChainStart(seq);
+	if (seq - tg_chain0 > tg_chainspan)
+		tg_chainspan = seq - tg_chain0;     // P1563: the round trip, for TG_NameFor's hold
 	tg_lastseq = seq;
 	tg_lastoffset = predmove_offset;
 	tg_io_clock = tg_io_clock + msec;
