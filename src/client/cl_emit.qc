@@ -214,8 +214,8 @@ float  em_n;
 // the first inside wins); a box sample put 89% of surf_beyond's sloped slab's motes outside it.
 // A non-box dust brush keeps points found inside it, and its rate is the share of Source's tries
 // that land, 1-(1-fill)^10.
-#define EM_PINS     64
-#define EM_PINPOOL  16384
+#define EM_PINS     128
+#define EM_PINPOOL  32768
 vector *em_pin;                 // [EM_PINPOOL]
 float  *em_pin0;                // [EM_MAX] first pooled point, and
 float  *em_pinn;                //   how many; 0 = sample the box
@@ -2611,6 +2611,7 @@ float(vector bmin, vector bmax, vector vel, float jit, float rate, float burst,
 	em_trail[i] = 0;
 	em_shape[i] = 0;
 	em_bcnt[i]  = 0;
+	em_pinn[i]  = 0;                // P1559: Emit_PinBrush fills it for a dust brush
 	em_bpend[i] = 0;
 	em_bpers[i] = 0;
 	em_bplaced[i] = 0;
@@ -4468,6 +4469,11 @@ void() Emit_LoadForMap =
 				em_off[kind] = em_off[kind] + 1;
 			continue;
 		}
+		if (kind == EK_DUST || kind == EK_CLOUD)
+		{	// P1559: setmodel's box is the model's own; a brush entity with an origin is drawn there
+			bmin = bmin + org;
+			bmax = bmax + org;
+		}
 		j = Emit_Add(bmin, bmax, vel, jit, rate, burst, dist, eff, kind);
 		if (j >= 0)
 		{
@@ -4619,7 +4625,7 @@ vector(float i) Emit_PointIn =
 	local vector s;
 	if (em_pinn[i] > 0)
 		return em_pin[em_pin0[i] + floor(random() * em_pinn[i])]
-		       + [random() * 8 - 4, random() * 8 - 4, random() * 8 - 4];
+		       + [random() * 6 - 3, random() * 6 - 3, random() * 6 - 3];
 	s = em_size[i];
 	return em_mins[i] + [random() * s_x, random() * s_y, random() * s_z];
 };
@@ -4628,7 +4634,7 @@ vector(float i) Emit_PointIn =
 void(float j, entity probe, vector org) Emit_PinBrush =
 {
 	local float tries, hit, n, miss;
-	local vector p, s;
+	local vector p, s, lo;
 
 	em_pinn[j] = 0;
 	if (em_pinused + EM_PINS > EM_PINPOOL)
@@ -4640,13 +4646,18 @@ void(float j, entity probe, vector org) Emit_PinBrush =
 	}
 	probe.solid = EM_SOLID_BSPTRIGGER;
 	setorigin(probe, org);
-	s = em_size[j];
+	// setmodel pads a submodel's box by 1 u a side (mod_vbsp.c): sample the brush's own box
+	lo = em_mins[j] + '1 1 1';
+	s = em_size[j] - '2 2 2';
+	if (s_x < 0) s_x = 0;
+	if (s_y < 0) s_y = 0;
+	if (s_z < 0) s_z = 0;
 	hit = n = 0;
 	for (tries = 0; tries < EM_PINS * 8 && n < EM_PINS; tries = tries + 1)
 	{
 		if (tries == 16 && hit == 16)
 			break;                  // a box: the box sample is already exact
-		p = em_mins[j] + [random() * s_x, random() * s_y, random() * s_z];
+		p = lo + [random() * s_x, random() * s_y, random() * s_z];
 		other = probe;
 		tracebox(p, '0 0 0', '0 0 0', p, MOVE_TRIGGERS | MOVE_OTHERONLY, em_pinprobe);
 		if (trace_startsolid || trace_allsolid)
@@ -4658,7 +4669,7 @@ void(float j, entity probe, vector org) Emit_PinBrush =
 	}
 	probe.solid = SOLID_NOT;
 	setorigin(probe, org);
-	if (hit == tries || !n)
+	if (hit >= tries * 0.95 || !n)
 		return;                     // a box, or a probe that saw nothing: keep the box
 	em_pin0[j] = em_pinused;
 	em_pinn[j] = n;
