@@ -20,6 +20,7 @@
 
 .float pe_open, pe_fh, pe_next, pe_total, pe_count, pe_last;
 .float pe_chunkt;                // P1552: when its begin or last chunk arrived
+.string pe_token;               // P1554: the open report's HTTP key, zoned
 void(entity p, string why) SV_PeAbandon;
 float  pe_lobby_n, pe_lobby_last;
 
@@ -290,6 +291,9 @@ void(entity p) SV_PeClose =
 		return;
 	fclose(p.pe_fh);
 	p.pe_open = FALSE;
+	if (p.pe_token != "")
+		strunzone(p.pe_token);
+	p.pe_token = "";            // P1554: reportd checks the file's header, not this
 };
 
 // P1552: an upload that stops says so in its file. 8 of the 8-10 Nov reports ended at "== client" with no
@@ -349,12 +353,19 @@ void(entity p, string s) SV_PeBegin =
 	                       strreplace("\r", " ", strreplace("\n", " ", substring(p.netname, 0, 64))),
 	                       num_for_edict(p), SV_PeSafe(infokey(p, "*ahash"), 64), infokey(p, "ping")));
 	fputs(p.pe_fh, sprintf("client %s worst %.0f seq %.0f\n", SV_PeSafe(argv(1), 96), stof(argv(3)), stof(argv(4))));
+	// P1554: the one-time key reportd takes this report's client half under over HTTP (the header is what it
+	// checks); the ack carries it. An older client ignores the extra word and sends chunks.
+	if (p.pe_token != "")
+		strunzone(p.pe_token);
+	p.pe_token = strzone(substring(strtolower(digest_hex("SHA256", sprintf("ftesurf-prederr %s %.9f %.9f %.9f %.9f %.6f %.6f",
+	                     path, random(), random(), random(), random(), time, gettime(0)))), 0, 32));
+	fputs(p.pe_fh, sprintf("token %s\n", p.pe_token));
 	fputs(p.pe_fh, sprintf("server origin %v velocity %v movetype %g flags %g run_t_flags %g\n",
 	                       p.origin, p.velocity, p.movetype, p.flags, p.run_t_flags));
 	SV_PeWriteServer(p, stof(argv(4)));     // P1238
 	fputs(p.pe_fh, "== client\n");         // what follows is the client's: the triage reads no server rows there
 	print(sprintf("prederr: report from %s -> %s\n", p.netname, path));
-	stuffcmd(p, "prederr_ack 0\n");
+	stuffcmd(p, sprintf("prederr_ack 0 %s\n", p.pe_token));
 };
 
 void(float idx, string s) CSEv_pe_fs =
@@ -369,6 +380,14 @@ void(float idx, string s) CSEv_pe_fs =
 	}
 	if (!self.pe_open)
 		return;                     // after a refusal or the end: dropped
+	if (idx == -1)
+	{	// P1554: the client half went to reportd under pe_token (<this file's name>.client beside it)
+		if (self.pe_next != 1)
+			return SV_PeRefuse(self, "order");
+		fputs(self.pe_fh, "== http\n");
+		SV_PeClose(self);
+		return;
+	}
 	if (!(idx == self.pe_next && idx <= self.pe_total && idx <= PE_SV_CHUNKS))
 		return SV_PeRefuse(self, "order");
 	if (strlen(s) > PE_SV_CHUNK)

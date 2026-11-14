@@ -101,9 +101,22 @@ def parse(text):
     return head, ctx, numrows(ring, cols) if cols is not None else [], sv
 
 
+def http_half(p):
+    """P1554: the client half reportd stored beside a lobby file (<stem>.client), past its own header; or None."""
+    c = p.with_suffix(".client")
+    if not c.is_file():
+        return None
+    text = c.read_text(encoding="utf-8", errors="replace")
+    i = text.find("\n== ")
+    return text[i + 1:] if text.startswith("FTESURF-PREDERR-CLIENT") and i >= 0 else None
+
+
 def load(path):
     p = Path(path)
     text = p.read_text(encoding="utf-8", errors="replace")
+    half = http_half(p) if text.startswith("FTESURF-PREDERR") else None
+    if half is not None and "\n== client\n" in text:
+        text = text.split("\n== client\n", 1)[0] + "\n== client\n" + half
     if text.startswith("FTESURF-PREDRING"):
         ctx = p.with_name(p.stem + "_ctx.txt")
         ctx_text = ctx.read_text(encoding="utf-8", errors="replace") if ctx.exists() else ""
@@ -235,7 +248,12 @@ def upload_verdict(path):
         return None
     if "\n== client\n" not in text:
         return "no client section: the lobby stopped before it"
+    sent = http_half(Path(path))
+    if sent is not None:
+        return "client half by http (%d KB, %s)" % (len(sent) // 1024, Path(path).with_suffix(".client").name)
     half = text.split("\n== client\n", 1)[1]
+    if half.rstrip().endswith("== http"):
+        return "client half sent by http, but no .client file beside this one (fetch the folder again)"
     # The lobby's marker is the file's last line; the lines before it are the client's own text, which could
     # spell "== end" too (review), so only the last non-empty line counts.
     lines = half.rstrip().splitlines()

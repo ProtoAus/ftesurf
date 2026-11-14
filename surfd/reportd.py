@@ -43,6 +43,13 @@ MAX_META = 8 * 1024               # compact UTF-8 JSON after cleaning
 MAX_SHOT = 1520435                # 1.45 MiB decoded: base64 + 8 KiB meta + text stays under 2m
 MAX_BRACKETS = 2000               # '[' + '{' bytes: 2 MiB of nested [] costs ~100 MB in json.loads
 PART_AGE = 600                    # a .part younger than this may be a live worker's (HUP)
+# P1554: a prederror report's client half, POST /api/report?prederr=<token> as text/plain. The lobby writes its
+# half into PREDERR_DIR with "token <t>" in the header (sv_prederr.qc); the half lands beside it as <stem>.client.
+PREDERR_DIR = "/srv/nvme/ftesurf-server/game/ftesurf/data/prederr"
+PREDERR_MAX = 512 * 1024          # the lobby's own chunk path stops at 400 x 1 KB (sv_prederr.qc PE_SV_CHUNKS)
+PREDERR_AGE = 900                 # a lobby file untouched this long takes no client half
+PREDERR_HEAD = 4096               # the token line sits in the lobby's header
+PREDERR_TOKEN = re.compile(r"[0-9a-f]{32}")
 ENV_RECHECK = 1                   # seconds between stats of SURFD_ENV
 META_DEPTH = 3
 CATEGORIES = ("perf", "render", "bug", "map", "feature", "other")
@@ -314,6 +321,53 @@ def read_body(limit):
         chunks.append(chunk)
         remaining -= len(chunk)
     return b"".join(chunks)
+
+
+def prederr_find(directory, token, now):
+    """P1554: the lobby report whose header carries `token`, touched in the last PREDERR_AGE seconds."""
+    want = ("\ntoken %s\n" % token).encode("ascii")
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return None
+    for name in names:
+        if not name.endswith(".txt") or name.endswith("_ctx.txt") or name.startswith("."):
+            continue
+        path = os.path.join(directory, name)
+        try:
+            st = os.lstat(path)
+            if not (os.path.isfile(path) and not os.path.islink(path)) or not 0 <= now - st.st_mtime <= PREDERR_AGE:
+                continue
+            with open(path, "rb") as f:
+                head = f.read(PREDERR_HEAD)
+        except OSError:
+            continue
+        if head.startswith(b"FTESURF-PREDERR 1\n") and want in head:
+            return path
+    return None
+
+
+def prederr_store(path, token, tag, now, body):
+    """Write <stem>.client beside the lobby's file, once: a hard link from a private .part never replaces."""
+    dest = path[:-len(".txt")] + ".client"
+    tmp = os.path.join(os.path.dirname(path), ".%s.%s.part" % (os.path.basename(dest), secrets.token_hex(4)))
+    head = ("FTESURF-PREDERR-CLIENT 1\ntoken %s\nsource %s\nreceived %s\n"
+            % (token, tag, time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(now)))).encode("ascii")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(head + body)
+            f.flush()
+            os.fsync(f.fileno())
+        os.link(tmp, dest)
+    except FileExistsError:
+        return None
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+    return os.path.basename(dest)
 
 
 def over_limit(conn, tag, now):
@@ -624,6 +678,35 @@ def create_app(state=None, env_file=None, clock=time.time, environ=None):
             flood[tag] = hits
             return ok
 
+    prederr_dir = environ.get("REPORTD_PREDERR", PREDERR_DIR)
+
+    def prederr_post(tag, now):
+        """P1554: a client half under the token the lobby's ack gave it; not a player report (no row, no
+        report limits beyond the source flood)."""
+        token = request.args.get("prederr", "")
+        if not PREDERR_TOKEN.fullmatch(token):
+            return fail(400, "bad prederr token")
+        if request.mimetype != "text/plain":
+            return fail(400, "content type must be text/plain")
+        try:
+            body = read_body(PREDERR_MAX)
+        except BadLength as exc:
+            return fail(exc.status, str(exc))
+        if b"\0" in body or not body.startswith((b"== context\n", b"== ring\n")):
+            return fail(400, "not a prederror client half")
+        path = prederr_find(prederr_dir, token, now)
+        if not path:
+            return fail(404, "no open report has that token")
+        try:
+            name = prederr_store(path, token, tag, now, body)
+        except OSError as exc:
+            log.error("prederr store failed: %s", exc)
+            return fail(500, "storage error")
+        if not name:
+            return fail(409, "that report already has its client half")
+        log.info("prederr client half %s stored (source %s, %d bytes)", name, tag, len(body))
+        return jsonify({"ok": True, "stored": name})
+
     @app.post("/api/report")
     def report_post():
         now = float(clock())
@@ -634,6 +717,8 @@ def create_app(state=None, env_file=None, clock=time.time, environ=None):
         # Everything that needs only the address comes before the body is read.
         if not flood_ok(tag, now):
             return fail(429, LIMITED)
+        if "prederr" in request.args:
+            return prederr_post(tag, now)
         try:
             with closing(connect()) as conn:
                 limited = over_limit(conn, tag, now)

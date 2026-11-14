@@ -26,6 +26,8 @@ float  pe_send_i, pe_send_n;    // next chunk, chunk count (chunk 0 is the begin
 float  pe_send_wait, pe_send_t; // waiting for the ack of chunk pe_send_i - 1, sent at
 float  pe_sent_ok;              // 1 stored, -1 failed, 0 neither
 float  pe_up_t0;                // P1552: cltime the upload's begin went
+float  pe_http_req, pe_http_t;  // P1554: the client half's HTTP post (its uri id, when it went); 0 = none
+void() PE_SendNext;
 float  pe_tseq[TG_MAX];         // last seq a mirror trigger fired, for enter-only notes
 float  pe_name_err, pe_name_seq; // the last report written: its worst line
 float  pe_box_pending;          // a report written during an upload gets its box after it
@@ -62,6 +64,7 @@ void() PE_RegisterCvars =
 {
 	registercvar("cl_prederr_report", "32", CVAR_ARCHIVE);   // units; 0 = no reports
 	registercvar("cl_prederr_ask", "1", CVAR_ARCHIVE);       // 0 = keep them locally, never ask
+	registercvar("cl_prederr_http", "1", 0);                 // P1554: 0 = the client half in chunks only
 	registercommand("prederr_ack");
 	registercommand("prederr_send");
 	registercommand("pe_replay");       // P1404
@@ -441,6 +444,12 @@ void() PE_Frame =
 		pe_cool = cltime + 60;
 		PE_Write();
 	}
+	if (pe_send >= 0 && pe_http_req && cltime > pe_http_t + 15)
+	{	// P1554: no reply to the post; the lobby waits 30 s from the begin for chunks
+		PE_Note("upload: no http answer in 15 s; sending it in-game");
+		pe_http_req = 0;
+		PE_SendNext();
+	}
 	if (pe_send >= 0 && pe_send_wait && cltime > pe_send_t + 10)
 	{
 		print("prederr: the server stopped answering; report not sent\n");
@@ -502,6 +511,61 @@ void() PE_SendNext =
 	pe_send_wait = TRUE;
 	pe_send_t = cltime;
 	pe_box_end = max(pe_box_end, cltime + 5);   // up for as long as it sends
+};
+
+/*
+  P1554: THE CLIENT HALF IN ONE POST. Chunks ride the reliable channel one per round trip (157 took 55 s at
+  350 ms, P1552); reportd's /api/report takes the whole half under the key the lobby's ack 0 carried, in about
+  a second, and a map change does not stop it (the engine keeps the transfer; only the reply is lost). Plain
+  text, not JSON: strreplace stops at 4096 bytes (P1391), so the body cannot be escaped here. Any failure
+  falls back to the chunks, which the lobby still waits for (30 s from the begin, sv_prederr.qc).
+*/
+float(string token) PE_HttpPost =
+{
+	local float i;
+	local string body, url;
+	if (!cvar("cl_prederr_http") || strlen(token) != 32 || cvar_string("cl_report_url") == "")
+		return FALSE;
+	if (!RampWear_Allowed())            // the online consent tier (cl_online.qc)
+		return FALSE;
+	body = "";
+	for (i = 1; i < pe_send_n; i = i + 1)
+		body = strcat(body, bufstr_get(pe_send, i));
+	url = strcat(cvar_string("cl_report_url"), "?prederr=", token);
+	pe_http_req = 7400000 + floor(random() * 80000);
+	if (!uri_post(url, pe_http_req, "text/plain", body))
+	{
+		pe_http_req = 0;
+		return FALSE;
+	}
+	pe_http_t = cltime;
+	pe_send_wait = FALSE;               // the HTTP timeout is PE_Frame's, not the chunk ack's
+	pe_box_end = max(pe_box_end, cltime + 20);
+	PE_Note(sprintf("upload: posting %g bytes by http", strlen(body)));
+	return TRUE;
+};
+
+// URI_Get_Callback (cl_online.qc). TRUE when the reply is the client half's post.
+float(float reqid, float code, string body) PE_HttpReply =
+{
+	if (!pe_http_req || reqid != pe_http_req)
+		return FALSE;
+	pe_http_req = 0;
+	if (pe_send < 0)
+		return TRUE;                    // the upload was stopped meanwhile
+	if ((code == 0 || code == 200) && (strstrofs(body, "\"ok\":true") >= 0 || strstrofs(body, "\"ok\": true") >= 0))
+	{
+		sendevent("pe", "fs", -1, "");  // the lobby's file ends "== http"
+		PE_Note(sprintf("upload: sent by http in %.1f s", cltime - pe_up_t0));
+		pe_sent_ok = 1;
+		pe_box_end = cltime + 4;
+		print("prederr: report sent, thank you\n");
+		PE_SendStop();
+		return TRUE;
+	}
+	PE_Note(sprintf("upload: http answered %g (%s); sending it in-game", code, substring(strreplace("\n", " ", body), 0, 80)));
+	PE_SendNext();
+	return TRUE;
 };
 
 // Only while the box is asking: a server can stuffcmd prederr_send.
@@ -652,7 +716,11 @@ float(string cmd) PE_ConsoleCommand =
 		return TRUE;
 	pe_send_wait = FALSE;
 	if (pe_send_i == 1)
+	{
 		PE_Note(sprintf("upload: first answer after %.2f s", cltime - pe_up_t0));
+		if (PE_HttpPost(argv(2)))       // P1554: the lobby's key; an older lobby sends none
+			return TRUE;
+	}
 	if (pe_send_i < pe_send_n)
 	{
 		PE_SendNext();

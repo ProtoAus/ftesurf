@@ -1968,6 +1968,7 @@ float() RampWear_Allowed =
 };
 
 float(float reqid, float code, string body) Report_Reply;   // P1391, cl_report.qc
+float(float reqid, float code, string body) PE_HttpReply;   // P1554, cl_prederr.qc
 
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
@@ -1975,6 +1976,7 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 	local int kr;
 
 	if (Report_Reply(reqid, responsecode, resourcebody)) return;
+	if (PE_HttpReply(reqid, responsecode, resourcebody)) return;
 	if (RampWear_Reply(reqid, responsecode, resourcebody)) return;
 	if (TASShare_Reply(reqid, responsecode, resourcebody)) return;
 	if (ok_req)
