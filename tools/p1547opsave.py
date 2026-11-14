@@ -30,6 +30,9 @@ ap.add_argument('--every', type=float, default=1.2, help='seconds between taps i
 ap.add_argument('--holdfor', type=float, default=0, help='hold the load key this long instead of a tap')
 ap.add_argument('--force-first', action='store_true', help='ARM ONLY: tap 1 of each round takes the stringcmd path')
 ap.add_argument('--port', type=int, default=27623)
+ap.add_argument('--duck', action='store_true', help='hold +duck through the save and the taps')
+ap.add_argument('--reset-after', action='store_true', help='`reset` right after the save, before the taps')
+ap.add_argument('--dropsave', action='store_true', help='ARM ONLY: the server drops the first WOP_SAVE unanswered')
 a = ap.parse_args()
 sys.path.insert(0, str(a.tools))
 import p1384lead as L  # noqa: E402
@@ -152,7 +155,35 @@ def grade(seg):
     if o:
         g['first_slo'] = o[0]
     g['ack_lost'] = seg.count('pending save lost its acknowledgement')
+    g['saves_seen'] = len(re.findall(r'save \^2\d+', seg))
     return g
+
+
+def build_dropsave(src, out):
+    """ARM ONLY: qwprogs from a copy of src whose SV_WarpOpCommand drops one WOP_SAVE (p1547_dropsave 1)
+    before answering it -- the command acked, the op never run, as when its usercmd never decodes."""
+    import shutil, subprocess
+    tree = out / 'svtree'
+    shutil.copytree(src, tree / 'src')
+    (tree / 'ftesurf').mkdir()
+    f = tree / 'src/server/sv_warpop.qc'
+    t = f.read_text()
+    mark = '\tif (op == WOP_SAVE)\n\t{\n\t\t// P1547: sl_save\'s preamble'
+    assert t.count(mark) == 1, 'dropsave mark'
+    t = t.replace(mark, '\tif (op == WOP_SAVE) if (cvar("p1547_dropsave")) { cvar_set("p1547_dropsave", "0"); '
+                        'print("P1547 dropped a save op\\n"); return; }   // ARM ONLY\n' + mark)
+    f.write_text(t)
+    r = subprocess.run([str(tree / 'src/fteqcc64.exe'), '-max_strings', '4194304', '-srcfile', 'sv_progs.src'],
+                       cwd=tree / 'src', capture_output=True, text=True)
+    (out / 'sv-build.log').write_text(r.stdout + r.stderr)
+    warn = [l for l in (r.stdout + r.stderr).splitlines() if 'warning' in l.lower() and '0 warnings' not in l]
+    assert r.returncode == 0 and not warn and (tree / 'ftesurf/qwprogs.dat').is_file(), 'dropsave build failed'
+    v = out / 'svvariant'
+    v.mkdir()
+    shutil.copy2(tree / 'ftesurf/qwprogs.dat', v / 'qwprogs.dat')
+    shutil.copy2(a.progs / 'menu.dat', v / 'menu.dat')
+    shutil.copy2(a.progs / 'csprogs.dat', v / 'csprogs.dat')
+    return v
 
 
 def main():
@@ -164,6 +195,8 @@ def main():
     if phys < 1500 or commit < 2200:
         raise SystemExit('not enough free memory for a server and a client')
     cs = build_probe(a.src, a.out)
+    if a.dropsave:
+        a.progs = build_dropsave(a.src, a.out)
     report = {'qwprogs': L.sha(a.progs / 'qwprogs.dat'), 'csprogs_probe': L.sha(cs), 'src': str(a.src),
               'client': L.sha(L.CONTENT / 'ftesurf64.exe'), 'server': L.sha('C:/FTEQuake/fteqwsv64.exe'),
               'taps': {}}
@@ -199,10 +232,18 @@ def main():
                 cl.send(f'setpos {O[0]} {O[1]} {O[2]} 0 55 0')
                 time.sleep(2.0)
                 cl.send('+forward')                 # out of the box: the run starts; held to the end
+                if a.duck:
+                    cl.send('+duck')
                 time.sleep(2.0)
                 cl.send('p1547_rows 1')
+                if a.dropsave:
+                    sv.send('set p1547_dropsave 1')
+                    time.sleep(0.2)
                 off0 = len(cl.text())
                 cl.send('sl_save')
+                if a.reset_after:
+                    time.sleep(0.05)
+                    cl.send('reset')
                 time.sleep(gap)
                 pre = list(RROW.finditer(cl.text()[off0:]))
                 saved_at = (float(pre[0].group(2)), float(pre[0].group(3)), float(pre[0].group(4))) if pre else None
@@ -228,6 +269,8 @@ def main():
                 cl.send('p1384_probe 0')
                 cl.send('p1547_rows 0')
                 cl.send('-forward')
+                if a.duck:
+                    cl.send('-duck')
                 time.sleep(1.0)
         cl.send('cl_delay_packets 0')
     finally:
