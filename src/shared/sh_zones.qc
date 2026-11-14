@@ -185,6 +185,10 @@ float  zone_td_yaw[ZONE_MAX];
 string zone_td_name[ZONE_MAX];
 
 vector zone_pt[ZONE_MAX_POINTS];    // x,y used; z always 0
+// P1561: this END lies wholly inside another track's END (Zone_EndCover), so before P1561 its own
+// runs could never finish there; only such an END outranks another track's in the scans.  A partial
+// overlap keeps the first-END rule, so a recording made before P1561 verifies the same.
+float  zone_ecov[ZONE_MAX];
 
 float  zone_count;
 int zone_generation;           // local table cache epoch; never serialized into evidence
@@ -278,11 +282,13 @@ string(float s) Zone_SourceTag =
   disk and no client can influence it.  It answers "is this the table that run
   was set against", not "did someone forge one".
 */
+void() Zone_EndCover;
 void() Zone_Hash =
 {
 	local float z, p, e, b;
 	local vector v;
 
+	Zone_EndCover();
 	zone_generation = zone_generation + 1i;
 	if (zone_crc != "")
 	{
@@ -556,6 +562,54 @@ void(float z) Zone_Finish =
   be by zero.  A horizontal edge is never selected, which is what makes the test
   well defined on the axis-aligned quads that are most of this data.
 */
+float(float z, float px, float py) Zone_XYInRing;
+// P1561: each point of END z, pulled 1 u towards z's centre (identical boxes share edges), inside
+// another track's END e, and z's span within e's (1 u slack).
+void() Zone_EndCover =
+{
+	local float z, e, i, inside;
+	local vector c, p;
+
+	for (z = 0; z < zone_count; z = z + 1)
+	{
+		zone_ecov[z] = 0;
+		if (zone_type[z] != ZONE_END || zone_npts[z] < 3)
+			continue;
+		c = '0 0 0';
+		for (i = 0; i < zone_npts[z]; i = i + 1)
+			c = c + zone_pt[zone_first[z] + i];
+		c = c * (1 / zone_npts[z]);
+		for (e = 0; e < zone_count; e = e + 1)
+		{
+			if (zone_ecov[z])
+				break;
+			if (e == z || zone_type[e] != ZONE_END || zone_track[e] == zone_track[z])
+				continue;
+			if (zone_bottom[z] < zone_bottom[e] - 1 || zone_top[z] > zone_top[e] + 1)
+				continue;
+			inside = TRUE;
+			for (i = 0; i < zone_npts[z]; i = i + 1)
+			{
+				p = zone_pt[zone_first[z] + i];
+				if (vlen(c - p) > 1)
+					p = p + normalize(c - p);
+				if (!Zone_XYInRing(e, p_x, p_y))
+				{
+					inside = FALSE;
+					break;
+				}
+			}
+			if (inside)
+			{
+				zone_ecov[z] = 1;
+				if (cvar("developer"))
+					print(sprintf("zones: END %g (track %g) lies inside END %g (track %g): its own runs finish there\n",
+					              z, zone_track[z], e, zone_track[e]));
+			}
+		}
+	}
+};
+
 float(float z, float px, float py) Zone_XYInRing =
 {
 	local float i, n, first, inside, xint;

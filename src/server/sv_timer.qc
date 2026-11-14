@@ -15412,12 +15412,12 @@ void(vector lastp, vector p, vector mn, vector mx, float track) SV_ZoneScan =
 		}
 		if (ty == ZONE_END)
 		{
-			// P1561: the runner's own track's END outranks another track's.  surf_reytx's
-			// bonus-2 END is the main END's box, the main track is first in the table, and
-			// SV_TimerEvent ignores another track's END -- so bonus 2 could never finish
-			// (25 maps have END boxes of different tracks overlapping).
+			// P1561: the runner's own track's END outranks another track's where it lies wholly
+			// inside it (zone_ecov).  surf_reytx's bonus-2 END is the main END's box, the main
+			// track is first in the table, and SV_TimerEvent ignores another track's END -- so
+			// bonus 2 could never finish.  Partial overlaps keep the first END (old recordings).
 			pri = 2;
-			if (zone_track[z] == track)
+			if (zone_track[z] == track && zone_ecov[z])
 				pri = 3;
 			if (ezpri < pri)
 				if (SV_ZoneHit(z, lastp, p, mn, mx))
@@ -15462,7 +15462,7 @@ void(vector lastp, vector p, vector mn, vector mx, float track) SV_ZoneScan =
 		  segment before it, so crossing one at 2000 u/s has to count even
 		  though you were never sampled inside it.  An END outranks a STAGE
 		  here (an end is terminal); the END arm above has already claimed
-		  ezpri 2 if one was crossed.
+		  ezpri 2 or 3 (P1561) if one was crossed.
 		*/
 		if (ty == ZONE_STAGE)
 		{
@@ -15663,7 +15663,7 @@ void(entity e) SV_TimerGhostEnd =
 void(entity e) SV_TimerFrame =
 {
 	local float az, ez, cp, cancel;
-	local float bhopz, bhopstate, bhopdirty, bhopcheat;
+	local float bhopz, bhopstate, bhopdirty, bhopcheat, bhoptrack;
 	local float sz, sin, shit;      // build 43: OUR stage's own boundary box
 	local float tp;
 	local vector p, lastp;
@@ -16254,6 +16254,7 @@ void(entity e) SV_TimerFrame =
 	  movetype.  The counter is explicitly one because Arm zeroes it after the
 	  watcher counted this jump.
 	*/
+	bhoptrack = e.run_t_track;
 	if (bhopz >= 0)
 	{
 		if (bhopstate == TS_ARMED)
@@ -16293,6 +16294,14 @@ void(entity e) SV_TimerFrame =
 		if (e.run_t_state == TS_RUNNING)
 			e.run_st_jump = TRUE;
 		e.run_t_jumps = 1;
+		// P1561: the event latch was taken under the old track; the END rank reads the track,
+		// so re-take it before the zseed below or the next packet reads a fresh END entry.
+		if (e.run_t_track != bhoptrack)
+		{
+			SV_ZoneScan(p, p, mn, mx, e.run_t_track);
+			e.run_t_evzone = zs_ez;
+			e.run_t_cpzone = zs_cp;
+		}
 	}
 
 	SV_TimerRecFrame(e);

@@ -275,13 +275,14 @@ void(string action) SV_StartMarkCommand =
 // library's 44 centred spawns only 3 would turn, and surf_shape's b1 -45 may be meant.
 // P1561: 16 u, not 1 -- the editor kept an auto spawn when a shape edit moved the centre
 // (surf_beyond2 s1/s3/s5 sit 8-12 u off it, facing 148/158/38 against the map's 0/0/270);
-// and several destinations in one zone count when they share a yaw (surf_beyond s5's
-// stage5_t/stage5_ct), the one nearest the centre standing for them.
+// and the destinations whose floor is the zone's own count when they share a yaw (surf_beyond
+// s5's stage5_t/stage5_ct), the one nearest the centre standing for them.  Otherwise the old
+// rule: exactly one destination in the ring.  Mirrored by ZoneEdit_SpawnDestNow.
 void() SV_ZoneSpawnYaws =
 {
-	local float n, i, cnt, d, best, dist;
+	local float n, i, cnt, fin, mixed, d, best, dist;
 	local vector c, o;
-	local entity e, hit;
+	local entity e, hit, one, first;
 
 	if (zone_stamped)
 		return;
@@ -301,8 +302,9 @@ void() SV_ZoneSpawnYaws =
 		}
 		else if (zone_td_kind[n] != ZTD_NONE)
 			continue;
-		cnt = 0;
-		hit = world;
+		cnt = fin = 0;
+		mixed = FALSE;
+		hit = one = first = world;
 		best = 0;
 		for (e = find(world, classname, "info_teleport_destination"); e;
 		     e = find(e, classname, "info_teleport_destination"))
@@ -311,27 +313,39 @@ void() SV_ZoneSpawnYaws =
 				continue;
 			if (!Zone_XYInRing(n, e.origin_x, e.origin_y))
 				continue;
-			if (hit)
+			cnt = cnt + 1;
+			one = e;
+			tracebox(e.origin + '0 0 1', PM_HULL_MINS, PM_HULL_MAXS, e.origin - '0 0 1024', MOVE_NOMONSTERS, world);
+			if (trace_startsolid)
+				tracebox(e.origin, PM_HULL_MINS, PM_HULL_MAXS, e.origin - '0 0 1024', MOVE_NOMONSTERS, world);
+			if (!Zone_PointInside(n, trace_endpos + '0 0 2'))
+				continue;
+			if (fin)
 			{
-				d = e.angles_y - hit.angles_y;
+				d = e.angles_y - first.angles_y;
 				d = d - 360 * floor(d / 360);
 				if (d >= 0.5 && d <= 359.5)
-				{
-					cnt = 2;        // two yaws: the map does not say which way
-					break;
-				}
+					mixed = TRUE;       // two yaws on its floor: the map does not say which way
 			}
+			else
+				first = e;
+			fin = fin + 1;
 			dist = vlen([e.origin_x - c_x, e.origin_y - c_y, 0]);
 			if (!hit || dist < best)
 			{
 				hit = e;
 				best = dist;
 			}
-			cnt = 1;
 		}
-		if (cnt != 1)
-			continue;
-		tracebox(hit.origin, PM_HULL_MINS, PM_HULL_MAXS, hit.origin - '0 0 1024', MOVE_NOMONSTERS, world);   // ZONE_SNAP_DROP, below
+		if (!fin || mixed)
+		{
+			if (cnt != 1)
+				continue;
+			hit = one;
+		}
+		tracebox(hit.origin + '0 0 1', PM_HULL_MINS, PM_HULL_MAXS, hit.origin - '0 0 1024', MOVE_NOMONSTERS, world);   // ZONE_SNAP_DROP, below
+		if (trace_startsolid)
+			tracebox(hit.origin, PM_HULL_MINS, PM_HULL_MAXS, hit.origin - '0 0 1024', MOVE_NOMONSTERS, world);
 		if (Zone_PointInside(n, trace_endpos + '0 0 2'))
 		{
 			if (cvar("developer"))

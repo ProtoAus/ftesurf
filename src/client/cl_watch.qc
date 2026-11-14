@@ -3345,7 +3345,7 @@ void() Watch_SeqRestore =
   Patch 750: an import's stage and checkpoint crossings, by SV_ZoneScan's and the
   timer's rule.  Each move is swept with its hull against every region in table order
   (run_zone_hull 1, run_zone_swept 1; across a teleport only where it landed).  The
-  first END touched, else the first STAGE, is the tick's event: a split only when it
+  first END touched (P1561: this track's covered END first), else the first STAGE, is the tick's event: a split only when it
   is this track's next stage of a whole run, and an END of the track ends the job.
   The first CHECKPOINT touched counts on a change of region when it is this track's
   and further on.  The tick is the sample's.  Waits for the zone table.
@@ -3406,10 +3406,10 @@ void() Watch_ZoneEvents =
 				}
 				else if (ty == ZONE_END)
 				{
-					// P1561: as SV_ZoneScan, the replay's own track's END outranks another's
+					// P1561: as SV_ZoneScan, the replay's own track's covered END outranks another's
 					if (ez >= 0)
 					if (zone_type[ez] == ZONE_END)
-					if (zone_track[ez] == rec_wt_track || zone_track[z] != rec_wt_track)
+					if (zone_track[ez] == rec_wt_track || zone_track[z] != rec_wt_track || !zone_ecov[z])
 						continue;
 				}
 				else if (ez >= 0)

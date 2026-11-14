@@ -1542,35 +1542,56 @@ void() ZoneEdit_TeleDests =
 	ze_tdmap = strzone(serverkey("map"));
 };
 
-// The destination an automatic spawn of zone z takes, or -1 (SV_ZoneSpawnYaws).
+// The destination an automatic spawn of zone z takes, or -1 (SV_ZoneSpawnYaws, P1561's rule too).
 float(float z) ZoneEdit_SpawnDestNow =
 {
-	local float i, n, hit;
+	local float i, n, hit, one, fin, mixed, first, d, best, dist;
 	local vector c, o;
 
 	ZoneEdit_TeleDests();
 	if (z < 0 || z >= zone_count || zone_stamped) return -1;     // stamped: the server leaves them
 	if (zone_type[z] != ZONE_START && zone_type[z] != ZONE_STAGE) return -1;
 	if (zone_npts[z] < 1 || zone_td_kind[z] == ZTD_NAME) return -1;
+	c = '0 0 0';
+	for (i = 0; i < zone_npts[z]; i = i + 1) c = c + zone_pt[zone_first[z] + i];
+	c = c * (1 / zone_npts[z]);
 	if (zone_td_kind[z] == ZTD_POS)
 	{
-		c = '0 0 0';
-		for (i = 0; i < zone_npts[z]; i = i + 1) c = c + zone_pt[zone_first[z] + i];
-		c = c * (1 / zone_npts[z]);
 		o = zone_td_pos[z];
-		if (fabs(o_x - c_x) > 1 || fabs(o_y - c_y) > 1) return -1;
+		if (fabs(o_x - c_x) > 16 || fabs(o_y - c_y) > 16) return -1;
 	}
-	n = 0; hit = -1;
+	n = fin = best = 0; hit = one = first = -1; mixed = FALSE;
 	for (i = 0; i < ze_tdn; i = i + 1)
 	{
 		o = ze_tdorg[i];
 		if (o_z < zone_bottom[z] - 64 || o_z > zone_top[z] + 512) continue;
 		if (!Zone_XYInRing(z, o_x, o_y)) continue;
-		n = n + 1; hit = i;
+		n = n + 1; one = i;
+		tracebox(o + '0 0 1', PM_HULL_MINS, PM_HULL_MAXS, o - '0 0 1024', MOVE_NOMONSTERS, world);
+		if (trace_startsolid)
+			tracebox(o, PM_HULL_MINS, PM_HULL_MAXS, o - '0 0 1024', MOVE_NOMONSTERS, world);
+		if (!Zone_PointInside(z, trace_endpos + '0 0 2')) continue;
+		if (fin)
+		{
+			d = ze_tdyaw[i] - ze_tdyaw[first];
+			d = d - 360 * floor(d / 360);
+			if (d >= 0.5 && d <= 359.5) mixed = TRUE;
+		}
+		else
+			first = i;
+		fin = fin + 1;
+		dist = vlen([o_x - c_x, o_y - c_y, 0]);
+		if (hit < 0 || dist < best) { hit = i; best = dist; }
 	}
-	if (n != 1) return -1;
+	if (!fin || mixed)
+	{
+		if (n != 1) return -1;
+		hit = one;
+	}
 	o = ze_tdorg[hit];
-	tracebox(o, PM_HULL_MINS, PM_HULL_MAXS, o - '0 0 1024', MOVE_NOMONSTERS, world);
+	tracebox(o + '0 0 1', PM_HULL_MINS, PM_HULL_MAXS, o - '0 0 1024', MOVE_NOMONSTERS, world);
+	if (trace_startsolid)
+		tracebox(o, PM_HULL_MINS, PM_HULL_MAXS, o - '0 0 1024', MOVE_NOMONSTERS, world);
 	return Zone_PointInside(z, trace_endpos + '0 0 2') ? hit : -1;
 };
 
