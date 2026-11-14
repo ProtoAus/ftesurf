@@ -1,5 +1,10 @@
 # BACKLOG.md
 
+## Window alpha with fog — owner report (14 Nov 2026)
+
+- Site: rendered window/glass material alpha under world fog; exact map/material/view not yet identified. Owner confirms P1003 authored no-fog works, but separately reports "the window alpha with fog is broken". This is not a no-fog-policy acceptance failure or a diagnosed shader root cause. No fix claimed; owner may assign another agent.
+- Falsifier: on the affected window, capture the same fixed view/material with fog on/off and the expected transparency; fog should affect colour without incorrectly changing the window's intended alpha/compositing. Identify the map/material and relevant renderer before patching. Do not disable authored fog or change global alpha/sorting as a workaround.
+
 ## Save-lock at ping -- leftovers of P1544 (14 Nov)
 
 - A load pressed within a round trip of a save still waits for the save's answer (rig, 500 ms: 0.38 s for a load
