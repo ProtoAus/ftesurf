@@ -26,6 +26,12 @@
 - After a supported final-platform landing, JARGON keeps it and uses a checked doorway approach instead of retrying the ramp because passive coasting misses the portal.
 - JARGON's initial steering trials separate ramp and exit corrections at the existing ride boundary rather than an arbitrary halfway split.
 
+### P1548 Fewer pink and black squares without the games
+- A surface whose texture you do not have now draws in that texture's own average colour under the map's lighting, in many more places than before: textures named by a material you do have, props, and map surfaces the map file did not colour.
+- Water from a game you do not have draws as a see-through plane in its own fog colour instead of a checkerboard floor.
+- Fixed a sky turning pink and black after a map change when the next map's sky is also missing; it now shows the default sky.
+- Missing decals, sprites and glows draw nothing instead of squares. hl2_missingtint 0 brings back the checkerboard.
+
 ### P1547 Instant load right after a save
 - A load pressed straight after saving no longer waits for the save to reach the server: you move the moment you let go, at any ping.
 - At higher ping a save is taken exactly where you press it; before, it could land a little further along your path.

@@ -5,6 +5,20 @@
 - After verified deployment, watch one landing that previously caused a reset: JARGON should keep it, steer toward the door, and finish through the real trigger. If it cannot navigate, it should pause with a clear message instead of retrying the ramp. Report the last console message or a short clip; no config/data reset is needed.
 - No new human pass is recorded. Acting native handoff:14.280seconds/0backtracks, strict0faults; normal production:12.285seconds/4backtracks, strict0faults. The matched pre-handoff midpoint was13.110seconds/4backtracks. These are single-seed controlled runs, not optimal boarding/impact or a general speed guarantee.
 
+## Current online beta — owner feedback received (14 Nov; acceptance incomplete)
+
+Lex reports normal runs on bhop_1n5an3 with input journals ON and OFF both submitted, without a recording-disabled warning. Lex then confirmed OFF first, ON second, usual keyboard/mouse, and no Stop immediately after ON. **Stopping afterward was optional, not an extra required test step.** Upload delivery, disclosure/status and OFF persistence still need their own evidence; these ordinary submissions alone prove neither unwanted journal sharing nor a privacy pass. Do not request another run before exhausting the existing evidence.
+
+**The F2 Input journal uploads choice controls optional raw-journal sharing, not ordinary timer/replay recording or score submission.** A normal run may still submit with this choice OFF; no recording-disabled warning is expected solely from that choice. A board entry alone cannot show whether an extra journal uploaded. The earlier test instructions did not make this distinction clear enough.
+
+Use the current game and normal public lobby, with your normal settings. No auto-quit cfg, account unlink, consent/config reset or injected-input harness. Fog is already confirmed; do not repeat it.
+
+1. Read the current journal-sharing disclosure and F2 **Input journal uploads** status. Use **Stop**; check it stays OFF through the normal menu, an existing own replay if available, and rejoin. Report any step not checked, and whether the existing name/account status is understandable (not a proof of clean hardware).
+2. **Only if you actually want to share one run**, explicitly enable the existing disclosed choice and finish a normal main/bonus run longer than40seconds using ordinary input. Otherwise leave it OFF; no permission is inferred. Do not enable extra raw/device scopes. Note map/approximateUTC, broad device class, any remapper/AltGr/remote-input context and upload/error message. No credentials, personal identifiers or raw journal in chat.
+3. Stop again if desired. Reply once: `disclosure readable/unclear; Stop OFF persisted through menu/replay/rejoin (or not checked); name/account okay/problem; map + approximateUTC + input context/errors; sharing left ON/OFF`. The operator can privately check that exact consenting finish's receipt/file join. One run is not device-population calibration.
+
+Current P804 online terms have a visible journal checkbox; old accepted answers are not silently upgraded. The collector is live. Historical P774 "collector blocked/defaultoff" instructions below are superseded, not the current workflow. No human pass is recorded until your actual observation.
+
 ## P1547 instant load right after a save -- owner check PENDING (ask markbeaton54)
 - On a lobby at your normal ping: save, then tap load straight away (within your ping), a few times over. You should move the moment you let go -- no "Loading save" pause even right after saving -- and land exactly where you pressed save.
 - Also try crouched, and `!r` right after a save (the reset is not drawn ahead there, by design).
@@ -4379,7 +4393,9 @@ box at speed"): stop moving first, or `!r`. Not changed: a full run failing a la
 stage keeps the run's practice tag, as `!r` there does. Verdict PENDING ("teleport reset
 ok" or what looks wrong).
 
-## P774 — optional input-journal uploads (PENDING)
+## P774 — historical optional-upload controls (superseded by P804/current batch)
+
+**Historical workflow, not current instructions:** P804 later activated the collector and included a visible journal checkbox in new online terms. Use the current batch at the top or P804, not this old rollout/defaultoff state. The original installation and unconfirmed observations below are retained as history, not regraded.
 
 Installed in C:\FTEQuake at 2026-10-18T06:44:56Z and C:\FTESurf at 06:46:30Z:
 native source `29ddd0a6a`, QC `ed6f9223` (also preserves P775/P777/P778/P780).

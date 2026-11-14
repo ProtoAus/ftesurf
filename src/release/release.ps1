@@ -235,6 +235,8 @@ $ShipGameFiles = @(
     'ftesurf/maps/tiers.txt'
     'ftesurf/data/mapmeta_override.txt'
     'ftesurf/data/mapparticles.txt'
+    # P1548: each material's average colour (tools/matcolours.py), drawn where its image is missing
+    'ftesurf/data/matcolours.txt'
     # WITHOUT THIS THE DOWNLOAD BUTTON DOES NOT EXIST.  ui_dl_load reads it to
     # append the maps you do NOT have; with no file the list is built purely
     # from search_begin and every row is already installed, so nothing draws a
