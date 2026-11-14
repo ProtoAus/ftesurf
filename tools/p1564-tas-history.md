@@ -90,11 +90,12 @@ was preserved, not repaired or called a pass.
   late confirmation does not invent a signature. No evidence format, input
   ancestry, detector, sharing-consent or certification rule is relaxed.
 - Owner visual/menu confirmation is pending in `lextest.md`.
-- Source, tests and review are not deployment evidence. The QC delivery receipt
-  will identify the inspected commit, both Windows destinations, fleet hashes
-  and UTC separately. The backend requires its existing guarded-generation
-  procedure; do not copy this source into a serving immutable generation or
-  use a generic reload to bypass it. See
+- QC is delivered to both Windows installs and all twelve development lobbies;
+  exact commits, artifact/live hashes, preservation evidence and UTC are recorded
+  in [p1564-delivery.md](p1564-delivery.md). That is separate from the still-pending
+  TAS-board backend activation. The backend needs its existing guarded-generation
+  procedure and the owner's privileged-policy authorization; do not copy source
+  into a serving immutable generation or use a generic reload to bypass it. See
   [the generation procedure](surfd-generation-p996.md).
 
 No native build, engine tag/pin change, release or QC Build-number decision is
