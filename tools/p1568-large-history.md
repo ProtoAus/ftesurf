@@ -4,7 +4,7 @@
 
 Remove the old 8 MiB authenticated owner-archive cliff without changing the REC
 grammar, movement, receipts, native certification, rank eligibility or ownership.
-TAS remains assisted and unranked. This does not activate the separately staged
+TAS remains assisted and unranked. This does not change the separately controlled
 online TAS backend or retroactively assign historical unowned files to a player.
 
 The new acquisition safety ceiling is **1,073,741,823 bytes**, not unlimited
@@ -51,7 +51,13 @@ ship item.
 
 ## Qualification state
 
-Implemented and independently reviewed, **not yet a deployment/release claim**.
+Implemented and independently reviewed. Native and qualified QC are deployed to
+both Windows installs and all twelve development lobbies. The Pi's original
+normal postflight timed out after the completed paired swap/restarts. Separate
+read-only residency and full cold-domain integrity acceptance passed; this does
+not turn the failed normal method into a pass. Exact qualification, hashes, UTC,
+preservation and remaining limits are recorded in
+[p1568-delivery.md](p1568-delivery.md). No release claim.
 
 - Native production-source controls: Python-matching SHA256 at1/4093/65536-byte
   work budgets, handle/VM/quota/error/seek/close controls, and a real unmapped
@@ -68,7 +74,8 @@ Implemented and independently reviewed, **not yet a deployment/release claim**.
   closes the long-list cache and failed-read-open/absence findings.
 - A genuine154-tick TAS completion, authenticated account proof, positive get2
   transfer and31,822-byte identical local copy acted. No automatic replay.
-- `python tools/test_reccheck.py`:952checks, zero failures. Actual paired CLI:
+- Final candidate reader output reports957checks and zero failures; its original
+  child exit status was not persisted. Actual paired CLI:
   578REC +174paired VIEW +10unpaired VIEW, same762input hashes,366faulty reports
   and368diagnostics under both pinned readers, zero new fault cases. Earlier
   standalone-VIEW365 counts are a different context; failed caller comparisons
@@ -90,8 +97,12 @@ Implemented and independently reviewed, **not yet a deployment/release claim**.
   resumed nor adopted. No arbitrary-size, memory-usage or performance claim.
 
 Engine pins now name `cc56219a3c7e2a99128cc8ff02285d57a25e422b` / `patch-1568`.
-Clean QC-commit qualification, dual Windows delivery and guarded native-then-QC
-fleet delivery remain to be recorded.
-The existing QC-only fleet transaction cannot replace a native executable. A
-native swap also requires fresh selected-verifier/backend dependency evidence;
-it must not silently invalidate or relabel the separately frozen backend plan.
+Clean-commit QC qualification and the separate guarded native delivery are
+recorded in the delivery receipt. An earlier two-DAT Pi transaction refused on a
+missing live resume member before upload. The owner specifically approved a new
+current cohort without restoring the missing slot; its actual paired delivery
+and separately accepted post-state proof are recorded without relabeling either
+historical refusal or the failed normal postflight.
+The existing QC-only fleet transaction cannot replace a native executable; it is
+not a native-only fallback. Native/backend source, dependency and actor evidence
+remain separate from compiled artifacts, tooling-only changes and live DATA.

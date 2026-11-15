@@ -1,6 +1,22 @@
 # P1564 QC development delivery — 14 Nov 2026 UTC
 
-## Delivered versus pending
+## Current status — 15 Nov 2026 UTC
+
+The serving peer backend already provides TAS/community and the website's assisted
+selector. Live API/website checks confirmed it; no privileged-policy update or
+activation of the obsolete staged proposal was needed or performed here.
+P1568 also updates bounded large-body acquisition: native/QC delivery is verified
+on both Windows installs and all twelve lobbies. The Pi's initial normal
+postflight timed out after the completed swap/restarts; separate read-only
+residency and strict cold-domain integrity acceptance passed. The failed normal
+method remains failed. See [p1568-delivery.md](p1568-delivery.md) for exact UTC,
+preservation, source roles and remaining limits.
+Owner menu/replay acceptance is still pending, not an automated visual pass.
+
+The sections below retain the **historical 14 Nov P1564 delivery snapshot**.
+Their backend-pending/8 MiB statements are not current rollout instructions.
+
+## Historical delivered versus pending — 14 Nov
 
 **Delivered:** completed-run local history, Local filters, the client TAS tab,
 owner background acquisition and REC-angle TAS replay presentation. Both Windows

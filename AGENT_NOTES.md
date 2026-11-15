@@ -10965,6 +10965,116 @@ script rather than passing it as an argument, where `ps` would show it.
 
 ## Pi operations (public lobbies)
 
+**P1568 qualification/delivery caller lessons (15 Nov 2026).**
+
+- A native-image snapshot's single-link invariant is not a general DATA invariant.
+  Fresh QC preparation rejected a completed REC with two hard links that the exact
+  successful native before/after inventories already preserved with the same
+  identity. Correct BOTH enumeration and supplemental snapshots: only strictly
+  below canonical `ftesurf/data`, read ordinary files no-follow through a descriptor
+  and retain full hash/dev/inode/size/mode/UID/GID/nlink/nanosecond times, checking
+  descriptor/path identity through the read and exact later equality. Do not
+  unlink/exclude the recording or waive link-count changes. Native/program/config,
+  artifact/source/receipt targets remain strict single-link/no-alias.
+- A successful readonly readiness inventory is not an immutable DATA universe.
+  Between readiness and input materialization, six new ordinary DATA members
+  appeared; rehashing every one of the 64,699 old members proved zero byte,
+  identity, link-count or metadata changes, with no removals. Exact selector AST
+  and serialized inputs agreed. Preserve the failed comparison and original plan,
+  then bind all current additions at the real capture boundary while retaining
+  every old member exactly. Do not redate old readiness, omit additions, repeat
+  immutable qualification or hold maintenance gates through offline debugging.
+- A later fresh pre-upload guard found an old cold-backed resume member absent
+  from the live tree and stopped before any DAT upload/swap/restart. One bounded
+  diagnosis found three missing members in one slot; all204 selected survivors
+  retained full hashes/metadata and all4canonical current/previous DATs remained
+  old. Its15-day calendar age was compatible with the14-day cleanup contract,
+  not proof of actual expiry/intent. Keep the original custody and failure; do
+  not silently call it expiry, restore stale player state, ignore it or rebaseline
+  a failed transaction. Obtain the missing current-state decision before proceeding.
+- A descriptor augmented with external mutable inputs must be augmented identically
+  by every compared observer. Comparing bare native backend `files` with the
+  supplemental `files` deterministically refused an unchanged external codefile.
+  Freshly hash/add the same declared inputs before the complete comparator; do
+  not remove `files`, source/dependency or metadata checks to make shapes match.
+- Do not search a whole plan JSON case-insensitively for `REQUIRED`: a valid
+  `requiredFreshPredecessorInputs` schema key falsely refused a fully bound plan.
+  Check explicit case-sensitive JSON-string placeholder prefixes and test the
+  ACTUAL materialized plan as the positive arm, plus injected unresolved values
+  as the refusal arm. The real caller refused before its first staging marker;
+  preserve that failed receipt in place and prove unchanged fixtures/no staging
+  before any explicitly gated same-transaction continuation. Never make an
+  after-mutation producer failure replayable by renaming its output.
+- The retained offbox verifier derives `pi-before/` from its own script directory.
+  Place it beside that directory, not under `ops/`; it consumes no directory
+  argument, exclusively writes two real JSON receipts, and prints TEXT. Save/copy
+  its actual receipt file, never stdout as JSON. Preserve every archive/member
+  hash and metadata before canonical staging.
+- Parenthesize a complete concatenated command inside a PowerShell argument
+  array: `@($PiHost, ('python3 -B '+$remote+'/'+$script))`. An unparenthesized
+  comma/plus expression split one intended command into several argv entries;
+  a fixture-only lease control refused before acquisition or any live action.
+  Check the source-selected argument count and exact string shape locally before
+  SSH, rather than repairing quoting by adding transport wrappers.
+- Windows `Process.StandardInput.WriteLine` defaults to CRLF. A strict POSIX
+  LF-only token reader correctly refused the leftover CR. Set the actual writer's
+  `NewLine` to LF after Start and before its first WriteLine, rather than relaxing
+  the token parser. The same owned-fixture control then passed real held ACK,
+  nonblocking contention, exact wrapped-transport result and lost-holder refusal;
+  no canonical lock or game action was needed for that control.
+- SSH reachability does not imply the same host exposes surfd on LAN port8084.
+  The hardened serving backend refused that retired HTTP path while the public
+  HTTPS directory worked. Official `build.ps1 -PiDirectoryUrl` now separates the
+  two transports and defaults to the public directory (tooling commit2e191c4d).
+  Preserve unknown/missing-row refusal and ten-second warnings; do not use Force
+  as a transport fix. Existing source controls plus the real who-is-on block
+  validated this seam without running a build/upload/restart. When reusing a
+  qualified pair, record its compiled source separately from the reviewed
+  tooling-only source change; do not redate/recompile artifacts for a URL fix.
+- When a peer completes an owner-authorized generation/config rollout during
+  preparation, match its actual full bytes and published delivery—not just a
+  changed inode or a broad beta approval. Bind the new LIVE launcher/primary,
+  source-home and mutable dependencies consistently, retaining historical source
+  pins as historical. One old source-home assertion still named f443 even after
+  the exact new 6ec launcher check passed. Audit active input selectors together;
+  do not globally replace old provenance or turn this into a fallback policy.
+- Hash and execute the same embedded helper bytes. `read_text()` normalized a
+  new CRLF helper to LF while the expected seal covered raw bytes; readiness
+  refused before DATA/remote materialization. A shared read-bytes/base64/decode
+  seam roundtripped every actually embedded hashed asset before SSH and retained
+  exact hashes for both EOL forms. Do not normalize an old seal or generate a
+  sequence of wrappers to discover the same mismatch one helper at a time.
+- Check actual consumer/unit and identity type. The live unit was
+  `ftesurf-tasrevd.service`; inactive `tasrevd.service` did not mean no consumer.
+  Its codes getter consumes full CSQC SHA256, not folded MD4/CRC cache names.
+  Preserve exact preimage offbox before an approved add-only registration and in
+  the normal onbox backup; retain existing entries/inode/owner/group/mode. No
+  service restart was needed for the per-request codefile reader.
+- Windows producer copied all 22 targets but then failed its missing receipt-field
+  seam. Preserve that failure separately from a subsequent read-only destination
+  audit; do not recopy/restart or call the original producer successful. Validate
+  required receipt paths before mutation and release only the producer's verified
+  own lease in a finally path, including receipt-write failure.
+- A completed paired swap/all12 systemctl restarts is not application-ready
+  proof. First normal F.post timed out on UDP status; its trace omitted the
+  failed unit, so neither that port nor a startup cause was established. Preserve
+  the failed terminal and do not redeploy/retry observers to make it green. One
+  separately authorized read-only sweep later proved all12 loaded/checksummed
+  states plus64842cold protected entries/204selected members by full bytes/meta.
+  Record separate bounded acceptance: nonleased one-status-window, not the
+  original second F observation/normal F→M→reader chain or continuous exclusion.
+  Zero visible journal records are not zero QC/startup errors. Actor scope and
+  existing protected-login NONactor permission limits remain explicit. See
+  `tools/p1568-delivery.md`; human UI/first production posting stayed pending.
+- Check the user's end state against the actual serving system before renewing a
+  stale proposal. TAS was already served by a peer generation: public API accepted
+  TAS/community and rejected an invalid style; actual website JS included its
+  assisted selector. The obsolete staged Root/backend proposal was not needed or
+  run. Website assets use `https://proto.bar/ftesurf/board/`, not the game/API
+  vhost's `/board/`. Source equality to later helped-run JS is not an appropriate
+  test of the earlier serving TAS selector; preserve the failed URL/equality
+  observers and inspect the actual returned bytes rather than changing services.
+
 - **P1510 contained worker leases (11 Nov 2026).** Python's default
   `Popen(close_fds=True)` also drops deliberately inheritable admission/candidate
   leases. A waiting parent is not sufficient lifetime ownership: an actual ARM

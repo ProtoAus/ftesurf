@@ -85,21 +85,23 @@ was preserved, not repaired or called a pass.
 
 ## Explicit limits and delivery
 
-- The existing authenticated Archive **8 MiB per-file limit** remains a safety
-  boundary. Larger server originals are retained, but are not automatically
-  copied to a remote client's local history. Removing the limit without a
-  bounded streaming/digest design would permit unbounded QC allocation.
+- Historical P1564 used an authenticated Archive **8 MiB per-file limit**.
+  P1568 adds bounded streaming/digest acquisition with a finite 1,073,741,823-byte
+  ceiling on updated native/QC ends. Older/unsupported ends retain the legacy
+  limit and server originals. This is not unlimited storage; see
+  [the current delivery state](p1568-delivery.md).
 - Cold restoration without a real run ID cannot receive a guessed VIEW pair;
   late confirmation does not invent a signature. No evidence format, input
   ancestry, detector, sharing-consent or certification rule is relaxed.
 - Owner visual/menu confirmation is pending in `lextest.md`.
 - QC is delivered to both Windows installs and all twelve development lobbies;
   exact commits, artifact/live hashes, preservation evidence and UTC are recorded
-  in [p1564-delivery.md](p1564-delivery.md). That is separate from the still-pending
-  TAS-board backend activation. The backend needs its existing guarded-generation
-  procedure and the owner's privileged-policy authorization; do not copy source
-  into a serving immutable generation or use a generic reload to bypass it. See
-  [the generation procedure](surfd-generation-p996.md).
+  in [p1564-delivery.md](p1564-delivery.md). Later live checks confirmed the serving
+  peer backend and website already provide TAS/community. The obsolete staged
+  proposal was not activated; no Root/policy change was needed or performed here.
+  This does not claim a first real production TAS posting or authorize mutating
+  a serving immutable generation. See [current observations](p1568-delivery.md)
+  and [the generation procedure](surfd-generation-p996.md).
 
 No native build, engine tag/pin change, release or QC Build-number decision is
 part of this QC completion. Published peer engine metadata is preserved.
