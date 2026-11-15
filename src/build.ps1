@@ -37,8 +37,8 @@
  a player sees is the one in their own install.  It runs after the QC compile
  (and after the engine deploy, with -Engine), in this order:
 
-   1. Reads surfd's http://<host>:8084/lobbies.json, <host> being the host half
-      of $PiHost, and reports who will be dropped by step 5. It refuses when
+   1. Reads surfd's -PiDirectoryUrl (the public HTTPS directory by default),
+      independently of the SSH host, and reports who step 5 will drop. It refuses when
       the directory cannot be read or carries no row for an active lobby step 5
       restarts -- A LOBBY THE DIRECTORY CANNOT SEE IS NOT AN EMPTY LOBBY: the
       panel's flush button empties the table outright, a surfd restart or a new
@@ -123,9 +123,10 @@ param(
     [ValidateRange(0, 120)]
     [int]$PiWarnSeconds = 10,
 
-    # The Pi as ssh sees it.  Its host half also locates surfd's directory,
-    # http://<host>:8084/lobbies.json, which -Pi reads before touching anything.
+    # SSH transport and directory HTTP transport need not share an address.
     [string]$PiHost   = 'proto@192.168.1.102',
+    [ValidateScript({ $_.IsAbsoluteUri -and $_.Scheme -in @('http','https') -and -not $_.UserInfo })]
+    [uri]$PiDirectoryUrl = 'https://play.proto.bar/lobbies.json',
 
     # The lobbies' gamedir on the Pi: run.sh's -basedir plus the game name.
     [string]$PiGame   = '/srv/nvme/ftesurf-server/game/ftesurf',
@@ -525,7 +526,7 @@ if ($Pi) {
     #    Treating any of those as "nobody on" would drop a full lobby at step 5,
     #    so a short list refuses exactly like an unreachable directory.
     Step "Pi: who is on"
-    $dirUrl = "http://${piAddr}:8084/lobbies.json"
+    $dirUrl = $PiDirectoryUrl
     $busy   = $null                     # $null = could not tell; @() = no row has players
     $noRow  = @()                       # lobbies step 5 restarts that have no row at all
     try {

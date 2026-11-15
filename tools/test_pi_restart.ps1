@@ -8,6 +8,16 @@ $ast = [System.Management.Automation.Language.Parser]::ParseFile($source, [ref]$
 if ($errors.Count) { throw ($errors -join "`n") }
 $param = $ast.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'PiWarnSeconds' }
 if ($param.DefaultValue.Extent.Text -ne '10') { throw 'default countdown must be 10 seconds' }
+$directoryParam = $ast.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'PiDirectoryUrl' }
+if (-not $directoryParam) { throw 'missing explicit directory transport' }
+$directoryBinding = [scriptblock]::Create('param(' + $directoryParam.Extent.Text + ")`n" + '$PiDirectoryUrl')
+$defaultDirectory = & $directoryBinding
+if ($defaultDirectory.AbsoluteUri -cne 'https://play.proto.bar/lobbies.json') { throw 'wrong default directory' }
+foreach ($invalid in @('ftp://directory.invalid/lobbies.json','https://user:secret@directory.invalid/lobbies.json','/lobbies.json')) {
+    $refused = $false
+    try { $null = & $directoryBinding -PiDirectoryUrl $invalid } catch { $refused = $true }
+    if (-not $refused) { throw 'invalid directory URI accepted' }
+}
 $pi = $ast.Find({ param($node)
     $node -is [System.Management.Automation.Language.IfStatementAst] -and
     $node.Clauses[0].Item1.Extent.Text -eq '$Pi'
@@ -22,6 +32,7 @@ $delivery = [scriptblock]::Create($body.Substring($upload))
 function Step($text) { }
 function Ok($text) { }
 function Invoke-RestMethod { param($Uri, $TimeoutSec, [switch]$UseBasicParsing)
+    if ([string]$Uri -cne $script:ExpectedDirectory) { throw 'directory override not used' }
     if ($script:Unknown) { throw 'directory unavailable control' }
     [pscustomobject]@{ lobbies = $script:Rows }
 }
@@ -71,6 +82,7 @@ $PiWarnSeconds = 10
 $cases = @(
     @{ Name = 'occupied-default'; Players = 1 },
     @{ Name = 'empty-default'; Players = 0 },
+    @{ Name = 'custom-directory'; Players = 0; Directory = 'http://directory-control.invalid/lobbies.json' },
     @{ Name = 'missing'; Missing = $true; Refuse = $true; Reason = 'directory has no row'; Events = '' },
     @{ Name = 'occupied-and-missing'; Players = 1; Missing = $true; Refuse = $true; Reason = 'directory has no row'; Events = '' },
     @{ Name = 'unknown'; Unknown = $true; Refuse = $true; Reason = 'cannot tell whether'; Events = '' },
@@ -83,6 +95,8 @@ $cases = @(
 foreach ($case in $cases) {
     $script:Events = [System.Collections.Generic.List[string]]::new()
     $script:Unknown = [bool]$case.Unknown; $script:Fault = $case.Fault; $PiForce = [bool]$case.Force
+    $PiDirectoryUrl = if ($case.Directory) { & $directoryBinding -PiDirectoryUrl $case.Directory } else { $defaultDirectory }
+    $script:ExpectedDirectory = $PiDirectoryUrl.AbsoluteUri
     $script:Rows = @([pscustomobject]@{ addr = 'mock:27510'; players = [int]$case.Players; name = 'mock'; map = 'test'; max = 16 })
     if (-not $case.Missing) { $script:Rows += [pscustomobject]@{ addr = 'mock:27520'; players = 0 } }
     $refused = $false; $reason = ''
@@ -99,4 +113,4 @@ foreach ($case in $cases) {
     }
     Write-Host "PASS $($case.Name)"
 }
-Write-Host '10 actual-source Pi restart controls passed; transports mocked, not live acceptance.'
+Write-Host '11 actual-source Pi restart controls and directory URI validation passed; transports mocked, not live acceptance.'
