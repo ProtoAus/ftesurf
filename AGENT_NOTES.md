@@ -6150,6 +6150,22 @@ cannot be used, ask; do not silently scatter copies elsewhere.
 
 ## Build
 
+### Fresh release inputs and the actual normal budget — 0.1.46, 15 Nov 2026 UTC
+
+Use the WHOLE documented prepare command, including the explicit current
+`-BuildNumber` and verified signed `-PreviousUpdateFeed`: the automatic build
+provenance search is only 200 commits, and beta patch traffic can age Build89 out
+of it without any Build NN change. A missing ignored named asset is a separate
+failure from missing asset directories; inspect all production named ship lists
+before an expensive invocation. The fresh-tree snow mesh was restored ONLY from
+the trusted published archive, then all named non-VM inputs were checked with
+shipguard's actual parser. Never bulk-copy player DATA. Finally, use the existing
+normal `-MaxTotalMB 128` from the published0.1.45 recipe: its raw Windows payload
+is125.72MiB, above the small-stage default80MiB.0.1.46 is126.87MiB (+1.15MiB),
+inside that SAME normal budget after deny/path/delta review; receipt overrides
+remain empty. Do not blindly raise caps or rebuild a sealed candidate. Preserve
+all earlier configuration/input refusals; they are not successful previews.
+
 ### Complete Windows SDK before a release build — P1571, 15 Nov 2026 UTC
 
 An incomplete `engine/libs-x86_64-w64-mingw32` directory is not a release SDK.

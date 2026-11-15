@@ -48,8 +48,16 @@ Use the existing Linux builder for the engine pin when needed:
 
 ```powershell
 pwsh -NoProfile -File tools/linux/build-linux.ps1 -Commit <engine-sha> -FteRoot <engine-worktree> -ExpectSonames
-pwsh -NoProfile -File src/release/release.ps1 -Bump patch -DryRun -BuildNumber <current-qcbuild> -FteRoot <engine-worktree> -LauncherRoot <launcher-worktree> -Linux dist/linux-build -PreviousUpdateFeed <saved-live-update.json>
+pwsh -NoProfile -File src/release/release.ps1 -Bump patch -DryRun -BuildNumber <current-qcbuild> -FteRoot <engine-worktree> -LauncherRoot <launcher-worktree> -Linux dist/linux-build -PreviousUpdateFeed <saved-live-update.json> -MaxTotalMB 128
 ```
+
+The 128 MiB stage budget is the normal published 0.1.45/0.1.46 budget, not a
+bypass: their Windows stages are 125.72/126.87 MiB, already above the 80 MiB
+small-stage default. Keep the per-file limit and deny checks; review the actual
+file/size delta before changing any budget. In a fresh worktree, also validate
+all named `ShipRootFiles`/`ShipGameFiles` inputs, not only missing directories or
+QC literals. Ignored named assets such as the snow mesh still need their normal
+producer or a hash-checked member of a trusted published archive.
 
 The saved prior envelope must be the real signed predecessor, not reconstructed
 JSON. A first-ever feed uses `-FirstUpdateFeed` with both platforms. Windows-only
