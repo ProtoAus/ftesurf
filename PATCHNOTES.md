@@ -21,6 +21,9 @@
 
 ## next
 
+### P1574 Water no longer stutters the first time you see it
+- On a map you have not played before, its water's shaders now compile while the map loads, not in the frame the water first comes into view (a 30-80 ms hitch on maps with water). The first load can take up to a second longer.
+
 ### P1573 No injected clicks or touchpads on the ranked board
 - Clicks that no mouse sent are now blocked while you play, and touchpads no longer move the view or click in game. Both are set for you once.
 - To play on a touchpad anyway, set in_rawinput_touchpad 1: your runs are then not ranked, and the finish line says which setting to change back.

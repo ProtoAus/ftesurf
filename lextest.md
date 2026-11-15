@@ -1,5 +1,9 @@
 # lextest.md — things waiting on a human
 
+## P1574 Water warmed at load -- INSTALLED 15 Nov 20:32Z (both installs exe 27697bbc, patch-1574); owner check PENDING
+- Play a water map you have never played (or one whose water you have not seen since this update): the first look at the water should not hitch. Loading may take up to about a second longer the first time.
+- If a map still hitches the first time something comes into view, say the map and what came into view.
+
 ## 0.1.46 public update -- Windows/Linux published 15 Nov UTC; owner visual check PENDING
 - On your next normal launch, check that the title/version reads 0.1.46 and F2's patch notes open. No settings or data reset is requested.
 - On one familiar map, check that your usual knife and the map render normally. This is a quick visual regression check, not proof of every material or movement mode. The full requested HL1/AG and HL2 movement additions remain unfinished and were not introduced by this release.

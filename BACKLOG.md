@@ -1,5 +1,31 @@
 # BACKLOG.md
 
+## 0.1%-low round 4 (16 Nov, ftesurf-46; task root C:\FTESurf-worktrees\lows4-20261116-46)
+
+- First sight of water after P1574: the frame still costs 29-53 ms on surf_chateau/boreas (77/48 before) -- the
+  reflection MSAA target (r_reflectmultisample, gl_backend.c be_reflmsaa) is freed at every map change
+  (GLBE_DestroyFBOs ~2356) and allocated on the first capture ("driver allocated multisample storage"). Keep it across
+  a same-size map change, or clear it once at activation when the map has water. Falsifier: artifacts/run_firstplay.py
+  on a diag build (engine branch diag-lows4: LATECOMPILE/meshvbo/gl_debugperf with buffer counts, window samples).
+- Fog variants of listed 4+-bit permutations still compile mid-run on a fogged map not played before (surf_null:
+  vmt/vertexlit 0x128/0x328 beside listed 0x108/0x308; vmt/refract 0x20 unlisted, 4 bits). A fog closure at
+  activation needs the map's fog known there (CSQC sets it with localcmd("fog ..."), ordering unverified).
+- Spawn hitches (the first frames after the loading screen, not mid-run): CSQC shaders registered after activation
+  (ftesurf_flame/flameu/dot on nova, tasviz, skyboxface, vmt/ccorrect on ceaseless) and the HUD's rounded-corner
+  textures and HUD-cache targets made on first draw (sui_rndc*, sui_rrc*, hc_mat*, gfx/ui/roundmask.png): a
+  277-431 ms frame in the rig, but the rig's frames there also open a replay. Register them in CSQC_WorldLoaded.
+- Game code in the slowest frames (r_spikes 2 over 7 maps, artifacts/qcsplit1, agg_qcsplit.py): Sprite_Glare/SkyTest
+  dominate fairy/jumble (25-32% of profiled CSQC); elsewhere the mouse pad (MPad_Draw, hud_mouse 1 is live HUD) and
+  rounded panels (_sui_round_draw, sui_round_fixed, sui_text) are 15-20%; the replay's path line (Line_*) and
+  Watch_* are replay-only. Unprofiled price of hud_mouse / hud_watch_path not yet measured (artifacts/abq2.py and the
+  lows4_v_*.cfg arms are ready). The glare's own comment names Source's way: GPU occlusion queries instead of traces
+  (cl_sprites.qc ~2262; FTE has corona queries in gl_rlight.c ~623).
+- Trigger prediction: TG_ChainStart probes every IO-owned trigger with a zero-length tracebox each frame (23-393
+  triggers a map); a box-overlap test first would skip the builtin call exactly. ~3-6% of profiled CSQC.
+- Measured, not leads: a multisampled window beside P1260's MSAA scene target costs nothing measurable on the PC
+  (surf_bossfight 491/496 fps, surf_null 620/637, window samples 4 vs 0 proven per session); NVIDIA's deferred
+  first use of static buffers makes no 20 ms frame in play once its notices are not printed (2,516 on boreas).
+
 ## Injected clicks / touchpads on the ranked board -- what P1573 left (16 Nov, ftesurf-31)
 
 - Engine half, the real fix for reviews 2-3: CVAR_NOTFROMSERVER on `in_rawinput_nolegacy` and

@@ -78,6 +78,9 @@ static void Sys_Sleep(double t) {now+=t;}
 static void Con_Printf(const char *f,...) {(void)f;}
 #define Con_DPrintf Con_Printf
 static void Q_strncpyz(char *d,const char *s,size_t n) {snprintf(d,n,"%s",s);}
+static model_t *mod_known;
+int mod_numknown;
+static void Sys_KeepAlive(void) {}
 static void *Hash_Get(void *h,const char *s) {(void)h;return strcmp(s,"known")?NULL:&history;}
 static void GLSLWarm_Load(void) {}
 static void GLSLWarm_Save(void) {save_calls++;}
@@ -104,15 +107,18 @@ int main(void) {
  GLSLWarm_MapActive();
  CHECK(!strcmp(mapready.state,"ready-closure"));
  CHECK(mapready.programs==2 && mapready.eligible==4 && mapready.compiled==4);
- CHECK(compile_calls==4 && !mapready.pending && !mapready.failed);
+ CHECK(compile_calls==6 && !mapready.pending && !mapready.failed);
+ // Patch 1574: then each 2-bit program's every combination: 3 new beside the listed 1 and 2, counted apart.
+ CHECK(mapready.whole==2 && mapready.wholeeligible==6 && mapready.wholeavailable==4 && mapready.wholecompiled==2);
  CHECK(save_calls==1 && mapready.images==1 && !locked);
  GLSLWarm_MapActive();
- CHECK(mapready.available==4 && mapready.compiled==0 && compile_calls==4);
+ CHECK(mapready.available==4 && mapready.compiled==0 && compile_calls==6 && mapready.wholeavailable==6);
  // Zero budget must ACT: two missing unique permutations, no compile attempted.
  p.permu[1]=p.permu[2]=NULL;r_mapready_budget.value=0;
  GLSLWarm_MapActive();
  CHECK(!strcmp(mapready.state,"incomplete") && mapready.budgethit);
- CHECK(mapready.pending==2 && mapready.available==2 && compile_calls==4);
+ CHECK(mapready.pending==2 && mapready.available==2 && compile_calls==6);
+ CHECK(mapready.wholepending==2 && mapready.wholeavailable==4 && !mapready.wholecompiled);
  // A compile failure and an already-installed fallback cannot masquerade as ready.
  r_mapready_budget.value=2;fail_compile=1;
  GLSLWarm_MapActive();
@@ -160,7 +166,20 @@ int main(void) {
  p.permu[1]=NULL;r_mapready_budget.value=NAN;GLSLWarm_MapActive();
  CHECK(mapready.pending==1 && mapready.budgethit && !isnan(mapready.seconds));
  r_mapready_budget.value=-INFINITY;GLSLWarm_MapActive();CHECK(mapready.pending==1 && mapready.budgethit);
- puts("PASS readiness acting controls: dedup/masking, completion, timeout, fallback, failed/unrequested resources, renderer modes, late work/reset");
+ // Patch 1574: a program no list knows (a water material's name) warms every combination of its 3 bits after the
+ // listed pass, and a missing list still runs that pass; neither moves the listed closure's counters.
+ {program_t q={"unlisted",7,{0}};shader_t sq={1,0,&q,{{NULL},{NULL}}};shader_t *two[]={&s,&sq};
+  q.permu[0]=(void *)3;r_shaders=two;r_numshaders=2;r_mapready_budget.value=2;shader_reload_needed=0;
+  p.permu[1]=(void *)101;p.permu[2]=(void *)102;compile_calls=0;
+  GLSLWarm_MapActive();
+  CHECK(mapready.programs==3 && mapready.eligible==4 && mapready.compiled==0 && compile_calls==7);
+  CHECK(mapready.whole==3 && mapready.wholecompiled==7 && !strcmp(mapready.state,"ready-closure"));
+  CHECK(q.permu[7] && q.permu[1] && q.permu[4]);
+  q.permu[3]=q.permu[5]=NULL;glslwarm_mem=0;compile_calls=0;
+  GLSLWarm_MapActive();
+  CHECK(mapready.overflow && !mapready.eligible && compile_calls==2 && mapready.wholecompiled==2);
+  glslwarm_mem=1;r_shaders=shaders;}
+ puts("PASS readiness acting controls: dedup/masking, completion, timeout, fallback, failed/unrequested resources, renderer modes, late work/reset, whole small programs");
  printf("checks %i\n",checks);return 0;
 }
 '''
