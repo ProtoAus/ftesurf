@@ -54,14 +54,29 @@ full-fleet fairness guarantee follows.
 
 ## Publication / delivery
 
-Implementation and scoped qualification are complete; **live backend delivery
-is pending**. P1570 is backend-only: native commit/tag and qcbuild89 stay pinned.
-There is no Windows/QC/native swap or lobby restart required for this source fix.
+**Delivered 15 November 2026 at 14:39:54 UTC; independently read back at
+14:48:17 UTC.** The guarded transition admitted the new primary only after
+qualifying a compatible fallback against the actual current database first.
+This was one runtime-file change (`simcheck.py`), not a blanket upgrade to later
+main. All 85 runtime files in each role and their sealed controls match the
+inspected packet. Six readers and the actually selected native image are unchanged.
 
-Use the existing guarded generation contract, based on the actual current live
-source/dependencies, not an older generation snapshot or an in-place copy. Park
-ksfimport and both momgrab cron routes before the final busy check, only for the
-short actual transition interval; preserve and restore the exact owned entries.
-Keep source/actor/namespace, recorder/resume/data and compatible rollback checks.
-A passing source bank or patch reservation does not prove installed/live behavior.
-Record actual destination hashes, resident behavior and UTC only after admission.
+Both CLOSED roles admitted health checks and refused the two ordinary-request
+controls with 503. Their full database snapshots match the drained baseline:
+schema 26, all 46 table counts/content digests, eight identity digests, objects,
+queues and the same database inode. After OPEN, preservation checks are
+schema/object/inode-only; ordinary writers are no longer claimed frozen.
+
+Independent postflight confirms the accepted primary actor, actual namespace
+and six-reader resolution, exact canonical launcher/seven stubs, active importer
+and HTTP 200 health/lobby-directory responses. Four scheduled routes are rebound;
+every other crontab byte is preserved and all seven temporary holds are gone.
+The controller exited and released its leases. Compatible rollback source and
+CLOSED state are retained; recovery requires the existing guarded current-data
+procedure, never an old database restore, stale grant or activation replay.
+
+P1570 is backend-only: no Windows/QC/native swap, lobby restart, capture/default,
+retention, ranking or enforcement change. Native commit/tag and qcbuild89 were
+not changed by this delivery. The controlled 80-move discriminator above remains
+a fixture result, not a new real-player recording, calibration measurement or
+completion of a broader research criterion.

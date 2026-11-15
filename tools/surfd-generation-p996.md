@@ -1,5 +1,22 @@
 # Backend generation swap: P996 (25 Oct 2026) -- the procedure as run
 
+> **P1570 backend-only delivery, 15 November 2026 14:39:54 UTC; independent
+> postflight 14:48:17 UTC:** one collector runtime change admitted after compatible
+> fallback-first qualification against CURRENT data. Both CLOSED roles preserve
+> the same inode/schema26/all46 table contents, objects, queues and eight identity
+> digests; ordinary-request refusal controls ACT. Accepted primary OPEN, fallback
+> and predecessor CLOSED. Canonical launcher/seven stubs, four rebound cron routes,
+> importer and actual namespace/readers match; all temporary cron holds and
+> controller leases are released. Native, six readers, QC and lobbies untouched.
+> **Retain the qualified fallback runtime/control/state, primary and cumulative
+> namespace dependencies.** Exact rollback locations, receipt pins and the
+> owner-installed Root backup are recorded in the private operational receipt;
+> private runtime identifiers are deliberately omitted here. Code-only recovery
+> must refresh the required actor/closure authority against CURRENT data, never
+> restore an old DB, reset a grant or replay this completed activation. Later
+> ordinary writes are not claimed frozen. [Delivery and limits](p1570-similarity-source-budget.md).
+> Older entries below are historical snapshots, not the current selection.
+>
 > **P1447/P1448 paired backend delivery, accepted10 November2026 00:24:39 UTC:**
 > primary `bf18baf8c88731e44d3eb37dca37587abba59cde` OPEN; predecessor and new
 > conservative fallback CLOSED. Explicit runtime85/external3, actual namespace,
