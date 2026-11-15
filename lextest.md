@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1573 no injected clicks / no touchpads on the ranked board -- owner check PENDING (deploy record: tools/p1573-delivery.md)
+- On your next join the console says clicks are now blocked in game (once). Play as normal: mouse buttons and any scroll-wheel binds (jump on the wheel) should feel the same. If the wheel feels like it does half as much in game, tell me.
+- If you have a laptop touchpad: it no longer moves the view in game; `in_rawinput_touchpad 1` brings it back, and a run on it then finishes with "touchpads do not rank".
+- Anti-cheat "no-mouse" check (30 s, no finish needed): with input recording on, leave the start box on any map using only the keyboard, don't touch the mouse, then reset. I read the journal from your install and the run's receipt from the Pi; nothing needs uploading.
+
 ## P1569 With help runs on the segmented board -- waits on the surfd activation (your OK), then lobby_helped 1
 - After both: finish a run from a friend's shared save. The segmented board (in game and on the site) lists you as "<you> +1" in a soft blue; hovering shows every runner. Is the hint visible enough?
 

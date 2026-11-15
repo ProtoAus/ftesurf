@@ -74,3 +74,22 @@ Source publication is not production activation or deployment. Independent
 clean-source reviews and existing guarded-generation/current-source/DATA/
 fallback/live checks still apply. No native source, binary pin/tag, QC Build,
 recorder/parser or evidence-history change.
+
+## Production policy -- switched on 15 Nov 2026 18:24 UTC (owner: "do it", 16 Nov local)
+
+`SURFD_HID_BASE_BYTES=4194304` and `SURFD_HID_BYTES_PER_TICK=8192`, appended to the Pi's
+`/srv/nvme/surfd/surfd.env` (backup `surfd.env.pre-hidbudget-20261115T182354Z`, mode 600). The live
+guarded generation (13b9192f) does not pin surfd.env, and `register()` reads the policy when a worker
+boots, so the change took effect on one worker recycle (SIGTERM to the worker; master 1896445 kept,
+new worker 2000340 up in 1 s). Read back: `_run_budget(admin.setting)` on the Pi resolves
+(4194304, 8192); /health 200; `GET /api/hid` 405 and an empty POST 413 (route registered, length check
+first); no error lines after the recycle. Live hidupload.py sha256 b122a6a5 = main.
+
+Chosen from the 128 journals then stored (evidence mirror, 16 Nov): bytes per signed tick median 526,
+p90 900, max 1564 (a ~300 fps client). At 2048 B/tick no finished-run journal needs any base, so
+8192 B/tick plus 4 MiB is 4x the worst observed rate with room for pre-start time; 0 of the 119
+finished-run journals would be refused. The 9 uploads from runs with no finish (signed ticks -1) are
+now 503 `journal run budget unavailable`: the client logs one console line and does not retry
+(cl_receipt.c), and the run's signed verdict still travels in its receipt.
+
+To switch off: remove the two lines and recycle the worker the same way.
