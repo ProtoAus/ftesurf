@@ -4643,7 +4643,7 @@ def index_evidence(conn, now=None, dry_run=False):
             ticks = max(end, 0)
             words = (hdr.get("flags") or "0").split()
             flags = strict_int(words[0] if words else 0, 0, 0x7FFFFFFF) or 0
-            port = re.search(r"-p([0-9]+)$", runid)
+            port = re.search(r"-[A-Za-z]([0-9]+)$", runid)
             try:
                 os.makedirs(os.path.join(KEEP_DIR, d), exist_ok=True)
                 _keep_file(src, os.path.join(KEEP_DIR, d, leaf))
