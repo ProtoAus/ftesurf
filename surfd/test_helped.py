@@ -41,7 +41,18 @@ def case_board(mod):
     with mod.app.app_context():
         db = mod.get_db()
         db.execute("UPDATE runs SET replay_id=77 WHERE player='bob'")
-        db.execute("INSERT OR REPLACE INTO run_helpers (replay_id, names) VALUES (77, ?)", ('["Alice"]',))
+        db.commit()
+        # The runners come from the recording when the row is shown (no table): stand in for its lookup.
+        d = tempfile.mkdtemp(prefix="helped_b")
+        rec = os.path.join(d, "g.rec")
+        with open(rec, "w", encoding="utf-8") as f:
+            f.write("FTESURF-REC 14\nowner Alice\nbegin\nresume 1 9\ntakeover 9 Bob\n")
+        real_rf = mod.replay_file
+        mod.replay_file = lambda r: (rec, None)
+        db.execute("INSERT INTO replays (id, map, map_dir, track, leg, leaf, tier, style, player, name, ticks,"
+                   " tickrate, millis, flags, node, submitted) SELECT 77, map, map, track, leg, 'g.rec', tier,"
+                   " style, player, name, ticks, tickrate, millis, flags, node, submitted FROM runs"
+                   " WHERE player='bob'")
         db.commit()
         row = db.execute("SELECT tier, style FROM runs WHERE player='bob'").fetchone()
         check("style_of files it under segmented", row is not None and row["style"] == mod.STYLE_SEGMENTED,

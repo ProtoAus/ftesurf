@@ -3,7 +3,7 @@
 ## Shared saves with their run -- what P1567 left (15 Nov, ftesurf-16)
 
 - The online board (P1569, Lex 15 Nov: segmented, "<name> +N", runners on hover): surfd source is on main
-  (run_helpers, rec_runners, board rows, web, simcheck skip "helped"); it needs its guarded-generation
+  (rec_runners + row_helpers read at board time, no table; board rows, web, simcheck skip "helped"); it needs its guarded-generation
   activation (owner authorization), then `set lobby_helped 1` in the lobby cfg so the lobby posts TF_HELPED.
   - Similarity on a helped run is a stored skip: anyone can get TF_HELPED from a second connection's gift,
     so before a playback threshold acts on simcheck, measure the receiver's part (recsim already drops the

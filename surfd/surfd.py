@@ -463,7 +463,7 @@ TF_NOCOUNTS = 65536     # Patch 406: cursor data instead of mouse counts (cl_pry
 TF_SLOWCLOCK = 524288   # Patch 840: the game clock fell behind real time (slow motion)
 TF_TAS = 4194304        # assisted ancestry; isolated community board only
 # P1567/P1569: continued from another player's shared save (a `takeover` record in the .rec).
-# Segmented like any load (style_of reads TF_SEGMENT); the board lists the runners (run_helpers).
+# Segmented like any load (style_of reads TF_SEGMENT); the board lists the runners (row_helpers).
 TF_HELPED = 1048576
 TF_BANKTAINT = 8388608  # inherited-effect exclusion, including segmented/shadow
 # Multi-Session (sv_resume.qc): resumed across a drop or a map change.  Display
@@ -1109,15 +1109,11 @@ def _bound_now(row):
     return 0 if _rec_disagrees(hdr, row[1], row[3], row[4], row[7], row[8], row[9]) else 1
 
 
-# P1569: who else ran a helped run, by replay -- its own table so restand/_UPSERT_RUN and the
-# shape-pinned runs/replays tables are untouched (a rebuilt board row keeps its replay_id).
-RUN_HELPERS_SQL = """
-CREATE TABLE IF NOT EXISTS run_helpers (
-    replay_id INTEGER PRIMARY KEY,
-    names     TEXT    NOT NULL
-);
-"""
+# P1569: who else ran a helped run is read from its recording when a board shows the row (row_helpers),
+# cached by replay and file identity -- no table: the guarded transition admits no new schema object.
 HELPERS_MAX = 8
+_HELPERS_CACHE = collections.OrderedDict()
+_HELPERS_CACHE_MAX = 512
 
 
 def rec_runners(path, limit=16 << 20):
@@ -1148,6 +1144,31 @@ def rec_runners(path, limit=16 << 20):
     except OSError:
         return []
     return names
+
+
+def row_helpers(db, replay_id):
+    """P1569: a helped board row's other runners, from its recording (no file: none), cached by the
+    replay and the file's size and mtime, so a re-filed or late-arriving file is read again."""
+    rep = db.execute("SELECT map_dir, track, leg, leaf, kind FROM replays WHERE id=?",
+                     (replay_id,)).fetchone()
+    if rep is None:
+        return []
+    path, _why = replay_file(dict(rep))
+    if not path:
+        return []
+    try:
+        st = os.stat(path)
+    except OSError:
+        return []
+    key = (replay_id, path, st.st_size, st.st_mtime_ns)
+    if key in _HELPERS_CACHE:
+        _HELPERS_CACHE.move_to_end(key)
+        return list(_HELPERS_CACHE[key])
+    names = helpers_of(rec_runners(path))
+    _HELPERS_CACHE[key] = names
+    while len(_HELPERS_CACHE) > _HELPERS_CACHE_MAX:
+        _HELPERS_CACHE.popitem(last=False)
+    return list(names)
 
 
 def helpers_of(runners):
@@ -1558,7 +1579,6 @@ def migrate():
 
         # Schema 8 is a repair as much as a step: receipts_v8 runs every time.
         receipts_v8(conn)
-        conn.executescript(RUN_HELPERS_SQL)     # P1569: idempotent, no version bump
         # Patch 425: restage's lookups are by run; runs_board would scan the map.
         conn.execute("CREATE INDEX IF NOT EXISTS runs_run"
                      " ON runs (map, track, player, runid)")
@@ -3085,15 +3105,9 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None, n
         })
         # P1569: only on a helped row, so every other board's bytes stay as they were.
         if (row["flags"] & TF_HELPED) and row["replay_id"]:
-            h = db.execute("SELECT names FROM run_helpers WHERE replay_id=?",
-                           (row["replay_id"],)).fetchone()
-            if h is not None:
-                try:
-                    names = json.loads(h["names"])
-                except ValueError:
-                    names = []
-                if isinstance(names, list) and names:
-                    rows[-1]["helpers"] = [str(n)[:32] for n in names[:HELPERS_MAX]]
+            names = row_helpers(db, row["replay_id"])
+            if names:
+                rows[-1]["helpers"] = names
         # ONLY on the combined board.  Adding it everywhere would change the
         # ranked board's bytes, which is the one thing test_momindex.py exists
         # to forbid -- and on a single-tier board every row's tier is the tier
@@ -3754,7 +3768,6 @@ def submit_run():
     fsize = None
     fileless = bool(leaf)
     hdr_runid = fsha = ""
-    helpers = []
     if leaf:
         path, why = replay_file({"map_dir": map_dir, "track": track, "leg": leg,
                                  "leaf": leaf, "kind": "run"})
@@ -3794,9 +3807,6 @@ def submit_run():
             hdr_runid = meta[0].get("runid", "")
             fsha = _file_sha(path, key0)
             story_rec = path
-            # P1569: a helped run's runners, read here, outside the write lock below.
-            if flags & TF_HELPED:
-                helpers = helpers_of(rec_runners(path))
             # A post with no runid (a TF_SHADOW continuation: its file is rebuilt
             # from the run it was cut from, header and all) compares none -- it
             # dropped every such leaf since 06a5a01 (review round 6).
@@ -3995,14 +4005,6 @@ def submit_run():
                     " WHERE map=? AND track=? AND leg=? AND leaf=?",
                     (mapname, track, leg, leaf),
                 ).fetchone()
-                # P1569: a helped run's other runners (read above); a post that is not one, or whose
-                # file named none, clears what an earlier filing of this replay left.
-                if rep is not None and not fileless:
-                    if (flags & TF_HELPED) and helpers and story_rec:
-                        db.execute("INSERT OR REPLACE INTO run_helpers (replay_id, names)"
-                                   " VALUES (?, ?)", (rep["id"], json.dumps(helpers)))
-                    else:
-                        db.execute("DELETE FROM run_helpers WHERE replay_id=?", (rep["id"],))
                 # ADOPT ONLY A RUN'S EVIDENCE, never an imported row's.  Without
                 # the kind gate a trusted post naming a momindex leaf whose player
                 # is the steamid64 adopted tier='momentum' for the board row and,
