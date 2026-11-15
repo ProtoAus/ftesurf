@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## 0.1.46 public update -- Windows/Linux published 15 Nov UTC; owner visual check PENDING
+- On your next normal launch, check that the title/version reads 0.1.46 and F2's patch notes open. No settings or data reset is requested.
+- On one familiar map, check that your usual knife and the map render normally. This is a quick visual regression check, not proof of every material or movement mode. The full requested HL1/AG and HL2 movement additions remain unfinished and were not introduced by this release.
+- Both public archives and actual default-HTTPS Windows/Linux installs match the sealed candidate; protected synthetic settings/data/edited zones survive. Existing released launchers also accept it. Both local Windows build-artifact sets were hash-verified with protected files and existing source/config edits unchanged. These are automated checks, not owner confirmation or measured performance.
+
 ## P1573 no injected clicks / no touchpads on the ranked board -- owner check PENDING (deploy record: tools/p1573-delivery.md)
 - On your next join the console says clicks are now blocked in game (once). Play as normal: mouse buttons and any scroll-wheel binds (jump on the wheel) should feel the same. If the wheel feels like it does half as much in game, tell me.
 - If you have a laptop touchpad: it no longer moves the view in game; `in_rawinput_touchpad 1` brings it back, and a run on it then finishes with "touchpads do not rank".
