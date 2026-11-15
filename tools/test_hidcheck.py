@@ -3774,6 +3774,47 @@ def case_review_malformed_boundaries():
     check(has_fault(r, "no 'end' trailer"), "review CONTROL genuinely absent end stays absent")
 
 
+def _modrun(header, late=(), after_end=()):
+    """Patch 1577: a clean journal with module lines in the header and beside the trailer."""
+    j = Journal()
+    for i in range(10):
+        j.frame(3000 + i)
+    lines = j.end().splitlines()
+    begin = lines.index("begin")
+    lines[begin:begin] = header
+    endat = max(i for i, line in enumerate(lines) if line.startswith("end "))
+    lines[endat:endat] = list(late)
+    lines.extend(after_end)
+    return run("\n".join(lines) + "\n")
+
+
+def case_modules_tripwire():
+    """Patch 1577: outside modules are listed and noted, never faulted."""
+    r = _modrun(["modules 2", "module program GameOverlayRenderer64.dll", "module user hook64.dll"],
+                late=["module+ other inject.dll"])
+    check(r.ok, "modules: no fault (%s)" % (r.faults[:1] or "none"))
+    check(r.info.get("modules", "").startswith("2 from outside") and "1 loaded during" in r.info.get("modules", ""),
+          "modules: the count says 2 at the start and 1 during (%r)" % r.info.get("modules"))
+    check(r.info.get("module[2]", "").endswith("inject.dll  (loaded during)"),
+          "modules: the late one is named as loaded during (%r)" % r.info.get("module[2]"))
+    check(has_note(r, "3 module(s) were loaded from outside"), "modules: one note names all three")
+    check(not has_note(r, "unknown header key") and not has_note(r, "unknown record kind"),
+          "modules: neither line kind is unknown to this reader")
+    r = _modrun(["modules 0"])
+    check(r.ok and r.info.get("modules", "").startswith("0 from outside") and not has_note(r, "module(s) were"),
+          "modules: none outside is a count of 0 and no note")
+    r = _modrun(["modules -1"])
+    check(r.ok and r.info.get("modules") == "the engine could not list them",
+          "modules: -1 reads as not listed, not as none")
+    r = _modrun(["modules 1", "module elsewhere x.dll", "module program"])
+    check(r.ok and has_note(r, "malformed module line") and has_note(r, "counts 1 outside module(s) but names 0"),
+          "modules: malformed lines are skipped with a note, never a fault")
+    r = _modrun(["modules 0"], after_end=["module+ other late.dll"])
+    check(has_fault(r, "'module+' after 'end'"), "modules: a module+ line after the trailer is a fault")
+    r = _modrun([])
+    check(r.ok and "modules" not in r.info, "modules: a pre-1577 journal says nothing about modules")
+
+
 def main():
     print("test_hidcheck.py -- the Patch 293 yaw identity\n")
     for fn in (case_clean, case_mutated_delta, case_subtle_mutation,
@@ -3838,7 +3879,7 @@ def main():
                case_postcap_records, case_backend_count_availability,
                case_backend_trailer_isolation, case_review_rejected_observations,
                case_review_malformed_boundaries, case_review_boundary_prefix_timing,
-               case_keys_dropped_by_guard):
+               case_keys_dropped_by_guard, case_modules_tripwire):
         print("%s:" % fn.__name__)
         fn()
         print("")

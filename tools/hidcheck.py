@@ -129,6 +129,11 @@ HEAD_P307 = {"nolegacy", "nolegacylive"}
 HEAD_P468 = {"rawpads"}
 # Patch 1424: 1 = legacy keys are checked against an observe-only raw keyboard.
 HEAD_P1424 = {"kbdobserve"}
+# Patch 1577: how many modules came from outside the game's and Windows' folders as the journal
+# began (-1: the engine could not list them), each named on a repeating `module <class> <file>`
+# line; untimestamped `module+` lines beside devmap name those loaded later. A note, never a fault.
+HEAD_P1577 = {"modules"}
+MODULE_CLASSES = ("program", "user", "other")
 
 # Engine Patch 310 appended the render-integrity table:
 #   render <cvar> "<value>" "<default>"
@@ -526,6 +531,9 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
     inputcvars = []        # Patch 312: (name, value, default) -- the input pipeline
     left_capture_unknown = False
     cvar_changes = []      # Patch 310/312: (name, value), in order
+    modules = []           # Patch 1577: (class, file) as the journal began
+    modules_late = []      # ...and `module+`, loaded during it
+    bad_modules = False
     i = 1
     while i < len(lines):
         parts = lines[i].split(None, 1)
@@ -558,6 +566,14 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
                         left_capture_unknown |= _identity_capture_unknown("leftisright", tokens[0], 64)
             i += 1
             continue
+        if parts[0] == "module":
+            mp = lines[i].split()
+            if len(mp) != 3 or mp[1] not in MODULE_CLASSES:
+                bad_modules = True
+            else:
+                modules.append((mp[1], mp[2]))
+            i += 1
+            continue
         if parts[0] == "dev":
             d = parse_dev_line(lines[i])
             if d is None:
@@ -576,7 +592,8 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
         if parts[0] not in HEAD_V1 and parts[0] not in HEAD_P293 \
            and parts[0] not in HEAD_P301 and parts[0] not in HEAD_P303 \
            and parts[0] not in HEAD_P307 and parts[0] not in HEAD_P310 \
-           and parts[0] not in HEAD_P468 and parts[0] not in HEAD_P1424:
+           and parts[0] not in HEAD_P468 and parts[0] not in HEAD_P1424 \
+           and parts[0] not in HEAD_P1577:
             r.note("unknown header key %r" % parts[0])
         i += 1
     else:
@@ -861,6 +878,17 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
                 r.fault("line %d: malformed 'devmap' line" % (lineno + 1))
             else:
                 devmaps.append(d)
+            continue
+
+        if kind == "module+":
+            # Patch 1577: untimestamped, beside devmap, so taken before the dt parse.
+            if end_seen:
+                r.fault("line %d: 'module+' after 'end'" % (lineno + 1))
+                continue
+            if len(tok) != 3 or tok[1] not in MODULE_CLASSES:
+                bad_modules = True
+            else:
+                modules_late.append((tok[1], tok[2]))
             continue
 
         if kind not in KINDS:
@@ -1901,6 +1929,34 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
     #
     if devids_joy:
         r.info["joystick_axis_events"] = sum(devids_joy.values())
+
+    # Patch 1577: modules from outside the game's and Windows' folders. Overlays, capture tools
+    # and security software load them too, and any tool can rename itself, so this is a list.
+    if "modules" in head:
+        try:
+            nmods = int(head["modules"])
+        except ValueError:
+            nmods = None
+            r.note("modules %r is not a number" % head["modules"])
+        if nmods is not None and nmods < 0:
+            r.info["modules"] = "the engine could not list them"
+        elif nmods is not None:
+            if nmods != len(modules):
+                r.note("the header counts %d outside module(s) but names %d" % (nmods, len(modules)))
+            r.info["modules"] = "%d from outside the game and Windows folders at the start, %d loaded during" % (
+                len(modules), len(modules_late))
+            for idx, (cls, name) in enumerate(modules + modules_late):
+                r.info["module[%d]" % idx] = "%-7s %s%s" % (cls, name, "  (loaded during)" if idx >= len(modules) else "")
+            if modules or modules_late:
+                r.note("%d module(s) were loaded from outside the game's and Windows' folders (%s). Overlays, "
+                       "recorders and security software do this too; recorded, not judged."
+                       % (len(modules) + len(modules_late),
+                          ", ".join(n for _c, n in (modules + modules_late)[:8]) +
+                          (", ..." if len(modules) + len(modules_late) > 8 else "")))
+    elif modules or modules_late:
+        r.note("module lines without the header's `modules` count")
+    if bad_modules:
+        r.note("a malformed module line was skipped")
 
     # A pre-303 file has no tables at all.  That is reported and never faulted:
     # the question simply cannot be asked of those files, and "absent" must not
