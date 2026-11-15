@@ -2,6 +2,7 @@
 
 defs/sv_defs.qc
 shared/sh_defs.qc
+shared/sh_streamfile.qc
 shared/sh_trk.qc            // P1378: tracktrain paths, shared with cl_trk.qc
 shared/sh_spin.qc           // P1387: Patch 860 motion, shared with cl_spin.qc
 shared/sh_vsvel.qc          // P1205: VScript velocity grammar, shared with cl_triggers.qc
@@ -71,6 +72,7 @@ server/sv_share.qc
 server/sv_savesync.qc
 // Patch 915: timer identity/archive helpers and SH_MC_ONE precede private retrieval.
 server/sv_archive.qc
+server/sv_archive_stream.qc
 // Shared transport policy precedes the player's included TAS sharing module.
 shared/sh_tasdirectory.qc
 // Patch 1195: prederror reports from CSQC (CSEv_pe_fs); ClientDisconnect closes one.

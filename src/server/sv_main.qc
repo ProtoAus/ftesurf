@@ -588,6 +588,7 @@ void() worldspawn =
 	forceinfokey(world, "fs_tickparts", "1");
 	forceinfokey(world, "fs_sourcephase", "1");
 	forceinfokey(world, "fs_runhistory", "1");
+	forceinfokey(world, "fs_archive2", FS_StreamFiles() ? "1" : "0");
 	forceinfokey(world, "fs_historyepoch", SV_RandHex(16)); // 32 hex chars, fresh OS entropy
 	forceinfokey(world, "fs_savelead", "3"); // P1437: coherent E8 saved / L14 loaded capsules; 2 added STAT_FS_SLCURID
 	vbsp_conveyor_any = 0;

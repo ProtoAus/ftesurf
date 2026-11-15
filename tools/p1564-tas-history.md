@@ -65,9 +65,12 @@ rejects the unknown TAS style rather than returning an ordinary board.
 - The recorded TAS camera fixture loads the old VIEW cache under the control;
   the candidate explicitly selects REC presentation and loads no VIEW rows.
   This does not claim a human visual pass on the owner's original clip.
-- `python tools/test_reccheck.py`: 952 checks, zero failures. A same-byte sweep
-  of 578 REC and 184 VIEW files found 365 faults under both the published
-  integrated base and this reader: zero new faults, not a fault-free corpus.
+- `python tools/test_reccheck.py`: 952 checks, zero failures. The actual paired
+  CLI checks 578 REC, their 174 paired VIEWs and ten explicitly unpaired VIEWs:
+  366 faulty reports / 368 diagnostics under both pinned readers, with all 762
+  input hashes unchanged and zero new fault cases. The earlier 365 count was a
+  standalone-VIEW survey, not the paired CLI context; its evidence is retained.
+  Neither count describes a fault-free corpus.
 - Independent final source/acceptance review found no remaining source blocker.
   These are lifecycle/classification/copying/presentation checks, not physics,
   performance or native-certification measurements. Runtime completion samples

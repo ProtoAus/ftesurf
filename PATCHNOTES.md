@@ -21,6 +21,10 @@
 
 ## next
 
+### P1568 Large completed-run history
+- Completed recordings up to 1 GB can be retrieved into local history beyond the old 8 MB cutoff. Files are fully checked before use, and existing local recordings or partial downloads are preserved.
+- Long history listings keep their progress instead of restarting while a recording is being checked.
+
 ### P1565 Recording report context
 - Recording reports retain additional context without changing movement or the results of older recordings.
 

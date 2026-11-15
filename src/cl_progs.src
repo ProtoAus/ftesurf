@@ -2,6 +2,7 @@
 
 defs/cl_defs.qc
 shared/sh_defs.qc
+shared/sh_streamfile.qc
 shared/sh_trk.qc            // P1378: tracktrain paths, shared with sv_entities.qc
 shared/sh_spin.qc           // P1387: Patch 860 motion, shared with sv_entities.qc
 shared/sh_vsvel.qc          // P1205: VScript velocity grammar, shared with sv_entities.qc
@@ -243,6 +244,7 @@ client/cl_spectate.qc
 // Watch_Open, and after cl_timer.qc because every time on it is formatted at
 // Timer_Tick's rate.  Stage 2 of build 24.
 client/cl_scores.qc
+client/cl_archive_stream.qc
 client/cl_scores_native.qc
 // P1559: owner-only automatic acquisition over the existing archive transport.
 client/cl_history.qc

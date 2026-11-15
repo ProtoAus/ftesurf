@@ -201,7 +201,7 @@
 #define TAS_OP_PLANSET 9
 #define TAS_OP_CONTROLSET 10
 #define TAS_TAPE_MAX 128
-#define TAS_EV_PAGE 50         // own retained-input page; 40-43 are sv_archive's AR_EV_*
+#define TAS_EV_PAGE 50         // own retained-input page; 40-45 are sv_archive's AR_EV_*
 #define TAS_EV_PROJECT 51      // P1082 project status, sv_tasproject/cl_tastimeline
 #define TAS_EV_PAGE2 52        // full line extent + separate current-body binding
 #define TAS_EV_SECTIONS 53    // own manual checkpoint intervals, requested only

@@ -568,7 +568,7 @@ void(float r, string path) Scores_ReadHeader =
 	rec_sb_rowflags[r] = -1;
 	rec_sb_rowver[r]   = 0;
 
-	fh = fopen(path, FILE_READ);
+	fh = fopen(path, FS_StreamFiles() ? FS_FILE_READSTREAM : FILE_READ);
 	if (fh < 0)
 		return;
 
@@ -828,10 +828,18 @@ string(float idx) Scores_LegTier =
 #define AR_EV_END 41
 #define AR_EV_DATA 42
 #define AR_EV_KEEP 43
+#define AR_EV_PROGRESS 44
+#define AR_EV_STREAM 45
 float ar_query, ar_track, ar_leg, ar_state, ar_rows, ar_owners, ar_dates, ar_flags;
 float ar_fh, ar_seq, ar_bytes, ar_at, ar_refresh, ar_transfer, ar_total;
 string ar_map, ar_path, ar_profile;
-float ar_auto;
+float ar_auto, ar_part_owned;
+float ar2_clientmode, ar2_verifyfh;
+int ar2_total, ar2_written, ar2_verifysteps;
+string ar2_hash;
+void() Archive_StreamClientCancel;
+void(float ev, float query) Archive_StreamClientEvent;
+void() Archive_StreamClientFrame;
 void() History_AutoFrame;
 void(float status) History_Listed;
 void(float success) History_Received;
@@ -840,15 +848,17 @@ void() History_Status;
 
 void() Archive_ClientCancel =
 {
+	Archive_StreamClientCancel();
 	if (ar_fh > 0) fclose(ar_fh - 1);
 	ar_fh = 0;
 	if (strcmp(ar_path, ""))
 	{
-		fremove(strcat(ar_path, ".part"));
+		if (ar_part_owned) fremove(strcat(ar_path, ".part"));
 		strunzone(ar_path);
 		ar_path = "";
 	}
-	if (ar_state == 2) ar_state = 0;
+	ar_part_owned = 0;
+	if (ar_state >= 2) ar_state = 0;
 };
 
 float(string leaf) Archive_ClientLeaf =
@@ -866,6 +876,7 @@ float(string leaf) Archive_ClientLeaf =
 
 void(float track, float leg, float offset, float automatic) Archive_ClientList =
 {
+	if (ar_state) localcmd(sprintf("cmd archive cancel %d\n", ar_query));
 	Archive_ClientCancel();
 	Scores_NoteLocal();
 	if (ar_rows > 0) { buf_del(ar_rows); buf_del(ar_owners); buf_del(ar_dates); buf_del(ar_flags); }
@@ -877,7 +888,10 @@ void(float track, float leg, float offset, float automatic) Archive_ClientList =
 	ar_track = track; ar_leg = leg; ar_auto = automatic;
 	ar_query = ar_query + 1; ar_transfer = 0;
 	ar_state = 1; ar_at = cltime + 12; ar_refresh = cltime + 30;
-	if (!strcmp(serverkey("fs_runhistory"), "1"))
+	ar2_clientmode = (FS_StreamFiles() && !strcmp(serverkey("fs_archive2"), "1"));
+	if (ar2_clientmode)
+		localcmd(sprintf("cmd archive list2 %d %d %d %d\n", ar_query, track, leg, offset));
+	else if (!strcmp(serverkey("fs_runhistory"), "1"))
 		localcmd(sprintf("cmd archive list %d %d %d %d\n", ar_query, track, leg, offset));
 	else
 		localcmd(sprintf("cmd archive list %d %d %d\n", ar_query, track, leg));
@@ -892,24 +906,54 @@ void() Archive_ClientNeed =
 	if (leg < 0 || !strcmp(map, "")) return;
 	if (leg == 0 && strcmp(serverkey("fs_runhistory"), "1")) return;
 	if (!strcmp(ar_map, map) && !strcmp(ar_profile, serverkey("*movementprofile"))
-	    && ar_track == track && ar_leg == leg && cltime < ar_refresh) return;
-	if (ar_state == 2) return;
+	    && ar_track == track && ar_leg == leg)
+	{
+		if (ar_state == 1 || cltime < ar_refresh) return;
+	}
+	if (ar_state >= 2) return;
 	Archive_ClientList(track, leg, 0, FALSE);
 };
 
 void(float row) Archive_ClientGet =
 {
+	local float fh;
+	local string path;
 	if (!ar_rows || row < 1 || row > buf_getsize(ar_rows)) return;
 	if (strcmp(ar_map, serverkey("map")) || strcmp(ar_profile, serverkey("*movementprofile"))) return;
 	if (ar_transfer >= 16000000) { ar_refresh = 0; return; }
 	Archive_ClientCancel();
 	ar_transfer = ar_transfer + 1;
 	if (!Archive_ClientLeaf(bufstr_get(ar_rows, row - 1))) return;
-	ar_path = strzone(FS_MovementProfilePath(ar_profile, strcat(FS_RunDir(ar_map, ar_track, ar_leg), bufstr_get(ar_rows, row - 1))));
-	ar_fh = fopen(strcat(ar_path, ".part"), FILE_WRITE) + 1;
+	path = strzone(FS_MovementProfilePath(ar_profile, strcat(FS_RunDir(ar_map, ar_track, ar_leg), bufstr_get(ar_rows, row - 1))));
+	if (!strcmp(path, "")) { strunzone(path); return; }
+	// Read-open failure is not absence. This acquisition excludes external
+	// writers; only uncached write-path absence admits a new part/final.
+	if (!checkbuiltin(FS_WritePathStatus))
+	{
+		strunzone(path);
+		if (!ar_auto) print("scores: update the native engine before retrieving recordings safely.\n");
+		return;
+	}
+	if (FS_WritePathStatus(path) != 0 || FS_WritePathStatus(strcat(path, ".part")) != 0)
+	{
+		strunzone(path);
+		if (!ar_auto) print("scores: existing or inaccessible destination retained.\n");
+		return;
+	}
+	fh = fopen(path, FILE_READ);
+	if (fh >= 0) { fclose(fh); strunzone(path); return; }
+	fh = fopen(strcat(path, ".part"), FILE_READ);
+	if (fh >= 0)
+	{
+		fclose(fh); strunzone(path);
+		print("scores: earlier partial retained; not overwriting it.\n"); return;
+	}
+	ar_path = path;
+	ar_fh = fopen(strcat(ar_path, ".part"), ar2_clientmode ? FS_FILE_WRITESTREAM : FILE_WRITE) + 1;
 	if (ar_fh <= 0) { Archive_ClientCancel(); return; }
+	ar_part_owned = 1;
 	ar_state = 2; ar_seq = ar_bytes = ar_total = 0; ar_at = cltime + 15;
-	localcmd(sprintf("cmd archive get %d %d %d\n", ar_query, row, ar_transfer));
+	localcmd(sprintf("cmd archive %s %d %d %d\n", ar2_clientmode ? "get2" : "get", ar_query, row, ar_transfer));
 	if (!ar_auto) print("scores: fetching your completed recording...\n");
 };
 
@@ -928,6 +972,10 @@ void(float ev) Archive_ClientEvent =
 		strunzone(leaf); strunzone(path); strunzone(owner); strunzone(date); strunzone(data); strunzone(attachment);
 		return;
 	}
+	if (ev == AR_EV_PROGRESS || ev == AR_EV_STREAM)
+	{
+		Archive_StreamClientEvent(ev, query); return;
+	}
 	if (ev == AR_EV_ROW)
 	{
 		row = readshort(); leaf = readstring(); owner = readstring(); date = readstring(); flags = readlong();
@@ -941,7 +989,7 @@ void(float ev) Archive_ClientEvent =
 	{
 		transfer = readlong(); status = readbyte();
 		if (query != ar_query) return;
-		if (ar_state == 2)
+		if (ar_state >= 2)
 		{
 			if (transfer != ar_transfer) return;
 			Archive_ClientCancel();
@@ -951,7 +999,7 @@ void(float ev) Archive_ClientEvent =
 		else if (ar_state == 1)
 		{
 			if (transfer != 0) return;
-			ar_state = 0; rec_sb_legbuilt = -2;
+			ar_state = 0; ar_refresh = cltime + 30; rec_sb_legbuilt = -2;
 			if (ar_auto) { History_Listed(status); return; }
 			if (status == 3) { ar_refresh = cltime + 2; return; }
 			print(sprintf("scores: owner archive %d rows (status %d)\n", buf_getsize(ar_rows), status));
@@ -982,6 +1030,13 @@ void(float ev) Archive_ClientEvent =
 			else print("scores: incomplete recording; reopen Local to retry.\n");
 			return;
 		}
+		if (FS_WritePathStatus(ar_path) != 0)
+		{
+			Archive_ClientCancel();
+			if (ar_auto) History_Received(FALSE);
+			else print("scores: a late or inaccessible destination was preserved.\n");
+			return;
+		}
 		if (frename(strcat(ar_path, ".part"), ar_path) != 0)
 		{
 			Archive_ClientCancel();
@@ -989,6 +1044,7 @@ void(float ev) Archive_ClientEvent =
 			else print("scores: could not keep recording.\n");
 			return;
 		}
+		ar_part_owned = 0;
 		rec_sb_legbuilt = -2;
 		if (ar_auto)
 		{
@@ -1008,11 +1064,12 @@ void() Archive_ClientFrame =
 	if (ar_state)
 	if (cltime > ar_at || strcmp(ar_map, serverkey("map")) || strcmp(ar_profile, serverkey("*movementprofile")))
 	{
-		if (ar_state == 2) localcmd(sprintf("cmd archive cancel %d\n", ar_query));
+		if (ar_state >= 2) localcmd(sprintf("cmd archive cancel %d\n", ar_query));
 		Archive_ClientCancel(); ar_state = 0;
 		if (ar_auto) History_Received(FALSE);
 		else print("scores: owner archive request expired.\n");
 	}
+	Archive_StreamClientFrame();
 	History_AutoFrame();
 	Scores_IndexFrame();
 };
@@ -3957,7 +4014,7 @@ void() Scores_Close =
 {
 	if (!ar_auto)
 	{
-		if (ar_state == 2) localcmd(sprintf("cmd archive cancel %d\n", ar_query));
+		if (ar_state >= 2) localcmd(sprintf("cmd archive cancel %d\n", ar_query));
 		Archive_ClientCancel();
 	}
 	/*

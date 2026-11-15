@@ -1,9 +1,9 @@
 # BACKLOG.md
 
-## Completed-history remote transfer size boundary — P1564
+## P1568 large-history runtime follow-ups
 
-- Site: `src/server/sv_archive.qc` `AR_BYTES`, `Archive_Digest` / `Archive_CheckedSeal` / `Archive_VerifiedCopy`, and the matching client archive receiver. The existing authenticated protocol allocates/checks a complete file and refuses files over 8 MiB. P1564 retains those server originals but cannot automatically acquire them into a remote client's history. Do not remove the cap or silently raise unbounded QC allocation.
-- Falsifier: retain an actual owned completed REC over 8 MiB, then acquire it after a fresh connection with unchanged ownership/path/content checks, bounded memory/work and a whole-file digest. Require byte-identical local output, retry/resume without truncation and no automatic replay opening. A larger allocation or server-only retention is not a full large-file transfer pass. Design a bounded streaming/digest seam before claiming all-size remote history.
+- Site: `sv_archive.qc:Archive_SealFile` / `sv_archive_stream.qc:Archive_StreamSealLarge`, `cl_archive_stream.qc:Ar2_ClientPromote`, and the foreground cache in `cl_scores.qc`. Bounded v2 replaces the old8MiB acquisition cliff on capable updated ends, with a finite1073741823byte ceiling; legacy ends remain bounded. A genuine small completion and a synthetic17MiB+3 whole-byte recovery/transfer/promotion acted. The synthetic pending promise is NOT successful large-recorder-hook evidence.
+- Remaining falsifiers: a naturally completed owned REC over8MiB must create its own pending/seal and acquire byte-identically after reconnect; a full received/hashed body must refuse a newly occupied final without changing the occupant; one healthy foreground query must retain its identity beyond30seconds. The interrupted genuine raw capture and partial late-collision transfer do not pass these missing arms. No orphan adoption, arbitrary-size/performance claim or unbounded QC allocation. See `tools/p1568-large-history.md`; deployment state is recorded separately.
 
 ## Lex's list of 15 Nov -- leftovers of P1559-P1563 (ftesurf-16, root lexlist-20261115-16)
 

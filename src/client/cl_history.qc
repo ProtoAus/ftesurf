@@ -19,7 +19,7 @@ void() History_Stop =
 {
 	if (ar_auto)
 	{
-		if (ar_state == 2) localcmd(sprintf("cmd archive cancel %d\n", ar_query));
+		if (ar_state >= 2) localcmd(sprintf("cmd archive cancel %d\n", ar_query));
 		Archive_ClientCancel(); ar_state = 0; ar_auto = FALSE;
 	}
 	ha_phase = ha_cycle = ha_restart = 0;

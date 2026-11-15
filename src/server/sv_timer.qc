@@ -6708,7 +6708,8 @@ void(entity e, float published) SV_HeldFinishClose =
 	leaf = recording = "";
 	if (published)
 	{
-		fh = fopen(e.rec_hm_destination, FILE_READ);
+		// P1568: even fsize(FILE_READ) materializes a complete native body.
+		fh = fopen(e.rec_hm_destination, FS_StreamFiles() ? FS_FILE_READSTREAM : FILE_READ);
 		if (fh >= 0)
 		{
 			e.rec_rec_bytes = fsize(fh);

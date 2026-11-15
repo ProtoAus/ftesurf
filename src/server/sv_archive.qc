@@ -39,6 +39,7 @@ void(entity e) Archive_Close =
 
 void(entity e) Archive_Reset =
 {
+	Archive_StreamReset(e);
 	if (e.ar_search > 0) search_end(e.ar_search - 1);
 	Archive_Close(e);
 	if (e.ar_rows > 0) buf_del(e.ar_rows);
@@ -186,6 +187,7 @@ void(entity e, string path) Archive_SealFile =
 	local string id, hash, partial;
 	local float fh, size;
 	if (!Lobby_Active()) return;
+	if (Archive_StreamSealLarge(e, path)) return;
 	id = Archive_Identity(e);
 	if (!strcmp(id, "")) return;
 	id = strzone(id);
@@ -310,6 +312,7 @@ float(entity e, string fn) Archive_Row =
 {
 	local float fh, j, flags, version, row;
 	local string leaf, line, owner, date;
+	if (Archive_StreamRow(e, fn) >= 0) return FALSE;
 	fn = strzone(fn);
 	fh = Archive_VerifiedOpen(e, fn);
 	if (fh < 0) { strunzone(fn); return FALSE; }
@@ -397,6 +400,7 @@ void(entity e, float argc) Archive_Command =
 {
 	local string verb;
 	local float query, track, leg, row, transfer, offset;
+	if (Archive_StreamCommand(e, argc)) return;
 	verb = argv(1); query = stof(argv(2)); track = stof(argv(3)); leg = stof(argv(4)); row = track; transfer = leg;
 	offset = (argc == 6) ? stof(argv(5)) : 0;
 	if (clienttype(e) != CLIENTTYPE_REAL) return;
@@ -439,11 +443,13 @@ void() Archive_Frame =
 	local int bytes;
 	local void *chunk;
 	local string data, path;
+	Archive_StreamFrame();
 	e = world;
 	while ((e = SV_AcNext(e)))
 	{
 		if (!e.ar_rows) continue;
 		if (strcmp(e.ar_identity, Archive_Identity(e))) { Archive_Reset(e); continue; }
+		if (Archive_StreamBusy(e)) continue;
 		if (e.ar_listing)
 		{
 			h = e.ar_search - 1;
@@ -467,7 +473,11 @@ void() Archive_Frame =
 				}
 				path = search_getfilename(h, e.ar_scan);
 				e.ar_scan = e.ar_scan + 1;
-				if (!Archive_Row(e, path)) continue;
+				if (!Archive_Row(e, path))
+				{
+					if (Archive_StreamBusy(e)) break;
+					continue;
+				}
 				break; // at most one owner row/hash per client/frame
 			}
 			continue;

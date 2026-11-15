@@ -303,7 +303,7 @@ void() CSQC_Parse_Event =
 	if (t == TAS_EV_JPLAN) { TASJargon_PlanEvent(); return; }  // P1449 Jargon's route
 	if (t == TAS_EV_JSAVED) { TASJargon_SavedEvent(); return; }   // the Jargon panel's Continue
 	if (t == TAS_EV_PROJECT) { TASProject_Event(); return; }
-	if (t >= AR_EV_ROW && t <= AR_EV_KEEP)
+	if (t >= AR_EV_ROW && t <= AR_EV_STREAM)
 	{
 		Archive_ClientEvent(t);
 		return;

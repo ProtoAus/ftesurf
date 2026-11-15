@@ -1,5 +1,25 @@
 # AGENT_NOTES.md
 
+## P1568 large-history qualification boundaries (15 Nov 2026 UTC)
+
+- An odd byte total beyond2^24 needs integer counters and full-width file size;
+  a float-formatted total can silently round. The acted17MiB+3 transport fixture
+  is explicitly synthetic: seeding its private pending promise does not prove a
+  real large recorder completed. Native production recovery/sealing and complete
+  byte-identical transfer/promotion are separate observed steps.
+- A denied read does not prove a path is absent or unwriteable. The native
+  FILE_READ_DATA-denied / write-open-existing-positive control caused the actual
+  automatic local acquisition to refuse while preserving its sentinel and DACL.
+  A final sentinel surviving a partial transfer is NOT full-body promotion refusal.
+- Canonical Git blobs and raw Windows worktree bytes are distinct source-hash
+  domains. ARM source export uses ls-tree/cat-file and preserves executable modes;
+  do not substitute a filtered archive or compare its PM hash to CRLF source.
+- Windows dedicated stdout can be silent after successful commands. Use actual
+  log_name/log_dir/log_enable (not log_file), and prove the selftest acted. The
+  client-only con_savehistory cvar is not registered in SERVERONLY. A Linux image
+  can carry the correct clean stamp without printing a startup banner; retain the
+  original observer refusal and inspect that exact image rather than rebuilding.
+
 ## P1559-P1563 Lex's list of 15 Nov (ftesurf-16, root lexlist-20261115-16)
 
 - **`build.ps1 -NoDeploy` writes the .dat files to `<qc>/rig/build-nodeploy-<guid>/`**, not to
@@ -6279,6 +6299,16 @@ showed JPEG90 while the surviving object was still80. `-Engine -Full` with the
 proper dependencies fixed the isolated artifact; no JPEG decoder/source change
 was needed. Native HTTPS picture readiness then reached1920x1080 and the
 screenshot showed the photo. Regenerate clangdb after build-flag/path changes.
+
+**P1568 partial native dependency cache.** An existing but incomplete ARCHLIBS
+folder can also omit `ft2build.h` rather than select NO_FREETYPE. The actual
+UCRT headers were present: per-process
+`C_INCLUDE_PATH=C:/msys64/ucrt64/include/freetype2` restored the supported full
+`build.ps1 -Engine -Full -NoDeploy -Jobs 2` route, without source/codec disables,
+install writes or full-cache copies. Header trees stayed hash-identical. A clean
+matched native control preserved all74 existing warning occurrences exactly;
+fixing an include seam was not itself feature/runtime qualification. Keep the
+first failed log and invalidate partial objects after dependency/flag changes.
 
 From `src/`, with pwsh 7 (NOT `powershell`):
 
