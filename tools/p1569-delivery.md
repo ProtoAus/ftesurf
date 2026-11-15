@@ -35,3 +35,9 @@ Task root C:\FTESurf-worktrees\lexlist3-20261115-16.
 
 - The surfd half needs a guarded generation (with P1564's TAS board, also pending): Lex installs the new
   generation's sandbox drop-in; then `set lobby_helped 1` in the lobby cfg makes lobbies post helped runs.
+
+## Rework (no schema change)
+
+The guarded transition admits no new schema object, so `run_helpers` is gone: board_rows reads a helped
+row's runners from its recording at show time (row_helpers: replay -> replay_file -> rec_runners ->
+helpers_of), cached by replay id, path, size and mtime (512 entries). A late or re-filed file is read again.
