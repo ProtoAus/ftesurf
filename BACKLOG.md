@@ -5,6 +5,10 @@
 - The online board (P1569, Lex 15 Nov: segmented, "<name> +N", runners on hover): surfd source is on main
   (run_helpers, rec_runners, board rows, web, simcheck skip "helped"); it needs its guarded-generation
   activation (owner authorization), then `set lobby_helped 1` in the lobby cfg so the lobby posts TF_HELPED.
+  - Similarity on a helped run is a stored skip: anyone can get TF_HELPED from a second connection's gift,
+    so before a playback threshold acts on simcheck, measure the receiver's part (recsim already drops the
+    rows before the last takeover; it needs a mid-map alignment, and recsim does not model REC 12+ yet).
+  - run_helpers is written only at submit; a filing whose file was unreadable then never gets one.
 - The sender's client sidecars do not travel: seq.txt (the Segments list for stages already run), trail.txt
   (the run line behind you) and run.view (the replay camera's angles; the receiver's own stale buffer is kept,
   cl_replay.qc Rec_ViewLoaded's rule). Server-authored alternatives: rebuild the trail from the copied run.rec's

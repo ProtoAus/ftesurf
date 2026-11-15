@@ -1139,8 +1139,12 @@ def rec_runners(path, limit=16 << 20):
                     continue
                 if line.startswith("takeover "):
                     parts = line.split(" ", 2)
-                    if len(parts) == 3 and parts[1].isdigit() and len(names) < 64:
-                        names.append(clean_text(parts[2])[:32].strip() or "?")
+                    if len(parts) == 3 and parts[1].isdigit():
+                        last = clean_text(parts[2])[:32].strip() or "?"
+                        if len(names) < 64:
+                            names.append(last)
+                        else:
+                            names[-1] = last        # the finisher stays last however long the chain
     except OSError:
         return []
     return names
@@ -1997,7 +2001,8 @@ _LEAF_OK = re.compile(
 )
 
 # An evidence file's leaf: its runid (sv_timer.qc SV_RecOpen) + ".rec".
-_EVLEAF_OK = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9]{1,3}(?:-p[0-9]{1,5})?\.rec$")
+# P1569: a shared save's copy (P1567) swaps the 'p' for the receiver's slot letter (SV_GiftRunId).
+_EVLEAF_OK = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9]{1,3}(?:-[A-Za-z][0-9]{1,5})?\.rec$")
 
 
 def clean_map(raw):

@@ -4434,12 +4434,12 @@ float(entity e, string dst) SV_RecCopyPending =
 };
 
 /*
-  The copy's runid: the sender's with its date and time made the gift's, and its slot the receiver's when
-  that has as many digits. Two players' files must not share a header runid (rcptcheck joins a receipt to a
-  .rec by it; the evidence keep names files by it). SAME LENGTH, and runids are ASCII, so no byte offset
-  the copied state records (recbytes, recstream) moves; and the shape stays SV_RecNewId's (digits, -p<port>),
-  which surfd's evidence index requires (_EVLEAF_OK). The gift is at least an offer after the run's start,
-  so its second differs from the sender's.
+  The copy's runid: the sender's with its date and time made the gift's and the 'p' of -p<port> (offline:
+  the last character) swapped for the receiver's slot letter, never 'p' -- so no copy can equal a runid
+  SV_RecNewId mints (review 2 of P1569: a digit slot could, the second a player accepts and starts). Two
+  players' files must not share a header runid (rcptcheck joins a receipt to a .rec by it; the evidence keep
+  names files by it; surfd's _EVLEAF_OK takes the letter). SAME LENGTH, and runids are ASCII, so no byte
+  offset the copied state records (recbytes, recstream) moves.
 */
 string(string rid, float slot) SV_GiftRunId =
 {
@@ -4449,13 +4449,17 @@ string(string rid, float slot) SV_GiftRunId =
 	if (strlen(rid) < 17 || substring(rid, 8, 1) != "-" || substring(rid, 15, 1) != "-")
 		return "";                      // not SV_RecNewId's shape: the gift sends the position
 	rid = strcat(strftime(TRUE, "%Y%m%d-%H%M%S"), substring(rid, 15, -1));     // 15 for 15
-	at = strstrofs(rid, "-", 16);       // the slot field's end
+	c = substring("abcdefghijklmnoqrstuvwxyzABCDEFG", bound(0, slot, 31), 1);
+	at = strstrofs(rid, "-p", 16);
 	if (at < 0)
-		at = strlen(rid);
-	c = sprintf("%g", bound(0, slot, 999));
-	if (strlen(c) == at - 16)
-		rid = strcat(substring(rid, 0, 16), c, substring(rid, at, -1));
-	return rid;
+		at = strstrofs(rid, "-", 16);   // an earlier copy's letter, or offline
+	if (at >= 0 && at + 1 < strlen(rid) && strstrofs(rid, "-", at + 1) < 0)
+		at = at + 1;                    // the character after the last '-'
+	else
+		at = strlen(rid) - 1;
+	if (substring(rid, at, 1) == c)
+		c = (c == "a") ? "b" : "a";
+	return strcat(substring(rid, 0, at), c, substring(rid, at + 1, -1));
 };
 
 /*

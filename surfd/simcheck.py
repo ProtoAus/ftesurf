@@ -98,10 +98,15 @@ SKIP_CODES = {
     "too short": "too_short", "same file": "same_file",
     "malformed input": "malformed", "no comparison opportunities": "no_opportunities",
     "source limit": "source_limit", "unmodelled recording": "unmodelled",
+    # P1569: a helped run's prefix IS another player's recording (a P1567 shared save). recsim drops
+    # the rows before its last takeover, but aligns from the map start, so the receiver's part alone
+    # would score as a chance-level "compared": stored as this skip instead (BACKLOG: measure it).
+    "helped run": "helped",
 }
 KNOWN_SKIP_CODES = frozenset(SKIP_CODES.values()) | {"peer_unresolved", "unknown"}
 
 SOURCE_SNAPSHOT_MAX = 512
+TF_HELPED = 1048576         # sh_defs.qc; surfd.TF_HELPED is pinned by test_board
 
 
 def _limit(name, value):
@@ -597,10 +602,20 @@ def _row_path(surfd, row):
     return path, ""
 
 
+def _flags(r):
+    try:
+        return int(r["flags"] or 0)
+    except (KeyError, IndexError, TypeError, ValueError):
+        return 0
+
+
 def _pair_result(rs, surfd, row, peer, pa, now):
     """Build one observation; exceptions leave this admitted pair unmeasured."""
     pb, why = _row_path(surfd, peer)
-    if pb is None:
+    if (_flags(row) | _flags(peer)) & TF_HELPED:
+        verdict, reason, d = "skip", "helped run", None
+        skip_code = "helped"
+    elif pb is None:
         verdict, reason, d = "skip", "peer unresolved: %s" % why, None
         skip_code = "peer_unresolved"
     else:

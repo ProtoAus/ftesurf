@@ -80,6 +80,27 @@ def case_helpers_of(mod):
     check("helpers_of: one runner is no help", mod.helpers_of(["A"]) == [])
 
 
+def case_simcheck():
+    import simcheck
+
+    class Rs(object):
+        def compare_paths(self, *a, **k):
+            raise AssertionError("a helped pair must not be compared")
+
+    old = simcheck._row_path
+    simcheck._row_path = lambda surfd, peer: ("peer.rec", None)
+    try:
+        base = {"id": 1, "map": "m", "track": 0, "leg": 0, "tier": "ranked", "player": "a", "flags": 128}
+        helped = dict(base, id=2, player="b", flags=128 | 1048576)
+        for a, b in ((helped, base), (base, helped)):
+            obs, compared, _ = simcheck._pair_result(Rs(), object(), a, b, "a.rec", 0)
+            check("simcheck stores a helped pair as skip 'helped' (%s first)" % a["player"],
+                  obs[11] == "skip" and obs[13] == "helped" and not compared, obs[11:14])
+        check("'helped' is a known skip code", "helped" in simcheck.KNOWN_SKIP_CODES)
+    finally:
+        simcheck._row_path = old
+
+
 def main():
     mod = test_board.fresh()
     with mod.app.app_context():
@@ -88,6 +109,7 @@ def main():
     case_board(mod)
     case_recsim()
     case_helpers_of(mod)
+    case_simcheck()
     print("%d failed" % len(FAILS))
     sys.exit(1 if FAILS else 0)
 
