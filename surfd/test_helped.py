@@ -55,29 +55,29 @@ def case_board(mod):
         check("an ordinary row has no helpers key (its bytes unchanged)", carl and "helpers" not in carl[0], carl)
 
 
-def case_simcheck():
-    import simcheck
+def case_recsim():
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools", "census"))
+    import recsim
+    d = tempfile.mkdtemp(prefix="helped_t")
+    p = os.path.join(d, "t.rec")
+    row = "in 1 %d 0 400 0 0 0 0 0 0 0"
+    with open(p, "w", encoding="utf-8") as f:
+        f.write("FTESURF-REC 11\nowner Alice\nbegin\n")     # recsim models 11; 12+ viewing clocks not yet
+        f.write("".join(row % i + "\n" for i in range(30)))
+        f.write("resume 1 30\ntakeover 30 Bob\n")
+        f.write("".join(row % (100 + i) + "\n" for i in range(12)))
+    r = recsim._parse_rec(p)
+    check("recsim compares a helped file only after its last takeover", len(r.moves) == 12 and r.mt[0] == 100,
+          (len(r.moves), r.mt[:1]))
 
-    class Rs(object):
-        def compare_paths(self, *a, **k):
-            raise AssertionError("a helped pair must not be compared")
 
-    class Surfd(object):
-        TF_HELPED = 1048576
-
-    old = simcheck._row_path
-    simcheck._row_path = lambda surfd, peer: ("peer.rec", None)
-    try:
-        base = {"id": 1, "map": "m", "track": 0, "leg": 0, "tier": "ranked", "player": "a", "flags": 128}
-        helped = dict(base, id=2, player="b", flags=128 | 1048576)
-        obs, compared, _ = simcheck._pair_result(Rs(), Surfd(), helped, base, "a.rec", 0)
-        check("simcheck stores a helped pair as skip 'helped', never a score",
-              obs[11] == "skip" and obs[13] == "helped" and not compared, obs[11:14])
-        obs, compared, _ = simcheck._pair_result(Rs(), Surfd(), base, helped, "a.rec", 0)
-        check("...either way round", obs[13] == "helped", obs[11:14])
-        check("'helped' is a known skip code", "helped" in simcheck.KNOWN_SKIP_CODES)
-    finally:
-        simcheck._row_path = old
+def case_helpers_of(mod):
+    check("helpers_of: the finisher is not their own helper, each once",
+          mod.helpers_of(["A", "B", "B", "A"]) == ["B"], mod.helpers_of(["A", "B", "B", "A"]))
+    long = ["r%d" % i for i in range(12)]
+    check("helpers_of: a long chain keeps the finisher out and caps the rest",
+          mod.helpers_of(long) == long[:mod.HELPERS_MAX], mod.helpers_of(long))
+    check("helpers_of: one runner is no help", mod.helpers_of(["A"]) == [])
 
 
 def main():
@@ -86,7 +86,8 @@ def main():
         mod.migrate()
     case_rec_runners(mod)
     case_board(mod)
-    case_simcheck()
+    case_recsim()
+    case_helpers_of(mod)
     print("%d failed" % len(FAILS))
     sys.exit(1 if FAILS else 0)
 

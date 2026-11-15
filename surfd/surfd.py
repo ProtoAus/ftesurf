@@ -1120,7 +1120,7 @@ CREATE TABLE IF NOT EXISTS run_helpers (
 HELPERS_MAX = 8
 
 
-def rec_runners(path, limit=4 << 20):
+def rec_runners(path, limit=16 << 20):
     """P1569: the runners of a helped recording, in order: the header's `owner`, then each
     `takeover <ticks> <name>`; the last is the finisher. Server-written files only (a trusted leaf)."""
     names, body, read = [], False, 0
@@ -1135,15 +1135,26 @@ def rec_runners(path, limit=4 << 20):
                     if line == "begin":
                         body = True
                     elif line.startswith("owner ") and not names:
-                        names.append(clean_text(line[6:])[:32])
+                        names.append(clean_text(line[6:])[:32].strip() or "?")
                     continue
                 if line.startswith("takeover "):
                     parts = line.split(" ", 2)
-                    if len(parts) == 3 and parts[1].isdigit():
-                        names.append(clean_text(parts[2])[:32])
+                    if len(parts) == 3 and parts[1].isdigit() and len(names) < 64:
+                        names.append(clean_text(parts[2])[:32].strip() or "?")
     except OSError:
         return []
-    return names[:HELPERS_MAX + 1]
+    return names
+
+
+def helpers_of(runners):
+    """The other runners of a helped run: everyone before the finisher, once each, not the finisher."""
+    if len(runners) < 2:
+        return []
+    out = []
+    for n in runners[:-1]:
+        if n != runners[-1] and n not in out:
+            out.append(n)
+    return out[:HELPERS_MAX]
 
 
 def receipts_v8(conn):
@@ -3738,6 +3749,7 @@ def submit_run():
     fsize = None
     fileless = bool(leaf)
     hdr_runid = fsha = ""
+    helpers = []
     if leaf:
         path, why = replay_file({"map_dir": map_dir, "track": track, "leg": leg,
                                  "leaf": leaf, "kind": "run"})
@@ -3777,6 +3789,9 @@ def submit_run():
             hdr_runid = meta[0].get("runid", "")
             fsha = _file_sha(path, key0)
             story_rec = path
+            # P1569: a helped run's runners, read here, outside the write lock below.
+            if flags & TF_HELPED:
+                helpers = helpers_of(rec_runners(path))
             # A post with no runid (a TF_SHADOW continuation: its file is rebuilt
             # from the run it was cut from, header and all) compares none -- it
             # dropped every such leaf since 06a5a01 (review round 6).
@@ -3975,12 +3990,14 @@ def submit_run():
                     " WHERE map=? AND track=? AND leg=? AND leaf=?",
                     (mapname, track, leg, leaf),
                 ).fetchone()
-                # P1569: a helped run's other runners, read from its own file.
-                if rep is not None and (flags & TF_HELPED) and story_rec:
-                    runners = rec_runners(story_rec)
-                    if len(runners) >= 2:
+                # P1569: a helped run's other runners (read above); a post that is not one, or whose
+                # file named none, clears what an earlier filing of this replay left.
+                if rep is not None and not fileless:
+                    if (flags & TF_HELPED) and helpers and story_rec:
                         db.execute("INSERT OR REPLACE INTO run_helpers (replay_id, names)"
-                                   " VALUES (?, ?)", (rep["id"], json.dumps(runners[:-1])))
+                                   " VALUES (?, ?)", (rep["id"], json.dumps(helpers)))
+                    else:
+                        db.execute("DELETE FROM run_helpers WHERE replay_id=?", (rep["id"],))
                 # ADOPT ONLY A RUN'S EVIDENCE, never an imported row's.  Without
                 # the kind gate a trusted post naming a momindex leaf whose player
                 # is the steamid64 adopted tier='momentum' for the board row and,

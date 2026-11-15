@@ -21,6 +21,9 @@
 
 ## next
 
+### P1569 With help runs on the segmented board
+- Once the board update is live, a run finished with help goes on the segmented board under the finisher's name with a small "+N" for the other players who ran part of it; hover it to see every runner, in-game and on the website.
+
 ### P1567 Shared saves carry the run, and finishes from them are With help
 - Sharing a save now sends its run too: the other player loads it and carries on the same run from where you saved, timer and recording included (your segment list and run line do not come across yet).
 - A run finished from someone else's save is marked With help. Its replay shows the part each other player ran in its own colour with their name under the timeline.

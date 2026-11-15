@@ -2,10 +2,9 @@
 
 ## Shared saves with their run -- what P1567 left (15 Nov, ftesurf-16)
 
-- The online "With help" board: surfd's style_of files TF_HELPED (1048576) under segmented today, so the lobby
-  holds those runs (Lobby_RunBody) until `lobby_helped 1`. Needs a `helped` community style in surfd (the TAS
-  board of 80ca3c1e is the pattern: style_of, certifiable never, web tab, counts, board.js, test_board pins),
-  then its guarded-generation activation (owner authorization), then the lobby cvar.
+- The online board (P1569, Lex 15 Nov: segmented, "<name> +N", runners on hover): surfd source is on main
+  (run_helpers, rec_runners, board rows, web, simcheck skip "helped"); it needs its guarded-generation
+  activation (owner authorization), then `set lobby_helped 1` in the lobby cfg so the lobby posts TF_HELPED.
 - The sender's client sidecars do not travel: seq.txt (the Segments list for stages already run), trail.txt
   (the run line behind you) and run.view (the replay camera's angles; the receiver's own stale buffer is kept,
   cl_replay.qc Rec_ViewLoaded's rule). Server-authored alternatives: rebuild the trail from the copied run.rec's
