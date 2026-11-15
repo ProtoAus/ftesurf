@@ -82,7 +82,7 @@ def grade(cl, control):
 
 
 def grade_latch(cl, control):
-    """--latch: the map locks the applied string to " 1"; the player's "1" is only the latch."""
+    """--latch: the fixture holds the applied value apart from the player's; the report must read off."""
     log = (cl / "logs/p1573latch.log").read_text(errors="replace")
     sec = section(log, "LATCH")
     # A server-locked cvar prints the player's value first, then `Effective value is "..."`: the applied one.
@@ -139,7 +139,7 @@ def main():
     ap.add_argument("--server", default="C:/FTEQuake/fteqwsv64.exe")
     ap.add_argument("--port", type=int, default=27561)
     ap.add_argument("--control", action="store_true")
-    ap.add_argument("--latch", type=pathlib.Path, help="a pk3 with maps/surf_dune.ent; runs cfg p1573latch")
+    ap.add_argument("--latch", type=pathlib.Path, help="the private tree's P1573 fixture pk3; runs cfg p1573latch")
     args = ap.parse_args()
     args.cfg = "p1573latch" if args.latch else "p1573guard"
     args.out.mkdir(parents=True, exist_ok=True)
@@ -147,8 +147,7 @@ def main():
     made = []
     try:
         if args.latch:
-            # The client alone gets the pk3 (gamedir itself, not a junction): the server keeps the real
-            # entities, as on a lobby, and a malformed .ent cannot stop its map load.
+            # The client alone gets the fixture (gamedir itself, not a junction); the server keeps the real map.
             _, m = prepare(rig / "server", args.progs, [], args.port)
             made += m
             gd, m = prepare(rig / "client", args.progs, [args.cfg], args.port)

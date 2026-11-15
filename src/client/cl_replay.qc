@@ -323,14 +323,10 @@ float rec_rp_guardscan;          // P1573: this map's worldspawn has been scanne
 float rec_rp_guardmap;           // ...and names an in_rawinput cvar
 
 /*
-  P1573 review 2: a worldspawn `cvar_<name>` key -- a player's own maps/<map>.ent can add one -- locks a
-  client cvar to the map's value and keeps the player's as the latch, which is what cvar_string returns
-  (PF_cvar_string), so Rec_ProfileReport's string test would read "1" while the engine applies " 1".
-  Same entity string as Mod_ParseInfoFromEntityLump (Mod_GetEntitiesString), walked its way (round 3):
-  `{`/`}` by first character, only a KEY ending worldspawn, an empty token ending nothing; every token
-  is searched. Run from CSQC_WorldLoaded, and until it has run the block reads off. Tokeniser
-  differences (QCC_COM_Parse vs COM_ParseOut: escapes, 1023-byte tokens, high bytes, `{}():,'` splits)
-  are not covered; the engine-side CVAR_NOTFROMSERVER is the fix (BACKLOG).
+  P1573 reviews 2-3: a map-supplied cvar setting can hold the click block's applied value apart from the
+  one cvar_string returns, so the click block also reads off when this map's worldspawn names an
+  in_rawinput cvar. Walked like Mod_ParseInfoFromEntityLump, from CSQC_WorldLoaded; the block reads off
+  until it has run. Not a complete defence: the engine-side fix is BACKLOG (details in the private tree).
 */
 void() Rec_GuardMapScan =
 {

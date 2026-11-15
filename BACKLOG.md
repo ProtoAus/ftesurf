@@ -2,13 +2,10 @@
 
 ## Injected clicks / touchpads on the ranked board -- what P1573 left (16 Nov, ftesurf-31)
 
-- Engine half (the real fix for review 2's finding): give `in_rawinput_nolegacy` and `in_rawinput_touchpad`
-  CVAR_NOTFROMSERVER (in_win.c:438-439), so a worldspawn `cvar_` key (a player's own maps/<map>.ent) cannot
-  lock them, and publish `in_raw_nolegacy_live` as a read-only cvar so CSQC reports what APPLIED, not what was
-  asked (the block is grab-scoped). Then Rec_GuardMapScan is belt and braces: it reads worldspawn with
-  QCC_COM_Parse, the engine with COM_ParseOut, and a crafted .ent that the two tokenise differently is not
-  covered. Falsifier: `tools/p1573guard.py --latch <pk3>` on the engine build with the QC scan removed must
-  read `clicks`. Rides a release for players.
+- Engine half, the real fix for reviews 2-3: CVAR_NOTFROMSERVER on `in_rawinput_nolegacy` and
+  `in_rawinput_touchpad` (in_win.c:438-439), and publish `in_raw_nolegacy_live` as a read-only cvar so CSQC
+  reports what APPLIED, not what was asked (the block is grab-scoped). Until then Rec_GuardMapScan is a partial
+  defence. Falsifier and the open cases: the private tree's checkpoints/p1573-latch-20261116.md. Rides a release.
 - `.rec` carries only the verdict word, not the guard values (format contract in sv_timer.qc says so).
 - Relayed nonce (plan item 12): the sweeper never runs rcptcheck.join_server. Measured 16 Nov over 2,296 real
   receipts: 2,295 sign 180.150.62.57:<svport>, one the Pi's LAN address 192.168.1.102:<svport>. Allow those two
