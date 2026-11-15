@@ -838,6 +838,55 @@ def _pending_sources(conn, limit, read_budget):
     return recovered, inflight
 
 
+def _owned_sources(conn, limit, read_budget, budget):
+    """Select only the next needed source, around one fixed rotation anchor.
+
+    Eligibility is current at each read, not a snapshot of the initial window.
+    No cursor/result is held across comparison or checkpoint writes.
+    """
+    after, inflight = 0, None
+    if not budget.available():
+        return
+    cursors = _read(conn, "SELECT source_id,after_id FROM sim_cursor"
+                    " WHERE scope='source' AND source_id IN (0,?)",
+                    (_SOURCE_INFLIGHT,), read_budget)
+    for slot, value in cursors:
+        if slot == _SOURCE_INFLIGHT:
+            inflight = value
+        else:
+            after = value
+    sql = "SELECT r.* FROM replays r WHERE " + _PENDING_WHERE
+    args = ()
+    selected = 0
+    if inflight is not None:
+        if not budget.available():
+            return
+        rows = _read(conn, sql + " AND r.id=?", (inflight,), read_budget)
+        if rows:
+            selected += 1
+            yield rows[0]
+        else:
+            # Only a successful eligibility read proves recovery is stale.
+            _source_done(conn, inflight)
+        sql += " AND r.id!=?"
+        args = (inflight,)
+    for upper in (True, False):
+        last = after if upper else None
+        while selected < limit and budget.available():
+            bounds = " AND r.id > ?" if upper else " AND r.id <= ?"
+            values = (*args, last if upper else after)
+            if not upper and last is not None:
+                bounds += " AND r.id > ?"
+                values += (last,)
+            rows = _read(conn, sql + bounds + " ORDER BY r.id LIMIT 1",
+                         values, read_budget)
+            if not rows:
+                break
+            last = rows[0]["id"]
+            selected += 1
+            yield rows[0]
+
+
 def pending(conn, limit=50, read_budget=None):
     """Recover an unfinished eligible source first, then rotate/wrap admissions.
 
@@ -1048,13 +1097,7 @@ def _similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         ensure_schema(conn)
         if budget.available():
             retired = _retire_peer_cursors(conn, read_budget=read_budget)
-        rows, inflight = [], None
-        if budget.available():
-            rows, inflight = _pending_sources(conn, limit, read_budget)
-        if not rows and inflight is not None and budget.available():
-            # A removed/completed source is no longer eligible. Read-only pending
-            # never clears state; only the current collector owner does so here.
-            _source_done(conn, inflight)
+        rows = _owned_sources(conn, limit, read_budget, budget)
     except ReadDeadline:
         return 0, 0, "sims time limit reached (selected SQL read interrupted; coverage not measured)"
     except ReadLimit:
@@ -1066,9 +1109,28 @@ def _similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
     stored = skipped = notable = failed = 0
     database_busy = False
     diagnostics = {"source_unavailable": 0, "pair_failed": 0}
-    for row in rows:
-        if not budget.available():
+    source_read_limited = False
+    selection_error = ""
+    # Test admission BEFORE next(): advancing the iterator performs selected SQL.
+    while budget.available():
+        try:
+            row = next(rows)
+        except StopIteration:
             break
+        except ReadDeadline:
+            budget.time_exhausted = True
+            break
+        except ReadLimit:
+            source_read_limited = True
+            break
+        except Exception as exc:
+            if _database_busy(exc):
+                database_busy = True
+            else:
+                selection_error = "similarity step failed: %r" % exc
+            break
+        if not budget.available():
+            break  # selection time also counts against source admission
         admitted = read_limited = False
         result = None
         try:
@@ -1133,7 +1195,9 @@ def _similarity_step(conn, surfd, limit=50, now=None, tools_dir=None,
         note = (note + " " if note else "") + "sims unavailable: " + ", ".join(unavailable)
     if database_busy:
         note = (note + " " if note else "") + _BUSY_NOTE
-    if read_budget is not None and read_budget.exhausted:
+    if selection_error:
+        note = (note + " " if note else "") + selection_error
+    if source_read_limited or (read_budget is not None and read_budget.exhausted):
         note = (note + " " if note else "") + "sims SQL read limit reached (coverage not measured)"
     if budget.remaining <= 0:
         note = (note + " " if note else "") + (

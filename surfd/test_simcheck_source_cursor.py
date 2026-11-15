@@ -69,6 +69,70 @@ class SourceCursorTests(fixture.PendingTests):
         # Peer1 is a stored unavailability, not a measured zero comparison.
         self.assertEqual(simcheck.summary(self.conn)['compared'], 1)
 
+    def test_same_pass_unresolved_sources_do_not_spend_pair_allowance(self):
+        for i in range(1, 5):
+            self.add(i, map_name='unavailable' if i < 3 else 'm')
+        original = self.surfd.replay_file
+        self.surfd.replay_file = lambda row: (self.unavailable(row)
+            if row['id'] < 3 else original(row))
+        with mock.patch.object(simcheck, '_recsim', return_value=(self.mod, 'fake')):
+            out = simcheck.similarity_step(self.conn, self.surfd, limit=50,
+                                           max_pairs=1, max_seconds=5)
+        self.assertEqual(out[:2], (1, 1))
+        self.assertEqual(self.compared, [(3, 4)])
+        self.assertEqual(self.resolved, [1, 2, 3, 4])
+        self.assertEqual(self.cursor(), 3)
+
+    def test_recovery_precedes_rotation_without_duplicate_admission(self):
+        for i in range(0, 5):
+            self.add(i)
+        simcheck._source_admit(self.conn, 2)
+        self.surfd.replay_file = self.unavailable
+        with mock.patch.object(simcheck, '_recsim', return_value=(self.mod, 'fake')):
+            out = simcheck.similarity_step(self.conn, self.surfd, limit=50,
+                                           max_pairs=1, max_seconds=5)
+        self.assertEqual(out[:2], (0, 0))
+        self.assertEqual(self.resolved, [2, 3, 4, 0, 1])
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM sim_cursor WHERE scope='source' AND source_id=1").fetchone())
+        self.assertEqual(self.cursor(), 1)
+
+    def test_selection_time_counts_before_source_admission(self):
+        for i in range(1, 4):
+            self.add(i)
+        original = simcheck._read
+        clock = [0.]
+        selected = []
+
+        def slow(conn, sql, parameters=(), read_budget=None):
+            rows = original(conn, sql, parameters, read_budget)
+            if sql.startswith('SELECT r.*'):
+                selected.append([r['id'] for r in rows])
+                clock[0] = 2.
+            return rows
+
+        with mock.patch.object(simcheck.time, 'monotonic', side_effect=lambda: clock[0]), \
+             mock.patch.object(simcheck, '_read', side_effect=slow), \
+             mock.patch.object(simcheck, '_recsim', return_value=(self.mod, 'fake')):
+            out = simcheck.similarity_step(self.conn, self.surfd, max_seconds=1.)
+        self.assertEqual(selected, [[1]])
+        self.assertEqual(out[:2], (0, 0))
+        self.assertIn('time limit', out[2])
+        self.assertEqual(self.resolved, [])
+        self.assertEqual(self.cursor(), 0)
+
+    def test_owned_window_anchor_wraps_once_with_source_cap(self):
+        for i in range(0, 5):
+            self.add(i)
+        simcheck._advance(self.conn, 'source', 2)
+        self.surfd.replay_file = self.unavailable
+        with mock.patch.object(simcheck, '_recsim', return_value=(self.mod, 'fake')):
+            out = simcheck.similarity_step(self.conn, self.surfd, limit=4,
+                                           max_pairs=1, max_seconds=5)
+        self.assertEqual(out[:2], (0, 0))
+        self.assertEqual(self.resolved, [3, 4, 0, 1])
+        self.assertEqual(self.cursor(), 1)
+        self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM sims').fetchone()[0], 0)
+
     def test_row_exception_still_rotates_without_fabricated_observation(self):
         for i in range(1, 4):
             self.add(i)

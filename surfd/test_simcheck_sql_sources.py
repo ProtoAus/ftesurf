@@ -75,6 +75,11 @@ class SqlSources(unittest.TestCase):
             self.assertEqual([r[0] for r in self.conn.execute('SELECT compared FROM sims')], [80]*3)
             self.assertTrue(resolved)
             self.grow()
+            # Sparse source eligibility makes LIMIT 1 itself exceed a VM quantum;
+            # dense eligibility would interrupt only the later peer read.
+            self.conn.execute("UPDATE replays SET kind='stage' WHERE id < 250")
+            self.conn.execute("INSERT INTO replays VALUES (251,'synthetic',0,0,'run','','s')")
+            self.conn.commit()
             # Retirement precedes the pending SELECT; initialize its independent slot.
             sc._retire_peer_cursors(self.conn)
             before = tuple(self.conn.iterdump())
@@ -174,6 +179,61 @@ class SqlSources(unittest.TestCase):
         self.assertEqual([r[0] for r in self.conn.execute('SELECT compared FROM sims')], [80]*3)
         self.assertGreater(len(active),0)
         self.assertNotIn('SQL read limit',note)
+
+    def test_recovery_read_limit_keeps_unproven_inflight_marker(self):
+        sc._source_admit(self.conn, 1)
+        original = sc._read
+        acted = []
+
+        def limited(conn, sql, parameters=(), read_budget=None):
+            if sql.startswith('SELECT r.*') and sql.endswith(' AND r.id=?'):
+                acted.append(parameters)
+                raise sc.ReadLimit('synthetic recovery eligibility unavailable')
+            return original(conn, sql, parameters, read_budget)
+
+        with mock.patch.object(sc, '_read', side_effect=limited):
+            out = self.step(1000000)
+        self.assertEqual(acted, [(1,)])
+        self.assertEqual(out[:2], (0, 0))
+        self.assertIn('SQL read limit', out[2])
+        # Retirement has its own legitimate slot; compare source state only.
+        self.assertEqual(sc._cursor(self.conn, 'source'), 1)
+        self.assertEqual(self.conn.execute("SELECT after_id FROM sim_cursor WHERE scope='source' AND source_id=1").fetchone()[0], 1)
+        self.assertEqual(self.conn.execute('SELECT COUNT(*) FROM sims').fetchone()[0], 0)
+        self.assertFalse(self.conn.in_transaction)
+        self.assertEqual(self.step(1000000)[:2], (3, 3))
+
+    def test_late_source_read_limit_preserves_real_prior_row_and_checkpoints(self):
+        reads = sc.ReadBudget(self.conn, 1000000)
+        original = sc._compare_run
+        acted = []
+
+        def one_peer(*args, **kw):
+            kw['limit_peers'] = 1
+            result = original(*args, **kw)
+            acted.append(result)
+            # Exhaust only the next source read, after real comparison/flush.
+            reads.remaining = 0
+            return result
+
+        with mock.patch.object(sc, '_compare_run', side_effect=one_peer):
+            out = sc.similarity_step(self.conn, self.sf,
+                tools_dir=str(fixture.ROOT/'tools'), read_budget=reads)
+        self.assertEqual(acted, [(1, 0, 1)])
+        self.assertEqual(out[:2], (1, 1))
+        self.assertEqual(out[2].count('SQL read limit'), 1)
+        self.assertNotIn('row failed', out[2])
+        row = self.conn.execute('SELECT * FROM sims').fetchone()
+        self.assertEqual((row['a_id'], row['b_id'], row['verdict'], row['compared']),
+                         (1, 2, 'compared', 80))
+        self.assertEqual(fixture.StoredSources.snap(self, row),
+                         fixture.capture(self.data[1], self.data[2]))
+        self.assertEqual(sc._cursor(self.conn, 'source'), 1)
+        self.assertIsNone(self.conn.execute("SELECT 1 FROM sim_cursor WHERE scope='source' AND source_id=1").fetchone())
+        self.assertTrue(reads.exhausted)
+        self.assertIsNone(reads.deadline)
+        self.assertFalse(self.conn.in_transaction)
+        self.assertEqual(self.step(1000000)[:2], (2, 2))
 
     def test_guard_closes_callback_on_success_interrupt_and_query_error(self):
         conn = sqlite3.connect(':memory:', factory=TrackedConnection)

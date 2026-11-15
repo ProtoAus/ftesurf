@@ -132,10 +132,10 @@ class CursorRetirement(unittest.TestCase):
 
     def traced_step(self, now, loader=None, retirement=None):
         statements, entries = [], []
-        original = sc._pending_sources
+        original = sc._owned_sources
         def pending(*args, **kwargs):
             entries.append(now[0])
-            return original(*args, **kwargs)
+            yield from original(*args, **kwargs)
         if loader is None:
             loader = lambda *args: (fixture.rs, 'fixture')
         if retirement is None:
@@ -145,7 +145,7 @@ class CursorRetirement(unittest.TestCase):
             with mock.patch.object(sc.time, 'monotonic', side_effect=lambda: now[0]), \
                     mock.patch.object(sc, '_recsim', side_effect=loader), \
                     mock.patch.object(sc, '_retire_peer_cursors', side_effect=retirement), \
-                    mock.patch.object(sc, '_pending_sources', side_effect=pending):
+                    mock.patch.object(sc, '_owned_sources', side_effect=pending):
                 out = sc.similarity_step(self.conn, self.sf, limit=1,
                                          max_pairs=1, max_seconds=1)
         finally:

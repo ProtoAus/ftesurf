@@ -1,4 +1,5 @@
 """Actual sweep wrapper and CLI budget controls, isolated HOME and run tree."""
+import ast
 import os
 from pathlib import Path
 import subprocess
@@ -103,6 +104,12 @@ print('WRAPPER_ACTED')
             self.assertNotIn('sims ', result.stdout)
 
     def test_peer_window_uses_remaining_pair_allowance(self):
+        self.peer_window(1)
+
+    def test_owned_sources_defer_unused_prefetch(self):
+        self.peer_window(50)
+
+    def peer_window(self, source_limit):
         with tempfile.TemporaryDirectory() as home:
             env = dict(os.environ, SURFD_HOME=home,
                        SURFD_DB=str(Path(home)/'test.db'), SURFD_ENV=str(Path(home)/'empty.env'),
@@ -111,6 +118,7 @@ print('WRAPPER_ACTED')
             Path(env['SURFD_ENV']).write_text('SURFD_KEY=synthetic\n')
             program = r'''
 from pathlib import Path
+import hashlib, json
 import surfd, sweep, simcheck
 conn = surfd.connect()
 folder = Path(surfd.RUNS_DIR)/'synthetic'/'main'
@@ -123,18 +131,27 @@ for i in range(1,202):
     (folder/leaf).write_text('\n'.join(record)+'\n')
     conn.execute("INSERT INTO replays (map,map_dir,track,leg,leaf,tier,style,player,name,ticks,tickrate,millis,flags,node,submitted,kind) VALUES ('synthetic','synthetic',0,0,?,'ranked','normal','synthetic','synthetic',80,100,800,0,'1',1,'run')", (leaf,))
 conn.commit()
+# Independent authored-byte expectation: text fixtures legitimately use CRLF on
+# Windows and LF on POSIX. Neither stored capture nor comparison builds this.
+expected_capture = {'version': 1}
+for side, replay_id in (('a', 1), ('b', 2)):
+    raw = (folder/('0000800_synthetic-%08x_run.rec' % replay_id)).read_bytes()
+    expected_capture[side] = {'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw)}
 conn.execute('PRAGMA busy_timeout=617')
 queries = []
-conn.set_trace_callback(lambda sql: queries.append(sql) if sql.startswith('SELECT p.* FROM replays') else None)
+source_queries = []
+conn.set_trace_callback(lambda sql: (queries.append(sql) if sql.startswith('SELECT p.* FROM replays') else source_queries.append(sql) if sql.startswith('SELECT r.* FROM replays') else None))
 # Without the shared remainder, the old 200-peer prefetch spends this SQL
 # allowance before its first comparison; the real reader is never substituted.
-stored, notable, note = sweep.similarity_step(conn, limit=1, max_pairs=1,
+stored, notable, note = sweep.similarity_step(conn, limit=SOURCE_LIMIT, max_pairs=1,
     max_sql_steps=20000, max_seconds=60, max_lock_ms=5)
 assert (stored,notable) == (1,1), (stored,notable,note)
 assert 'pair limit reached' in note and 'SQL read limit reached' not in note, note
 row = conn.execute('SELECT a_id,b_id,verdict,compared,match,source_capture FROM sims').fetchone()
 assert tuple(row)[:5] == (1,2,'compared',80,1.0), tuple(row)
-assert row['source_capture'] and queries and all(q.endswith('LIMIT 1') for q in queries)
+assert json.loads(row['source_capture']) == expected_capture, row['source_capture']
+assert queries and all(q.endswith('LIMIT 1') for q in queries)
+assert len(source_queries) == 1 and source_queries[0].endswith('LIMIT 1'), source_queries
 assert not conn.in_transaction and conn.execute('PRAGMA busy_timeout').fetchone()[0] == 617
 assert conn.execute('SELECT COUNT(*) FROM replays').fetchone()[0] == 201
 # Later healthy passes still advance, rather than repeatedly selecting the pair
@@ -159,6 +176,8 @@ assert conn.execute('SELECT COUNT(*) FROM sims WHERE verdict=? AND compared=80 A
 print('REMAINING_PEER_WINDOW_ACTED')
 conn.close()
 '''
+            program = program.replace('SOURCE_LIMIT', str(source_limit))
+            ast.parse(program)
             result = subprocess.run([sys.executable, '-B', '-c', program], cwd=HERE, env=env,
                                     capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
