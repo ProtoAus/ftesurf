@@ -264,6 +264,9 @@ __pycache__/
 /ftesurf/textures/*
 !/ftesurf/textures/no_texture.png
 !/ftesurf/scripts/
+# Generated authored asset tables (P1571); exact names, never ignore scripts generally.
+/ftesurf/scripts/matcolours.txt
+/ftesurf/scripts/unshipped.txt
 !/ftesurf/fs_addons.default.txt
 # Public generated tier catalogue; never un-ignore maps/BSPs generally.
 !/ftesurf/maps/
@@ -327,8 +330,8 @@ __pycache__/
 #  personal.  runs/ and saves/ are your recorded times and saveloc state.
 #  mapmeta.txt and mapdeps.txt are tool output, but regenerating them needs the
 #  mounted Steam libraries and a walk of every BSP, so they ship on the Release.
-#  matcolours.txt (tools/matcolours.py, P1548) the same: it reads every mounted game's materials.
-#  unshipped.txt (tools/mapdeps.py --unshipped, P1560) the same, and needs every addon pack installed.
+#  Legacy matcolours.txt/unshipped.txt copies remain ignored and untouched; P1571's
+#  authored asset tables now use scripts/ so existing updaters can install them.
 #  consent.txt is a local acceptance record and must never ship pre-accepted.
 #
 #  `!/ftesurf/data/` above is REQUIRED for the same reason as gfx/ -- do not

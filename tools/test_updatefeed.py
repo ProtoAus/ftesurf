@@ -96,6 +96,29 @@ class PublisherTests(unittest.TestCase):
         row = next(f for f in payload['files'] if f['path'] == 'ftesurf/maps/tiers.txt')
         self.assertEqual(feed.object_bytes(self.root / 'feed/objects', row['hash'], row['size']), p.read_bytes())
 
+    def test_generated_map_tables_signed_roundtrip(self):
+        for name in ('matcolours', 'unshipped'):
+            p = self.win / f'ftesurf/scripts/{name}.txt'
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(f'synthetic {name} fixture\n'.encode())
+        self.build()
+        payload = feed.verify((self.root / 'feed/update.json').read_bytes(), KEY)
+        for name in ('matcolours', 'unshipped'):
+            path = f'ftesurf/scripts/{name}.txt'
+            row = next(f for f in payload['files'] if f['path'] == path)
+            self.assertEqual(feed.object_bytes(self.root / 'feed/objects', row['hash'], row['size']),
+                             (self.win / path).read_bytes())
+
+    def test_generated_map_tables_use_existing_asset_namespace(self):
+        for name in ('matcolours', 'unshipped'):
+            path = f'ftesurf/scripts/{name}.txt'
+            self.assertTrue(feed.managed(path), path)
+            for bad in (path.upper(), path + '.', path + ' ', path + ':stream',
+                        f'ftesurf/scripts/../data/{name}.txt', f'ftesurf/data/{name}.txt'):
+                self.assertFalse(feed.managed(bad), bad)
+        for bad in ('ftesurf/data/consent.txt', 'ftesurf/data/player.txt', 'ftesurf/data/settings.txt'):
+            self.assertFalse(feed.managed(bad), bad)
+
     def test_launcher_is_bootstrap_not_self_replaced(self):
         (self.win / 'WOS-Launcher.exe').write_bytes(b'bootstrap')
         self.assertEqual(self.build()['omitted'], ['WOS-Launcher.exe'])

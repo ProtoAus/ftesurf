@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """P1548: the colour index -- every material's average colour, for a player who does not have it.
 
-    python tools/matcolours.py [--out ftesurf/data/matcolours.txt] [--steam <common dir>]
+    python tools/matcolours.py [--out ftesurf/scripts/matcolours.txt] [--steam <common dir>]
 
 The hl2 plugin (mat_vmt.c) draws a material whose image is missing as one flat colour under its own
 lighting instead of the pink/black checker. A map's own surfaces carry that colour already (dtexdata
@@ -206,7 +206,7 @@ def tint(value):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--out', default='ftesurf/data/matcolours.txt')
+    ap.add_argument('--out', default='ftesurf/scripts/matcolours.txt')
     ap.add_argument('--steam', type=Path, default=STEAM)
     a = ap.parse_args()
     t0 = time.time()

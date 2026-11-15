@@ -21,6 +21,9 @@
 
 ## next
 
+### P1571 Updates keep existing launchers working
+- The new map appearance fixes use the existing update path, without requiring players to replace their launcher. Existing player data is left alone.
+
 ### P1569 With help runs on the segmented board
 - Once the board update is live, a run finished with help goes on the segmented board under the finisher's name with a small "+N" for the other players who ran part of it; hover it to see every runner, in-game and on the website.
 

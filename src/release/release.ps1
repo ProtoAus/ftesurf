@@ -236,9 +236,9 @@ $ShipGameFiles = @(
     'ftesurf/data/mapmeta_override.txt'
     'ftesurf/data/mapparticles.txt'
     # P1548: each material's average colour (tools/matcolours.py), drawn where its image is missing
-    'ftesurf/data/matcolours.txt'
+    'ftesurf/scripts/matcolours.txt'
     # P1560: per map, what no pack supplies (tools/mapdeps.py --unshipped); the hl2 plugin keeps those quiet
-    'ftesurf/data/unshipped.txt'
+    'ftesurf/scripts/unshipped.txt'
     # WITHOUT THIS THE DOWNLOAD BUTTON DOES NOT EXIST.  ui_dl_load reads it to
     # append the maps you do NOT have; with no file the list is built purely
     # from search_begin and every row is already installed, so nothing draws a

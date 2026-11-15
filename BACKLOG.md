@@ -107,7 +107,7 @@
 
 ## Never-shipped materials -- what P1560 left (15 Nov)
 
-- A listed prop skin (data/unshipped.txt) still draws the missing checker. A neutral grey (and nothing for a "nodraw"
+- A listed prop skin (scripts/unshipped.txt) still draws the missing checker. A neutral grey (and nothing for a "nodraw"
   name) was built, gated on the list, a .vmt request and fs_automount_state 0/1 with every game found, and reviewed
   through three rounds, then taken out: every listed skin measured (surf_ferros' AET001 panels, surf_beyond's
   TOOLSNODRAW faces, surf_fairy's degenerate Alpha mesh) sat where no camera showed it, so nothing proved the ink.

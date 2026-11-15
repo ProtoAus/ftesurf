@@ -6150,6 +6150,23 @@ cannot be used, ask; do not silently scatter copies elsewhere.
 
 ## Build
 
+### Complete Windows SDK before a release build — P1571, 15 Nov 2026 UTC
+
+An incomplete `engine/libs-x86_64-w64-mingw32` directory is not a release SDK.
+Make sees the directory and assumes makelibs ran, but absent archives can fall
+through to UCRT toolchain DLL import libraries. A full build can therefore pass
+while importing libfreetype, libjpeg, libpng, libvorbis and zlib DLLs which the
+existing update/ship policies do not install. The first symptom may instead be
+missing FreeType headers; adding only a system include path hides that symptom,
+not the packaging fault. Do not widen updater policies or ship developer DLLs
+as a workaround. Compare with the last published build's complete, qualified
+SDK (including its matching headers); reuse it read-only or populate the normal
+owned makelibs cache. Full-rebuild after changing that dependency. Inspect actual
+client/server/plugin PE imports before sealing, and smoke the final images.
+The P1571 final build with the published SDK has no extra development DLL imports
+and leaves both source and reused dependency files unchanged.
+
+
 **P1565 measured native-build/artifact traps (14 Nov 2026 UTC).** `-Full` must
 retire `*.gch` alongside objects/dependencies in both native output directories;
 otherwise an old precompiled quakedef.h can survive a header/ABI rebuild. The

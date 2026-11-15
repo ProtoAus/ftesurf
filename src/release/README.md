@@ -33,11 +33,16 @@ packs thumbnails fetched since the last release into a new atlas page and copies
 ship set reads them from. Exit 2 means a table was refused: read the names it lost,
 and `--accept` only if they are right.
 
-Two more generated tables ship and the Gates step refuses without them: `data/matcolours.txt`
-(P1548, `tools/matcolours.py`) and `data/unshipped.txt` (P1560,
-`python tools/mapdeps.py --dry --unshipped <release worktree>/ftesurf/data/unshipped.txt`, which
-refuses unless every pack mapdeps.py knows, mounted and addon, is installed and indexes files). Copy current ones from `C:\FTESurf\ftesurf\data`
-or regenerate them after a game or library change.
+Two more generated tables ship and the Gates step refuses without them: `scripts/matcolours.txt`
+(P1548, `tools/matcolours.py`) and `scripts/unshipped.txt` (P1560,
+`python tools/mapdeps.py --dry --unshipped <release worktree>/ftesurf/scripts/unshipped.txt`, which
+refuses unless every pack mapdeps.py knows, mounted and addon, is installed and indexes files).
+P1571 keeps these authored assets under the already-managed `scripts/` namespace so existing
+0.1.45 updaters accept the feed; do not add player-data exceptions to updater policies. Copy only
+these two current generated outputs from `C:\FTESurf\ftesurf\scripts`, or regenerate them after
+a game or library change. For a pre-P1571 developer install, copy the two named old `data/`
+outputs to the new staging names after checking their hashes; leave the original files untouched.
+Never bulk-copy `data/`. The format is unchanged and `.txt` tables are not executable scripts.
 
 Use the existing Linux builder for the engine pin when needed:
 

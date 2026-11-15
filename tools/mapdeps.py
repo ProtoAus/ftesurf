@@ -528,7 +528,7 @@ def candidates(mat):
 
 
 def unshipped_key(path):
-    """P1560: a material or texture as data/unshipped.txt spells it and the hl2 plugin looks it up
+    """P1560: a material or texture as scripts/unshipped.txt spells it and the hl2 plugin looks it up
     (mat_vmt.c VMT_ColourKey, Mat_VMT_Unshipped): lowercase, '/', one leading materials/ dropped, no .vmt;
     a texture keeps .vtf so a missing image never vouches for a missing material of the same name."""
     k = re.sub(r"/+", "/", path.lower().replace("\\", "/")).lstrip("/")
@@ -548,7 +548,7 @@ def unshipped_keys(need):
 
 
 def write_unshipped(path, rows):
-    """data/unshipped.txt: '<map>\\t<key>' lines, byte-sorted so the plugin can bsearch a whole line."""
+    """scripts/unshipped.txt: '<map>\\t<key>' lines, byte-sorted so the plugin can bsearch a whole line."""
     lines = sorted(("%s\t%s" % (name.lower(), k) for name, keys in rows for k in keys if "\t" not in k and "\n" not in k),
                    key=lambda s: s.encode("latin-1", "replace"))
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
@@ -989,7 +989,7 @@ def main():
     ap.add_argument("--audit", action="store_true",
                     help="classify every map's breakage instead of writing")
     ap.add_argument("--unshipped", metavar="PATH",
-                    help="also write data/unshipped.txt (P1560): per map, what no pack supplies; full scans "
+                    help="also write scripts/unshipped.txt (P1560): per map, what no pack supplies; full scans "
                          "only, every pack installed; written even with --dry")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--no-models", action="store_true")

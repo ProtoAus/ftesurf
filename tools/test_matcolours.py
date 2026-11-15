@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """P1548: the shipped colour index is what the hl2 plugin's binary search needs (mat_vmt.c VMT_IndexColour).
 
-    python tools/test_matcolours.py [ftesurf/data/matcolours.txt]
+    python tools/test_matcolours.py [ftesurf/scripts/matcolours.txt]
 
 Sorted by path in byte order with no duplicates, one '<path> <RRGGBB> <flags> [<RRGGBB>]' per line,
 lowercase '/' paths with no materials/ prefix or extension, LF only.
@@ -14,7 +14,7 @@ LINE = re.compile(r'^([a-z0-9_./\-+!$&()\[\]{}~@,;=\']+) ([0-9a-f]{6}) ([tadwusr
 
 
 def main():
-    path = Path(sys.argv[1] if len(sys.argv) > 1 else 'ftesurf/data/matcolours.txt')
+    path = Path(sys.argv[1] if len(sys.argv) > 1 else 'ftesurf/scripts/matcolours.txt')
     raw = path.read_bytes()
     assert b'\r' not in raw, 'CR in the index (the repository stores LF)'
     keys, bad = [], []
