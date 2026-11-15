@@ -2,13 +2,15 @@
 
 ## Shared saves with their run -- what P1567 left (15 Nov, ftesurf-16)
 
-- The online board (P1569, Lex 15 Nov: segmented, "<name> +N", runners on hover): surfd source is on main
-  (rec_runners + row_helpers read at board time, no table; board rows, web, simcheck skip "helped"); it needs its guarded-generation
-  activation (owner authorization), then `set lobby_helped 1` in the lobby cfg so the lobby posts TF_HELPED.
+- The online board (P1569, Lex 15 Nov: segmented, "<name> +N", runners on hover) is LIVE since 15 Nov 09:18Z
+  (generation backend-15665948, `lobby_helped 1`; tools/p1569-delivery.md). No real helped run seen on it yet:
+  check the first one's "+N" and hover names.
+  - The next guarded generation's sequence: park ksfimport and both momgrab cron routes before the last busy
+    check. One that starts in the ~2 s gap before the close and outlives the 240 s drain leaves surfd down
+    with no exit in the procedure (P1569 round 9; accepted then with a launch slot, inherited sequence).
   - Similarity on a helped run is a stored skip: anyone can get TF_HELPED from a second connection's gift,
     so before a playback threshold acts on simcheck, measure the receiver's part (recsim already drops the
     rows before the last takeover; it needs a mid-map alignment, and recsim does not model REC 12+ yet).
-  - run_helpers is written only at submit; a filing whose file was unreadable then never gets one.
 - The sender's client sidecars do not travel: seq.txt (the Segments list for stages already run), trail.txt
   (the run line behind you) and run.view (the replay camera's angles; the receiver's own stale buffer is kept,
   cl_replay.qc Rec_ViewLoaded's rule). Server-authored alternatives: rebuild the trail from the copied run.rec's
@@ -19,7 +21,8 @@
   (SV_RecCopyStep) would spread a large one.
 - Review round 1 leftovers, by decision or for later:
   - Stage rows played wholly after the takeover still post as the receiver's (their stage, from its start
-    under the stage speed cap); their runid names the held run. Decide before lobby_helped 1.
+    under the stage speed cap); their runid names the held run. Lex, 15 Nov: "a run you started will submit
+    as you? ok" -- kept.
   - The sender's part has no client evidence of this client (no .view rows, .hid, receipts): a helped board
     must treat it as unattested. On lobbies a helped run has no nonce, so no receipt is made for it.
   - rcptcheck.join_rec joins a receipt to the FIRST .rec with its header runid; a gift now gets its own
