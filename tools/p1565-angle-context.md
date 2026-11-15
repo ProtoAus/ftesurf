@@ -92,9 +92,11 @@ an older P1565 build over that newer work.
   backend's actual selected native image, and recorder/resume/config preservation.
   Later independent observation confirmed all 12 running native images matched.
 - Independent source review confirmed the P1565 metadata functions, builtin
-  slots, callback state and wire grammar were retained. The server metadata
-  callback module is also unchanged in the published Windows QC build. Existing
-  Pi program bytes were preserved, not attributed to an unrelated QC build.
+  slots, callback state and wire grammar were retained. The actual
+  `SV_RecAngleOperation` body in `sv_timer.qc` is unchanged across the inspected
+  published QC sources. A read-only check of the preserved Pi program confirms
+  its named callback has five one-word parameters. This proves the exported
+  callback shape, not source/binary parity or a new live-recording observation.
 
 This establishes delivery of the P1565 component, not blanket qualification of
 other P1568 features. Earlier numerical receipts remain bound to their original
