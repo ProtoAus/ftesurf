@@ -398,6 +398,13 @@
       var who = el('td', 'name');
       if (r.av) { who.appendChild(avatar(r.who)); }
       who.appendChild(link('plink', '#p=' + r.who, plain(r.name)));
+      // P1569: a run continued from other players' shared saves: "+N", every runner on hover.
+      if (r.helpers && r.helpers.length) {
+        var plus = el('span', 'helped', ' +' + r.helpers.length);
+        plus.title = 'With help: ' + r.helpers.map(plain).concat([plain(r.name)]).join(', ');
+        who.appendChild(plus);
+        who.title = plus.title;
+      }
       // Which game, where the board holds more than one.
       if (v.tier === 'combined' || v.tier === 'imported') {
         var c = srcChip(r.tr || 'ranked');

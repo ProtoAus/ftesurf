@@ -2714,6 +2714,9 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 				strunzone(e.rec_rec_nonce);
 			e.rec_rec_nonce = "";
 			e.run_t_flags = e.run_t_flags - (e.run_t_flags & TF_NONCE);
+			// P1569: and this connection's, for the board's account (as SV_RecOpen keys a run it opens).
+			Lobby_RunKey(e, Account_ProvenKey(e));
+			e.run_own = TRUE;
 		}
 
 		/*

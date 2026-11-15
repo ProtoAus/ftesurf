@@ -161,6 +161,8 @@ table.runs { width: 100%; border-collapse: collapse; margin-top: 6px; font-size:
 .runs tbody tr:first-child td { color: var(--accent); }
 .runs .num { text-align: right; font-family: var(--mono); font-size: 13.5px; white-space: nowrap; }
 .runs td.name { overflow-wrap: anywhere; color: var(--text); }
+/* P1569: a helped run's "+N" (its runners on hover). */
+.runs .helped { color: var(--foreign); font-size: 12.5px; cursor: help; }
 .runs td.gap, .runs td.date, .runs td.leg { color: var(--dim); }
 .runs td.date { white-space: nowrap; font-size: 13px; }
 .runs td.leg { font-size: 13px; white-space: nowrap; }

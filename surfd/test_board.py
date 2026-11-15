@@ -624,7 +624,7 @@ else:
     for const in ("TF_PRACTICE", "TF_SHADOW", "TF_SEGMENT", "TF_CHEAT",
                   "TF_NOJOURNAL", "TF_NORULESET", "TF_NOPROFILE", "TF_NOMAP",
                   "TF_NOCLOCK", "TF_MULTISESSION", "TF_SPEC", "TF_TAS",
-                  "TF_BANKTAINT"):
+                  "TF_BANKTAINT", "TF_HELPED"):
         check("%s matches sh_defs.qc" % const,
               getattr(m, const), found.get(const))
 
