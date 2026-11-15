@@ -319,6 +319,7 @@ float rec_rp_profseen;
 float rec_rp_prof_have, rec_rp_prof_raw, rec_rp_prof_filter, rec_rp_prof_accel;
 float rec_rp_prof_grant;         // build 77: the GRANT, engine Patch 326
 float rec_rp_prof_ghave, rec_rp_prof_noleg, rec_rp_prof_touch;   // P1573: the `inguard` report
+float rec_rp_prof_keys;                                           // P1576
 float rec_rp_guardscan;          // P1573: this map's worldspawn has been scanned (CSQC_WorldLoaded)
 float rec_rp_guardmap;           // ...and names an in_rawinput cvar
 
@@ -421,6 +422,8 @@ float() Rec_ConsentRead =
   switch beside it -- the way `rec_hid` is the journal's.
 */
 #define CVAR_TYPEFLAG_EXISTS 1   // pr_common.h:225
+#define CVAR_TYPEFLAG_ENGINE 8   // not user-created
+#define CVAR_TYPEFLAG_READONLY 32 // CVAR_NOSET
 
 float() Rec_ConsentOK =
 {
@@ -604,7 +607,7 @@ float(string name, float bit, __inout float have) Rec_InputCvar =
 void() Rec_ProfileReport =
 {
 	local float have, raw, filt, acc, bad, grant;
-	local float ghave, noleg, touch, gbad;
+	local float ghave, noleg, touch, gbad, keys, live;
 
 	have = 0;
 	raw  = Rec_InputCvar("in_rawinput", IPH_RAW,    have);
@@ -641,11 +644,24 @@ void() Rec_ProfileReport =
 	if (!rec_rp_guardscan || rec_rp_guardmap)
 		noleg = 0;                  // world not scanned yet, or the map set what the engine applies
 	touch = Rec_InputCvar("in_rawinput_touchpad", IPG_TOUCHPAD, ghave);
+	// P1576: engine 1576+ refuses map locks on the guard cvars and publishes what it applies; there that
+	// replaces the reads and the scan above. Engine-made and read-only only: on an older engine a
+	// player's `set in_guard_live 7` makes a user cvar, which has neither flag.
+	keys = 0;
+	if ((cvar_type("in_guard_live") & (CVAR_TYPEFLAG_ENGINE | CVAR_TYPEFLAG_READONLY)) ==
+	    (CVAR_TYPEFLAG_ENGINE | CVAR_TYPEFLAG_READONLY))
+	{
+		live  = cvar("in_guard_live");
+		ghave = ghave | IPG_LIVE;
+		noleg = (live & 1) ? 1 : 0;
+		touch = (live & 2) ? 0 : 1;
+		keys  = (live & 4) ? 1 : 0;
+	}
 	// Steps `bad` only where both exist: on Linux/SDL (no guard cvars) it would be bad from the first
 	// frame and stop the counter for the other settings. The server faults a missing one by itself.
 	gbad = FALSE;
-	if (ghave == (IPG_NOLEGACY | IPG_TOUCHPAD))
-	if (FS_GuardWhy(ghave, noleg, touch) != PW_OK)
+	if ((ghave & (IPG_NOLEGACY | IPG_TOUCHPAD)) == (IPG_NOLEGACY | IPG_TOUCHPAD))
+	if (FS_GuardWhy(ghave, noleg, touch, keys) != PW_OK)
 		gbad = TRUE;
 
 	/*
@@ -699,6 +715,7 @@ void() Rec_ProfileReport =
 	if (ghave == rec_rp_prof_ghave)
 	if (noleg == rec_rp_prof_noleg)
 	if (touch == rec_rp_prof_touch)
+	if (keys  == rec_rp_prof_keys)
 		return;
 
 	rec_rp_profseen    = TRUE;
@@ -710,9 +727,10 @@ void() Rec_ProfileReport =
 	rec_rp_prof_ghave  = ghave;
 	rec_rp_prof_noleg  = noleg;
 	rec_rp_prof_touch  = touch;
+	rec_rp_prof_keys   = keys;
 
 	// P1573: before inprof, so the guard values are on the server before the `bad` that counted them.
-	sendevent("inguard", "fff", ghave, noleg, touch);
+	sendevent("inguard", "ffff", ghave, noleg, touch, keys);
 
 	/*
 	  BUILD 78: THE SAME NUMBERS DOWN A CHANNEL THE CONSOLE CANNOT WRITE, AND

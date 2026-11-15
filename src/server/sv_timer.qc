@@ -1967,6 +1967,7 @@ float() SV_RecEnabled =
 .float  run_t_ghave;      // IPG_* mask
 .float  run_t_gnoleg;     // in_rawinput_nolegacy
 .float  run_t_gtouch;     // in_rawinput_touchpad
+.float  run_t_gkeys;      // P1576: 1 = the engine drops injected keys (meaningful with IPG_LIVE)
 
 /*
   ...AND WHETHER ITS JOURNAL IS RUNNING, OVER THAT SAME CHANNEL.  Build 79.
@@ -3265,7 +3266,7 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             Patch 840, additive (v9+).  The input profile the START
                             was judged on: SV_ProfileWhy's word (FS_ProfileWord: ok
                             rawinput m_filter m_accel rawmice silent platform
-                            changed move clicks touchpad), then CSQC's `inprof`
+                            changed move clicks touchpad keys), then CSQC's `inprof`
                             report as the server held it (all 0 when it never spoke;
                             `silent` with non-zero numbers is P1573's `inguard` never
                             arriving). The guard values are not in the file; the
@@ -11552,14 +11553,16 @@ void(float have, float raw, float filt, float acc, float bad, float grant)
 	self.run_t_pevgrant = grant;
 };
 
-// P1573: partner of sendevent("inguard", "fff", ...) in Rec_ProfileReport; the rule is FS_GuardWhy.
-// The presence flag is a literal for CSEv_rechid_f's reason: 0 values are honest answers.
-void(float have, float noleg, float touch) CSEv_inguard_fff =
+// P1573: partner of sendevent("inguard", "ffff", ...) in Rec_ProfileReport; the rule is FS_GuardWhy.
+// The presence flag is a literal for CSEv_rechid_f's reason: 0 values are honest answers. P1576 added
+// `keys`; a pre-1576 csprogs' "fff" event has no handler, so it reads as silence.
+void(float have, float noleg, float touch, float keys) CSEv_inguard_ffff =
 {
 	self.run_t_gev    = TRUE;
 	self.run_t_ghave  = have;
 	self.run_t_gnoleg = noleg;
 	self.run_t_gtouch = touch;
+	self.run_t_gkeys  = keys;
 };
 
 /*
@@ -11684,6 +11687,7 @@ void(entity e) SV_CSQCForget =
 	e.run_t_ghave    = 0;
 	e.run_t_gnoleg   = 0;
 	e.run_t_gtouch   = 0;
+	e.run_t_gkeys    = 0;              // P1576
 	e.run_t_jev      = 0;
 	e.run_t_jevhid   = 0;
 	e.run_t_terms    = 0;
@@ -11823,9 +11827,13 @@ float(entity e) SV_ProfileWhy =
 	// P1573: no injected clicks, no touchpads. No `inguard` report is silence, as for inprof.
 	if (!e.run_t_gev)
 		return PW_SILENT;
-	w = FS_GuardWhy(e.run_t_ghave, e.run_t_gnoleg, e.run_t_gtouch);
+	w = FS_GuardWhy(e.run_t_ghave, e.run_t_gnoleg, e.run_t_gtouch, e.run_t_gkeys);
 	if (w != PW_OK)
 		return w;
+	// P1576: an engine before 1576 cannot drop injected keys; 1 once a release with it is out.
+	if (!(e.run_t_ghave & IPG_LIVE))
+	if (cvar("sv_rank_keyguard"))
+		return PW_KEYS;
 	// P1083: the attempt's largest move axis, read by SV_MoveBoundFrame from the
 	// usercmds themselves -- nothing the client reports. 0 until the run starts.
 	if (e.run_t_movebig > RUN_MOVE_STD)
@@ -17130,8 +17138,8 @@ void(entity e) SV_TimerReport =
 	               e.run_t_pbad,
 	               (e.run_t_flags & TF_NOPROFILE) ? 1 : 0,
 	               SV_ProfileBroken(e), FS_ProfileWord(SV_ProfileWhy(e))));
-	sprint(e, PRINT_HIGH, sprintf("        inguard: said %g  have %g  nolegacy %g  touchpad %g\n",
-	       e.run_t_gev, e.run_t_ghave, e.run_t_gnoleg, e.run_t_gtouch));   // P1573
+	sprint(e, PRINT_HIGH, sprintf("        inguard: said %g  have %g  nolegacy %g  touchpad %g  keys %g\n",
+	       e.run_t_gev, e.run_t_ghave, e.run_t_gnoleg, e.run_t_gtouch, e.run_t_gkeys));   // P1573, P1576
 	/*
 	  Build 78.  WHAT CSQC SAID, BESIDE WHAT THE KEY SAYS, because from here on
 	  only the first of those decides anything and a reader of the line above

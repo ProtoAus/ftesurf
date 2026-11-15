@@ -42,7 +42,7 @@ def grade(cl, control):
         print(("PASS" if ok else "FAIL"), name, "--", detail, flush=True)
 
     prof = r"would (\d)  why (\w+)"
-    guard = r"inguard: said (\S+)  have (\S+)  nolegacy (\S+)  touchpad (\S+)"
+    guard = r"inguard: said (\S+)  have (\S+)  nolegacy (\S+)  touchpad (\S+)(?:  keys (\S+))?"
     m = section(log, "MIGRATED")
     noleg = last(r'"in_rawinput_nolegacy" is "([^"]*)"', m)
     touch = last(r'"in_rawinput_touchpad" is "([^"]*)"', m)
@@ -81,14 +81,23 @@ def grade(cl, control):
     return faults
 
 
-def grade_latch(cl, control):
+def grade_latch(cl, control, live=False):
     """--latch: the fixture holds the applied value apart from the player's; the report must read off."""
     log = (cl / "logs/p1573latch.log").read_text(errors="replace")
     sec = section(log, "LATCH")
     # A server-locked cvar prints the player's value first, then `Effective value is "..."`: the applied one.
     applied = last(r'Effective value is "([^"]*)"', sec)
-    guard = last(r"inguard: said (\S+)  have (\S+)  nolegacy (\S+)  touchpad (\S+)", sec)
+    guard = last(r"inguard: said (\S+)  have (\S+)  nolegacy (\S+)  touchpad (\S+)(?:  keys (\S+))?", sec)
     prof = last(r"would (\d)  why (\w+)", sec)
+    if live:
+        # P1576 engine: the map lock is refused (no Effective line) and in_guard_live is the report.
+        ok_applied = applied is None
+        print(("PASS" if ok_applied else "FAIL"), "latch-refused (engine 1576) --", f"engine string {applied!r}")
+        ok = guard == ("1", "11", "1", "0", "1") and prof == ("0", "ok")
+        print(("PASS" if ok else "FAIL"), "latch (engine 1576: ranks) --", f"guard {guard} would/why {prof}")
+        faults = (not ok_applied) + (not ok)
+        print(f"{faults} failed")
+        return faults
     ok_applied = applied == " 1"
     print(("PASS" if ok_applied else "FAIL"), "latch-applied --", f"engine string {applied!r} (the map's, so .ival 0)")
     if control:
@@ -139,6 +148,7 @@ def main():
     ap.add_argument("--server", default="C:/FTEQuake/fteqwsv64.exe")
     ap.add_argument("--port", type=int, default=27561)
     ap.add_argument("--control", action="store_true")
+    ap.add_argument("--live", action="store_true", help="--latch on an engine 1576+ build: the lock is refused")
     ap.add_argument("--latch", type=pathlib.Path, help="the private tree's P1573 fixture pk3; runs cfg p1573latch")
     args = ap.parse_args()
     args.cfg = "p1573latch" if args.latch else "p1573guard"
@@ -163,7 +173,7 @@ def main():
     if not (gd / f"logs/{args.cfg}.log").exists():
         print("FAIL no client log")
         return 1
-    return grade_latch(gd, args.control) if args.latch else grade(gd, args.control)
+    return grade_latch(gd, args.control, args.live) if args.latch else grade(gd, args.control)
 
 
 if __name__ == "__main__":

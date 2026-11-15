@@ -414,7 +414,8 @@ TF_NOPROFILE = 2048
 RUN_MOVE_STD = 450   # P1083: sh_defs.qc; a larger axis is unranked (TF_NOPROFILE)
 PROF_WORDS = ("ok", "rawinput", "m_filter", "m_accel", "rawmice", "silent",
               "platform", "changed", "move",   # P1083: move above the standard 450
-              "clicks", "touchpad")            # P1573: injected clicks allowed / touchpad on
+              "clicks", "touchpad",            # P1573: injected clicks allowed / touchpad on
+              "keys")                          # P1576: injected keys not dropped
 # Patch 840.  The game clock fell behind server time (slow motion).  The
 # finish's `clk` record states its own bound and the measure judged against it,
 # so the bit is judged from the file alone, outside CLK_EPS of the boundary (the

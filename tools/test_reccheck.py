@@ -1628,8 +1628,8 @@ def case_profile_verdict():
                 "a move finish verdict with the bit clear is a fault")
     ok_clean(head(b, "flags", str(2048)),
              "...and with the bit set passes clean, with no unknown-word note")
-    # P1573: injected clicks allowed / touchpad on are known words, at the start and the finish.
-    for word in ("clicks", "touchpad"):
+    # P1573/P1576: injected clicks or keys allowed, touchpad on: known words, at the start and the finish.
+    for word in ("clicks", "touchpad", "keys"):
         b = insert_before(build(), "begin", "inprof %s 15 1 0 0 1" % word)
         faults_with(b, "does not say TF_NOPROFILE",
                     "a %s start verdict with the bit clear is a fault" % word)
