@@ -194,8 +194,21 @@ def run(a, sv, A, B):
         check(m and m[2] == 'Alice', 'the gift names its sender', m and m[0])
         check(re.search(r'^recserial 0$', text, re.M) is not None, 'the gift never warm-loads (recserial 0)')
         alice = [p for p in states if p.parent.parent != g.parent.parent and (p.parent / 'run.rec').exists()]
-        same = [p for p in alice if sha(p.parent / 'run.rec') == sha(g.parent / 'run.rec')]
-        check(len(same) == 1, "the gift's run.rec is one of Alice's, byte for byte", [str(p) for p in alice])
+        # Review 1: the copy has its own runid, same length; every other byte is Alice's.
+        gb = (g.parent / 'run.rec').read_bytes()
+        same, NOTES['gift_runid'] = [], None
+        for p in alice:
+            ab = (p.parent / 'run.rec').read_bytes()
+            al, gl = ab.split(b'\n'), gb.split(b'\n')
+            diff = [i for i in range(min(len(al), len(gl))) if al[i] != gl[i]]
+            if len(ab) == len(gb) and len(al) == len(gl) and len(diff) == 1 and gl[diff[0]].startswith(b'runid '):
+                same.append(p)
+                NOTES['gift_runid'] = [al[diff[0]].decode(), gl[diff[0]].decode()]
+        check(len(same) == 1, "the gift's run.rec is Alice's but for its own runid (same length)",
+              NOTES['gift_runid'] or [str(p) for p in alice])
+        m = re.search(r'^recrid (.*)$', text, re.M)
+        check(m and NOTES['gift_runid'] and m[1] == NOTES['gift_runid'][1][6:], "the gift's recrid is its runid",
+              m and m[0])
         alice = same
         slot = g.parent.name
         root = g.parent.parent.name
@@ -224,7 +237,17 @@ def run(a, sv, A, B):
         st = states2[0].read_text(errors='replace')
         m = re.search(r'^flags (\d+)$', st, re.M)
         check(m and int(m[1]) & TF_HELPED, "Bob's save carries TF_HELPED in flags", m and m[0])
-        rec = (states2[0].parent / 'run.rec').read_text(errors='replace').splitlines()
+        recp = states2[0].parent / 'run.rec'
+        check(recp.exists(), "Bob's save after the load has a recording", str(recp))
+        if not recp.exists():
+            return
+        rec = recp.read_text(errors='replace').splitlines()
+        rid = [l for l in rec[:64] if l.startswith('runid ')]
+        check(NOTES.get('gift_runid') and rid == [NOTES['gift_runid'][1]],
+              "Bob's continuation carries the gift's runid, not Alice's", rid)
+        m = re.search(r'^recrid (.*)$', st, re.M)
+        check(m and NOTES.get('gift_runid') and m[1] == NOTES['gift_runid'][1][6:],
+              "Bob's save names the gift's runid as its run (recrid)", m and m[0])
         ho = [i for i, l in enumerate(rec) if l.startswith('takeover ')]
         check(len(ho) == 1 and rec[ho[0]].endswith(' Bob') and rec[ho[0] - 1].startswith('resume '),
               "the run's recording names Bob from the resume on", [rec[i - 1:i + 1] for i in ho])

@@ -5335,6 +5335,8 @@ void(vector scr) Watch_Chrome =
 	  about whether it is "unknown".
 	*/
 	s = (rec_wt_owner != "") ? UI_NameShow(rec_wt_owner, 0) : "unknown";
+	if (rec_wt_hon > 0)                 // P1567: the last runner's, with help
+		s = strcat(UI_NameShow(rec_wt_honame[rec_wt_hon - 1], 0), " (with help)");
 	stitle = sprintf("Demo  %s   %s%s", s, Time_TickString(rec_wt_endticks, rec_wt_tickrate),
 	                 rec_wt_abandon ? " (abandoned)" : "");
 	sclock = sprintf("%s / %s   %.2fx  %s",

@@ -524,7 +524,11 @@ void() Trail_Frame =
 			if (seq_mk_id == id)
 				seq_mk_id = -1;
 			rec_rp_mark[id] = 0;
+			rec_rp_gift[id] = TRUE;
 		}
+		if (op == SLOP_SAVED)
+		if (id >= 0 && id <= FS_MAXSAVES)
+			rec_rp_gift[id] = FALSE;    // our own save over that number
 		if (op == SLOP_SAVED && SaveEvent_Tag() != tr_req_wait)
 		{
 			tr_rep_tracewant = tr_rep_ack;

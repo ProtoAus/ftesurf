@@ -1840,13 +1840,13 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 
 // Retained tool-assisted ancestry (native TAS or per-player slow practice), not
 // active controls. Always TF_CHEAT|TF_PRACTICE; never human/segmented admission.
-// Bits20/21 reserved for styles.
+// Bit 20 is TF_HELPED (P1567); bit 21 stays reserved for styles.
 #define TF_TAS 4194304
 #define FS_TAS_LABEL "Tool Assisted Speedrun"
 #define FS_TAS_COLOUR "^xB6F"
 
 // Derived inherited-effect exclusion, including segmented/shadow attempts.
-// Bits20/21 stay reserved. Bit23 is the LAST exact float32 flag bit: do not
+// Bit 21 stays reserved. Bit23 is the LAST exact float32 flag bit: do not
 // allocate bit24 without migrating every flags transport to an integer.
 #define TF_BANKTAINT 8388608
 

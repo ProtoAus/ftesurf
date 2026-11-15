@@ -2118,7 +2118,7 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 		if (k == "cpmax")      { cmx = stof(argv(1)); continue; }
 
 		if (k == "fromsave")   { rfrom = stof(argv(1)); continue; }
-		if (k == "helped")     { hlp = stof(argv(1)); continue; }     // P1567 (SV_SaveLocGift)
+		if (k == "helped")     { hlp = max(hlp, max(0, stof(argv(1)))); continue; }  // P1567: raise-only
 
 		/*
 		  The position keys, read only because `retry` has no rec_sl_* row to be
@@ -2699,9 +2699,22 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 			SV_RecPut(e, sprintf("retry %d", ticks));
 		else
 			SV_RecPut(e, sprintf("resume %d %d", id, ticks));
-		// P1567: who plays the run from here; before it, the header's owner and earlier takeovers.
+		// P1567: who plays the run from here; before it, the header's owner and earlier takeovers. The run
+		// is the gift's runid now (its own, SV_GiftRunId), and no receipt may answer the sender's nonce.
 		if (!retry && hlp >= 0 && e.run_t_state == TS_RUNNING)
-			SV_RecPut(e, sprintf("takeover %d %s", ticks, e.netname));
+		{
+			SV_RecPut(e, sprintf("takeover %d %s", ticks, SV_RecCleanLine(e.netname)));
+			if (rs_rid != "")
+			{
+				if (e.rec_rec_rid != "")
+					strunzone(e.rec_rec_rid);
+				e.rec_rec_rid = strzone(rs_rid);
+			}
+			if (e.rec_rec_nonce != "")
+				strunzone(e.rec_rec_nonce);
+			e.rec_rec_nonce = "";
+			e.run_t_flags = e.run_t_flags - (e.run_t_flags & TF_NONCE);
+		}
 
 		/*
 		  BUILD 43 -- AND THE STAGE HAS TO BE REOPENED, WHICH IS NOT OPTIONAL.
@@ -4406,12 +4419,61 @@ float(entity e, float t, vector near, float usenear, float go, float view) SV_Sa
   -> -1 the row has no run to send (the caller sends the position, as before), 0 refused, 1 sent.
 */
 string sl_giftwhy;               // P1567: why a gift went without its run (-1), for both players
+#define SL_GIFTMAX 33554432     // 32 MB (~100 min): a gift is read whole into a strbuf to get its own runid
+
+// Is a copy into dst still queued on e (SV_RecSnapshot's)? Only that save's copy must be on disk.
+float(entity e, string dst) SV_RecCopyPending =
+{
+	local float i;
+
+	if (e.rec_cp_q < 1)
+		return FALSE;
+	for (i = e.rec_cp_head; i < buf_getsize(e.rec_cp_q); i = i + 1)
+	{
+		tokenize(bufstr_get(e.rec_cp_q, i));
+		if (argv(3) == dst)
+			return TRUE;
+	}
+	return FALSE;
+};
+
+/*
+  The receiver's runid: the sender's with one character swapped for the receiver's slot letter. Two
+  players' files must not share a header runid (rcptcheck joins a receipt to the first .rec that has it,
+  and the evidence keep names files by it). SAME LENGTH, and runids are ASCII, so no byte offset the copied
+  state records (recbytes, recstream) moves. Never 'p', which marks a lobby's port.
+*/
+string(string rid, float slot) SV_GiftRunId =
+{
+	local float at;
+	local string c;
+
+	if (strlen(rid) < 1)
+		return "";
+	c = substring("abcdefghijklmnoqrstuvwxyzABCDEFG", bound(0, slot, 31), 1);
+	at = strstrofs(rid, "-p", 0);
+	if (at >= 0)
+		at = at + 1;
+	else
+		at = strlen(rid) - 1;
+	if (substring(rid, at, 1) == c)
+		c = (c == "a") ? "b" : "a";
+	return strcat(substring(rid, 0, at), c, substring(rid, at + 1, -1));
+};
+
+/*
+  P1567: a save another player sent, WITH its run (Lex, 15 Nov: "always send it with a run"). The
+  sender's state.txt and run.rec are copied into a new row of t's list, plus `helped <ticks> <sender>`;
+  loading it continues that run as t's, TF_HELPED, with a `takeover` record (SV_SaveApplyStateRows).
+  The copy gets its own runid (SV_GiftRunId) and `recserial 0`, so it never warm-loads.
+  -> -1 no run is sent (the caller sends the position, as before; sl_giftwhy says why), 0 refused, 1 sent.
+*/
 float(entity t, entity e, float sid, float sseq) SV_SaveLocGift =
 {
-	local float id, seq, row, blk, base, cnt, srow, i, n, rows, ticks, rbuf;
-	local int bytes;
+	local float id, seq, row, blk, base, cnt, srow, i, n, rows, ticks, rbuf, okp, ok;
+	local int bytes, got;
 	local filestream f;
-	local string srec, line;
+	local string srec, line, tmp, rid;
 
 	sl_giftwhy = "";
 	if (strlen(serverkey("*movementprofile")))
@@ -4434,10 +4496,12 @@ float(entity t, entity e, float sid, float sseq) SV_SaveLocGift =
 	if (srow < 0)
 		return -1;
 	ticks = rec_sl_tick[srow];
-	sl_giftwhy = "that save has no run";        // idle, demoted or a replay point
-	if (ticks < 0)
+	sl_giftwhy = "that save has no run";        // idle, armed, demoted or a replay point
+	if (ticks <= 0)
 		return -1;
-	SV_RecCopyFlush(e);                 // the sender's stream copy for that save must be on disk
+	sl_giftwhy = "its recording is still being written; share it again in a moment";
+	if (SV_RecCopyPending(e, SL_RecPath(sid)))
+		return -1;
 	sl_giftwhy = "that save changed on disk since the offer";
 	if (!SV_SaveReadIdent(sid) || !SV_SaveRowIs(srow))
 		return -1;
@@ -4450,49 +4514,91 @@ float(entity t, entity e, float sid, float sseq) SV_SaveLocGift =
 	rows = SL_StateSnapshot(sid);
 	if (rows < 1)
 		return -1;
-	/*
-	  A streamed save's run.rec was written by fcopyrange, which the filesystem's cached listing does not
-	  see, so fopen/buf_loadfile miss it: its `recbytes` sizes the same raw copy (the load reads it with
-	  fappendrange). A buffered save (no recbytes) was written by buf_writefile and is read the same way.
-	*/
 	bytes = -1i;
+	okp = TRUE;
 	n = buf_getsize(rows);
 	for (i = 0; i < n; i = i + 1)
 	{
 		line = bufstr_get(rows, i);
 		if (!strncmp(line, "recbytes ", 9))
 			bytes = stoi(substring(line, 9, -1));
+		if (line == "recprefixok 0")
+			okp = FALSE;
 	}
-	srec = strzone(SL_RecPath(sid));
-	rbuf = -1;
-	sl_giftwhy = "that save's recording is gone (a lobby keeps the newest 24)";
-	if (bytes < 0i)
+	sl_giftwhy = "that save's recording was never confirmed";
+	if (!okp)
 	{
-		rbuf = buf_create_ex("string", 0);
-		if (rbuf >= 1)
-		if (!buf_loadfile(srec, rbuf) || buf_getsize(rbuf) < 1)
-		{
-			buf_del(rbuf);
-			rbuf = -1;
-		}
-		if (rbuf < 1)
-		{
-			buf_del(rows); strunzone(srec);
-			return -1;
-		}
-	}
-	else if (bytes == 0i || bytes > (int)FS_RECCOPY_MAX)
-	{
-		sl_giftwhy = "that save's recording is empty or too large";
-		buf_del(rows); strunzone(srec);
+		buf_del(rows);
 		return -1;
 	}
+
+	/*
+	  Read it whole, through a file this VM wrote: a streamed save's run.rec was written by fcopyrange,
+	  which the filesystem's cached listing (what fopen and buf_loadfile search) does not see. The
+	  temp's bytes are the stream's own; recbytes sizes them.
+	*/
+	srec = SL_RecPath(sid);
+	tmp = sprintf("data/parts/g%s-%g.tmp", cvar_string("sv_port"), t.run_t_slot);
+	rbuf = buf_create_ex("string", 0);
+	ok = FALSE;
+	sl_giftwhy = "that save's recording is gone (a lobby keeps the newest 24)";
+	if (rbuf >= 1)
+	{
+		if (bytes >= 0i)
+		{
+			if (bytes == 0i || bytes > (int)SL_GIFTMAX)
+				sl_giftwhy = "that save's recording is empty or too large to send";
+			else
+			{
+				got = -1i;
+				f = fopen(tmp, FS_FILE_WRITESTREAM);   // fappendrange writes only to a stream handle
+				if (f >= 0)
+				{
+					got = fappendrange(f, srec, 0i, bytes + 1i);   // one over, as SV_RecRewindStream: it ends at bytes
+					fclose(f);
+				}
+				if (got == bytes)
+				if (buf_loadfile(tmp, rbuf))
+					ok = TRUE;
+				if (SV_DevOn())
+					dprint(sprintf("share: gift of %s: %s bytes, copied %s, read %g lines\n", srec, itos(bytes),
+					               itos(got), buf_getsize(rbuf)));
+				fremove(tmp);
+			}
+		}
+		else if (buf_loadfile(srec, rbuf))
+			ok = TRUE;
+	}
+	if (ok && buf_getsize(rbuf) < 1)
+		ok = FALSE;
+	if (!ok)
+	{
+		if (rbuf >= 1) buf_del(rbuf);
+		buf_del(rows);
+		return -1;
+	}
+	n = buf_getsize(rbuf);
+	rid = "";
+	for (i = 0; i < 64; i = i + 1)
+	{
+		if (i >= n)
+			break;
+		line = bufstr_get(rbuf, i);
+		if (line == "begin")
+			break;
+		if (!strncmp(line, "runid ", 6))
+		{
+			rid = SV_GiftRunId(substring(line, 6, -1), t.run_t_slot);
+			bufstr_set(rbuf, i, strcat("runid ", rid));
+			break;
+		}
+	}
+	rid = strzone(rid);
 	sl_giftwhy = "";
 
 	if (!SV_SaveLocBegin(t, FALSE))
 	{
-		buf_del(rows); strunzone(srec);
-		if (rbuf >= 1) buf_del(rbuf);
+		buf_del(rows); buf_del(rbuf); strunzone(rid);
 		return 0;
 	}
 	blk = SL_Blk(t);
@@ -4504,8 +4610,7 @@ float(entity t, entity e, float sid, float sseq) SV_SaveLocGift =
 	if (id < 1)
 	{
 		sprint(t, PRINT_HIGH, sprintf("^3share:^7 your save list is full (%g).  Delete one first.\n", SL_Cap(blk)));
-		buf_del(rows); strunzone(srec);
-		if (rbuf >= 1) buf_del(rbuf);
+		buf_del(rows); buf_del(rbuf); strunzone(rid);
 		return 0;
 	}
 	seq = rec_sl_ns[blk];
@@ -4514,6 +4619,7 @@ float(entity t, entity e, float sid, float sseq) SV_SaveLocGift =
 
 	// The state first (its fopen makes the folder), then the run; either failing removes both.
 	SV_RecCopyDrop(SL_RecPath(id));     // no queued copy may land on the new slot
+	ok = FALSE;
 	f = fopen(SL_StatePath(id), FILE_WRITE);
 	if (f >= 0)
 	{
@@ -4527,48 +4633,50 @@ float(entity t, entity e, float sid, float sseq) SV_SaveLocGift =
 				line = sprintf("seq %d", seq);
 			else if (!strncmp(line, "recserial ", 10))
 				line = "recserial 0";
+			else if (!strncmp(line, "recrid ", 7) && rid != "")
+				line = strcat("recrid ", rid);
 			else if (!strncmp(line, "helped ", 7))
-				continue;               // a gift passed on unloaded: the run is still its owner's
+				continue;               // a gift passed on unloaded: its sender is the new helper
 			fputs(f, strcat(line, "\n"));
 		}
-		fputs(f, sprintf("helped %d %s\n", ticks, e.netname));
-		fclose(f);
+		fputs(f, sprintf("helped %d %s\n", ticks, SV_RecCleanLine(e.netname)));
+		ok = SL_StateCloseConfirmed(f, SL_StatePath(id));
 	}
 	buf_del(rows);
-	i = FALSE;                          // nested: QuakeC's || would copy into a slot with no state
-	if (f >= 0)
+	// The run through this VM too, so a later fopen/buf_loadfile finds it; a stream's bytes must come
+	// back exactly (only the runid's characters changed), or its recbytes/recstream would lie.
+	if (ok)
 	{
-		if (rbuf >= 1)
+		ok = FALSE;
+		f = fopen(SL_RecPath(id), FILE_WRITE);
+		if (f >= 0)
 		{
-			f = fopen(SL_RecPath(id), FILE_WRITE);
+			buf_writefile(f, rbuf, 0, buf_getsize(rbuf));
+			fclose(f);
+			f = fopen(SL_RecPath(id), FILE_READ);
 			if (f >= 0)
 			{
-				buf_writefile(f, rbuf, 0, buf_getsize(rbuf));
+				got = fsize(f);
 				fclose(f);
-				i = TRUE;
+				ok = (got > 0i);
+				if (bytes >= 0i)
+				if (got != bytes)
+					ok = FALSE;
 			}
 		}
-		else if (fcopyrange(srec, 0i, bytes, SL_RecPath(id), FALSE) == bytes)
-			i = TRUE;
 	}
-	if (rbuf >= 1)
-		buf_del(rbuf);
-	if (!i)
-	{
-		fremove(SL_RecPath(id));
-		fremove(SL_StatePath(id));
-		strunzone(srec);
-		sprint(t, PRINT_HIGH, "^1share: could not write the save\n");
-		return 0;
-	}
-	strunzone(srec);
+	buf_del(rbuf);
+	strunzone(rid);
 	row = base + cnt;
+	if (ok)
 	if (SV_SaveReadLight(id, row) < 0)
+		ok = FALSE;
+	if (!ok)
 	{
 		fremove(SL_RecPath(id));
 		fremove(SL_StatePath(id));
-		sprint(t, PRINT_HIGH, "^1share: the copied save did not come back readable\n");
-		return 0;
+		sl_giftwhy = "its recording could not be copied";
+		return -1;
 	}
 	rec_sl_seq[row] = seq;
 	rec_sl_nb[blk] = cnt + 1;
