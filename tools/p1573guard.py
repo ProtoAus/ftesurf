@@ -102,8 +102,10 @@ def grade_latch(cl, control):
     return faults
 
 
-def run(args, root):
+def run(args, root, clroot=None):
     common = ["-basedir", str(root), "-manifest", str(root / "default.fmf")]
+    clroot = clroot or root
+    clcommon = ["-basedir", str(clroot), "-manifest", str(clroot / "default.fmf")]
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
         probe.bind(("127.0.0.1", args.port))
     server = subprocess.Popen([args.server, *common, "+sv_public", "0", "-port", str(args.port),
@@ -115,7 +117,7 @@ def run(args, root):
         si = subprocess.STARTUPINFO()
         si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         si.wShowWindow = 4          # shown, not activated
-        client = subprocess.Popen([args.exe, *common, "-window", "+exec", f"cfg/test/{args.cfg}.cfg"],
+        client = subprocess.Popen([args.exe, *clcommon, "-window", "+exec", f"cfg/test/{args.cfg}.cfg"],
                                   cwd=INSTALL, startupinfo=si, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             client.wait(timeout=150)
@@ -144,10 +146,18 @@ def main():
     rig = args.out / time.strftime("rig-%Y%m%dT%H%M%S")
     made = []
     try:
-        gd, made = prepare(rig, args.progs, [args.cfg], args.port)
         if args.latch:
-            shutil.copyfile(args.latch, gd / args.latch.name)    # gamedir itself, not a junction
-        run(args, rig)
+            # The client alone gets the pk3 (gamedir itself, not a junction): the server keeps the real
+            # entities, as on a lobby, and a malformed .ent cannot stop its map load.
+            _, m = prepare(rig / "server", args.progs, [], args.port)
+            made += m
+            gd, m = prepare(rig / "client", args.progs, [args.cfg], args.port)
+            made += m
+            shutil.copyfile(args.latch, gd / args.latch.name)
+            run(args, rig / "server", rig / "client")
+        else:
+            gd, made = prepare(rig, args.progs, [args.cfg], args.port)
+            run(args, rig)
     finally:
         unjunction(made)
     print("rig:", rig)

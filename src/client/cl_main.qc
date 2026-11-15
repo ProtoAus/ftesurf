@@ -187,6 +187,7 @@ void() CSQC_WorldLoaded =
 	// here, behind the loading screen, not in the first frames after spawn when serverkey("map") arrives.
 	cl_worldmapname = CL_WorldShortName();
 	cl_worldloading = TRUE;
+	Rec_GuardMapScan();             // P1573: a worldspawn cvar_ key on the click block
 	Portal_LoadFromWorld();
 	Prox_LoadFromWorld();           // Patch 810: the PlayerProximity fades, after the portals
 	MilkSky_WorldLoaded();          // Patch 467: r_skybox is not archived

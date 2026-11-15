@@ -319,28 +319,40 @@ float rec_rp_profseen;
 float rec_rp_prof_have, rec_rp_prof_raw, rec_rp_prof_filter, rec_rp_prof_accel;
 float rec_rp_prof_grant;         // build 77: the GRANT, engine Patch 326
 float rec_rp_prof_ghave, rec_rp_prof_noleg, rec_rp_prof_touch;   // P1573: the `inguard` report
-float rec_rp_guardscan;          // P1573: this map's worldspawn has been scanned (Rec_GuardMapScan)
+float rec_rp_guardscan;          // P1573: this map's worldspawn has been scanned (CSQC_WorldLoaded)
 float rec_rp_guardmap;           // ...and names an in_rawinput cvar
 
 /*
   P1573 review 2: a worldspawn `cvar_<name>` key -- a player's own maps/<map>.ent can add one -- locks a
   client cvar to the map's value and keeps the player's as the latch, which is what cvar_string returns
   (PF_cvar_string), so Rec_ProfileReport's string test would read "1" while the engine applies " 1".
-  Same entity string as Mod_ParseInfoFromEntityLump (Mod_GetEntitiesString), worldspawn only, any token
-  naming in_rawinput. A parser divergence between QCC_COM_Parse and COM_ParseOut is not covered: the
-  engine-side fix (CVAR_NOTFROMSERVER on both cvars) is BACKLOG.
+  Same entity string as Mod_ParseInfoFromEntityLump (Mod_GetEntitiesString), walked its way (round 3):
+  `{`/`}` by first character, only a KEY ending worldspawn, an empty token ending nothing; every token
+  is searched. Run from CSQC_WorldLoaded, and until it has run the block reads off. Tokeniser
+  differences (QCC_COM_Parse vs COM_ParseOut: escapes, 1023-byte tokens, high bytes, `{}():,'` splits)
+  are not covered; the engine-side CVAR_NOTFROMSERVER is the fix (BACKLOG).
 */
 void() Rec_GuardMapScan =
 {
 	local string tok;
+	local float n, iskey;
 
+	rec_rp_guardscan = TRUE;
 	rec_rp_guardmap = FALSE;
 	getentitytoken(0);
-	if (getentitytoken() != "{")
+	if (substring(getentitytoken(), 0, 1) != "{")
 		return;
-	while ((tok = getentitytoken()) != "" && tok != "}")
+	iskey = TRUE;
+	for (n = 0; n < 262144; n++)        // bounds a worldspawn with no closing key; end-of-data reads ""
+	{
+		tok = getentitytoken();
+		if (iskey)
+		if (substring(tok, 0, 1) == "}")
+			return;
 		if (strstrofs(strtolower(tok), "in_rawinput") >= 0)
 			rec_rp_guardmap = TRUE;
+		iskey = !iskey;
+	}
 };
 
 // Transitions INTO an off-profile state since this client started, and the state
@@ -630,13 +642,8 @@ void() Rec_ProfileReport =
 	if (ghave & IPG_NOLEGACY)
 	if (strcmp(cvar_string("in_rawinput_nolegacy"), "1"))
 		noleg = 0;
-	if (!rec_rp_guardscan)
-	{
-		rec_rp_guardscan = TRUE;
-		Rec_GuardMapScan();
-	}
-	if (rec_rp_guardmap)
-		noleg = 0;                  // the map, not the player, set what the engine applies
+	if (!rec_rp_guardscan || rec_rp_guardmap)
+		noleg = 0;                  // world not scanned yet, or the map set what the engine applies
 	touch = Rec_InputCvar("in_rawinput_touchpad", IPG_TOUCHPAD, ghave);
 	// Steps `bad` only where both exist: on Linux/SDL (no guard cvars) it would be bad from the first
 	// frame and stop the counter for the other settings. The server faults a missing one by itself.
