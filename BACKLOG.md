@@ -3,9 +3,10 @@
 ## 0.1%-low round 4 (16 Nov, ftesurf-46; task root C:\FTESurf-worktrees\lows4-20261116-46)
 
 - First sight of water after P1574: the frame still costs 29-53 ms on surf_chateau/boreas (77/48 before) -- the
-  reflection MSAA target (r_reflectmultisample, gl_backend.c be_reflmsaa) is freed at every map change
-  (GLBE_DestroyFBOs ~2356) and allocated on the first capture ("driver allocated multisample storage"). Keep it across
-  a same-size map change, or clear it once at activation when the map has water. Falsifier: artifacts/run_firstplay.py
+  reflection MSAA target (r_reflectmultisample, gl_backend.c be_reflmsaa) is allocated on the session's first capture
+  ("driver allocated multisample storage"); GLBE_DestroyFBOs frees it only at shutdown or a mode change, so this is
+  once a game session, at the first water seen. Allocating and clearing it at activation when the map has water would
+  move it behind the loading screen. Falsifier: artifacts/run_firstplay.py
   on a diag build (engine branch diag-lows4: LATECOMPILE/meshvbo/gl_debugperf with buffer counts, window samples).
 - Fog variants of listed 4+-bit permutations still compile mid-run on a fogged map not played before (surf_null:
   vmt/vertexlit 0x128/0x328 beside listed 0x108/0x308; vmt/refract 0x20 unlisted, 4 bits). A fog closure at
