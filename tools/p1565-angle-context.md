@@ -68,15 +68,47 @@ source defect or a pass. Rebuilt current QC matches the successful Full inputs.
 This is a manual-journal, virtual-input, practice component, not automatic CSQC,
 a naturally signed finish/receipt or hardware attestation. The normal signed
 caller and unchanged human-observed lifecycle remain separately qualified.
-Clean-commit qualification and deployment remain pending.
+The subsequent clean-build and delivery evidence below does not turn this
+controlled component into a naturally signed finish.
+
+## Delivered component — 15 November 2026
+
+The compatible backend reader cohort was admitted and independently read back
+at 01:19–01:23 UTC, before new native writers were enabled. The producer changes
+were subsequently inherited by published P1568 native source
+`cc56219a3c7e2a99128cc8ff02285d57a25e422b` (`patch-1568`), rather than installing
+an older P1565 build over that newer work.
+
+- Clean-tagged Windows client, dedicated server and all five plugins built;
+  Windows and ARM each passed 1831 native selfchecks, with zero new warnings
+  against their matched controls.
+- Both Windows installs received the supported ship set. Independent readback
+  confirmed all 22 native/VM destinations and the saved 20540-file protected
+  before/after inventory. The original copy invocation failed while writing its
+  receipt after copying; that failure remains failed. Product acceptance comes
+  from the separate readback, not a rerun or a relabelled producer result.
+- All 12 beta lobbies restarted onto the new native image at 04:38 UTC. Normal
+  postflight at 04:42 UTC verified their new process/image/plugin pairs, the
+  backend's actual selected native image, and recorder/resume/config preservation.
+  Later independent observation confirmed all 12 running native images matched.
+- Independent source review confirmed the P1565 metadata functions, builtin
+  slots, callback state and wire grammar were retained. The server metadata
+  callback module is also unchanged in the published Windows QC build. Existing
+  Pi program bytes were preserved, not attributed to an unrelated QC build.
+
+This establishes delivery of the P1565 component, not blanket qualification of
+other P1568 features. Earlier numerical receipts remain bound to their original
+images, programs and worlds; they are not renamed as P1568 runs. No new natural
+opt-in recording or physical-input calibration was collected. Historical gaps
+stay inconclusive; capture choice/defaults, retention, enforcement and ranking
+remain unchanged. There is no release or qcbuild bump.
 
 ## Delivery order / rollback
 
-Not deployed yet. Qualify and promote the backend reader/native generation
-before enabling new writers: an old strict native reader cannot understand the
-new typed rows. Preserve immutable source namespace and default-entrypoint
-checks, current actor/dependency observations, recorder/resume data and rollback.
-Only then deploy the inspected clean cohort to both Windows installs and the
-beta lobbies, checking destination hashes and live behaviour. Ordinary lobby
-swaps retain `.prev`; record actual UTC provenance rather than implying delivery
-from a successful build. Do not publish another session's uncommitted work.
+Compatible readers must precede new writers; the dated delivery above followed
+that order. Future swaps must preserve source namespaces, default-entrypoint and
+current actor/dependency checks, recorder/resume data and rollback provenance.
+Ordinary lobby swaps retain `.prev`, but once a new writer has been exposed an
+older reader/native image is not an automatic rollback target. Use only a
+verified current-data-compatible recovery. Do not overwrite a newer peer cohort
+or publish another session's uncommitted work.
