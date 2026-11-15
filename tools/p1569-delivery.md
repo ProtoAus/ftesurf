@@ -31,7 +31,7 @@ Task root C:\FTESurf-worktrees\lexlist3-20261115-16.
 - build.ps1 -Pi: nobody on, 12 lobbies restarted on qw `63013a6e` / cs `a2637027`, all active, 0 QC errors
   since spawn; tasrevd codes.txt 141 -> 142 (.pre1569). pi_lobby_smoke 27510: PASS.
 
-## Not live yet
+## Not live yet (superseded: LIVE 15 Nov 09:18Z, below)
 
 - The surfd half needs a guarded generation (with P1564's TAS board, also pending): Lex installs the new
   generation's sandbox drop-in; then `set lobby_helped 1` in the lobby cfg makes lobbies post helped runs.
@@ -41,3 +41,27 @@ Task root C:\FTESurf-worktrees\lexlist3-20261115-16.
 The guarded transition admits no new schema object, so `run_helpers` is gone: board_rows reads a helped
 row's runners from its recording at show time (row_helpers: replay -> replay_file -> rec_runners ->
 helpers_of), cached by replay id, path, size and mtime (512 entries). A late or re-filed file is read again.
+
+## surfd LIVE (15 Nov 2026)
+
+- Generation backend-15665948 (surfd.py 9e70a287 = main 15665948): primary 6ec84932, fallback 7ab1c10c.
+  Waited for pi.dev's native1568 rollout (FINAL STATUS 04:45Z, no locks; native 0200f519 is its result).
+- Operator binding (successor/transition/binding) fixed S1-S3 and took 9 review rounds plus a final
+  integrity review; harm-class findings were fixed each round. Round 9's one harm-class finding (a cron job
+  that is never parked and starts in the ~2 s gap between the last busy check and the close, then outlives
+  the 240 s drain, leaves surfd down) is inherited from the shared sequence and was ACCEPTED with a launch
+  slot (hh:MM:05, MM in 01/11/16/21/26/31/46/51/56; measured job lifetimes max 12 s; ksfimport parked to
+  17 Nov). BACKLOG: park ksfimport and both momgrab routes before the last busy check next time.
+- Incident during the binding work: surfd stopped 07:32:55-07:36:04Z because a test run on the Pi reached a
+  real `sudo -n systemctl stop`. Restarted on the same generation, nothing else changed. Since then the tests
+  guard run/service and Pi test runs use a fake sudo/systemctl/crontab first on PATH.
+- Lex ran owner_install.py (c5b2ac72) at 08:42:58Z: three root files and a daemon-reload only, no restart.
+- Execute started 09:11:05Z with no players on and exited 09:18:15Z: ACTUAL_TRANSITION_RETURNED,
+  completed.json active primary, no hold-records. Admission closed (503s) 09:11:10-09:18:02Z, partly
+  up around 09:14. f443f6cf CLOSED; cron 4 lines on the new primary; momrequests (a user unit) restarted
+  09:18:04Z on the new stubs; /health and /lobbies.json 200; heartbeats 200 from 09:18:02Z, no tracebacks.
+- Lobbies: `set lobby_helped 1` in cfg/lobby/lobby.cfg (main b4379a06; Pi copy fcb68641, .pre1569-20261115T091959Z)
+  and set live over loopback rcon on all 12 ports (read back 12/12), no restart. Runs held before this
+  were not queued (Lobby_RunBody returns ""), so the first "+N" row is the first helped finish from now on.
+- Not yet observed: a real helped run on the live board. Faking one would put a test row on the public
+  segmented board, so I did not post one. The path is covered by test_helped (15) and p1567share (20).
