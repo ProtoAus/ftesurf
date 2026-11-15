@@ -1831,6 +1831,9 @@ void(float id) Rec_ViewLoaded =
 		{
 			rec_rp_lines = FS_VIEWHEAD;
 			rec_rp_full = FALSE;
+			for (i = 0; i <= FS_MAXSAVES; i = i + 1)   // Patch 808's rule: no mark past the cut
+				if (rec_rp_mark[i] > rec_rp_lines)
+					rec_rp_mark[i] = 0;
 		}
 		return;
 	}

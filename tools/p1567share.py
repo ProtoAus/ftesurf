@@ -201,10 +201,13 @@ def run(a, sv, A, B):
             ab = (p.parent / 'run.rec').read_bytes()
             al, gl = ab.split(b'\n'), gb.split(b'\n')
             diff = [i for i in range(min(len(al), len(gl))) if al[i] != gl[i]]
-            if len(ab) == len(gb) and len(al) == len(gl) and len(diff) == 1 and gl[diff[0]].startswith(b'runid '):
+            runs = [i for i in diff if gl[i].startswith(b'runid ')]
+            if (len(ab) == len(gb) and len(al) == len(gl) and len(runs) == 1
+                    and all(gl[i].startswith((b'runid ', b'nonce ')) for i in diff)):
                 same.append(p)
-                NOTES['gift_runid'] = [al[diff[0]].decode(), gl[diff[0]].decode()]
-        check(len(same) == 1, "the gift's run.rec is Alice's but for its own runid (same length)",
+                NOTES['gift_runid'] = [al[runs[0]].decode(), gl[runs[0]].decode()]
+                NOTES['gift_nonce_changed'] = any(gl[i].startswith(b'nonce ') for i in diff)
+        check(len(same) == 1, "the gift's run.rec is Alice's but for its own runid and nonce (same length)",
               NOTES['gift_runid'] or [str(p) for p in alice])
         m = re.search(r'^recrid (.*)$', text, re.M)
         check(m and NOTES['gift_runid'] and m[1] == NOTES['gift_runid'][1][6:], "the gift's recrid is its runid",

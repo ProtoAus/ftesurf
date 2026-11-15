@@ -4411,15 +4411,8 @@ float(entity e, float t, vector near, float usenear, float go, float view) SV_Sa
 	return SV_SaveLocCreateAtMode(e, t, near, usenear, go, view, FALSE);
 };
 
-/*
-  P1567: a save another player sent, WITH its run (Lex, 15 Nov: "always send it with a run"). The
-  sender's state.txt and run.rec are copied into a new row of t's list, plus `helped <ticks> <sender>`;
-  loading it continues that run as t's, TF_HELPED, with a `takeover` record (SV_SaveApplyStateRows).
-  `recserial 0`: a gift never warm-loads, its recording is always rebuilt from the copied file.
-  -> -1 the row has no run to send (the caller sends the position, as before), 0 refused, 1 sent.
-*/
 string sl_giftwhy;               // P1567: why a gift went without its run (-1), for both players
-#define SL_GIFTMAX 33554432     // 32 MB (~100 min): a gift is read whole into a strbuf to get its own runid
+#define SL_GIFTMAX 8388608      // 8 MB (~25 min): read whole into a strbuf (buf_loadfile is slow past ~5 MB)
 
 // Is a copy into dst still queued on e (SV_RecSnapshot's)? Only that save's copy must be on disk.
 float(entity e, string dst) SV_RecCopyPending =
@@ -4438,10 +4431,11 @@ float(entity e, string dst) SV_RecCopyPending =
 };
 
 /*
-  The receiver's runid: the sender's with one character swapped for the receiver's slot letter. Two
-  players' files must not share a header runid (rcptcheck joins a receipt to the first .rec that has it,
-  and the evidence keep names files by it). SAME LENGTH, and runids are ASCII, so no byte offset the copied
-  state records (recbytes, recstream) moves. Never 'p', which marks a lobby's port.
+  The copy's runid: the sender's with its HHMMSS made the gift's and one character swapped for the
+  receiver's slot letter, so each copy has its own. Two players' files must not share a header runid
+  (rcptcheck joins a receipt to a .rec by it; the evidence keep names files by it). SAME LENGTH, and runids
+  are ASCII, so no byte offset the copied state records (recbytes, recstream) moves. Never 'p', which
+  marks a lobby's port.
 */
 string(string rid, float slot) SV_GiftRunId =
 {
@@ -4450,6 +4444,9 @@ string(string rid, float slot) SV_GiftRunId =
 
 	if (strlen(rid) < 1)
 		return "";
+	if (strlen(rid) >= 15)
+	if (substring(rid, 8, 1) == "-")
+		rid = strcat(substring(rid, 0, 9), strftime(TRUE, "%H%M%S"), substring(rid, 15, -1));
 	c = substring("abcdefghijklmnoqrstuvwxyzABCDEFG", bound(0, slot, 31), 1);
 	at = strstrofs(rid, "-p", 0);
 	if (at >= 0)
@@ -4577,6 +4574,7 @@ float(entity t, entity e, float sid, float sseq) SV_SaveLocGift =
 		buf_del(rows);
 		return -1;
 	}
+	// Its own runid, and its own header nonce (same length): the sender's number answers no receipt of t's.
 	n = buf_getsize(rbuf);
 	rid = "";
 	for (i = 0; i < 64; i = i + 1)
@@ -4590,8 +4588,19 @@ float(entity t, entity e, float sid, float sseq) SV_SaveLocGift =
 		{
 			rid = SV_GiftRunId(substring(line, 6, -1), t.run_t_slot);
 			bufstr_set(rbuf, i, strcat("runid ", rid));
-			break;
 		}
+		else if (!strncmp(line, "nonce ", 6))
+		{
+			tmp = SV_RandHex((strlen(line) - 6) / 2);
+			if (strlen(tmp) == strlen(line) - 6)
+				bufstr_set(rbuf, i, strcat("nonce ", tmp));
+		}
+	}
+	if (rid == "")
+	{
+		sl_giftwhy = "its recording names no run";
+		buf_del(rbuf); buf_del(rows);
+		return -1;
 	}
 	rid = strzone(rid);
 	sl_giftwhy = "";
@@ -4620,6 +4629,7 @@ float(entity t, entity e, float sid, float sseq) SV_SaveLocGift =
 	// The state first (its fopen makes the folder), then the run; either failing removes both.
 	SV_RecCopyDrop(SL_RecPath(id));     // no queued copy may land on the new slot
 	ok = FALSE;
+	sl_giftwhy = "its state could not be written";
 	f = fopen(SL_StatePath(id), FILE_WRITE);
 	if (f >= 0)
 	{
@@ -4633,16 +4643,18 @@ float(entity t, entity e, float sid, float sseq) SV_SaveLocGift =
 				line = sprintf("seq %d", seq);
 			else if (!strncmp(line, "recserial ", 10))
 				line = "recserial 0";
-			else if (!strncmp(line, "recrid ", 7) && rid != "")
-				line = strcat("recrid ", rid);
-			else if (!strncmp(line, "helped ", 7))
-				continue;               // a gift passed on unloaded: its sender is the new helper
+			else if (!strncmp(line, "recrid ", 7) || !strncmp(line, "helped ", 7))
+				continue;               // its own below; a gift passed on unloaded names its new sender
 			fputs(f, strcat(line, "\n"));
 		}
+		// The takeover adopts this as the run's (rs_rid): written even when the sender's had none.
+		fputs(f, strcat("recrid ", rid, "\n"));
 		fputs(f, sprintf("helped %d %s\n", ticks, SV_RecCleanLine(e.netname)));
 		ok = SL_StateCloseConfirmed(f, SL_StatePath(id));
 	}
 	buf_del(rows);
+	if (ok)
+		sl_giftwhy = "its recording could not be copied";
 	// The run through this VM too, so a later fopen/buf_loadfile finds it; a stream's bytes must come
 	// back exactly (only the runid's characters changed), or its recbytes/recstream would lie.
 	if (ok)
@@ -4675,7 +4687,6 @@ float(entity t, entity e, float sid, float sseq) SV_SaveLocGift =
 	{
 		fremove(SL_RecPath(id));
 		fremove(SL_StatePath(id));
-		sl_giftwhy = "its recording could not be copied";
 		return -1;
 	}
 	rec_sl_seq[row] = seq;
