@@ -27,6 +27,9 @@
     Scores_ReadHeader), sv_archive.qc's owner row; the replay title uses the last takeover (P1567 r1).
     cl_lobbytime's LT_Keep counts a helped finish as a segmented lobby best.
   - A gift row is a timed row, so it can push the receiver's 24th-newest save out of SL_RECKEEP.
+  - The copy keeps the sender's header nonce (angleop rows embed it; review 3). Off a lobby a buffered
+    load re-adopts and publishes it to the receiver's client, which can then sign a receipt over it;
+    nothing reads receipts off a lobby today, and a lobby's streamed load keeps no nonce.
   - A GIFT event coalesced with another in one client frame skips the sidecar cleanup; a 9th takeover
     is not drawn (WT_HOMAX 8); a gift loaded after a map change keeps the stale view buffer
     (rec_rp_gift is per VM).

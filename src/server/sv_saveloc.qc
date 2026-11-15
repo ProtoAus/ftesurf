@@ -4431,8 +4431,8 @@ float(entity e, string dst) SV_RecCopyPending =
 };
 
 /*
-  The copy's runid: the sender's with its HHMMSS made the gift's and one character swapped for the
-  receiver's slot letter, so each copy has its own. Two players' files must not share a header runid
+  The copy's runid: the sender's with its date and time made the gift's and one character swapped for
+  the receiver's slot letter, so each copy has its own. Two players' files must not share a header runid
   (rcptcheck joins a receipt to a .rec by it; the evidence keep names files by it). SAME LENGTH, and runids
   are ASCII, so no byte offset the copied state records (recbytes, recstream) moves. Never 'p', which
   marks a lobby's port.
@@ -4446,7 +4446,7 @@ string(string rid, float slot) SV_GiftRunId =
 		return "";
 	if (strlen(rid) >= 15)
 	if (substring(rid, 8, 1) == "-")
-		rid = strcat(substring(rid, 0, 9), strftime(TRUE, "%H%M%S"), substring(rid, 15, -1));
+		rid = strcat(strftime(TRUE, "%Y%m%d-%H%M%S"), substring(rid, 15, -1));     // 15 for 15
 	c = substring("abcdefghijklmnoqrstuvwxyzABCDEFG", bound(0, slot, 31), 1);
 	at = strstrofs(rid, "-p", 0);
 	if (at >= 0)
@@ -4574,7 +4574,11 @@ float(entity t, entity e, float sid, float sseq) SV_SaveLocGift =
 		buf_del(rows);
 		return -1;
 	}
-	// Its own runid, and its own header nonce (same length): the sender's number answers no receipt of t's.
+	/*
+	  Its own runid. NOT its own nonce (review 3): `angleop` rows in the body carry the header's nonce
+	  (SV_RecAngleOperation), and reccheck checks each against the nonce in force. A lobby's streamed
+	  load keeps no nonce, so a helped run there makes no receipt.
+	*/
 	n = buf_getsize(rbuf);
 	rid = "";
 	for (i = 0; i < 64; i = i + 1)
@@ -4588,12 +4592,7 @@ float(entity t, entity e, float sid, float sseq) SV_SaveLocGift =
 		{
 			rid = SV_GiftRunId(substring(line, 6, -1), t.run_t_slot);
 			bufstr_set(rbuf, i, strcat("runid ", rid));
-		}
-		else if (!strncmp(line, "nonce ", 6))
-		{
-			tmp = SV_RandHex((strlen(line) - 6) / 2);
-			if (strlen(tmp) == strlen(line) - 6)
-				bufstr_set(rbuf, i, strcat("nonce ", tmp));
+			break;
 		}
 	}
 	if (rid == "")
@@ -4682,7 +4681,10 @@ float(entity t, entity e, float sid, float sseq) SV_SaveLocGift =
 	row = base + cnt;
 	if (ok)
 	if (SV_SaveReadLight(id, row) < 0)
+	{
+		sl_giftwhy = "its state did not read back";
 		ok = FALSE;
+	}
 	if (!ok)
 	{
 		fremove(SL_RecPath(id));
