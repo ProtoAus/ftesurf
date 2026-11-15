@@ -3265,8 +3265,11 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             Patch 840, additive (v9+).  The input profile the START
                             was judged on: SV_ProfileWhy's word (FS_ProfileWord: ok
                             rawinput m_filter m_accel rawmice silent platform
-                            changed move), then CSQC's report as the server held it (all
-                            0 when it never spoke, which `silent` already says).
+                            changed move clicks touchpad), then CSQC's `inprof`
+                            report as the server held it (all 0 when it never spoke;
+                            `silent` with non-zero numbers is P1573's `inguard` never
+                            arriving). The guard values are not in the file; the
+                            word is the only record of them.
                             Not ok means TF_NOPROFILE was set in the same packet.
     begin                   header ends here; everything after is a record
 

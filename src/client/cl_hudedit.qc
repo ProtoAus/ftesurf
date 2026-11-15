@@ -2465,20 +2465,22 @@ void() HE_MigrateDefaults =
 		localcmd("seta r_mapready_rev 1442\n");
 	}
 	// Patch 1573 (Lex, 16 Nov): no injected clicks, no touchpads on the ranked board. Once per config, whatever
-	// the old value; changing either back is allowed and the ranked profile names it (FS_GuardWhy).
+	// the old value; changing either back is allowed and the ranked profile names it (FS_GuardWhy). Only
+	// where both exist, so an engine without P468's touchpad setting is moved after its update (P1296's trap).
 	registercvar("in_guard_rev", "0", CVAR_ARCHIVE);
-	if (cvar_type("in_rawinput_nolegacy") && cvar("in_guard_rev") < 1573)
+	if (cvar_type("in_rawinput_nolegacy"))
+	if (cvar_type("in_rawinput_touchpad"))
+	if (cvar("in_guard_rev") < 1573)
 	{
-		if (cvar("in_rawinput_nolegacy") != 1)
+		if (strcmp(cvar_string("in_rawinput_nolegacy"), "1"))
 		{
 			localcmd("seta in_rawinput_nolegacy 1\n");
 			print("input: clicks no mouse sent are blocked in game now (in_rawinput_nolegacy 1)\n");
 		}
-		if (cvar_type("in_rawinput_touchpad"))
 		if (cvar("in_rawinput_touchpad") != 0)
 		{
 			localcmd("seta in_rawinput_touchpad 0\n");
-			print("input: touchpads no longer turn the view; they do not rank (in_rawinput_touchpad 0)\n");
+			print("input: touchpads no longer move the view or click in game, and runs on one do not rank (in_rawinput_touchpad 1 brings it back, unranked)\n");
 		}
 		localcmd("seta in_guard_rev 1573\n");
 	}

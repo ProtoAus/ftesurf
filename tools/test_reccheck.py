@@ -1634,11 +1634,13 @@ def case_profile_verdict():
         faults_with(b, "does not say TF_NOPROFILE",
                     "a %s start verdict with the bit clear is a fault" % word)
         ok_clean(head(b, "flags", str(2048)),
-                 "...and with the bit set passes clean, with no unknown-word note")
+                 "...and with the bit set passes clean")
         b = insert_before(insert_before(build(), "begin", "inprof ok 15 1 0 0 1"),
                           "inend", "prof %s" % word)
         faults_with(b, "does not say TF_NOPROFILE",
                     "a %s finish verdict with the bit clear is a fault" % word)
+        ok_clean(head(b, "flags", str(2048)),
+                 "...and with the bit set passes clean")
     notes_with(insert_before(build(), "begin", "inprof bogus 15 1 0 0 1"),
                "not one this tool knows", "an unknown start verdict is a note")
     notes_with(insert_before(build(), "inend", "prof bogus"),

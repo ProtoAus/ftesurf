@@ -573,7 +573,7 @@ float(string name, float bit, __inout float have) Rec_InputCvar =
 void() Rec_ProfileReport =
 {
 	local float have, raw, filt, acc, bad, grant;
-	local float ghave, noleg, touch;
+	local float ghave, noleg, touch, gbad;
 
 	have = 0;
 	raw  = Rec_InputCvar("in_rawinput", IPH_RAW,    have);
@@ -602,7 +602,18 @@ void() Rec_ProfileReport =
 	// P1573: injected clicks and touchpads; FS_GuardWhy has the rule.
 	ghave = 0;
 	noleg = Rec_InputCvar("in_rawinput_nolegacy", IPG_NOLEGACY, ghave);
+	// The engine applies the block from .ival (Q_atoi), cvar() is Q_atof: " 1" or 0.99999999 read 1 here
+	// and 0 there. Only the exact string "1" is reported as on. After the exists test: cvar_string creates.
+	if (ghave & IPG_NOLEGACY)
+	if (strcmp(cvar_string("in_rawinput_nolegacy"), "1"))
+		noleg = 0;
 	touch = Rec_InputCvar("in_rawinput_touchpad", IPG_TOUCHPAD, ghave);
+	// Steps `bad` only where both exist: on Linux/SDL (no guard cvars) it would be bad from the first
+	// frame and stop the counter for the other settings. The server faults a missing one by itself.
+	gbad = FALSE;
+	if (ghave == (IPG_NOLEGACY | IPG_TOUCHPAD))
+	if (FS_GuardWhy(ghave, noleg, touch) != PW_OK)
+		gbad = TRUE;
 
 	/*
 	  THE COUNTER IS STEPPED HERE, BEFORE THE EARLY RETURN, AND IT IS STEPPED ON
@@ -622,7 +633,7 @@ void() Rec_ProfileReport =
 	  standing state; this field is only for what CHANGED inside the run.
 	*/
 	// P1573: a guard change steps the same counter, so toggling either mid-run reads PW_CHANGED.
-	if (FS_ProfileBroken(have, raw, filt, acc, grant) || FS_GuardWhy(ghave, noleg, touch) != PW_OK)
+	if (FS_ProfileBroken(have, raw, filt, acc, grant) || gbad)
 	{
 		if (!rec_rp_prof_wasbad)
 			rec_rp_prof_bad = rec_rp_prof_bad + 1;

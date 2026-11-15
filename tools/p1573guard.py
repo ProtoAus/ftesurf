@@ -59,6 +59,10 @@ def grade(cl, control):
     c = section(log, "CLICKS")
     check("clicks", last(guard, c) == ("1", "3", "0", "0") and last(prof, c) == ("1", "clicks"),
           f"guard {last(guard, c)} would/why {last(prof, c)}")
+    for name in ("SPACE", "NEARONE"):
+        sp = section(log, name)
+        check(name.lower(), last(guard, sp) == ("1", "3", "0", "0") and last(prof, sp) == ("1", "clicks"),
+              f"guard {last(guard, sp)} would/why {last(prof, sp)}")
     t = section(log, "TOUCHPAD")
     check("touchpad", last(guard, t) == ("1", "3", "1", "1") and last(prof, t) == ("1", "touchpad"),
           f"guard {last(guard, t)} would/why {last(prof, t)}")

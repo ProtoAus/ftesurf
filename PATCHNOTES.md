@@ -22,8 +22,8 @@
 ## next
 
 ### P1573 No injected clicks or touchpads on the ranked board
-- Clicks that no mouse sent are now blocked while you play, and touchpads no longer turn the view. Both are set for you once.
-- If either setting is changed back, runs are not ranked and the finish line says which one to change.
+- Clicks that no mouse sent are now blocked while you play, and touchpads no longer move the view or click in game. Both are set for you once.
+- To play on a touchpad anyway, set in_rawinput_touchpad 1: your runs are then not ranked, and the finish line says which setting to change back.
 
 ### P1571 Updates keep existing launchers working
 - The new map appearance fixes use the existing update path, without requiring players to replace their launcher. Existing player data is left alone.

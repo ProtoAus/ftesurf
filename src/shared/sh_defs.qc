@@ -2285,8 +2285,8 @@ float(float have, float raw, float filt, float acc, float grant) FS_ProfileBroke
 
 // P1573 (owner, 16 Nov): no injected clicks and no touchpads on the ranked board. CSQC reports both
 // on the `inguard` event (inprof is at sendevent's six floats). Unlike IPH_*, a missing cvar is a
-// fault: every Windows engine that can link an account has both (P307, P468). Exact values, so a
-// fractional one the engine truncates is demoted rather than trusted.
+// fault: every Windows engine that can link an account has both (P307, P468). Exact values; CSQC
+// reports nolegacy as 1 only for the exact string "1" (Rec_ProfileReport has why).
 #define IPG_NOLEGACY 1
 #define IPG_TOUCHPAD 2
 
@@ -2327,8 +2327,8 @@ string(float why) FS_ProfileText =
 	if (why == PW_PLATFORM) return "only the Windows game ranks";
 	if (why == PW_CHANGED)  return "an input setting changed during the run";
 	if (why == PW_MOVE)     return "a move input went above the standard 450";
-	if (why == PW_CLICKS)   return "injected clicks are allowed (in_rawinput_nolegacy 1 blocks them)";
-	if (why == PW_TOUCHPAD) return "touchpads do not rank (in_rawinput_touchpad 0)";
+	if (why == PW_CLICKS)   return "injected clicks must be blocked (set in_rawinput_nolegacy 1)";
+	if (why == PW_TOUCHPAD) return "touchpads do not rank (set in_rawinput_touchpad 0)";
 	return "";
 };
 
