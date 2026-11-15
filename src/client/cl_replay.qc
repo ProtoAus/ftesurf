@@ -318,6 +318,7 @@ float rec_rp_termssent;          // renewed online answer sent over CSQC; -1 = n
 float rec_rp_profseen;
 float rec_rp_prof_have, rec_rp_prof_raw, rec_rp_prof_filter, rec_rp_prof_accel;
 float rec_rp_prof_grant;         // build 77: the GRANT, engine Patch 326
+float rec_rp_prof_ghave, rec_rp_prof_noleg, rec_rp_prof_touch;   // P1573: the `inguard` report
 
 // Transitions INTO an off-profile state since this client started, and the state
 // the last one was counted from.  Never reset -- the server differences it, so a
@@ -572,6 +573,7 @@ float(string name, float bit, __inout float have) Rec_InputCvar =
 void() Rec_ProfileReport =
 {
 	local float have, raw, filt, acc, bad, grant;
+	local float ghave, noleg, touch;
 
 	have = 0;
 	raw  = Rec_InputCvar("in_rawinput", IPH_RAW,    have);
@@ -597,6 +599,11 @@ void() Rec_ProfileReport =
 	if (!(have & IPH_GRANT))
 		grant = -1;
 
+	// P1573: injected clicks and touchpads; FS_GuardWhy has the rule.
+	ghave = 0;
+	noleg = Rec_InputCvar("in_rawinput_nolegacy", IPG_NOLEGACY, ghave);
+	touch = Rec_InputCvar("in_rawinput_touchpad", IPG_TOUCHPAD, ghave);
+
 	/*
 	  THE COUNTER IS STEPPED HERE, BEFORE THE EARLY RETURN, AND IT IS STEPPED ON
 	  THE EDGE INTO BAD.
@@ -614,7 +621,8 @@ void() Rec_ProfileReport =
 	  and be marked twice for one fault.  The start latch already carries the
 	  standing state; this field is only for what CHANGED inside the run.
 	*/
-	if (FS_ProfileBroken(have, raw, filt, acc, grant))
+	// P1573: a guard change steps the same counter, so toggling either mid-run reads PW_CHANGED.
+	if (FS_ProfileBroken(have, raw, filt, acc, grant) || FS_GuardWhy(ghave, noleg, touch) != PW_OK)
 	{
 		if (!rec_rp_prof_wasbad)
 			rec_rp_prof_bad = rec_rp_prof_bad + 1;
@@ -644,6 +652,9 @@ void() Rec_ProfileReport =
 	if (filt  == rec_rp_prof_filter)
 	if (acc   == rec_rp_prof_accel)
 	if (grant == rec_rp_prof_grant)
+	if (ghave == rec_rp_prof_ghave)
+	if (noleg == rec_rp_prof_noleg)
+	if (touch == rec_rp_prof_touch)
 		return;
 
 	rec_rp_profseen    = TRUE;
@@ -652,6 +663,12 @@ void() Rec_ProfileReport =
 	rec_rp_prof_filter = filt;
 	rec_rp_prof_accel  = acc;
 	rec_rp_prof_grant  = grant;
+	rec_rp_prof_ghave  = ghave;
+	rec_rp_prof_noleg  = noleg;
+	rec_rp_prof_touch  = touch;
+
+	// P1573: before inprof, so the guard values are on the server before the `bad` that counted them.
+	sendevent("inguard", "fff", ghave, noleg, touch);
 
 	/*
 	  BUILD 78: THE SAME NUMBERS DOWN A CHANNEL THE CONSOLE CANNOT WRITE, AND

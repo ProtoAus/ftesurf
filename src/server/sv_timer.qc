@@ -1963,6 +1963,10 @@ float() SV_RecEnabled =
 .float  run_t_pevacc;
 .float  run_t_pevbad;
 .float  run_t_pevgrant;
+.float  run_t_gev;        // P1573: 0 = no `inguard` yet; else CSQC has reported the guard
+.float  run_t_ghave;      // IPG_* mask
+.float  run_t_gnoleg;     // in_rawinput_nolegacy
+.float  run_t_gtouch;     // in_rawinput_touchpad
 
 /*
   ...AND WHETHER ITS JOURNAL IS RUNNING, OVER THAT SAME CHANNEL.  Build 79.
@@ -11545,6 +11549,16 @@ void(float have, float raw, float filt, float acc, float bad, float grant)
 	self.run_t_pevgrant = grant;
 };
 
+// P1573: partner of sendevent("inguard", "fff", ...) in Rec_ProfileReport; the rule is FS_GuardWhy.
+// The presence flag is a literal for CSEv_rechid_f's reason: 0 values are honest answers.
+void(float have, float noleg, float touch) CSEv_inguard_fff =
+{
+	self.run_t_gev    = TRUE;
+	self.run_t_ghave  = have;
+	self.run_t_gnoleg = noleg;
+	self.run_t_gtouch = touch;
+};
+
 /*
   THE CLIENT'S CSQC REPORTING WHETHER ITS JOURNAL IS RUNNING.  Build 79.
 
@@ -11663,6 +11677,10 @@ void(entity e) SV_CSQCForget =
 	e.run_t_pevacc   = 0;
 	e.run_t_pevbad   = 0;
 	e.run_t_pevgrant = 0;
+	e.run_t_gev      = 0;              // P1573
+	e.run_t_ghave    = 0;
+	e.run_t_gnoleg   = 0;
+	e.run_t_gtouch   = 0;
 	e.run_t_jev      = 0;
 	e.run_t_jevhid   = 0;
 	e.run_t_terms    = 0;
@@ -11797,6 +11815,12 @@ float(entity e) SV_ProfileWhy =
 	// The RULE is FS_ProfileWhy in sh_defs.qc and is not repeated here.
 	w = FS_ProfileWhy(e.run_t_pevhave, e.run_t_pevraw,
 	                  e.run_t_pevfilt, e.run_t_pevacc, e.run_t_pevgrant);
+	if (w != PW_OK)
+		return w;
+	// P1573: no injected clicks, no touchpads. No `inguard` report is silence, as for inprof.
+	if (!e.run_t_gev)
+		return PW_SILENT;
+	w = FS_GuardWhy(e.run_t_ghave, e.run_t_gnoleg, e.run_t_gtouch);
 	if (w != PW_OK)
 		return w;
 	// P1083: the attempt's largest move axis, read by SV_MoveBoundFrame from the
@@ -17103,6 +17127,8 @@ void(entity e) SV_TimerReport =
 	               e.run_t_pbad,
 	               (e.run_t_flags & TF_NOPROFILE) ? 1 : 0,
 	               SV_ProfileBroken(e), FS_ProfileWord(SV_ProfileWhy(e))));
+	sprint(e, PRINT_HIGH, sprintf("        inguard: said %g  have %g  nolegacy %g  touchpad %g\n",
+	       e.run_t_gev, e.run_t_ghave, e.run_t_gnoleg, e.run_t_gtouch));   // P1573
 	/*
 	  Build 78.  WHAT CSQC SAID, BESIDE WHAT THE KEY SAYS, because from here on
 	  only the first of those decides anything and a reader of the line above

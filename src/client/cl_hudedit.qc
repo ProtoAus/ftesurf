@@ -2464,6 +2464,24 @@ void() HE_MigrateDefaults =
 		HE_MoveOne("r_mapready_budget", 2, "6");
 		localcmd("seta r_mapready_rev 1442\n");
 	}
+	// Patch 1573 (Lex, 16 Nov): no injected clicks, no touchpads on the ranked board. Once per config, whatever
+	// the old value; changing either back is allowed and the ranked profile names it (FS_GuardWhy).
+	registercvar("in_guard_rev", "0", CVAR_ARCHIVE);
+	if (cvar_type("in_rawinput_nolegacy") && cvar("in_guard_rev") < 1573)
+	{
+		if (cvar("in_rawinput_nolegacy") != 1)
+		{
+			localcmd("seta in_rawinput_nolegacy 1\n");
+			print("input: clicks no mouse sent are blocked in game now (in_rawinput_nolegacy 1)\n");
+		}
+		if (cvar_type("in_rawinput_touchpad"))
+		if (cvar("in_rawinput_touchpad") != 0)
+		{
+			localcmd("seta in_rawinput_touchpad 0\n");
+			print("input: touchpads no longer turn the view; they do not rank (in_rawinput_touchpad 0)\n");
+		}
+		localcmd("seta in_guard_rev 1573\n");
+	}
 	registercvar("hud_layout_rev", "0", CVAR_ARCHIVE);
 	/*
 	  Patch 898: Lex's layout of 21 Oct for every setting still on the default it replaced.  The

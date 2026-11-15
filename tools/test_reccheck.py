@@ -1628,6 +1628,17 @@ def case_profile_verdict():
                 "a move finish verdict with the bit clear is a fault")
     ok_clean(head(b, "flags", str(2048)),
              "...and with the bit set passes clean, with no unknown-word note")
+    # P1573: injected clicks allowed / touchpad on are known words, at the start and the finish.
+    for word in ("clicks", "touchpad"):
+        b = insert_before(build(), "begin", "inprof %s 15 1 0 0 1" % word)
+        faults_with(b, "does not say TF_NOPROFILE",
+                    "a %s start verdict with the bit clear is a fault" % word)
+        ok_clean(head(b, "flags", str(2048)),
+                 "...and with the bit set passes clean, with no unknown-word note")
+        b = insert_before(insert_before(build(), "begin", "inprof ok 15 1 0 0 1"),
+                          "inend", "prof %s" % word)
+        faults_with(b, "does not say TF_NOPROFILE",
+                    "a %s finish verdict with the bit clear is a fault" % word)
     notes_with(insert_before(build(), "begin", "inprof bogus 15 1 0 0 1"),
                "not one this tool knows", "an unknown start verdict is a note")
     notes_with(insert_before(build(), "inend", "prof bogus"),

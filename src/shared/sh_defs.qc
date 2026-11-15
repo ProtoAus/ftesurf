@@ -2251,6 +2251,8 @@ float(float ver) FS_ProfileFields =
 #define PW_PLATFORM  6
 #define PW_CHANGED   7
 #define PW_MOVE      8   // P1083: a move axis above the standard size, server-measured
+#define PW_CLICKS    9   // P1573: in_rawinput_nolegacy is not 1, so injected clicks reach the game
+#define PW_TOUCHPAD  10  // P1573: in_rawinput_touchpad is not 0, so a touchpad can turn the view
 // P1083 (owner, 28 Oct): ranked runs use the standard move size, 450 per axis
 // (cl_forwardspeed/backspeed/sidespeed/upspeed, cl_movespeedkey 1). CSQC caps there.
 #define RUN_MOVE_STD 450
@@ -2281,6 +2283,22 @@ float(float have, float raw, float filt, float acc, float grant) FS_ProfileBroke
 	return FS_ProfileWhy(have, raw, filt, acc, grant) != PW_OK;
 };
 
+// P1573 (owner, 16 Nov): no injected clicks and no touchpads on the ranked board. CSQC reports both
+// on the `inguard` event (inprof is at sendevent's six floats). Unlike IPH_*, a missing cvar is a
+// fault: every Windows engine that can link an account has both (P307, P468). Exact values, so a
+// fractional one the engine truncates is demoted rather than trusted.
+#define IPG_NOLEGACY 1
+#define IPG_TOUCHPAD 2
+
+float(float have, float noleg, float touch) FS_GuardWhy =
+{
+	if (!(have & IPG_NOLEGACY) || noleg != 1)
+		return PW_CLICKS;
+	if (!(have & IPG_TOUCHPAD) || touch != 0)
+		return PW_TOUCHPAD;
+	return PW_OK;
+};
+
 // One token, no spaces: the .rec's `inprof`/`prof` field.
 string(float why) FS_ProfileWord =
 {
@@ -2293,6 +2311,8 @@ string(float why) FS_ProfileWord =
 	if (why == PW_PLATFORM) return "platform";
 	if (why == PW_CHANGED)  return "changed";
 	if (why == PW_MOVE)     return "move";
+	if (why == PW_CLICKS)   return "clicks";
+	if (why == PW_TOUCHPAD) return "touchpad";
 	return "unknown";
 };
 
@@ -2307,6 +2327,8 @@ string(float why) FS_ProfileText =
 	if (why == PW_PLATFORM) return "only the Windows game ranks";
 	if (why == PW_CHANGED)  return "an input setting changed during the run";
 	if (why == PW_MOVE)     return "a move input went above the standard 450";
+	if (why == PW_CLICKS)   return "injected clicks are allowed (in_rawinput_nolegacy 1 blocks them)";
+	if (why == PW_TOUCHPAD) return "touchpads do not rank (in_rawinput_touchpad 0)";
 	return "";
 };
 
