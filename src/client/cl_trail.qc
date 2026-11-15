@@ -513,6 +513,22 @@ void() Trail_Frame =
 		op = FS_SlopOp(SaveEvent_Slop());
 		id = FS_SlopId(SaveEvent_Slop());
 		saved = SaveEvent_Ticks();
+		// P1567: another player's save in this slot. Whatever this disk holds under its number is not
+		// that run: no trail, segment list or view prefix of ours may load with it.
+		if (op == SLOP_GIFT)
+		if (id >= 1 && id <= FS_MAXSAVES)
+		{
+			fremove(Trail_SavePath(id));
+			fremove(Seq_Path(id));
+			fremove(Rec_SavePath(id));
+			if (seq_mk_id == id)
+				seq_mk_id = -1;
+			rec_rp_mark[id] = 0;
+			rec_rp_gift[id] = TRUE;
+		}
+		if (op == SLOP_SAVED)
+		if (id >= 0 && id <= FS_MAXSAVES)
+			rec_rp_gift[id] = FALSE;    // our own save over that number
 		if (op == SLOP_SAVED && SaveEvent_Tag() != tr_req_wait)
 		{
 			tr_rep_tracewant = tr_rep_ack;

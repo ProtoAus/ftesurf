@@ -462,6 +462,9 @@ TF_NOCLOCK = 8192       # QC build 76 / engine Patch 325; sh_defs.qc holds the e
 TF_NOCOUNTS = 65536     # Patch 406: cursor data instead of mouse counts (cl_prydoncursor)
 TF_SLOWCLOCK = 524288   # Patch 840: the game clock fell behind real time (slow motion)
 TF_TAS = 4194304        # assisted ancestry; isolated community board only
+# P1567/P1569: continued from another player's shared save (a `takeover` record in the .rec).
+# Segmented like any load (style_of reads TF_SEGMENT); the board lists the runners (run_helpers).
+TF_HELPED = 1048576
 TF_BANKTAINT = 8388608  # inherited-effect exclusion, including segmented/shadow
 # Multi-Session (sv_resume.qc): resumed across a drop or a map change.  Display
 # and evidence only -- style_of and certifiable deliberately never read it.
@@ -1106,6 +1109,58 @@ def _bound_now(row):
     return 0 if _rec_disagrees(hdr, row[1], row[3], row[4], row[7], row[8], row[9]) else 1
 
 
+# P1569: who else ran a helped run, by replay -- its own table so restand/_UPSERT_RUN and the
+# shape-pinned runs/replays tables are untouched (a rebuilt board row keeps its replay_id).
+RUN_HELPERS_SQL = """
+CREATE TABLE IF NOT EXISTS run_helpers (
+    replay_id INTEGER PRIMARY KEY,
+    names     TEXT    NOT NULL
+);
+"""
+HELPERS_MAX = 8
+
+
+def rec_runners(path, limit=16 << 20):
+    """P1569: the runners of a helped recording, in order: the header's `owner`, then each
+    `takeover <ticks> <name>`; the last is the finisher. Server-written files only (a trusted leaf)."""
+    names, body, read = [], False, 0
+    try:
+        with open(path, "rb") as fh:
+            for raw in fh:
+                read += len(raw)
+                if read > limit:
+                    break
+                line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
+                if not body:
+                    if line == "begin":
+                        body = True
+                    elif line.startswith("owner ") and not names:
+                        names.append(clean_text(line[6:])[:32].strip() or "?")
+                    continue
+                if line.startswith("takeover "):
+                    parts = line.split(" ", 2)
+                    if len(parts) == 3 and parts[1].isdigit():
+                        last = clean_text(parts[2])[:32].strip() or "?"
+                        if len(names) < 64:
+                            names.append(last)
+                        else:
+                            names[-1] = last        # the finisher stays last however long the chain
+    except OSError:
+        return []
+    return names
+
+
+def helpers_of(runners):
+    """The other runners of a helped run: everyone before the finisher, once each, not the finisher."""
+    if len(runners) < 2:
+        return []
+    out = []
+    for n in runners[:-1]:
+        if n != runners[-1] and n not in out:
+            out.append(n)
+    return out[:HELPERS_MAX]
+
+
 def receipts_v8(conn):
     """Schema 8 (Patch 422), IDEMPOTENT and run by every migrate(): it also
     repairs a database an earlier cut stamped 8 without the receipts columns
@@ -1503,6 +1558,7 @@ def migrate():
 
         # Schema 8 is a repair as much as a step: receipts_v8 runs every time.
         receipts_v8(conn)
+        conn.executescript(RUN_HELPERS_SQL)     # P1569: idempotent, no version bump
         # Patch 425: restage's lookups are by run; runs_board would scan the map.
         conn.execute("CREATE INDEX IF NOT EXISTS runs_run"
                      " ON runs (map, track, player, runid)")
@@ -1945,7 +2001,8 @@ _LEAF_OK = re.compile(
 )
 
 # An evidence file's leaf: its runid (sv_timer.qc SV_RecOpen) + ".rec".
-_EVLEAF_OK = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9]{1,3}(?:-p[0-9]{1,5})?\.rec$")
+# P1569: a shared save's copy (P1567) swaps the 'p' for the receiver's slot letter (SV_GiftRunId).
+_EVLEAF_OK = re.compile(r"^[0-9]{8}-[0-9]{6}-[0-9]{1,3}(?:-[A-Za-z][0-9]{1,5})?\.rec$")
 
 
 def clean_map(raw):
@@ -3026,6 +3083,17 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None, n
             "run": row["prun"] or 0,
             "ver": 0 if style == STYLE_TAS else row["ver"],
         })
+        # P1569: only on a helped row, so every other board's bytes stay as they were.
+        if (row["flags"] & TF_HELPED) and row["replay_id"]:
+            h = db.execute("SELECT names FROM run_helpers WHERE replay_id=?",
+                           (row["replay_id"],)).fetchone()
+            if h is not None:
+                try:
+                    names = json.loads(h["names"])
+                except ValueError:
+                    names = []
+                if isinstance(names, list) and names:
+                    rows[-1]["helpers"] = [str(n)[:32] for n in names[:HELPERS_MAX]]
         # ONLY on the combined board.  Adding it everywhere would change the
         # ranked board's bytes, which is the one thing test_momindex.py exists
         # to forbid -- and on a single-tier board every row's tier is the tier
@@ -3686,6 +3754,7 @@ def submit_run():
     fsize = None
     fileless = bool(leaf)
     hdr_runid = fsha = ""
+    helpers = []
     if leaf:
         path, why = replay_file({"map_dir": map_dir, "track": track, "leg": leg,
                                  "leaf": leaf, "kind": "run"})
@@ -3725,6 +3794,9 @@ def submit_run():
             hdr_runid = meta[0].get("runid", "")
             fsha = _file_sha(path, key0)
             story_rec = path
+            # P1569: a helped run's runners, read here, outside the write lock below.
+            if flags & TF_HELPED:
+                helpers = helpers_of(rec_runners(path))
             # A post with no runid (a TF_SHADOW continuation: its file is rebuilt
             # from the run it was cut from, header and all) compares none -- it
             # dropped every such leaf since 06a5a01 (review round 6).
@@ -3923,6 +3995,14 @@ def submit_run():
                     " WHERE map=? AND track=? AND leg=? AND leaf=?",
                     (mapname, track, leg, leaf),
                 ).fetchone()
+                # P1569: a helped run's other runners (read above); a post that is not one, or whose
+                # file named none, clears what an earlier filing of this replay left.
+                if rep is not None and not fileless:
+                    if (flags & TF_HELPED) and helpers and story_rec:
+                        db.execute("INSERT OR REPLACE INTO run_helpers (replay_id, names)"
+                                   " VALUES (?, ?)", (rep["id"], json.dumps(helpers)))
+                    else:
+                        db.execute("DELETE FROM run_helpers WHERE replay_id=?", (rep["id"],))
                 # ADOPT ONLY A RUN'S EVIDENCE, never an imported row's.  Without
                 # the kind gate a trusted post naming a momindex leaf whose player
                 # is the steamid64 adopted tier='momentum' for the board row and,
@@ -4563,7 +4643,7 @@ def index_evidence(conn, now=None, dry_run=False):
             ticks = max(end, 0)
             words = (hdr.get("flags") or "0").split()
             flags = strict_int(words[0] if words else 0, 0, 0x7FFFFFFF) or 0
-            port = re.search(r"-p([0-9]+)$", runid)
+            port = re.search(r"-[A-Za-z]([0-9]+)$", runid)
             try:
                 os.makedirs(os.path.join(KEEP_DIR, d), exist_ok=True)
                 _keep_file(src, os.path.join(KEEP_DIR, d, leaf))

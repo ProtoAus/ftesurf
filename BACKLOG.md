@@ -1,5 +1,48 @@
 # BACKLOG.md
 
+## Shared saves with their run -- what P1567 left (15 Nov, ftesurf-16)
+
+- The online board (P1569, Lex 15 Nov: segmented, "<name> +N", runners on hover): surfd source is on main
+  (run_helpers, rec_runners, board rows, web, simcheck skip "helped"); it needs its guarded-generation
+  activation (owner authorization), then `set lobby_helped 1` in the lobby cfg so the lobby posts TF_HELPED.
+  - Similarity on a helped run is a stored skip: anyone can get TF_HELPED from a second connection's gift,
+    so before a playback threshold acts on simcheck, measure the receiver's part (recsim already drops the
+    rows before the last takeover; it needs a mid-map alignment, and recsim does not model REC 12+ yet).
+  - run_helpers is written only at submit; a filing whose file was unreadable then never gets one.
+- The sender's client sidecars do not travel: seq.txt (the Segments list for stages already run), trail.txt
+  (the run line behind you) and run.view (the replay camera's angles; the receiver's own stale buffer is kept,
+  cl_replay.qc Rec_ViewLoaded's rule). Server-authored alternatives: rebuild the trail from the copied run.rec's
+  samples, send the splits from state.txt's runsplit/runcp.
+- The web viewer and the board's replay rows do not draw the takeover spans yet (cl_watch.qc does).
+- The save list shows nothing special for a gift row; the share line names the sender once.
+- A gift is read whole and written in one server frame, capped at SL_GIFTMAX (32 MB); the copy queue
+  (SV_RecCopyStep) would spread a large one.
+- Review round 1 leftovers, by decision or for later:
+  - Stage rows played wholly after the takeover still post as the receiver's (their stage, from its start
+    under the stage speed cap); their runid names the held run. Decide before lobby_helped 1.
+  - The sender's part has no client evidence of this client (no .view rows, .hid, receipts): a helped board
+    must treat it as unattested. On lobbies a helped run has no nonce, so no receipt is made for it.
+  - rcptcheck.join_rec joins a receipt to the FIRST .rec with its header runid; a gift now gets its own
+    runid (SV_GiftRunId), but two files for one runid should read "cannot measure" there anyway.
+  - Off-lobby (one shared list) the sender's original row stays beside the gift, so TF_HELPED is advisory
+    there; lobbies (per-guid lists) are exact.
+  - Readers that take the header's `owner` as the runner: the local board's name column (cl_scores.qc
+    Scores_ReadHeader), sv_archive.qc's owner row; the replay title uses the last takeover (P1567 r1).
+    cl_lobbytime's LT_Keep counts a helped finish as a segmented lobby best.
+  - A gift row is a timed row, so it can push the receiver's 24th-newest save out of SL_RECKEEP.
+  - The copy keeps the sender's header nonce (angleop rows embed it; review 3). Off a lobby a buffered
+    load re-adopts and publishes it to the receiver's client, which can then sign a receipt over it;
+    nothing reads receipts off a lobby today, and a lobby's streamed load keeps no nonce.
+  - A GIFT event coalesced with another in one client frame skips the sidecar cleanup; a 9th takeover
+    is not drawn (WT_HOMAX 8); a gift loaded after a map change keeps the stale view buffer
+    (rec_rp_gift is per VM).
+
+## gfx panel -- what P1566 left (15 Nov, ftesurf-16)
+
+- The TAS route editors (cl_jargon.qc jg_edit, cl_tasoptviz.qc rte_on) hold no cursor claim and sit ahead of
+  Gfx_Input, so with the TAS panel closed a hovered waypoint can take a click aimed at the panel (review 1).
+- Gfx_Inert's Movers row runs two find() scans a frame while the Performance tab is up.
+
 ## P1568 large-history runtime follow-ups
 
 - Site: `sv_archive.qc:Archive_SealFile` / `sv_archive_stream.qc:Archive_StreamSealLarge`, `cl_archive_stream.qc:Ar2_ClientPromote`, and the foreground cache in `cl_scores.qc`. Bounded v2 replaces the old8MiB acquisition cliff on capable updated ends, with a finite1073741823byte ceiling; legacy ends remain bounded. A genuine small completion and a synthetic17MiB+3 whole-byte recovery/transfer/promotion acted. The synthetic pending promise is NOT successful large-recorder-hook evidence.

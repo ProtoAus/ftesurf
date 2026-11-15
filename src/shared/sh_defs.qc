@@ -1011,6 +1011,9 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 // A parked run was resumed (Multi-Session); the id is the run's session count.
 // Like a retry the client's state is gone: seed the HUD latches, drop the sidecars.
 #define SLOP_RESUME  4
+// P1567: another player's save, with their run, arrived in this list (sv_share.qc). The client writes
+// none of its own sidecars into the slot: they would be this player's run, not the sender's.
+#define SLOP_GIFT    5
 
 /*
   The save slot `retry` parks its state in.
@@ -1830,15 +1833,20 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 */
 #define TF_SLOWCLOCK 524288
 
+// P1567: the run continued from a save another player sent (bit 20, from the style reserve). Set at the
+// load with the run's `takeover` record; the run is also TF_SEGMENT|TF_SHADOW from the load. Shown as
+// "with help"; surfd's "helped" board, not the segmented one. The lobby holds these back until lobby_helped 1.
+#define TF_HELPED 1048576
+
 // Retained tool-assisted ancestry (native TAS or per-player slow practice), not
 // active controls. Always TF_CHEAT|TF_PRACTICE; never human/segmented admission.
-// Bits20/21 reserved for styles.
+// Bit 20 is TF_HELPED (P1567); bit 21 stays reserved for styles.
 #define TF_TAS 4194304
 #define FS_TAS_LABEL "Tool Assisted Speedrun"
 #define FS_TAS_COLOUR "^xB6F"
 
 // Derived inherited-effect exclusion, including segmented/shadow attempts.
-// Bits20/21 stay reserved. Bit23 is the LAST exact float32 flag bit: do not
+// Bit 21 stays reserved. Bit23 is the LAST exact float32 flag bit: do not
 // allocate bit24 without migrating every flags transport to an integer.
 #define TF_BANKTAINT 8388608
 
@@ -2361,6 +2369,9 @@ string(float c) FS_RunClassName =
 string(float flags) FS_RunKindName =
 {
 	if (flags & TF_TAS) return "TAS";
+	if (flags & TF_HELPED)
+	if (FS_RunClass(flags) == RC_SEGMENT)
+		return "with help";             // P1567; exactly the column's 9
 	if (FS_RunClass(flags) == RC_CLEAN)
 	{
 		if (flags & TF_MULTISESSION)

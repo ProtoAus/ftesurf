@@ -2362,9 +2362,29 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
   its tag ran over the time and changed how it read (1:06.990 as 2:06.990, the
   review).  The UI face must be set: the cut is measured.
 */
+// P1569: a helped run's runner count ("" none) and the hover line naming every runner.
+string(float idx) Scores_HelpTag =
+{
+	local string h;
+	h = bufstr_get(ob_bhelp, idx);
+	if (h == "")
+		return "";
+	return strcat(" ^xACF+", substring(h, 0, strstrofs(h, "|", 0)), "^7");
+};
+
+string(float idx) Scores_HelpTip =
+{
+	local string h;
+	h = bufstr_get(ob_bhelp, idx);
+	if (h == "")
+		return "";
+	return sprintf("With help: %s, then %s", substring(h, strstrofs(h, "|", 0) + 1, -1),
+	               UI_NameShow(bufstr_get(ob_bname, idx), 0));
+};
+
 string(float idx) Scores_OnlineName =
 {
-	local string s;
+	local string s, tag;
 
 	s = UI_NameShow(bufstr_get(ob_bname, idx), 0);
 	if (s == "")
@@ -2376,8 +2396,10 @@ string(float idx) Scores_OnlineName =
 		else if (Online_WhyString(idx) == "ksf")
 			s = strcat("[ksf] ", s);
 	}
-	return Chat_Fit(s, sb_colx[SBK_TIME] - sb_colx[SBK_OWNER] - rec_sb_cw * 9.5 - sb_avpad,
-	                Font_Px(rec_sb_szrow));
+	tag = Scores_HelpTag(idx);
+	return strcat(Chat_Fit(s, sb_colx[SBK_TIME] - sb_colx[SBK_OWNER] - rec_sb_cw * 9.5 - sb_avpad
+	                          - stringwidth(tag, TRUE, [Font_Px(rec_sb_szrow), Font_Px(rec_sb_szrow)]),
+	                       Font_Px(rec_sb_szrow)), tag);
 };
 
 /*
@@ -2658,6 +2680,8 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		}
 		else
 			Scores_Cell(lp, SBK_OWNER, d, Scores_OnlineName(idx), ncol, 0.9);
+		if (bufstr_get(ob_bhelp, idx) != "")
+			sui_tooltip_for(ownerid, Scores_HelpTip(idx), ui_cv_scale);     // P1569
 
 		/*
 		  WHETHER THERE IS ANYTHING BEHIND THIS ROW TO OPEN -- build 68.

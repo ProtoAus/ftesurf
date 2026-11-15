@@ -3038,6 +3038,16 @@ string(entity e, float track, float leg, float ticks, float flags,
 	if (ticks < 1)
 		return "";                 // nothing measurable happened
 
+	// P1567: a surfd without the "helped" style files TF_HELPED under segmented (style_of); held
+	// here until its generation is live and the lobby says lobby_helped 1.
+	if (flags & TF_HELPED)
+	if (!cvar("lobby_helped"))
+	{
+		if (leg == 0)
+			sprint(e, PRINT_HIGH, "^7run: with help -- not sent to the online boards yet (no With help board)\n");
+		return "";
+	}
+
 	/*
 	  AN UNIDENTIFIED RUN IS NOT SUBMITTED.  See the header: with sv_guidkey
 	  unset the engine never asks for a GUID and this is "", and the board is

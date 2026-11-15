@@ -7,9 +7,11 @@
 
       1 live    both see each other's paint from now on, and what each has up
       2 layout  the sender's client streams its paint to the receiver once
-      3 save    the sender's selected save becomes a practice row in the
-                receiver's list (SV_SaveLocCreateAt's replay-point shape: idle
-                timer, no run, velocity under `rwvel`)
+      3 save    the sender's selected save, WITH its run, becomes a row in the
+                receiver's list (P1567, SV_SaveLocGift); a finish from it is
+                "with help".  A row with no run to send (idle, demoted) still
+                arrives as a practice placement (SV_SaveLocCreateAt's replay-point
+                shape: idle timer, no run, velocity under `rwvel`)
 
   Discs arrive as sendevent ("pd" live, "pl" streamed, "ple" a stream's end)
   and go out as SVC_CGAMEPACKET to that one client (cl_share.qc's
@@ -47,6 +49,7 @@
 .float sh_kind, sh_n, sh_until, sh_id;
 .vector sh_so, sh_sv;       // the offered save, taken when it was offered
 .float sh_sp, sh_sy, sh_sd;
+.float sh_sid, sh_sseq;     // P1567: and which of the sender's rows it was (id, seq)
 .float sh_offerat;          // this player's last offer, for the rate
 .float sh_tok, sh_tokt;     // discs this player may send
 .float sh_in, sh_inack;     // events had from this player; the count last confirmed to it
@@ -187,6 +190,8 @@ void(entity e, float slot, float kind, float n) Share_Offer =
 		t.sh_sp = rec_sl_pit[row];
 		t.sh_sy = rec_sl_yaw[row];
 		t.sh_sd = rec_sl_duck[row];
+		t.sh_sid = rec_sl_id[row];
+		t.sh_sseq = rec_sl_seq[row];
 		n = floor(vlen([t.sh_sv_x, t.sh_sv_y, 0]));
 	}
 	else if (kind != SH_LIVE && kind != SH_LAYOUT)
@@ -250,7 +255,15 @@ void(entity t, float yes, float id) Share_Answer =
 	}
 	else if (kind == SH_SAVE)
 	{
-		// The replay-point row (sl_saveview): a practice placement with no run behind it.
+		// P1567: with its run when it has one.
+		ok = SV_SaveLocGift(t, e, t.sh_sid, t.sh_sseq);
+		if (ok >= 0)
+		{
+			sprint(e, PRINT_HIGH, ok ? sprintf("^7share: %s has your save and its run\n", t.netname)
+			                         : sprintf("^3share:^7 %s could not take the save\n", t.netname));
+			return;
+		}
+		// No run behind it: the replay-point row (sl_saveview), a practice placement.
 		rw_o = t.sh_so;
 		rw_v = t.sh_sv;
 		rw_pit = t.sh_sp;
@@ -261,8 +274,10 @@ void(entity t, float yes, float id) Share_Answer =
 		sl_sharefrom = e.netname;
 		ok = SV_SaveLocCreateAt(t, 0, '0 0 0', FALSE, FALSE, TRUE);
 		sl_sharefrom = "";
-		sprint(e, PRINT_HIGH, ok ? sprintf("^7share: %s has your save\n", t.netname)
+		sprint(e, PRINT_HIGH, ok ? sprintf("^7share: %s has your save (position only: %s)\n", t.netname, sl_giftwhy)
 		                         : sprintf("^3share:^7 %s could not take the save\n", t.netname));
+		if (ok)
+			sprint(t, PRINT_HIGH, sprintf("^7share: position only -- %s\n", sl_giftwhy));
 	}
 };
 

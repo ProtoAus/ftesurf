@@ -420,6 +420,10 @@ PROF_WORDS = ("ok", "rawinput", "m_filter", "m_accel", "rawmice", "silent",
 # record prints %.3f): slow with the bit clear is a fault; the converse a note.
 TF_SLOWCLOCK = 524288
 CLK_EPS = 0.002
+# P1567.  The run continued from a save another player sent: `takeover <ticks> <name>` after the
+# `resume` where it passed on (`takeover`, not h...: heldmeta reads h words as held families).  Notes, not faults, both ways: a save taken after the load carries the
+# bit and its record in the prefix, so the pair only disagrees on a hand-edited file.
+TF_HELPED = 1048576
 SPEC_WHY = ("leave", "drop", "rotate", "server", "retry", "load", "zone",
             "setpos", "respawn", "move", "notarget")
 # The edge identity: <ticks> <mt> <carry> <ox oy oz> <vx vy vz> <fl>, token 2..11.
@@ -1171,6 +1175,7 @@ def _check_rec(r, path, verbose=False, *, data=None):
     clks = []               # (lineno, floats) -- Patch 840: the finish's clock record
     splits = []
     resumes = []            # (lineno, args) -- build 17 save states
+    takeovers = []          # (lineno, args) -- P1567, a save another player sent
     retries = []            # (lineno, args) -- build 18 `retry`, see below
     cprecs = []             # (lineno, args) -- build 19 checkpoints
     boards = []             # (lineno, args) -- build 24 v4 board entries
@@ -1618,6 +1623,12 @@ def _check_rec(r, path, verbose=False, *, data=None):
             # holds.  A cold one's `pause` came first and took the check
             # (SV_SaveApplyState).
             spec_next = [(a, m, c, w or lineno + 1) for a, m, c, w in spec_next]
+        elif kind == "takeover":
+            takeovers.append((lineno + 1, tok[1:]))
+            if len(tok) < 3 or not tok[1].isdigit():
+                r.fault("line %d: 'takeover' takes <ticks> <name>" % (lineno + 1))
+            elif not resumes or resumes[-1][0] != lineno:
+                r.note("line %d: 'takeover' not directly after a 'resume'" % (lineno + 1))
         elif kind == "retry":
             if valid_restore_args(tok[1:], 1):
                 if view_open is not None:
@@ -2411,6 +2422,10 @@ def _check_rec(r, path, verbose=False, *, data=None):
             if len(a) != 2:
                 r.fault("line %d: 'resume' takes 2 fields, has %d" % (ln, len(a)))
 
+    if takeovers:
+        r.info["takeovers"] = len(takeovers)
+        r.info["taken_over_by"] = ",".join(" ".join(a[1:]) if len(a) > 1 else "?" for _, a in takeovers)
+
     if retries:
         # Same reasoning as resumes, plus the warning: this is the marker that
         # says a paired .view has two clocks that RESTART here, so a cross-file
@@ -3025,6 +3040,12 @@ def _check_rec(r, path, verbose=False, *, data=None):
                 if msp and not (fv & TF_MULTISESSION):
                     r.fault("%d multi-session pause(s) in the stream, but header "
                             "flags %d does not say multi-session" % (len(msp), fv))
+                if (fv & TF_HELPED) and not takeovers:
+                    r.note("header flags %d says with help, but there is no 'takeover' "
+                           "in the stream" % fv)
+                if takeovers and not (fv & TF_HELPED):
+                    r.note("%d 'takeover' record(s), but header flags %d does not say "
+                           "with help" % (len(takeovers), fv))
                 # Patch 382: TF_SPEC iff the file holds a window.
                 if (fv & TF_SPEC) and not spec_opened:
                     r.fault("header flags %d says spectated, but there is no "
@@ -4475,7 +4496,7 @@ def emit(r, verbose):
     if verbose or not r.ok:
         for k in ("version", "movementprofile", "map", "track", "startseg", "samples", "padding",
                   "records", "checkpoints", "cp_ordinals", "resumes",
-                  "resumed_from", "retries", "retried_at",
+                  "resumed_from", "takeovers", "taken_over_by", "retries", "retried_at",
                   # Build 43.  Same class of fact as `resumes`: the sample
                   # stream is continuous across both, so a reader that does not
                   # print them cannot tell a run that was taken once from one

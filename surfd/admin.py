@@ -502,6 +502,7 @@ SIM_SKIP_LABELS = {
     'malformed': 'malformed move input', 'no_opportunities': 'no comparison opportunities',
     'source_limit': 'source ingestion limit', 'peer_unresolved': 'peer unresolved',
     'unmodelled': 'recording clock model unavailable',
+    'helped': "helped run (its start is another player's)",
     'unknown': 'unjudgeable (detail withheld)',
 }
 

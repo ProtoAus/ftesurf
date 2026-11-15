@@ -139,6 +139,7 @@ string rec_rp_ulkeep;       // the PREVIOUS run's nonce, still being asked about
   would otherwise silently re-point every mark held here.
 */
 float rec_rp_mark[FS_MAXSAVES + 1];
+float rec_rp_gift[FS_MAXSAVES + 1];     // P1567: another player's save in this slot (cl_trail.qc), until ours
 float rec_rp_slseq;              // STAT_FS_SLSEQ as of last frame
 
 // The two-argument buf_create the shipped prototype hides; see the same
@@ -1822,6 +1823,18 @@ void(float id) Rec_ViewLoaded =
 	if (!Watch_BufLoad(Rec_SavePath(id), buf))
 	{
 		buf_del(buf);
+		// P1567: a gift has no sidecar of ours; this attempt's rows are not its prefix (the stale
+		// buffer kept above would pair this player's old angles with the sender's movement).
+		if (rec_rp_gift[id])
+		if (rec_rp_view >= 1)
+		if (rec_rp_lines > FS_VIEWHEAD)
+		{
+			rec_rp_lines = FS_VIEWHEAD;
+			rec_rp_full = FALSE;
+			for (i = 0; i <= FS_MAXSAVES; i = i + 1)   // Patch 808's rule: no mark past the cut
+				if (rec_rp_mark[i] > rec_rp_lines)
+					rec_rp_mark[i] = 0;
+		}
 		return;
 	}
 

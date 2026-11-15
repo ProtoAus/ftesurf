@@ -290,6 +290,12 @@ def _parse_rec(path, max_bytes=None, max_moves=None):
                 r.mt.append(mt)
                 r.moves.append(move)
                 r.btns.append(btn)
+            elif tag == ["takeover"]:
+                # P1569: a shared save's run passed to another player here (P1567); only the rows
+                # after the last takeover are this file's own, the prefix is another player's.
+                r.mt.clear()
+                r.moves.clear()
+                r.btns.clear()
             elif tag and tag[0] in heldmeta.SCHEMAS and r.ver not in heldmeta.NATIVE_VERSIONS:
                 raise MalformedRec("native held metadata requires REC13 or REC15")
             elif line.startswith("end "):

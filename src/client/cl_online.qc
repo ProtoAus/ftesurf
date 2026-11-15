@@ -286,6 +286,7 @@ float  ob_bmap;            // P925: a KSF row's actual source-map cache folder
 float  ob_bname;           // strbuf: display name per row
 float  ob_bplayer;         // strbuf: stable player id per row
 float  ob_bwho;            // strbuf: the player's 8-hex mark where the row says `av`, else ""
+float  ob_bhelp;           // strbuf: P1569 a helped row's other runners, "<n>|a, b" ("" none)
 float  ob_anyav;           // a held row has one: the owner column makes room (cl_scores.qc)
 
 /*
@@ -563,6 +564,21 @@ void(float track, float leg, string tier, string style) Online_JumpToMe =
 };
 
 // One /api/board row into slot i.  Both the first page and appended pages use it.
+// P1569: `helpers` -- the other runners of a helped run (surfd reads them from its recording).
+void(float i, int a) Online_RowHelpers =
+{
+	local float n, k;
+	local string s;
+
+	s = "";
+	n = 0;
+	if (a)
+		n = min(8, json_get_length(a));
+	for (k = 0; k < n; k = k + 1)
+		s = strcat(s, (k > 0) ? ", " : "", substring(json_get_string(json_get_child_at_index(a, k)), 0, 32));
+	bufstr_set(ob_bhelp, i, (n > 0) ? sprintf("%g|%s", n, s) : "");
+};
+
 void(float i, int row) Online_RowSet =
 {
 	local string s;
@@ -599,6 +615,7 @@ void(float i, int row) Online_RowSet =
 	bufstr_set(ob_bmap, i, json_get_string(json_find_object_child(row, "map")));
 	bufstr_set(ob_bget, i, json_get_string(json_find_object_child(row, "get")));
 	bufstr_set(ob_bname,   i, json_get_string(json_find_object_child(row, "name")));
+	Online_RowHelpers(i, json_find_object_child(row, "helpers"));
 	s = json_get_string(json_find_object_child(row, "player"));
 	bufstr_set(ob_bplayer, i, s);
 	// Patch 640: `av` is surfd saying this player has a Steam picture to fetch.
@@ -624,6 +641,7 @@ void(float to, float from) Online_RowCopy =
 	bufstr_set(ob_bname, to, bufstr_get(ob_bname, from));
 	bufstr_set(ob_bplayer, to, bufstr_get(ob_bplayer, from));
 	bufstr_set(ob_bwho, to, bufstr_get(ob_bwho, from));
+	bufstr_set(ob_bhelp, to, bufstr_get(ob_bhelp, from));
 };
 
 // Row i's source: its own on a merged board (`tr`), else the board's tier.
@@ -738,6 +756,8 @@ void(string body) Online_Parse =
 		ob_bplayer = buf_create();
 	if (!ob_bwho)
 		ob_bwho = buf_create();
+	if (!ob_bhelp)
+		ob_bhelp = buf_create();
 
 	Online_Clear();
 

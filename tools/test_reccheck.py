@@ -3497,8 +3497,36 @@ def case_tas_ancestry():
     ok_clean(build(), "unassisted control remains structurally valid")
 
 
+
+TF_HELPED = 1048576
+
+
+def case_takeover():
+    """P1567: `takeover <ticks> <name>` after the `resume` where a shared save passed the run on;
+    the finish's flags carry TF_HELPED. Notes, not faults, when the two disagree."""
+    def handed(lines, rec="takeover 16 Bob Smith"):
+        lines = after_row(lines, 10, "resume 1 16")
+        ix = lines.index("resume 1 16")
+        return lines[:ix + 1] + [rec] + lines[ix + 1:]
+    helped = lambda lines: head(lines, "flags", str(TF_HELPED))
+    f, n, out = run(helped(handed(build())), report=True)
+    check(not [x for x in f + n if "takeover" in x or "with help" in x or "held" in x]
+          and re.search(r"taken_over_by\s+Bob Smith", out) is not None,
+          "a takeover after its resume, flags saying with help: reported, nothing else")
+    if not re.search(r"taken_over_by\s+Bob Smith", out):
+        print("        faults=%s notes=%s" % (f, n))
+    _, n = run(handed(build()))
+    check(any("does not say with help" in x for x in n), "a takeover with flags not saying with help is a note")
+    _, n = run(helped(build()))
+    check(any("no 'takeover'" in x for x in n), "flags saying with help with no takeover is a note")
+    lines = after_row(helped(build()), 12, "takeover 16 Bob")
+    _, n = run(lines)
+    check(any("not directly after a 'resume'" in x for x in n), "a takeover not after a resume is a note")
+    f, _ = run(helped(handed(build(), "takeover 16")))
+    check(any("'takeover' takes <ticks> <name>" in x for x in f), "a takeover with no name is a fault")
+
 def main():
-    for fn in (case_bank_taint, case_tas_ancestry, case_sparse_practice_board, case_sparse_release_board, case_sv_sample_fresh_cursor, case_sv_resume_parkclock, case_sv_timer_viewclock, case_sv_timer_viewclock_review, case_control,
+    for fn in (case_takeover, case_bank_taint, case_tas_ancestry, case_sparse_practice_board, case_sparse_release_board, case_sv_sample_fresh_cursor, case_sv_resume_parkclock, case_sv_timer_viewclock, case_sv_timer_viewclock_review, case_control,
                case_no_horizon, case_horizon_without_rows,
                case_trailer_width, case_trailer_count,
                case_row_width,
