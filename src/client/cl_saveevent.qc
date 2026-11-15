@@ -43,7 +43,7 @@ void() SaveEvent_Frame =
 	if (packed < 0 || packed != floor(packed)) return;
 	if (ticks < -1 || ticks != floor(ticks) || tag < 0 || tag != floor(tag)) return;
 	op = FS_SlopOp(packed);
-	if (op < SLOP_SAVED || op > SLOP_RESUME || op != floor(op)) return;
+	if (op < SLOP_SAVED || op > SLOP_GIFT || op != floor(op)) return;
 	origin = '0 0 0';
 	if (n == 14)
 	{
@@ -56,10 +56,10 @@ void() SaveEvent_Frame =
 	}
 	else if (n == 8)
 	{
-		if (op != SLOP_SAVED) return;
+		if (op != SLOP_SAVED && op != SLOP_GIFT) return;   // P1567: a gift carries its origin too
 		origin = [stof(argv(5)), stof(argv(6)), stof(argv(7))];
 	}
-	else if (op == SLOP_LOADED || op == SLOP_SAVED)
+	else if (op == SLOP_LOADED || op == SLOP_SAVED || op == SLOP_GIFT)
 		return;
 	sl_event_seq = seq;
 	sl_event_slop = packed;

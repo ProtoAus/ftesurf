@@ -3864,6 +3864,15 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             A reader that does not know it skips it, exactly as
                             it would an unknown header key, so v3 stands.  The
                             sample stream did not change.
+    takeover <ticks> <name> P1567, additive (no bump).  Written after `resume`
+                            when the loaded save was another player's (`share`,
+                            SV_SaveLocGift): from <ticks> the run is <name>'s
+                            (to end of line, the loader's netname).  Before the
+                            first takeover the runner is the header's `owner`;
+                            several chain.  The run's `flags` carry TF_HELPED.
+                            Names are display only, as `owner` is.  NOT `h...`:
+                            heldmeta.py reads a body word starting with h as a
+                            native held family; cl_watch.qc skips i and m.
 
     ghost <0|1> <ticks>     the camera detached (1) or came back (0) at this
                             point in the run.  Build 30.

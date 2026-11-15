@@ -102,6 +102,12 @@ float  rec_wt_view0;             // ditto, and always FS_VIEWHEAD
 string rec_wt_path;              // the .rec we are playing
 float rec_wt_graphgravity;
 string rec_wt_owner;             // its `owner` header key
+// P1567: `takeover <ticks> <name>` -- the run passed to <name> there (a save another player sent).
+// Runner of [0, hot[0]) is the owner, of [hot[k-1], hot[k]) takeover k-1's name; the last runs to the end.
+#define WT_HOMAX 8
+float  rec_wt_hon;
+float  rec_wt_hot[WT_HOMAX];     // run clock, seconds
+string rec_wt_honame[WT_HOMAX];  // zoned
 string rec_wt_mark;              // Patch 789: the owner's picture mark, "" none
 string wt_nextmark;              // Patch 789: the board row's mark, set just before Watch_Open
 string(float slot) SteamPic_SlotMark;
@@ -1731,6 +1737,9 @@ void() Watch_Scan =
 	}
 	rec_wt_abandon = FALSE;
 	rec_wt_ftn = rec_wt_ftover = 0;
+	for (i = 0; i < rec_wt_hon; i = i + 1)
+		strunzone(rec_wt_honame[i]);
+	rec_wt_hon = 0;
 	wt_fseg = wt_fent = wt_frest = wt_fss = -1;
 	wpseg = -1;
 	wpdur = 0;
@@ -1794,6 +1803,16 @@ void() Watch_Scan =
 		if (argv(0) == "abandon")
 		{
 			rec_wt_abandon = TRUE;
+			continue;
+		}
+		if (argv(0) == "takeover")
+		{
+			if (n >= 3 && rec_wt_hon < WT_HOMAX)
+			{
+				rec_wt_hot[rec_wt_hon] = stof(argv(1)) * rec_wt_tickrate;
+				rec_wt_honame[rec_wt_hon] = strzone(substring(s, argv_start_index(2), -1));
+				rec_wt_hon = rec_wt_hon + 1;
+			}
 			continue;
 		}
 		// Patch 778: the attempts (see rec_wt_ft0).
@@ -5081,6 +5100,10 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 	              rec_wt_path, rec_wt_owner,
 	              Time_TickString(rec_wt_endticks, rec_wt_tickrate), rec_wt_nsamp,
 	              rec_wt_abandon ? " (abandoned)" : ""));
+	if (rec_wt_hon > 0)                 // P1567
+		print(sprintf("replay: with help -- passed on %g time%s, last to %s at %s\n", rec_wt_hon,
+		              (rec_wt_hon == 1) ? "" : "s", rec_wt_honame[rec_wt_hon - 1],
+		              Time_TickString(rec_wt_hot[rec_wt_hon - 1] / rec_wt_tickrate, rec_wt_tickrate)));
 
 	// Said once per replay rather than once per session, and only when it is
 	// off: the panel is the answer to "what am I actually watching" and there
@@ -5292,7 +5315,8 @@ void(vector scr) Watch_Chrome =
 	local float w, h, y, sp, small, tiny, cw, bx, bw, sw, xs;
 	local float wsc, pad, gap, wtitle, wclock, th, kw;
 	local string s, stitle, sclock;
-	local float i, xa, xb, skw, skx, skon;
+	local float i, xa, xb, skw, skx, skon, ha;
+	local string hs;
 
 	wsc = cvar("hud_watch_scale");
 	if (wsc < 0.5) wsc = 0.5;       // below this the hint is unreadable anyway
@@ -5509,6 +5533,24 @@ void(vector scr) Watch_Chrome =
 			xb = xa + 1;
 		sui_fill([p_x + pad + xa, y + (small + 4) * 0.5 - th * 0.5],
 		         [xb - xa, th], SUI_THEME_WARN, 0.75, 0);
+	}
+	// P1567: the parts other players ran, with whose they were under the track (the last runner's is the run's).
+	if (rec_wt_vt1 > rec_wt_vt0)
+	for (i = 0; i < rec_wt_hon; i = i + 1)
+	{
+		ha = (i > 0) ? rec_wt_hot[i - 1] : min(0, rec_wt_vt0);
+		if (rec_wt_hot[i] < rec_wt_vt0 || ha > rec_wt_vt1)
+			continue;
+		xa = bound(0, bw * (ha - rec_wt_vt0) / (rec_wt_vt1 - rec_wt_vt0), bw);
+		xb = bound(0, bw * (rec_wt_hot[i] - rec_wt_vt0) / (rec_wt_vt1 - rec_wt_vt0), bw);
+		if (xb - xa < 1)
+			xb = xa + 1;
+		sui_fill([p_x + pad + xa, y + (small + 4) * 0.5 - th * 0.5],
+		         [xb - xa, th], SUI_THEME_INFO, 0.85, 0);
+		hs = (i > 0) ? rec_wt_honame[i - 1] : rec_wt_owner;
+		if (stringwidth(hs, TRUE, [small * 0.8, small * 0.8]) < xb - xa)
+			sui_text([p_x + pad + xa + 2, y + (small + 4) * 0.5 + th * 0.5 + 1], [small * 0.8, small * 0.8],
+			         hs, SUI_THEME_INFO, 1, 0);
 	}
 
 	/*
