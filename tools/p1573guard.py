@@ -10,6 +10,7 @@ client's `cmd timer` replies: the server's own `inguard` line and its `inprof ..
 import argparse
 import pathlib
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -80,6 +81,27 @@ def grade(cl, control):
     return faults
 
 
+def grade_latch(cl, control):
+    """--latch: the map locks the applied string to " 1"; the player's "1" is only the latch."""
+    log = (cl / "logs/p1573latch.log").read_text(errors="replace")
+    sec = section(log, "LATCH")
+    # A server-locked cvar prints the player's value first, then `Effective value is "..."`: the applied one.
+    applied = last(r'Effective value is "([^"]*)"', sec)
+    guard = last(r"inguard: said (\S+)  have (\S+)  nolegacy (\S+)  touchpad (\S+)", sec)
+    prof = last(r"would (\d)  why (\w+)", sec)
+    ok_applied = applied == " 1"
+    print(("PASS" if ok_applied else "FAIL"), "latch-applied --", f"engine string {applied!r} (the map's, so .ival 0)")
+    if control:
+        ok = ok_applied and guard is not None and guard[2] == "1"
+        print(("PASS" if ok else "FAIL"), "latch (control: reads on) --", f"guard {guard} would/why {prof}")
+    else:
+        ok = ok_applied and guard == ("1", "3", "0", "0") and prof == ("1", "clicks")
+        print(("PASS" if ok else "FAIL"), "latch --", f"guard {guard} would/why {prof}")
+    faults = (not ok_applied) + (not ok)
+    print(f"{faults} failed")
+    return faults
+
+
 def run(args, root):
     common = ["-basedir", str(root), "-manifest", str(root / "default.fmf")]
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
@@ -93,7 +115,7 @@ def run(args, root):
         si = subprocess.STARTUPINFO()
         si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         si.wShowWindow = 4          # shown, not activated
-        client = subprocess.Popen([args.exe, *common, "-window", "+exec", "cfg/test/p1573guard.cfg"],
+        client = subprocess.Popen([args.exe, *common, "-window", "+exec", f"cfg/test/{args.cfg}.cfg"],
                                   cwd=INSTALL, startupinfo=si, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             client.wait(timeout=150)
@@ -115,20 +137,24 @@ def main():
     ap.add_argument("--server", default="C:/FTEQuake/fteqwsv64.exe")
     ap.add_argument("--port", type=int, default=27561)
     ap.add_argument("--control", action="store_true")
+    ap.add_argument("--latch", type=pathlib.Path, help="a pk3 with maps/surf_dune.ent; runs cfg p1573latch")
     args = ap.parse_args()
+    args.cfg = "p1573latch" if args.latch else "p1573guard"
     args.out.mkdir(parents=True, exist_ok=True)
     rig = args.out / time.strftime("rig-%Y%m%dT%H%M%S")
     made = []
     try:
-        gd, made = prepare(rig, args.progs, ["p1573guard"], args.port)
+        gd, made = prepare(rig, args.progs, [args.cfg], args.port)
+        if args.latch:
+            shutil.copyfile(args.latch, gd / args.latch.name)    # gamedir itself, not a junction
         run(args, rig)
     finally:
         unjunction(made)
     print("rig:", rig)
-    if not (gd / "logs/p1573guard.log").exists():
+    if not (gd / f"logs/{args.cfg}.log").exists():
         print("FAIL no client log")
         return 1
-    return grade(gd, args.control)
+    return grade_latch(gd, args.control) if args.latch else grade(gd, args.control)
 
 
 if __name__ == "__main__":

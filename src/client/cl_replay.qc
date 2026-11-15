@@ -319,6 +319,29 @@ float rec_rp_profseen;
 float rec_rp_prof_have, rec_rp_prof_raw, rec_rp_prof_filter, rec_rp_prof_accel;
 float rec_rp_prof_grant;         // build 77: the GRANT, engine Patch 326
 float rec_rp_prof_ghave, rec_rp_prof_noleg, rec_rp_prof_touch;   // P1573: the `inguard` report
+float rec_rp_guardscan;          // P1573: this map's worldspawn has been scanned (Rec_GuardMapScan)
+float rec_rp_guardmap;           // ...and names an in_rawinput cvar
+
+/*
+  P1573 review 2: a worldspawn `cvar_<name>` key -- a player's own maps/<map>.ent can add one -- locks a
+  client cvar to the map's value and keeps the player's as the latch, which is what cvar_string returns
+  (PF_cvar_string), so Rec_ProfileReport's string test would read "1" while the engine applies " 1".
+  Same entity string as Mod_ParseInfoFromEntityLump (Mod_GetEntitiesString), worldspawn only, any token
+  naming in_rawinput. A parser divergence between QCC_COM_Parse and COM_ParseOut is not covered: the
+  engine-side fix (CVAR_NOTFROMSERVER on both cvars) is BACKLOG.
+*/
+void() Rec_GuardMapScan =
+{
+	local string tok;
+
+	rec_rp_guardmap = FALSE;
+	getentitytoken(0);
+	if (getentitytoken() != "{")
+		return;
+	while ((tok = getentitytoken()) != "" && tok != "}")
+		if (strstrofs(strtolower(tok), "in_rawinput") >= 0)
+			rec_rp_guardmap = TRUE;
+};
 
 // Transitions INTO an off-profile state since this client started, and the state
 // the last one was counted from.  Never reset -- the server differences it, so a
@@ -607,6 +630,13 @@ void() Rec_ProfileReport =
 	if (ghave & IPG_NOLEGACY)
 	if (strcmp(cvar_string("in_rawinput_nolegacy"), "1"))
 		noleg = 0;
+	if (!rec_rp_guardscan)
+	{
+		rec_rp_guardscan = TRUE;
+		Rec_GuardMapScan();
+	}
+	if (rec_rp_guardmap)
+		noleg = 0;                  // the map, not the player, set what the engine applies
 	touch = Rec_InputCvar("in_rawinput_touchpad", IPG_TOUCHPAD, ghave);
 	// Steps `bad` only where both exist: on Linux/SDL (no guard cvars) it would be bad from the first
 	// frame and stop the counter for the other settings. The server faults a missing one by itself.
@@ -2503,6 +2533,7 @@ void() Rec_ViewInit =
 	  lesson one field earlier.  See Rec_ProfileReport.
 	*/
 	rec_rp_profseen = FALSE;
+	rec_rp_guardscan = FALSE;           // P1573: rescan each map's worldspawn
 
 	// Patch 486: FALSE, so the first report always goes out.  This was -1,
 	// which is TRUE in QC: rec_rp_ijsent is a flag, not a cached answer like
