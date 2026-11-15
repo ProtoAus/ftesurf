@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1566 graphics panel / P1567 shared saves with their run -- owner check PENDING
+## P1566 graphics panel / P1567 shared saves with their run -- LIVE 15 Nov (12 lobbies + both installs, tools/p1566-p1567-delivery.md); owner check PENDING
 - X opens the new graphics window: drag it by the title, try each tab, the < > buttons, click a value for its list, hover a row for its console command. Is it big enough, and is anything you used to change missing or in the wrong tab?
 - With a friend on a lobby: save mid-run, look at them and share the save (F, then 3), they accept (F3). They should read "with their run at <time>", load it, and their run carries on; `cmd timer` says class "with help". Watch their finished replay: your part of the timeline is coloured with your name under it.
 - With help finishes do not reach the online boards yet: that needs the backend's "helped" board and your OK for its activation (a QC switch, lobby_helped 1, after it).
