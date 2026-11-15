@@ -18,8 +18,10 @@
 - Game code in the slowest frames (r_spikes 2 over 7 maps, artifacts/qcsplit1, agg_qcsplit.py): Sprite_Glare/SkyTest
   dominate fairy/jumble (25-32% of profiled CSQC); elsewhere the mouse pad (MPad_Draw, hud_mouse 1 is live HUD) and
   rounded panels (_sui_round_draw, sui_round_fixed, sui_text) are 15-20%; the replay's path line (Line_*) and
-  Watch_* are replay-only. Unprofiled price of hud_mouse / hud_watch_path not yet measured (artifacts/abq2.py and the
-  lows4_v_*.cfg arms are ready). The glare's own comment names Source's way: GPU occlusion queries instead of traces
+  Watch_* are replay-only. Unprofiled (artifacts/abq2.py, r_budget, 3 alternating runs a side): the mouse pad costs
+  0.06-0.08 ms a frame (nuclear CSQC 0.69 -> 0.63, null 0.67 -> 0.59; ~5% of a light map's frame), the replay path
+  line 0.09-0.10 ms. hud_fps caching only helps above its redraw rate, so for a slow PC at 60-144 fps a cheaper draw
+  (one polygon batch for the trail, not a Line_Seg2D call a segment) is the lever, not the cache. The glare's own comment names Source's way: GPU occlusion queries instead of traces
   (cl_sprites.qc ~2262; FTE has corona queries in gl_rlight.c ~623).
 - Trigger prediction: TG_ChainStart probes every IO-owned trigger with a zero-length tracebox each frame (23-393
   triggers a map); a box-overlap test first would skip the builtin call exactly. ~3-6% of profiled CSQC.
