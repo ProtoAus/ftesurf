@@ -2,6 +2,11 @@
 
 ## Sending a save with its run (segments, demo line, helper's name) -- requested 15 Nov 2026
 
+DECIDED (Lex, 15 Nov): a helped finish has its own "With help" status; the part another player ran is tagged
+with their name, coloured on the replay timeline; a share always sends the run. P1567 ships the server copy,
+TF_HELPED, the `takeover` record, the replay spans and the lobby hold; what is left is in BACKLOG ("Shared
+saves with their run"). The investigation below is the design as proposed.
+
 Lex: "when you send a save, allow the segmenting to work and transfer the demo line over so they can continue
 it, but keep the player's name attached to the loc ... so we can see who completed the map with the help of
 someone else." Today `cmd share offer` sends five values and the receiver gets a position-only practice row;

@@ -1,5 +1,42 @@
 # BACKLOG.md
 
+## Shared saves with their run -- what P1567 left (15 Nov, ftesurf-16)
+
+- The online "With help" board: surfd's style_of files TF_HELPED (1048576) under segmented today, so the lobby
+  holds those runs (Lobby_RunBody) until `lobby_helped 1`. Needs a `helped` community style in surfd (the TAS
+  board of 80ca3c1e is the pattern: style_of, certifiable never, web tab, counts, board.js, test_board pins),
+  then its guarded-generation activation (owner authorization), then the lobby cvar.
+- The sender's client sidecars do not travel: seq.txt (the Segments list for stages already run), trail.txt
+  (the run line behind you) and run.view (the replay camera's angles; the receiver's own stale buffer is kept,
+  cl_replay.qc Rec_ViewLoaded's rule). Server-authored alternatives: rebuild the trail from the copied run.rec's
+  samples, send the splits from state.txt's runsplit/runcp.
+- The web viewer and the board's replay rows do not draw the takeover spans yet (cl_watch.qc does).
+- The save list shows nothing special for a gift row; the share line names the sender once.
+- A gift is read whole and written in one server frame, capped at SL_GIFTMAX (32 MB); the copy queue
+  (SV_RecCopyStep) would spread a large one.
+- Review round 1 leftovers, by decision or for later:
+  - Stage rows played wholly after the takeover still post as the receiver's (their stage, from its start
+    under the stage speed cap); their runid names the held run. Decide before lobby_helped 1.
+  - The sender's part has no client evidence of this client (no .view rows, .hid, receipts): a helped board
+    must treat it as unattested. On lobbies a helped run has no nonce, so no receipt is made for it.
+  - rcptcheck.join_rec joins a receipt to the FIRST .rec with its header runid; a gift now gets its own
+    runid (SV_GiftRunId), but two files for one runid should read "cannot measure" there anyway.
+  - Off-lobby (one shared list) the sender's original row stays beside the gift, so TF_HELPED is advisory
+    there; lobbies (per-guid lists) are exact.
+  - Readers that take the header's `owner` as the runner: the local board's name column (cl_scores.qc
+    Scores_ReadHeader), sv_archive.qc's owner row; the replay title uses the last takeover (P1567 r1).
+    cl_lobbytime's LT_Keep counts a helped finish as a segmented lobby best.
+  - A gift row is a timed row, so it can push the receiver's 24th-newest save out of SL_RECKEEP.
+  - A GIFT event coalesced with another in one client frame skips the sidecar cleanup; a 9th takeover
+    is not drawn (WT_HOMAX 8); a gift loaded after a map change keeps the stale view buffer
+    (rec_rp_gift is per VM).
+
+## gfx panel -- what P1566 left (15 Nov, ftesurf-16)
+
+- The TAS route editors (cl_jargon.qc jg_edit, cl_tasoptviz.qc rte_on) hold no cursor claim and sit ahead of
+  Gfx_Input, so with the TAS panel closed a hovered waypoint can take a click aimed at the panel (review 1).
+- Gfx_Inert's Movers row runs two find() scans a frame while the Performance tab is up.
+
 ## Completed-history remote transfer size boundary — P1564
 
 - Site: `src/server/sv_archive.qc` `AR_BYTES`, `Archive_Digest` / `Archive_CheckedSeal` / `Archive_VerifiedCopy`, and the matching client archive receiver. The existing authenticated protocol allocates/checks a complete file and refuses files over 8 MiB. P1564 retains those server originals but cannot automatically acquire them into a remote client's history. Do not remove the cap or silently raise unbounded QC allocation.

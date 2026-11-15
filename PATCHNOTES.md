@@ -21,6 +21,17 @@
 
 ## next
 
+### P1567 Shared saves carry the run, and finishes from them are With help
+- Sharing a save now sends its run too: the other player loads it and carries on the same run from where you saved, timer and recording included (your segment list and run line do not come across yet).
+- A run finished from someone else's save is marked With help. Its replay shows the part each other player ran in its own colour with their name under the timeline.
+- With help runs are kept on the server but are not on the online boards yet; a stage you run yourself after taking over still counts as yours. A save with no run behind it still arrives as a position, and both players are told why.
+
+### P1566 Graphics menu is a window you can drag
+- The graphics menu (X) is a window: drag it by its title, pick a tab (Performance, Water and glass, Reflections, Atmosphere, Map detail, Lighting), and use the arrows beside each setting or click its value for the full list.
+- Each setting shows where it sits from fastest to fullest, and hovering one says what it does and the console command for it.
+- The number keys no longer change graphics settings while it is open (they do their usual job), and Esc closes it.
+- Prop light can be set back to its default, the per-vertex bake, again.
+
 ### P1565 Recording report context
 - Recording reports retain additional context without changing movement or the results of older recordings.
 
