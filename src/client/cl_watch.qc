@@ -6627,7 +6627,7 @@ string(float rep, string dir) Online_ReplayFind;     // cl_online.qc, compiled a
 
 float(string cmd) Watch_ConsoleCommand =
 {
-	local string a, p;
+	local string a, p, p2;
 	local float track, leg, nv, count;
 	local float i, b, sl;   // the marks and seq dumps (Patch 449)
 	local vector ep;        // an array element is not swizzleable
@@ -7014,9 +7014,16 @@ float(string cmd) Watch_ConsoleCommand =
 	{
 		p = FS_TagArchived(FS_TagFromName(a)) ? Watch_BestOnLeg(0, 0, a)
 		                                      : Watch_LegPath(0, 0, a);
-		if (p == "")
-		if (FS_TagFromName(a) == RT_SHADOW)     // P1592: a resumed run under either name
-			p = Watch_BestOnLeg(0, 0, (a == "shadow") ? FS_SEGWORD : "shadow");
+		if (FS_TagFromName(a) == RT_SHADOW)     // P1592: the fastest resumed run under either word
+		{
+			p2 = Watch_BestOnLeg(0, 0, (a == "shadow") ? FS_SEGWORD : "shadow");
+			if (p == "")
+				p = p2;
+			else if (p2 != "")
+			if (stof(substring(p2, strlen(FS_RunDir(serverkey("map"), 0, 0)), 7)) <
+			    stof(substring(p, strlen(FS_RunDir(serverkey("map"), 0, 0)), 7)))
+				p = p2;
+		}
 	}
 	/*
 	  BUILD 57: `replay stage N` IS LEG N -- stage N as the HUD, `!s N` and the

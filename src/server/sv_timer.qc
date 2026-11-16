@@ -4250,6 +4250,15 @@ string(float tag) SV_RecTagName =
 	return FS_TagName(tag);
 };
 
+// The word a queued destination was named with (review: SV_RecTagName reads lobby_enable live).
+string(float tag, string dst) SV_RecDestTagWord =
+{
+	if (tag == RT_SHADOW)
+	if (!strcmp(substring(dst, strlen(dst) - 14, 14), strcat("_", FS_SEGWORD, ".rec")))
+		return FS_SEGWORD;
+	return FS_TagName(tag);
+};
+
 // Every finish gets a fresh name, including ties and restored branches. The
 // existence check preserves old recordings across restarts/counter reuse.
 string(entity e, float ticks, float tag) SV_RecHistoryWho =
@@ -6771,7 +6780,7 @@ void(entity e, float published) SV_HeldFinishClose =
 		e.rec_rec_leg = e.rec_hm_track * 100 + e.rec_hm_leg + 1;
 		if (e.rec_hm_stamp >= 0)
 		if (FS_TagArchived(e.rec_hm_tag))
-			leaf = FS_RunLeaf(e.rec_hm_stamp, e.rec_hm_who, SV_RecTagName(e.rec_hm_tag), "rec");
+			leaf = FS_RunLeaf(e.rec_hm_stamp, e.rec_hm_who, SV_RecDestTagWord(e.rec_hm_tag, e.rec_hm_destination), "rec");
 		SV_RecSetLeaf(e, leaf);
 		if (FS_HistoryLeaf(leaf))
 		{
@@ -6782,8 +6791,8 @@ void(entity e, float published) SV_HeldFinishClose =
 		// A later arm must not make this sweep another track's archive.
 		if (e.rec_hm_stamp >= 0)
 		if (e.run_t_track == e.rec_hm_track)
-			SV_RecPrune(e, e.rec_hm_leg, SV_RecTagName(e.rec_hm_tag), e.rec_hm_who,
-			            FS_RunLeaf(e.rec_hm_stamp, e.rec_hm_who, SV_RecTagName(e.rec_hm_tag), "rec"));
+			SV_RecPrune(e, e.rec_hm_leg, SV_RecDestTagWord(e.rec_hm_tag, e.rec_hm_destination), e.rec_hm_who,
+			            FS_RunLeaf(e.rec_hm_stamp, e.rec_hm_who, SV_RecDestTagWord(e.rec_hm_tag, e.rec_hm_destination), "rec"));
 	}
 	else
 		dprint("timer: native recording publication refused; ordinary source preserved\n");

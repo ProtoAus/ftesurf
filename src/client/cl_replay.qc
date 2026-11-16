@@ -231,7 +231,7 @@ string(float runleg, float ticks, string tag, string ext) Rec_ViewPath =
 	if (FS_HistoryLeaf(leaf))
 	if (runleg + 1 == getstatf(STAT_FS_RUNLEG) && ticks == getstatf(STAT_FS_RUNTICKS))
 	if (FS_NameTicks(leaf) == ticks)
-	if (!strcmp(FS_NameTag(substring(leaf, 0, strlen(leaf) - 4)), tag))
+	if (FS_TagFromName(FS_NameTag(substring(leaf, 0, strlen(leaf) - 4))) == FS_TagFromName(tag))   // P1592: either word
 		return FS_MovementProfilePath(rec_rp_agprofile,
 			strcat(FS_RunDir(Rec_MapName(), track, leg), substring(leaf, 0, strlen(leaf) - 3), ext));
 	return FS_MovementProfilePath(rec_rp_agprofile, FS_RunPath(Rec_MapName(), track, leg, ticks, tag, ext));

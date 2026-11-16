@@ -1947,6 +1947,9 @@ def rate_ok(ip, now, cap=None, bucket=""):
 _CTRL = re.compile(r"[\x00-\x1f\x7f]")
 
 
+REC_LEAF_MAX = 96  # 10 stamp + slug-digest-32hex who (<= 55) + _segmented.rec
+
+
 def clean_text(raw, limit=MAX_FIELD_LEN):
     """Strip control characters and truncate. Never trust length or content."""
     if raw is None:
@@ -2018,8 +2021,10 @@ _MAPNAME_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$")
 # index would be citing bytes that change under the row.
 _LEAF_OK = re.compile(
     r"^[0-9]{7,10}_"
-    r"(?:(?:[a-z0-9]{1,12}-)?(?P<digest>[0-9a-f]{8})_|s[0-9]{1,2}_)?"
-    r"(?:run|pb|shadow|segmented)\.rec$"   # P1592: segmented is the new name of shadow
+    # e26b5768 (15 Nov) adds `-<32 hex>` to every history who (sv_timer.qc SV_RecHistoryWho);
+    # P1592: `segmented` is the new name of `shadow`.
+    r"(?:(?:[a-z0-9]{1,12}-)?(?P<digest>[0-9a-f]{8})(?:-[0-9a-f]{32})?_|s[0-9]{1,2}_)?"
+    r"(?:run|pb|shadow|segmented)\.rec$"
 )
 
 # An evidence file's leaf: its runid (sv_timer.qc SV_RecOpen) + ".rec".
@@ -3869,7 +3874,7 @@ def submit_run():
     # somebody else's leaf takes their row, re-queues THEIR file, and wears the
     # PASS it earns (VER_SQL).  The digest is the only part of a leaf a
     # submitter cannot choose for a file that is not theirs, so it drops now.
-    leaf = clean_text(request.form.get("rec"))
+    leaf = clean_text(request.form.get("rec"), REC_LEAF_MAX)   # MAX_FIELD_LEN 64 cut history leaves
     if leaf and not is_trusted(src, TRUSTED_SOURCES):
         # A filesystem path is only evidence for a node we own.  Port 8084
         # answers the internet with the shared key as its only barrier, so an

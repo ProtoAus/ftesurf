@@ -577,11 +577,20 @@ else:
     # RT_LOBBY is archived but is written by the CLIENT to its own disk, so it
     # never reaches a lobby's data/runs and is deliberately not in the pattern.
     import surfd as _s
-    for tag, want in (("run", True), ("pb", True), ("shadow", True),
+    for tag, want in (("run", True), ("pb", True), ("shadow", True), ("segmented", True),
                       ("lobby", False), ("last", False), ("cheat", False)):
         nm = "0004108_alice-%s_%s.rec" % (ident, tag)
-        check("pattern accepts %-7s == %s" % (tag, want),
+        check("pattern accepts %-9s == %s" % (tag, want),
               bool(_s._LEAF_OK.match(nm)), want)
+    # e26b5768 history who: <slug>-<digest>-<32 hex>; the digest is still the one captured.
+    hist = "0002832_alice-%s-%s_segmented.rec" % (ident, "2a7b30c249153335bb43461ccaf42b94")
+    m_ = _s._LEAF_OK.match(hist)
+    check("history who accepted, digest kept", m_ and m_.group("digest"), ident)
+    for bad in ("0002832_alice-%s-%s_segmented.rec" % (ident, "2a7b30c2491533"),
+                "0002832_alice-%s-%s_pb.rec" % (ident, "G" * 32),
+                "0002832_alice-%s-%s-%s_pb.rec" % (ident, "a" * 32, "b" * 32)):
+        check("history who refused: %s" % bad[8:40], bool(_s._LEAF_OK.match(bad)), False)
+    check("a history leaf fits the rec field", len(hist) <= _s.REC_LEAF_MAX, True)
 
 
 # --------------------------------------------------------------------------
