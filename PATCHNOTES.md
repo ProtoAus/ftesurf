@@ -21,6 +21,9 @@
 
 ## next
 
+### P1579 Jargon walks into each stage after a teleport that stops you
+- After a stage teleport that stops you dead (surf_rookie's), Jargon now walks to the first ramp and jumps once, the way the guide run did, instead of bunny hopping, and it no longer replays the stage before over and over when the next ramp is hard.
+
 ### P1575 Less stutter the first time you see water
 - The water's reflection and refraction now get their memory while the map loads, instead of in the frame you first see the water: that frame is up to a third shorter.
 

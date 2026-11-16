@@ -22,6 +22,11 @@
   body on the ground at the search start on a conveyor map.
 - 264 pushes on 82 maps are named by another entity's output and are never followed (the search stops at them, as
   before); none on the 84 guided maps.
+- P1579's stage starts: a replay that ends in a state that cannot board stays stuck there (the replay is deterministic
+  and retries search from its end); a guide that bunny-hopped after a speed-zeroing teleport still plans hop
+  waypoints (kind 2) after the replayed stretch, searched with `hop`; the replay needs the body within 32 u of the
+  guide's row after the teleport, else the walk-only search, which never boarded surf_rookie's stage 2 (rig g3); a
+  takeover from a pause right after a stage teleport starts at stretch 0 and gets none of it.
 
 ## 0.1%-low round 4 (16 Nov, ftesurf-46; task root C:\FTESurf-worktrees\lows4-20261116-46)
 

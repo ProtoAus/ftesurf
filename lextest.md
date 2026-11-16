@@ -1,5 +1,8 @@
 # lextest.md — things waiting on a human
 
+## P1579 Jargon stage starts -- owner check PENDING (record: tools/p1579-delivery.md)
+- surf_rookie main course in your own game: after each stage teleport Jargon should walk a moment, jump once onto the first ramp, and carry on. It should not finish a stage again after it has gone through its teleport.
+
 ## P1584 crosshair kept between sessions -- INSTALLED both installs (default.cfg 705ad2cd); owner check PENDING
 - Type `hud_crosshair 3` in the console, quit, start again: crosshair 3 should still be there. Ask akatosh the
   same after the next release (players get default.cfg with a release, not with a lobby deploy).
