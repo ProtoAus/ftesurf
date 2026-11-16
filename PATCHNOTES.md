@@ -21,6 +21,18 @@
 
 ## next
 
+### P1584 Your crosshair is kept between sessions
+- A crosshair set in the console (hud_crosshair, its size and alpha) is now saved, and is still there the next time you start the game instead of going back to the default at every launch.
+
+### P1583 Bhop map list can also show ahop and kz/climb maps
+- Under Bhop, the Maps picker has two new buttons, + ahop and + kz/climb, that add those maps to the list. Both start off, and the game remembers what you pick.
+- Those maps play with the standard movement settings until their own modes arrive.
+- Maps whose zones come from the curated or downloaded zone sets now count as zoned in the picker.
+
+### P1582 Save loads are instant: the lead-in run-up is off
+- Loading a save now puts you at it at once. The lead-in run-up, which showed the path for a moment and then snapped you to the save as you let go of the key, is off by default and has been switched off once for everyone.
+- To bring the run-up back, set cl_sl_leadin 1.
+
 ### P1579 Jargon walks into each stage after a teleport that stops you
 - After a stage teleport that stops you dead (surf_rookie's), Jargon now walks to the first ramp and jumps once, the way the guide run did, instead of bunny hopping, and it no longer replays the stage before over and over when the next ramp is hard.
 
@@ -31,13 +43,16 @@
 - On a map you have not played before, the fogged versions of its shaders now compile while the map loads instead of the first time fog is drawn on them. Loading can take up to a quarter of a second longer the first time.
 
 ### P1572 Jargon goes through push triggers; Results and Tuning tabs
-- Jargon now understands push triggers and boosters: its predictions carry a line through them exactly as the game does, where every push used to stop it. Pushes that switch themselves off once you pass (surf_rookie's) count too; ones that other things switch on and off still stop it. In your own game now; the online servers get it with their next engine update.
+- Jargon now understands push triggers and boosters: its predictions carry a line through them exactly as the game does, where every push used to stop it.
+- Pushes that switch themselves off once you pass (surf_rookie's) count too; ones that other things switch on and off still stop it. In your own game now; the online servers get it with their next engine update.
 - New Results tab in the Jargon panel: each waypoint's tries, time, and why its lines failed (strayed off the path, walls, too slow, slid off, a trigger), with a hint for what to change.
-- New Tuning tab: the numbers behind the search (energy floor, time weight, wall and ground costs, look-ahead, search size, and search time a frame) with - and + buttons and a default for each. More search time a frame finds lines faster but makes the game stutter while Jargon thinks.
+- New Tuning tab: the numbers behind the search (energy floor, time weight, wall and ground costs, look-ahead, search size, and search time a frame) with - and + buttons and a default for each.
+- More search time a frame finds lines faster but makes the game stutter while Jargon thinks.
 
 ### P1576 Keys and clicks sent by other programs are blocked
 - Keys, clicks and wheel turns that did not come from your keyboard or mouse (macro tools, remappers, remote-play apps) are now ignored in game. The console says so the first time it happens.
-- If you rely on one of those, set in_keyguard 0 for keys: it works again, and your runs are then not ranked. If every key you press is being sent by another program (for example over remote play), the game notices after a few keys and stops blocking for that session.
+- If you rely on one of those, set in_keyguard 0 for keys: it works again, and your runs are then not ranked.
+- If every key you press is being sent by another program (for example over remote play), the game notices after a few keys and stops blocking for that session.
 - Click blocking and touchpad-off now stay as you set them: a map or server can no longer change them.
 
 ### P1577 Input recordings list outside add-ons
