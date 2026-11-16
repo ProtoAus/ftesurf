@@ -25,15 +25,16 @@
 
 ## 0.1%-low round 4 (16 Nov, ftesurf-46; task root C:\FTESurf-worktrees\lows4-20261116-46)
 
-- First sight of water after P1574: the frame still costs 29-53 ms on surf_chateau/boreas (77/48 before) -- the
-  reflection MSAA target (r_reflectmultisample, gl_backend.c be_reflmsaa) is allocated on the session's first capture
-  ("driver allocated multisample storage"); GLBE_DestroyFBOs frees it only at shutdown or a mode change, so this is
-  once a game session, at the first water seen. Allocating and clearing it at activation when the map has water would
-  move it behind the loading screen. Falsifier: artifacts/run_firstplay.py
-  on a diag build (engine branch diag-lows4: LATECOMPILE/meshvbo/gl_debugperf with buffer counts, window samples).
-- Fog variants of listed 4+-bit permutations still compile mid-run on a fogged map not played before (surf_null:
-  vmt/vertexlit 0x128/0x328 beside listed 0x108/0x308; vmt/refract 0x20 unlisted, 4 bits). A fog closure at
-  activation needs the map's fog known there (CSQC sets it with localcmd("fog ..."), ordering unverified).
+- First sight of water: P1575 (INSTALLED 16 Nov, exe e004597b) makes the capture targets at activation: chateau's
+  first-water frame 29.0 -> 19 ms, boreas 53.0 -> 45.6 ms, 0 rebuilds in play. What is left (16-45 ms on four maps)
+  is CPU in opaque draws in the first frame that renders the two water views, and boreas' first-uses 68 vertex
+  buffers: the driver's first draw of what the views show. Experiment queued (artifacts/run_firstplay.py FP_PRE: the
+  whole map drawn once at load by screenshot_cubemap with r_novis 1 and captures off, then the census replay): if
+  those frames go, an engine render-everything-once pass at activation is the fix (an internal flag, not r_novis,
+  which P1576 guards). Falsifier: the same census on the diag build (engine branch diag-lows4-p1578).
+- Fog variants: P1578 (INSTALLED 16 Nov) warms the other fog variant of each listed permutation on every Source map
+  (surf_null's late compiles 3 -> 0). Left: the Max Fog event's stuffcmd fog on a non-Source map, and wasted fog
+  compiles for $nofog materials (bounded by r_mapready_budget).
 - Spawn hitches (the first frames after the loading screen, not mid-run): CSQC shaders registered after activation
   (ftesurf_flame/flameu/dot on nova, tasviz, skyboxface, vmt/ccorrect on ceaseless) and the HUD's rounded-corner
   textures and HUD-cache targets made on first draw (sui_rndc*, sui_rrc*, hc_mat*, gfx/ui/roundmask.png): a
@@ -43,14 +44,19 @@
   rounded panels (_sui_round_draw, sui_round_fixed, sui_text) are 15-20%; the replay's path line (Line_*) and
   Watch_* are replay-only. Unprofiled (artifacts/abq2.py, r_budget, 3 alternating runs a side): the mouse pad costs
   0.06-0.08 ms a frame (nuclear CSQC 0.69 -> 0.63, null 0.67 -> 0.59; ~5% of a light map's frame), the replay path
-  line 0.09-0.10 ms. hud_fps caching only helps above its redraw rate, so for a slow PC at 60-144 fps a cheaper draw
-  (one polygon batch for the trail, not a Line_Seg2D call a segment) is the lever, not the cache. The glare's own comment names Source's way: GPU occlusion queries instead of traces
+  line 0.09-0.10 ms. MPad already draws each segment through the native lines_segment builtin (hud_lines_native 1),
+  so what is left is the trail loop itself: dropped (16 Nov). The glare's own comment names Source's way: GPU occlusion queries instead of traces
   (cl_sprites.qc ~2262; FTE has corona queries in gl_rlight.c ~623).
 - Trigger prediction: TG_ChainStart probes every IO-owned trigger with a zero-length tracebox each frame (23-393
   triggers a map); a box-overlap test first would skip the builtin call exactly. ~3-6% of profiled CSQC.
 - Measured, not leads: a multisampled window beside P1260's MSAA scene target costs nothing measurable on the PC
   (surf_bossfight 491/496 fps, surf_null 620/637, window samples 4 vs 0 proven per session); NVIDIA's deferred
-  first use of static buffers makes no 20 ms frame in play once its notices are not printed (2,516 on boreas).
+  first use of static buffers alone made no 20 ms frame in play once its notices were not printed (2,516 on boreas)
+  -- but boreas' remaining first-water frame first-uses 68 of them in one frame (see the first item).
+- Pre-existing, from P1575's reviews: GLBE_DestroyFBOs never deletes the capture textures' GL names (unload needs a
+  loaded texture), so each mode change leaks them; a level-0 portal (portalfbo, uncapped) and water share
+  tex_refraction[0], so at 4K with both in view it is re-specified every frame; the capture formats are desktop GL's
+  (GL_UNSIGNED_BYTE for RGBA16F/DEPTH24 is invalid on GLES3).
 
 ## Input from other programs on the ranked board -- what P1573/P1576 left (16 Nov, ftesurf-31)
 

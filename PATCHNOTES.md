@@ -21,6 +21,12 @@
 
 ## next
 
+### P1575 Less stutter the first time you see water
+- The water's reflection and refraction now get their memory while the map loads, instead of in the frame you first see the water: that frame is up to a third shorter.
+
+### P1578 No shader stutter on foggy maps you have not played
+- On a map you have not played before, the fogged versions of its shaders now compile while the map loads instead of the first time fog is drawn on them. Loading can take up to a quarter of a second longer the first time.
+
 ### P1572 Jargon goes through push triggers; Results and Tuning tabs
 - Jargon now understands push triggers and boosters: its predictions carry a line through them exactly as the game does, where every push used to stop it. Pushes that switch themselves off once you pass (surf_rookie's) count too; ones that other things switch on and off still stop it. In your own game now; the online servers get it with their next engine update.
 - New Results tab in the Jargon panel: each waypoint's tries, time, and why its lines failed (strayed off the path, walls, too slow, slid off, a trigger), with a hint for what to change.

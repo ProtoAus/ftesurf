@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1575/P1578 Water targets and fog shaders made at load -- INSTALLED 03:46Z (both installs exe e004597b, patch-1578); owner check PENDING
+- Play a water map you have not played since this update: the first look at the water should hitch less than before (some is left: the first draw of what the water shows).
+- Play surf_null (or any foggy map you have not played): no stutter the first time you look around; loading may take up to a quarter of a second longer the first time.
+- If something still hitches the first time it comes into view, say the map and what came into view.
+
 ## P1583 Maps: ahop and kz/climb under Bhop -- owner check PENDING (record: tools/p1583-mapfilter.md)
 - Maps, Bhop: two chips beside the switch, "+ ahop" and "+ kz/climb". Each adds those maps to the list and stays
   on after a restart; Surf does not show them. Is the wording right, and do you want ahop on by default?
