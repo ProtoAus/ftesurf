@@ -760,7 +760,7 @@ void(entity p, entity t, float z) SV_MomZoneTeleport =
 		return;                     // a save from before a zone update may name another kind
 	os = self;
 	self = p;
-	org = SV_ZoneDest(z, yaw, haveyaw);
+	org = SV_ZoneDest(z, yaw, haveyaw) - SV_FeetToOrigin(p);    // P1596: SV_MomTeleportTo lifts once
 	self = os;
 	SV_MomTeleportTo(p, t, org, [0, haveyaw ? yaw : p.angles_y, 0]);
 };
@@ -1483,7 +1483,7 @@ void() SV_ZoneDests =
 
 		// SV_ZoneDest turns an unresolvable name into ZTD_NONE as a side effect,
 		// so read the kind BEFORE calling it or every missing one reads "none".
-		dest = SV_ZoneDest(z, yaw, haveyaw);
+		dest = SV_ZoneDest(z, yaw, haveyaw) - SV_FeetToOrigin(self);   // P1596: the feet point, as audited
 		if (zone_td_kind[z] == ZTD_NONE && kind != "none")
 			kind = strcat(kind, " MISSING");
 

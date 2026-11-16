@@ -3146,7 +3146,8 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             teleport) resets as Momentum's block fix: 0.22 s after
                             the first touch, at once on the same door again within
                             ~1.1 s; recorded as a `bhop` warp.  Absent: such doors
-                            were solid floors, so it says which boards compare.
+                            were solid floors here, so it says which boards compare
+                            (a Momentum import carries none; Momentum had the fix).
     proprule <n>            which prop-geometry rule built this run's collision
                             world.  Absent or 0 = prop scale as the map wrote it;
                             1 = floored to the 1/16 the wire carries, so the

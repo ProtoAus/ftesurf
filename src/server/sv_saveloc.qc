@@ -544,9 +544,11 @@ float(entity e, float r) SL_RowGrounded =
 // Patch 865 (prototype in sv_entities.qc): a body the map must not move -- a spectate
 // hold, the replay pin, the save-lock park, a resume countdown.  The warp would land in
 // the frozen window (pm_verify HOLDs) and the release or the park's drift check undo it.
+float(entity p) SV_BodyHeld = { return (p.run_pmhold || p.rec_wt_hold || p.rec_sl_hold || p.run_ms_phase); };
+
 float(entity p) SV_MapMoveHeld =
 {
-	if (!(p.run_pmhold || p.rec_wt_hold || p.rec_sl_hold || p.run_ms_phase))
+	if (!SV_BodyHeld(p))
 		return FALSE;
 	if (SV_DevOn())
 		dprint(sprintf("map move: %s is held, skipped\n", p.netname));
@@ -6139,8 +6141,8 @@ void(entity e, string why) SV_SpecRelease =
 
 	if (e.vbsp_bhop_since)                          // the func_bhop dwell
 		e.vbsp_bhop_since = e.vbsp_bhop_since + (time - e.run_sp_t0);
-	if (e.vbsp_dbhop_punish && e.run_movetickrate <= 0)    // P1596: a server-time door clock only
-		e.vbsp_dbhop_punish = e.vbsp_dbhop_punish + (time - e.run_sp_t0);
+	if (e.vbsp_dbhop_t0 && e.run_movetickrate <= 0)        // P1596: a server-time door clock only
+		e.vbsp_dbhop_t0 = e.vbsp_dbhop_t0 + (time - e.run_sp_t0);
 	if (e.run_t_state == TS_RUNNING)                // `cmd timer`'s sampled side
 		e.run_t_startwall = e.run_t_startwall + (time - e.run_sp_t0);
 	e.run_t_ckwall = e.run_t_ckwall + (time - e.run_sp_t0);   // Patch 840, the same span

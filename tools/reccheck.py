@@ -310,6 +310,7 @@ HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule", "movebnd", "holdclock", "view
                      "endedge",     # Patch 1025, additive
                      "contexts",    # Patch 1036, additive
                      "filtermatch", # Patch 1367, additive
+                     "bhopdoors",   # P1596, additive
                      "startrule",   # Patch 1371, additive
                      "gamemode",   # Patch 1371, additive
                      "movementprofile"} # Optional unranked engine model identity

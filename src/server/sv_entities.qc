@@ -860,8 +860,9 @@ void(entity p) SV_TouchForget =
 .entity vbsp_bhop_on;
 .float  vbsp_bhop_since;
 .float  vbsp_bhop_sincemt;	// P1085: run_movetick at the landing
-.entity vbsp_dbhop_last;	// P1596: the bhop door last met, and its punish time (mom_blockfix.cpp)
-.float  vbsp_dbhop_punish;
+.entity vbsp_dbhop_last;	// P1596: the bhop door last met, and when its clock started (mom_blockfix.cpp)
+.float  vbsp_dbhop_mt0;		// ...in mover ticks
+.float  vbsp_dbhop_t0;		// ...in server time, when the body has no tick rate
 .float  run_movetick;		// the native mover counter, first declared here for the dwell
 // Ground state as it stood BEFORE this command's move, stamped by PlayerPreThink
 // and read by SV_TriggerIOTouch after it -- which is how OnJump can tell a jump
@@ -2435,6 +2436,7 @@ string(string s) SV_IOTrim =
 // point_teleport).  The caller writes the `tele` warp after any velocity change.
 // A held body is not moved by the map; defined in sv_saveloc.qc, after the hold fields.
 float(entity p) SV_MapMoveHeld;
+float(entity p) SV_BodyHeld;     // P1596: the same holds, without the print (sv_saveloc.qc)
 
 // P1596: Source teleports place the feet; a GoldSrc profile's origin is its hull centre (mins_z -36, ducked -18),
 // so a map's point lifts by -mins_z. 0 for the Source and HL2 hulls. cl_triggers.qc mirrors it.
@@ -14421,7 +14423,7 @@ void(entity d, entity t) SV_DoorBhopTry =
 	local entity was;
 	if (t.touch != trigger_teleport_touch && t.touch != trigger_teleport_relative_touch)
 		return;
-	if (t.touch == trigger_teleport_touch && (t.target == "" || !SV_FindByName(t.target, world)))
+	if (t.touch == trigger_teleport_touch && (t.target == "" || !find(world, targetname, t.target)))
 		return;                         // nowhere to go: Source would drop you through it (review)
 	if (t.absmin_x >= d.absmax_x || t.absmax_x <= d.absmin_x || t.absmin_y >= d.absmax_y || t.absmax_y <= d.absmin_y)
 		return;
@@ -14489,37 +14491,48 @@ entity(entity d) SV_DoorBhopReset =
 // command: a new block, or the same one met BLOCK_COOLDOWN (1 s) past its punish time, starts the clock
 // (punish = now + BLOCK_TELEPORT, 0.11 s); the same block past punish + 0.11 resets -- 0.22 s after the
 // first touch standing, and at once on landing on it again within ~1.1 s, where the CS:S door has sunk.
-// Bhop-mode maps only, as Momentum.  The clock is the mover's ticks, as func_bhop's (P1085).
+// Bhop-mode maps only, as Momentum.  The clock counts mover ticks, as func_bhop's (P1085).
 #define DBHOP_TELEPORT 0.11
 #define DBHOP_COOLDOWN 1.0
 float(entity pl, entity b) SV_DoorBhopFrame =
 {
 	local entity t, os, oo;
-	local float now, diff;
+	local float diff;
 	local vector o;
 	local string gm;
 
+	// A held body (save-lock park, replay pin, resume countdown) stands still on purpose (review C).
+	if (SV_BodyHeld(pl) || pl.movetype == MOVETYPE_NONE)
+	{
+		pl.vbsp_dbhop_last = world;
+		return FALSE;
+	}
 	t = world;
 	if (b != world && b.solid == SOLID_BSP && !b.vbsp_mv_locked)
 	{
 		gm = serverkey("gamemode");
-		if (gm == "bhop" || gm == "bhop-hl1")
+		if (gm == "bhop")              // Momentum: GAMEMODE_BHOP only
 			t = SV_DoorBhopReset(b);
 	}
 	// A Kill'd trigger keeps its fields until the slot is reused (pr_edict.c ED_Free): look again.
-	if (t != world && (wasfreed(t) || !t.touch))
+	if (t != world && (wasfreed(t) || (t.touch != trigger_teleport_touch && t.touch != trigger_teleport_relative_touch)))
 	{
 		b.vbsp_dbhop_q = FALSE;
 		t = SV_DoorBhopReset(b);
 	}
 	if (t == world)
 		return FALSE;
-	now = (pl.run_movetickrate > 0) ? pl.run_movetick * pl.run_movetickrate : time;
-	diff = now - pl.vbsp_dbhop_punish;
+	// Ticks since the clock started, as P1085's func_bhop dwell: an absolute tick times a float rate
+	// rounds differently along a run, so a replay from another start tick could diverge (review C).
+	if (pl.run_movetickrate > 0)
+		diff = (pl.run_movetick - pl.vbsp_dbhop_mt0) * pl.run_movetickrate + 0.0001 - DBHOP_TELEPORT;
+	else
+		diff = time - pl.vbsp_dbhop_t0 - DBHOP_TELEPORT;
 	if (pl.vbsp_dbhop_last != b || diff > DBHOP_COOLDOWN)
 	{
 		pl.vbsp_dbhop_last = b;
-		pl.vbsp_dbhop_punish = now + DBHOP_TELEPORT;
+		pl.vbsp_dbhop_mt0 = pl.run_movetick;
+		pl.vbsp_dbhop_t0 = time;
 		return FALSE;
 	}
 	if (diff <= DBHOP_TELEPORT)
