@@ -1,6 +1,6 @@
 # P1592 delivery -- "segmented" for shadow runs (Lex, 17 Nov 2026)
 
-## Part 1 -- what players read (LIVE 17 Nov 2026 ~17:04Z)
+## Part 1 -- what players read (LIVE 16 Nov 2026 ~17:04Z = 17 Nov 04:04 local)
 - Main dee2d7a3 (with P1590's centring follow-up 7d6cd080): HUD tag, load/finish chat lines, replay info row and
   `cmd timer` say segmented/resumed; `Scores_FinStyle` maps a TAS finish to "tas" and the follow opens TAS mode.
 - Lobbies: build.ps1 -Pi from the task worktree, 0 players, 12/12 restarted. Live cs 489fca3a, qw 3287648a
