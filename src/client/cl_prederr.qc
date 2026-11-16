@@ -194,7 +194,7 @@ string(string s) PE_Safe =
 };
 
 // Patch 1207: CSQC_PredictPlayerPreMove runs on every replayed command.  The engine skipped it while
-// this process hosts a server until P1588 (cl_predict_listenops, default 1).
+// this process hosts a server until P1588 (cl_predict_listen and cl_predict_listenops, both default 1).
 float() PE_Predicting =
 {
 	return WarpOp_HookAlive();      // P1238: the gate the ops use
