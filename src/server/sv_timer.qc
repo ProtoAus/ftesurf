@@ -3148,13 +3148,15 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             "not comparable" when the file predates the rule
                             rather than reporting it as a difference
     propmiss <n> [<model>...]
-                            Patch 1581, additive.  Prop models this lobby failed to
-                            load when it spawned the map (bounds came back empty, so a
-                            player walks through them): n distinct, the first 8
-                            listed (spaces as '_').  A replay with the models present
-                            then differs on `state`/`pe`; this says that is content
-                            skew, not tampering.  Static props (built into collision by
-                            the hl2 plugin) are not covered.  Absent: an older build.
+                            Patch 1581, additive.  Solid props whose model file this
+                            lobby did not have when it spawned the map (each collided
+                            as a 32-unit placeholder box): n distinct (a floor past
+                            ~3000 characters of names), the first 8 listed, spaces and
+                            control characters as '_'.  A replay with the files present
+                            may then differ on `state`/`pe`: a hint at content skew,
+                            never proof.  Static props (hl2 plugin collision) are not
+                            covered; a resumed run keeps its first session's line.
+                            Absent: an older build.
     owner <name>            may contain spaces; read to end of line
     runid <str>             unique-ish: local wall clock to the second + slot
     nonce <hex32>           Patch 416.  The 128 bits the server picked when this

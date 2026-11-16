@@ -1644,7 +1644,7 @@ def case_profile_verdict():
     # P1581: missing prop models are named, never faulted; a malformed line is a note.
     ok_clean(insert_before(build(), "begin", "propmiss 0"), "propmiss 0 passes clean")
     notes_with(insert_before(build(), "begin", "propmiss 2 models/a.mdl models/b.mdl"),
-               "content skew, not tampering", "missing prop models are named as content skew")
+               "may be content skew", "missing prop models are named as possible content skew")
     notes_with(insert_before(build(), "begin", "propmiss 12 m1 m2 m3 m4 m5 m6 m7 m8"), ", ...",
                "more missing than listed says so")
     notes_with(insert_before(build(), "begin", "propmiss 1 a b"), "malformed",

@@ -7375,26 +7375,24 @@ float vbsp_prop_bboxphy_n;
 // either that cvar_set stopped working or the model genuinely failed to load,
 // and both look identical on screen (a prop you walk through) without it.
 float vbsp_prop_nobox_n;
-// P1581: their model names (unique, spaces as '_', at most PROPMISS_MAX listed) for the `.rec`'s `propmiss`,
-// so a replay mismatch on a lobby that missed newly installed content names what was missing.
-string vbsp_prop_missing;
+// P1581: solid props whose model FILE is missing (a missing model loads as a 32-unit placeholder box, so
+// no bounds test sees it): distinct names, spaces/control characters as '_', the first PROPMISS_MAX listed,
+// for the `.rec`'s `propmiss`.
+string vbsp_prop_missing, vbsp_prop_missing_all;
 float vbsp_prop_missing_n;
 #define PROPMISS_MAX 8
 void(string m) SV_PropMissing =
 {
-	local string old;
-	if (m == "")
-		return;
-	m = strreplace(" ", "_", m);
-	if (strstrofs(strcat(" ", vbsp_prop_missing, " "), strcat(" ", m, " ")) >= 0)
+	local string k;
+	m = strreplace(" ", "_", strreplace("\t", "_", strreplace("\n", "_", strreplace("\r", "_", strreplace("\"", "_", m)))));
+	k = strcat(" ", m, " ");
+	if (strstrofs(vbsp_prop_missing_all, k) >= 0)
 		return;
 	vbsp_prop_missing_n = vbsp_prop_missing_n + 1;
-	if (vbsp_prop_missing_n > PROPMISS_MAX)
-		return;             // counted, not listed
-	old = vbsp_prop_missing;
-	vbsp_prop_missing = strzone(old == "" ? m : strcat(old, " ", m));
-	if (old != "")
-		strunzone(old);
+	if (strlen(vbsp_prop_missing_all) < 3000)        // past this a repeat may count again: a floor, not lost
+		vbsp_prop_missing_all = strzone(strcat(vbsp_prop_missing_all, m, " "));
+	if (vbsp_prop_missing_n <= PROPMISS_MAX)
+		vbsp_prop_missing = strzone(vbsp_prop_missing == "" ? m : strcat(vbsp_prop_missing, " ", m));
 };
 float vbsp_water_n, vbsp_reltele_n;
 float vbsp_need_report;
@@ -7426,9 +7424,8 @@ void() SV_EntityReset =
 	vbsp_prop_bbox_n = 0;
 	vbsp_prop_bboxphy_n = 0;
 	vbsp_prop_nobox_n = 0;
-	if (vbsp_prop_missing != "")
-		strunzone(vbsp_prop_missing);
-	vbsp_prop_missing = "";               // P1581
+	vbsp_prop_missing = vbsp_prop_missing_all = " ";     // P1581 (QCGC: no strunzone needed)
+	vbsp_prop_missing = "";
 	vbsp_prop_missing_n = 0;
 	vbsp_water_n = vbsp_reltele_n = 0;
 	vbsp_need_report = TRUE;
@@ -7583,6 +7580,8 @@ void() SV_EntityReport =
 	// non-zero here means props are ghosts -- see worldspawn's setmodelsize_qw.
 	if (vbsp_prop_nobox_n)
 		print(sprintf(", ^1%g with NO BOUNDS^7", vbsp_prop_nobox_n));
+	if (vbsp_prop_missing_n)        // P1581
+		print(sprintf(", ^1%g solid with a missing model file^7 (%s)", vbsp_prop_missing_n, vbsp_prop_missing));
 	// The population whose collision SIZE the client and the server disagreed about
 	// before SV_SpawnProp floored the scale.  Printed only when non-zero, and it is
 	// the falsifier for that floor: tools/census/propsolid.py asks the same question
@@ -8011,10 +8010,7 @@ void(float defsolid) SV_SpawnProp =
 	// reaches here with no size is one the player will walk straight through,
 	// and it is otherwise completely silent.
 	if (self.size == '0 0 0')
-	{
 		vbsp_prop_nobox_n = vbsp_prop_nobox_n + 1;
-		SV_PropMissing(self.model);         // P1581
-	}
 
 	self.movetype = MOVETYPE_NONE;
 
@@ -8050,6 +8046,17 @@ void(float defsolid) SV_SpawnProp =
 		self.solid = SOLID_PHYSICS_TRIMESH;
 	else
 		self.solid = SOLID_NOT;
+	// P1581: only a solid prop can change `state`/`pe`; its model file itself, as SV_PropHasPhy probes the .phy.
+	if (self.solid != SOLID_NOT)
+	if (substring(self.model, 0, 1) != "*")
+	{
+		local float pmh;
+		pmh = fopen(self.model, FILE_READ);
+		if (pmh < 0)
+			SV_PropMissing(self.model);
+		else
+			fclose(pmh);
+	}
 
 	/*
 	  A `solid 2` PROP'S BOX HAS TO SURVIVE THE WIRE, or the two sides collide

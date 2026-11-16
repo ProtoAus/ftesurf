@@ -1202,8 +1202,8 @@ def _check_rec(r, path, verbose=False, *, data=None):
         else:
             r.info["propmiss"] = n
             if n:
-                r.note("the lobby failed to load %d prop model(s) when it spawned this map (%s%s): a replay "
-                       "mismatch on this run is content skew, not tampering"
+                r.note("the lobby lacked %d solid prop model file(s) when it spawned this map (%s%s): a replay "
+                       "mismatch on this run may be content skew"
                        % (n, ", ".join(f[1:]), ", ..." if n > len(f) - 1 else ""))
 
     # ---- body --------------------------------------------------------------
