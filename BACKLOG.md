@@ -1,5 +1,28 @@
 # BACKLOG.md
 
+## Jargon -- what P1572 left (16 Nov, ftesurf-dc; root C:\FTESurf-worktrees\jargon4-20261116-dc)
+- Tape playback is one tick per client command: the bench's headless client played found lines at 9 ticks a second
+  (7x slower than real time, rigs d1/d2), and an unfocused game window would too. Jargon's own tapes admitting several
+  ticks a command would cut most of a stretch's time; it is a TAS-protocol change (recording, evidence) that needs its
+  own design. Falsifier: tape ticks a second on the bench and in a focused game.
+- Each search frame runs at least one batch generation (k == 0 always runs; ~200 ms on surf_tensor2 stage 2), so
+  tas_jargon_w_framems does not bound the frame: on a shared lobby a search stalls server frames ~200 ms. Falsifier:
+  server frame times while a search runs with another player connected.
+- The Pi's engine (p1383-arm) has no gettime(2): the frame budget there reads whole-ms gettime(1) as a float, which
+  steps 1 ms past ~2.3 h of uptime and 125 ms past ~12 days, so a call can overrun its budget by a step. Gone with the
+  next Pi engine (P1488 or later).
+- A self-toggle push's end edge from the sweep: a player's touch is held in run_tl1..8 and ends per command
+  (SV_TouchEndSlot); a 9th trigger at once falls to the server-time sweep (two windows, ~0.06 s), which during a tape
+  playing slower than real time can fire OnEndTouch Disable with the body still inside, where the rollout keeps it
+  pushing. Not seen: every landing bit-equal on surf_rookie (rigs e1, f1).
+- Tick 0's actor: SV_TASRollRun names the start volume on tick 0 in place of what that tick met, so a push refused on
+  the first tick reads as the start volume; whether QC then passes it depends on the start volume's class.
+- Conveyor world ground: SV_ConveyorArm re-traces a body whose engine ground is world (after a placement) and can arm
+  a conveyor's carrier, which the rollout neither reports nor cashes out; SV_TASOptPushes turns pushes off only for a
+  body on the ground at the search start on a conveyor map.
+- 264 pushes on 82 maps are named by another entity's output and are never followed (the search stops at them, as
+  before); none on the 84 guided maps.
+
 ## 0.1%-low round 4 (16 Nov, ftesurf-46; task root C:\FTESurf-worktrees\lows4-20261116-46)
 
 - First sight of water after P1574: the frame still costs 29-53 ms on surf_chateau/boreas (77/48 before) -- the

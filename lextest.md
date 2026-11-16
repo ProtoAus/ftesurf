@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1572 Jargon pushes, Results and Tuning -- owner check PENDING (record: tools/p1572-delivery.md)
+- surf_rookie in your own game: Jargon should go through the push at the end of stage 1 into the teleport instead of stopping in front of it. (The stage 2 start after it is P1579's.)
+- Open Results while it runs: does each waypoint's line (tries, time, "lines ended by") make sense, and is the hint under it useful?
+- Open Tuning: move "Wall touch cost" up and watch a ramp where it rubbed walls. Is anything cut off at the bottom of the panel?
+
 ## P1576/P1577 keys and clicks from other programs blocked; DLL note -- INSTALL PENDING (record: tools/p1576-delivery.md)
 - Play as normal for a few minutes: every key, mouse button and the wheel should work exactly as before. If ANY key does nothing, open the console (it says "dropped a key another program sent" if the block is the cause), and tell me which key and what keyboard or software you use.
 - If you use a macro tool, remapper or remote play on purpose: those keys are now ignored; `in_keyguard 0` brings them back and runs then do not rank.

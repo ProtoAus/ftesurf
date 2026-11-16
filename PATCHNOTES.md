@@ -21,6 +21,11 @@
 
 ## next
 
+### P1572 Jargon goes through push triggers; Results and Tuning tabs
+- Jargon now understands push triggers and boosters: its predictions carry a line through them exactly as the game does, where every push used to stop it. Pushes that switch themselves off once you pass (surf_rookie's) count too; ones that other things switch on and off still stop it. In your own game now; the online servers get it with their next engine update.
+- New Results tab in the Jargon panel: each waypoint's tries, time, and why its lines failed (strayed off the path, walls, too slow, slid off, a trigger), with a hint for what to change.
+- New Tuning tab: the numbers behind the search (energy floor, time weight, wall and ground costs, look-ahead, search size, and search time a frame) with - and + buttons and a default for each. More search time a frame finds lines faster but makes the game stutter while Jargon thinks.
+
 ### P1576 Keys and clicks sent by other programs are blocked
 - Keys, clicks and wheel turns that did not come from your keyboard or mouse (macro tools, remappers, remote-play apps) are now ignored in game. The console says so the first time it happens.
 - If you rely on one of those, set in_keyguard 0 for keys: it works again, and your runs are then not ranked. If every key you press is being sent by another program (for example over remote play), the game notices after a few keys and stops blocking for that session.
