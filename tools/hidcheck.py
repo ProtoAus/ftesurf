@@ -157,6 +157,13 @@ HOOK_KINDS = ("wndproc", "ptr", "dll", "iat", "eat", "code", "api", "draw", "nor
 HOOK_CLASSES = ("game", "windows", "program", "user", "other", "image", "unbacked", "bad", "int3", "-")
 HOOK_LINES = 16
 HEAD_P1586 = {"hookscan"}
+# Patch 1594: one untimestamped line beside module+, while the keyboard is observed (kbdobserve 1):
+#   keytimes <8 press buckets> <8 release buckets> <releases alone>
+# how long after (or before) a real keyboard's raw report of the same scancode each legacy press and release
+# arrived -- <0.5, <1, <2, <5, <10, <20, <50, <=100 ms -- and legacy releases no raw release met within 100 ms.
+# A note, never a fault: Windows' own synthesized keys (AltGr's Ctrl, Shift around keypad keys) and remappers
+# arrive alone too. Fields may be appended.
+KEYTIME_EDGES = ("0.5", "1", "2", "5", "10", "20", "50", "100")
 
 # Engine Patch 310 appended the render-integrity table:
 #   render <cvar> "<value>" "<default>"
@@ -560,6 +567,8 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
     hooks = []             # Patch 1586: (kind, site, class, owner, hops)
     hookskips = []         # ...(what, why)
     hooks_sum = None       # ...the `hooks` summary's ten numbers
+    keytimes = None        # Patch 1594: (press buckets, release buckets, releases alone)
+    bad_keytimes = False
     bad_hooks = False
     i = 1
     while i < len(lines):
@@ -916,6 +925,21 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
                 bad_modules = True
             else:
                 modules_late.append((tok[1], tok[2]))
+            continue
+
+        if kind == "keytimes":
+            # Patch 1594: untimestamped, beside module+, so taken before the dt parse.
+            if end_seen:
+                r.fault("line %d: 'keytimes' after 'end'" % (lineno + 1))
+                continue
+            try:
+                vals = [int(x) for x in tok[1:18]]
+            except ValueError:
+                vals = []
+            if len(vals) != 17 or min(vals) < 0 or keytimes is not None:
+                bad_keytimes = True
+            else:
+                keytimes = (vals[0:8], vals[8:16], vals[16])
             continue
 
         if kind in ("hook", "hookskip", "hooks"):
@@ -2083,6 +2107,23 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
     elif "hookscan" in head:
         r.note("the journal announced a hook scan but carries no summary (a journal near its size cap drops "
                "the block whole)")
+    # Patch 1594: key timing against the keyboard's own reports.
+    if keytimes is not None:
+        presses, releases, alone = keytimes
+
+        def spread(b):
+            return ", ".join("%d under %s ms" % (n, KEYTIME_EDGES[i]) for i, n in enumerate(b) if n)
+        r.info["keytimes"] = "presses matched %d (%s); releases matched %d (%s); releases alone %d" % (
+            sum(presses), spread(presses) or "none", sum(releases), spread(releases) or "none", alone)
+        late_p, late_r = sum(presses[3:]), sum(releases[3:])
+        if late_p or late_r:
+            r.note("%d key press(es) and %d release(s) arrived 2 ms or more apart from the keyboard's own report "
+                   "of the same key (recorded, not judged; real-keyboard gaps are being calibrated)" % (late_p, late_r))
+        if alone:
+            r.note("%d key release(s) arrived with no release reported by a keyboard (Windows' own synthesized "
+                   "keys, remappers and injected input do this)" % alone)
+    if bad_keytimes:
+        r.note("a malformed keytimes line was skipped")
     if bad_hooks:
         r.note("a malformed hook line was skipped")
 

@@ -3896,6 +3896,29 @@ def case_hooks_tripwire():
     check(r.ok and "hooks" not in r.info and not has_note(r, "hook"), "hooks: a pre-1586 journal says nothing about hooks")
 
 
+def case_keytimes():
+    """Patch 1594: key timing is listed and noted, never faulted."""
+    ok = "keytimes 40 2 0 0 0 0 0 0 38 3 1 0 0 0 0 0 0"
+    r = _hookrun([ok], header=("modules 0",))
+    check(r.ok and r.info.get("keytimes", "").startswith("presses matched 42 (40 under 0.5 ms, 2 under 1 ms)"),
+          "keytimes: the counts read back (%r)" % r.info.get("keytimes"))
+    check(not has_note(r, "apart from the keyboard") and not has_note(r, "unknown record kind"),
+          "keytimes: tight gaps and no lone release add no note; the kind is known")
+    r = _hookrun(["keytimes 10 0 0 4 0 0 0 0 9 0 0 0 0 2 1 0 3"], header=("modules 0",))
+    check(r.ok and has_note(r, "4 key press(es) and 3 release(s) arrived 2 ms or more apart")
+          and has_note(r, "3 key release(s) arrived with no release reported"),
+          "keytimes: late pairs and lone releases are notes, never faults (%s)" % (r.faults[:1] or "none"))
+    r = _hookrun(["keytimes 1 2 3", "keytimes 1 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 -1"], header=("modules 0",))
+    check(r.ok and has_note(r, "malformed keytimes") and "keytimes" not in r.info,
+          "keytimes: short or negative lines are skipped with a note")
+    r = _hookrun([ok + " later"], header=("modules 0",))
+    check(r.ok and not has_note(r, "malformed keytimes"), "keytimes: fields appended later are accepted")
+    r = _hookrun(header=("modules 0",), after_end=[ok])
+    check(has_fault(r, "'keytimes' after 'end'"), "keytimes: a keytimes line after the trailer is a fault")
+    r = _hookrun(header=("modules 0",))
+    check(r.ok and "keytimes" not in r.info, "keytimes: a pre-1594 journal says nothing about key timing")
+
+
 def main():
     print("test_hidcheck.py -- the Patch 293 yaw identity\n")
     for fn in (case_clean, case_mutated_delta, case_subtle_mutation,
@@ -3960,7 +3983,7 @@ def main():
                case_postcap_records, case_backend_count_availability,
                case_backend_trailer_isolation, case_review_rejected_observations,
                case_review_malformed_boundaries, case_review_boundary_prefix_timing,
-               case_keys_dropped_by_guard, case_modules_tripwire, case_hooks_tripwire):
+               case_keys_dropped_by_guard, case_modules_tripwire, case_hooks_tripwire, case_keytimes):
         print("%s:" % fn.__name__)
         fn()
         print("")
