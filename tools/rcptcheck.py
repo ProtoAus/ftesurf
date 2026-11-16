@@ -45,8 +45,10 @@ Usage:
 import glob
 import hashlib
 import io
+import ipaddress
 import math
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -434,6 +436,45 @@ def join_server(r, expect):
     else:
         r.fault("signed on %r, but this receipt was written by %r -- a signature "
                 "made on one server is not a receipt on another" % (got, expect))
+
+
+def server_host(text):
+    """A host as compared by join_server_allowed: an address object when it is
+    one (brackets off, v4-mapped v6 as v4), else the lowered text."""
+    text = text.strip().strip("[]")
+    try:
+        addr = ipaddress.ip_address(text)
+    except ValueError:
+        return text.lower()
+    return getattr(addr, "ipv4_mapped", None) or addr
+
+
+def join_server_allowed(r, hosts, ports=None):
+    """The signed address against every address this host's lobbies answer on.
+
+    join_server needs the one writer, which a receipt does not name in a signed
+    line; this asks "one of ours at all" (plan item 12, the relayed nonce).
+    `hosts`: literal hosts; `ports`: ints, or None for any port.  No hosts is
+    "not configured": a note, never a fault.
+    """
+    got = signed_get(r, "server")
+    if not hosts:
+        r.note("signed on %r -- no server allowlist configured, so nothing checked it" % got)
+        return
+    if got is None:
+        r.note("the receipt signs no server address")
+        return
+    host, sep, port = got.rpartition(":")
+    if not sep or not host or not re.fullmatch(r"[0-9]{1,5}", port):
+        r.fault("the signed server %r is not host:port" % got[:80])
+        return
+    if server_host(host) not in {server_host(h) for h in hosts}:
+        r.fault("signed on %r, which is none of this host's server addresses -- "
+                "a signature made on another server is not a receipt here" % got[:80])
+    elif ports and int(port) not in ports:
+        r.fault("signed on %r: port %s is none of this host's lobby ports" % (got[:80], port))
+    else:
+        r.note("signed on %r, an address of this host's lobbies" % got)
 
 
 def join_hid(r):

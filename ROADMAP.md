@@ -2041,6 +2041,11 @@ is not the migration of a board: it is thirteen rows.
   linked, so the first linked runs read `shared`, and a second PC's read
   `new` (`admin.py` `_KEY_*`, `sweep.bind_key`). Judge a key against the
   account's own (`keylinks`, `installs`) before the flag holds anything.
+  THE JUDGING IS BUILT, Patch 1580 (next surfd generation): a run credited to
+  an account whose receipt key is in none of its `keylinks`, `installs` or the
+  run's `runpins` is a receipt FAULT, admin-only; nothing is held. Still open:
+  the hold (sweep.py is store-only by rule), runs with no verified receipt,
+  and admin's `new`/`shared` flags, which still judge by the install's guid.
 - **(c) Bans: BUILT, Patch 633.** `/admin/accounts`: ban and unban by
   SteamID with a note (a ban needs one), also a SteamID that has not signed
   in yet. A banned account's rows and recordings are set aside on

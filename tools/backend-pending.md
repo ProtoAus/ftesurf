@@ -22,3 +22,32 @@ Windows and79 on NanoPi Linux; [verification and limits](p1469-sweep-unavailable
 Not live yet: accepted runtime source bindings and namespace/Root prerequisites
 must be qualified normally. Do not hot-patch an immutable serving generation,
 reset grants, restore old data or reopen it to ship this small reporting change.
+
+## Next qualified generation — P1580 receipt server address and account key
+
+`surfd/sweep.py` + `tools/rcptcheck.py` (deploy the new rcptcheck to `SURFD_TOOLS`
+too; an older one is skipped, not fatal). A first full receipt read now faults
+(admin-only: `receipts.verdict`/`reason`, `sig` untouched, no schema change) a
+signed server address that is not the Pi's, and a run credited to an account
+whose receipt key is in none of that account's keylinks/installs/runpins
+(ROADMAP 14.3 b). README "Receipt address and account-key checks".
+
+Set at activation, in `surfd.env`:
+
+    SURFD_RCPT_HOSTS=180.150.62.57,192.168.1.102
+    SURFD_RCPT_PORTS=27510,27520,27530,27540,27550,27560,27570,27580,27590,27600,27610,27620
+
+Unset, the address check notes "not configured" and faults nothing. The 16 Nov
+corpus (2,296 receipts) has 2,295 on the public address and 1 on the LAN one, so
+both values pass all of it. Owner's call: AGENT_NOTES ("a private address is
+nobody's") warns that 192.168.1.102 also names a server on every other LAN that
+numbers one so; leaving it out makes a LAN player's receipt an admin-only FAULT.
+If the public address changes, update the setting or every new receipt faults.
+Existing rows are judged only after `--reread-receipts` (200 a pass).
+
+Windows only, not run on the Pi: test_rcptcheck 813 checks/0 failed (was 800),
+test_sweep 416 ok/0 failed (was 388), test_receipt_{identity,initial_partial,
+late_hid,late_rec,late_view,metrics} 68/96/158/227/268/120 ok, 0 failed. 8 of 8
+mutants (each check or join removed, unset made to fault) fail a named arm.
+test_receipt_angle_reasons fails one check ("epoch: reader detail names the
+measurement/abstention") identically at f5d4450f without this patch.

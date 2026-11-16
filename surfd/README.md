@@ -714,6 +714,22 @@ Step APIs still borrow connections and never close them. Existing step commit/
 rollback decisions are unchanged; this adds no enclosing transaction and claims
 no measured cron-path leak.
 
+### Receipt address and account-key checks (Patch 1580)
+
+A first full read of a receipt also checks two things; either can set
+`receipts.verdict` FAULT with its `reason`, which only admin reads (`sig`
+stays 1, so nothing that credits a run moves):
+
+* **The signed server address** (plan item 12, a relayed nonce):
+  `SURFD_RCPT_HOSTS` (literal addresses, comma-separated) and optionally
+  `SURFD_RCPT_PORTS` (port numbers), read through the normal loader each pass.
+  Hosts unset or empty: not checked. An entry that does not parse turns the
+  check off and prints why to stderr.
+* **The key against the account** (ROADMAP 14.3 b): a run credited to an
+  account (`replays.player` in `accounts`) whose receipt key is in none of that
+  account's `keylinks`, `installs` or this run's `runpins`. A run no account is
+  credited with, missing tables or a read error is a note, never a fault.
+
 ### Similarity runtime support (store-only)
 
 The normal surfd stage has tools for tests; staging does **not** install them.

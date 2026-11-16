@@ -803,6 +803,52 @@ def test_clock_content_join():
               False)
 
 
+def test_server_allowlist():
+    """Plan item 12: the signed address against the Pi's own (16 Nov corpus:
+    2,295 public, 1 LAN, lobby ports 27510..27620 step 10)."""
+    surfd, _sweep, _runs = fx.fresh()
+    hosts = {"180.150.62.57", "192.168.1.102"}
+    ports = set(range(27510, 27621, 10))
+
+    def judged(server, h=hosts, p=ports):
+        rp, _pub = fx.make_receipt(surfd.EVIDENCE_DIR, "20261116-000301-0", server=server)
+        r = rcptcheck.read(rp)
+        rcptcheck.join_server_allowed(r, h, p)
+        return r
+
+    r = judged("180.150.62.57:27510")
+    check("server: CONTROL the receipt verifies", r.ok, True)
+    check("server: public host passes", r.faults, [])
+    check("server: LAN host passes", judged("192.168.1.102:27620").faults, [])
+    check("server: v4-mapped public host passes", judged("[::ffff:180.150.62.57]:27510").faults, [])
+    r = judged("203.0.113.9:27510")
+    check("server: a third host faults, naming it",
+          (len(r.faults), "203.0.113.9:27510" in r.faults[0] if r.faults else None), (1, True))
+    r = judged("180.150.62.57:27698")
+    check("server: a port none of the lobbies' faults",
+          (len(r.faults), "port 27698" in r.faults[0] if r.faults else None), (1, True))
+    check("server: CONTROL that port passes with no port set",
+          judged("180.150.62.57:27698", p=None).faults, [])
+    r = judged("203.0.113.9:27510", h=None)
+    check("server: unset hosts fault nothing",
+          (r.faults, any("no server allowlist configured" in m for m in r.notes)), ([], True))
+    check("server: an empty host set is unset", judged("203.0.113.9:27510", h=set()).faults, [])
+    r = judged("QLoopBack")
+    check("server: malformed (no port) faults",
+          [m for m in r.faults if "is not host:port" in m] != [], True)
+    check("server: a loopback name is not ours", len(judged("QLoopBack:0").faults), 1)
+    r = rcptcheck.Receipt("absent.rcpt")
+    rcptcheck.join_server_allowed(r, hosts, ports)
+    check("server: an absent field is a note",
+          (r.faults, r.notes), ([], ["the receipt signs no server address"]))
+    # The CLI's single --server join is unchanged.
+    rp, _pub = fx.make_receipt(surfd.EVIDENCE_DIR, "20261116-000302-0", server="203.0.113.9:27510")
+    with contextlib.redirect_stdout(io.StringIO()):
+        codes = (rcptcheck.main([rp]), rcptcheck.main(["--server", "203.0.113.9:27510", rp]),
+                 rcptcheck.main(["--server", "180.150.62.57:27510", rp]))
+    check("server: CLI without --server / matching / not matching", codes, (0, 0, 1))
+
+
 def main():
     tests = (lambda: test_swap("view"), lambda: test_swap("hid"),
              lambda: test_swap("hid", broken_first=True), test_rec_swap,
@@ -814,7 +860,7 @@ def main():
              test_unavailable_hid_capture_keeps_content_refusal,
              test_device_namespace_content_join, test_pointer_coordinate_content_join,
              test_observer_numeric_content_join, test_model_numeric_content_join,
-             test_clock_content_join)
+             test_clock_content_join, test_server_allowlist)
     for test in tests:
         try:
             test()

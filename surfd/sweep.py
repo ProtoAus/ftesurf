@@ -36,12 +36,14 @@ import copy
 import filecmp
 import glob
 import hashlib
+import ipaddress
 import json
 import logging
 import math
 import os
 import re
 import secrets
+import sqlite3
 import subprocess
 import sys
 import time
@@ -472,8 +474,80 @@ def receipt_identity(r):
     return "v1:" + hashlib.sha256(data.encode("ascii")).hexdigest()
 
 
+def server_allowlist():
+    """(hosts, ports, why) from SURFD_RCPT_HOSTS / SURFD_RCPT_PORTS: literal
+    addresses and port numbers, comma-separated, read each pass.  Hosts unset or
+    empty: not configured.  One entry that does not parse turns the check off
+    and says why, rather than faulting honest receipts on a typo.
+    """
+    hosts, ports = set(), set()
+    for part in (surfd.setting("SURFD_RCPT_HOSTS") or "").split(","):
+        part = part.strip()
+        if part:
+            try:
+                ipaddress.ip_address(part.strip("[]"))
+            except ValueError:
+                return None, None, "SURFD_RCPT_HOSTS entry %r is not an address" % part[:40]
+            hosts.add(part)
+    for part in (surfd.setting("SURFD_RCPT_PORTS") or "").split(","):
+        part = part.strip()
+        if part:
+            if not re.fullmatch(r"[0-9]{1,5}", part) or not 0 < int(part) < 65536:
+                return None, None, "SURFD_RCPT_PORTS entry %r is not a port" % part[:40]
+            ports.add(int(part))
+    if not hosts:
+        return None, None, ""
+    return frozenset(hosts), frozenset(ports) or None, ""
+
+
+def join_account_key(r, conn):
+    """ROADMAP 14.3 b: a run credited to an account and signed by a key that is
+    not one of that account's is a receipt fault (admin-only, as all are).
+
+    The account's keys: keylinks, plus installs and this run's runpins (keys
+    linked when an account run was posted; an unlink deletes only keylinks).
+    No account credited, no tables, a read error: a note, never a fault.
+    """
+    runid, pub = r.head.get("runid", ""), r.head.get("pub", "")
+    if r.ok is not True or not runid or not pub:
+        return                  # a key that did not sign names nobody
+    try:
+        have = {row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN"
+            " ('accounts', 'keylinks', 'installs', 'runpins', 'replays')")}
+        if not {"accounts", "keylinks", "replays"} <= have:
+            r.note("account key not checked: no account tables here")
+            return
+        credited = [row[0] for row in conn.execute(
+            "SELECT DISTINCT q.player FROM replays q JOIN accounts a ON a.steamid = q.player"
+            " WHERE q.runid = ? AND q.kind IN ('run', 'evidence')", (runid,))]
+        if not credited:
+            r.note("account key not checked: no account is credited with this run")
+            return
+        for sid in credited:
+            sql, args = ["SELECT 1 FROM keylinks WHERE steamid = ? AND pub = ?"], [sid, pub]
+            if "installs" in have:
+                sql.append("SELECT 1 FROM installs WHERE steamid = ? AND pub = ?")
+                args += [sid, pub]
+            if "runpins" in have:
+                sql.append("SELECT 1 FROM runpins WHERE runid = ? AND player = ?"
+                           " AND why = '' AND pub = ?")
+                args += [runid, sid, pub]
+            if conn.execute(" UNION ALL ".join(sql) + " LIMIT 1", args).fetchone():
+                continue
+            other = conn.execute("SELECT steamid FROM keylinks WHERE pub = ?", (pub,)).fetchone()
+            r.fault("the receipt's key %s... is not one of account %s's keys (%s)"
+                    % (pub[:16], sid, "linked to account %s" % other[0] if other
+                       else "linked to no account"))
+            return
+        r.note("the receipt's key is one of the credited account's")
+    except sqlite3.Error as exc:
+        r.note("account key not checked: %r" % exc)
+
+
 def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=None,
-                 view_only=False, defer_view=False, rec_only=False):
+                 view_only=False, defer_view=False, rec_only=False,
+                 server_allow=None, accounts=None):
     """One receipt, fully joined -- or, with journal_only, the signature,
     sibling digests and journal. Optional new-schema REC authority is observed
     separately: a pruned REC cannot move the historical receipt verdict.
@@ -483,6 +557,8 @@ def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=
     not a later stat. `sig` is 1 when the signature verified, which a FAULT for any other
     reason can still have; `owed` is 1 when the journal is ABSENT and the
     receipt signs a kept one's digest, i.e. it may still be uploading.
+    `server_allow` (server_allowlist()[:2]) and `accounts` (a connection) feed
+    the full read's address and account-key joins; partial rereads skip both.
 
     IMPORTED INSIDE THE FUNCTION so that a host without the tools deployed runs
     the verification it has always run.  This step is an addition to the sweep,
@@ -528,6 +604,13 @@ def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=
     if not journal_only:
         rcptcheck.join_rec(r)
         rcptcheck.join_ticks(r)
+        # getattr: game/tools can lag a surfd generation, and an AttributeError
+        # here would fail the whole receipt step every pass.
+        allowed = getattr(rcptcheck, "join_server_allowed", None)
+        if allowed is not None:
+            allowed(r, *(server_allow or (None, None)))
+        if accounts is not None:
+            join_account_key(r, accounts)
     rcptcheck.join_hid(r)
     observed = list(r.faults)
     # A separately scheduled missing view must not block a ready journal.
@@ -702,6 +785,9 @@ def receipt_step(conn, limit=200, now=None):
         # on its way.  Ten minutes is far past the 25 s a two-minute sidecar
         # takes at 30 ms RTT.
         cutoff = t0 - surfd.EVIDENCE_SETTLE
+        allow = server_allowlist()
+        if allow[2]:
+            print("sweep: receipt server check off: %s" % allow[2], file=sys.stderr)
         vkey = lambda f: "receipt_view_wait:" + os.path.relpath(f, surfd.EVIDENCE_DIR)
         view_wait = {r[0]: r[1] for r in conn.execute(
             "SELECT k, v FROM sweepmeta WHERE k GLOB 'receipt_view_wait:*'")}
@@ -864,7 +950,8 @@ def receipt_step(conn, limit=200, now=None):
                                    rec_only=rec_only,
                                    defer_view=vkey(path) in view_wait or rkey(path) in rec_wait,
                                    expected_identity=prior[2] if prior else None,
-                                   expected_pub=prior[3] if prior else None)
+                                   expected_pub=prior[3] if prior else None,
+                                   server_allow=allow[:2], accounts=conn)
             except ReceiptIdentityChanged as exc:
                 print("%s: %s" % (os.path.basename(path), exc), file=sys.stderr)
                 retry += 1

@@ -98,7 +98,8 @@ TOOLS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def make_receipt(evdir, runid, mapname="bhop_eazy", seed=b"\x01" * 32,
-                 view=b"FTESURF-VIEW 2\n", tamper=False, age=None, hid=None):
+                 view=b"FTESURF-VIEW 2\n", tamper=False, age=None, hid=None,
+                 server="127.0.0.1:27696"):
     """A GENUINELY SIGNED receipt, with the sidecar it commits to.
 
     Signed here rather than copied from data/, because a fixture copied off this
@@ -130,7 +131,7 @@ def make_receipt(evdir, runid, mapname="bhop_eazy", seed=b"\x01" * 32,
         hidline = "%s %d 1" % (hashlib.sha256(hid).hexdigest(), len(hid))
     else:
         hidline = "- 0 0"
-    signed = [("server", "127.0.0.1:27696"),
+    signed = [("server", server),
               ("nonce", "d6c6820bca16750c77166d96dcf02787"),
               ("ticks", "-1"),
               ("hid", hidline),
@@ -272,6 +273,159 @@ def case_receipt_unbound_is_not_a_fault():
     make_receipt(surfd.EVIDENCE_DIR, "20260921-000020-0", age=old)
     check("read", sweep.receipt_step(conn), (1, 0))
     check("nothing bound", conn.execute("SELECT COUNT(*) FROM pubkeys").fetchone()[0], 0)
+
+
+LOBBY_PORTS = ",".join(str(p) for p in range(27510, 27621, 10))   # the Pi's twelve
+
+
+@contextlib.contextmanager
+def rcpt_settings(**values):
+    """SURFD_RCPT_* in the environment for one arm, and gone after it."""
+    keys = ("SURFD_RCPT_HOSTS", "SURFD_RCPT_PORTS")
+    saved = {k: os.environ.pop(k, None) for k in keys}
+    os.environ.update(values)
+    try:
+        yield
+    finally:
+        for k in keys:
+            os.environ.pop(k, None)
+            if saved[k] is not None:
+                os.environ[k] = saved[k]
+
+
+def server_arm(servers, label, env_file="", **settings):
+    """One home, one receipt per signed address, one pass -> (n, bad, rows, stderr)."""
+    surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    old = int(time.time()) - 2 * surfd.EVIDENCE_SETTLE
+    if env_file:
+        with open(os.environ["SURFD_ENV"], "a") as fh:
+            fh.write(env_file)
+    for i, server in enumerate(servers):
+        make_receipt(surfd.EVIDENCE_DIR, "20261116-0001%02d-0" % i, server=server, age=old)
+    err = io.StringIO()
+    with rcpt_settings(**settings), contextlib.redirect_stderr(err):
+        n, bad = sweep.receipt_step(conn)
+    rows = {r[0]: tuple(r[1:]) for r in
+            conn.execute("SELECT runid, verdict, reason, sig FROM receipts")}
+    got = [rows.get("20261116-0001%02d-0" % i, (None, "", None)) for i in range(len(servers))]
+    check("%s: every receipt read" % label, n, len(servers))
+    return bad, got, err.getvalue()
+
+
+def case_receipt_server_allowlist():
+    """Plan item 12, the relayed nonce: the signed address must be one of the
+    Pi's own.  Admin-only: `sig` stays 1, which is what credits a run."""
+    servers = ("180.150.62.57:27510", "192.168.1.102:27620",
+               "203.0.113.9:27510", "180.150.62.57:27698")
+    bad, got, _err = server_arm(servers, "allowlist", SURFD_RCPT_HOSTS="180.150.62.57, 192.168.1.102",
+                                SURFD_RCPT_PORTS=LOBBY_PORTS)
+    check("allowlist: public host VALID", got[0][0], "VALID")
+    check("allowlist: LAN host VALID", got[1][0], "VALID")
+    check("allowlist: a third host FAULT, and says which address",
+          (got[2][0], "203.0.113.9:27510" in got[2][1]), ("FAULT", True))
+    check("allowlist: a port none of the lobbies' FAULT",
+          (got[3][0], "port 27698" in got[3][1]), ("FAULT", True))
+    check("allowlist: faults counted", bad, 2)
+    check("allowlist: a server FAULT keeps sig 1 (nothing demoted)", (got[2][2], got[3][2]), (1, 1))
+
+    bad, got, _err = server_arm(servers, "hosts only", SURFD_RCPT_HOSTS="180.150.62.57,192.168.1.102")
+    check("hosts only: CONTROL the wrong port passes with no port set, third host still FAULT",
+          [g[0] for g in got], ["VALID", "VALID", "FAULT", "VALID"])
+
+    bad, got, _err = server_arm(servers, "unset")
+    check("unset: not configured faults nothing", ([g[0] for g in got], bad), (["VALID"] * 4, 0))
+
+    bad, got, err = server_arm(servers, "typo", SURFD_RCPT_HOSTS="180.150.62.57,play.proto.bar")
+    check("typo: a bad entry turns the check off, not on everyone", bad, 0)
+    check("typo: and says so on stderr", "SURFD_RCPT_HOSTS entry 'play.proto.bar'" in err, True)
+
+    bad, got, _err = server_arm(servers, "surfd.env", env_file="SURFD_RCPT_HOSTS=180.150.62.57\n")
+    check("surfd.env: read from the env file like every SURFD_ setting",
+          [g[0] for g in got], ["VALID", "FAULT", "FAULT", "VALID"])
+
+
+def case_receipt_account_key():
+    """ROADMAP 14.3 b: a run credited to an account, signed by a key that is not
+    one of the account's.  A run no account is credited with is a note."""
+    surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    old = int(time.time()) - 2 * surfd.EVIDENCE_SETTLE
+    A, B = "76561198000000001", "76561198000000002"
+    for sid in (A, B):
+        conn.execute("INSERT INTO accounts (steamid, created_at) VALUES (?, 1)", (sid,))
+    # runid -> (seed byte, credited player or None for no board row)
+    arms = {"20261116-000201-0": (11, A),      # key linked to A
+            "20261116-000202-0": (12, A),      # key linked to B
+            "20261116-000203-0": (13, A),      # key linked to nobody
+            "20261116-000204-0": (14, A),      # unlinked since: in installs only
+            "20261116-000205-0": (15, A),      # in this run's runpins only
+            "20261116-000206-0": (13, "p"),    # guest (a guid), the unlinked key
+            "20261116-000207-0": (12, None)}   # no board row
+    pubs = {}
+    for i, (rid, (seed, player)) in enumerate(sorted(arms.items())):
+        _p, pubs[rid] = make_receipt(surfd.EVIDENCE_DIR, rid, seed=bytes([seed]) * 32, age=old)
+        if player is not None:
+            q = add_replay(conn, runs, "bhop_eazy", "%07d_p-2c8f36b6_run.rec" % (700 + i))
+            conn.execute("UPDATE replays SET runid = ?, player = ? WHERE id = ?", (rid, player, q))
+    key = lambda rid: pubs[rid]
+    conn.execute("INSERT INTO keylinks (pub, steamid, linked_at) VALUES (?, ?, 1)",
+                 (key("20261116-000201-0"), A))
+    conn.execute("INSERT INTO keylinks (pub, steamid, linked_at) VALUES (?, ?, 1)",
+                 (key("20261116-000202-0"), B))
+    conn.execute("INSERT INTO installs (steamid, install, pub, first_at, last_at)"
+                 " VALUES (?, 'g', ?, 1, 1)", (A, key("20261116-000204-0")))
+    conn.execute("INSERT INTO runpins (runid, map, track, install, player, why, at, pub)"
+                 " VALUES (?, 'bhop_eazy', 0, 'g', ?, '', 1, ?)",
+                 ("20261116-000205-0", A, key("20261116-000205-0")))
+    conn.commit()
+    n, bad = sweep.receipt_step(conn)
+    rows = {r[0]: tuple(r[1:]) for r in
+            conn.execute("SELECT runid, verdict, reason, sig FROM receipts")}
+    v = lambda rid: rows[rid][0]
+    check("account key: all read, two faults", (n, bad), (7, 2))
+    check("account key: linked to the account VALID", v("20261116-000201-0"), "VALID")
+    check("account key: linked to another account FAULT, which one said",
+          (v("20261116-000202-0"), "linked to account %s" % B in rows["20261116-000202-0"][1]),
+          ("FAULT", True))
+    check("account key: linked to nobody FAULT",
+          (v("20261116-000203-0"), "linked to no account" in rows["20261116-000203-0"][1]),
+          ("FAULT", True))
+    check("account key: an installs row (unlinked since) VALID", v("20261116-000204-0"), "VALID")
+    check("account key: this run's runpins key VALID", v("20261116-000205-0"), "VALID")
+    check("account key: CONTROL the same unlinked key on a guest run VALID",
+          v("20261116-000206-0"), "VALID")
+    check("account key: no board row VALID", v("20261116-000207-0"), "VALID")
+    check("account key: a key FAULT keeps sig 1 (nothing demoted)",
+          (rows["20261116-000202-0"][2], rows["20261116-000203-0"][2]), (1, 1))
+
+    # No link table: cannot measure, so nothing faults.
+    surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    conn.execute("INSERT INTO accounts (steamid, created_at) VALUES (?, 1)", (A,))
+    q = add_replay(conn, runs, "bhop_eazy", "0000801_p-2c8f36b6_run.rec")
+    conn.execute("UPDATE replays SET runid = '20261116-000208-0', player = ? WHERE id = ?", (A, q))
+    conn.execute("DROP TABLE keylinks")
+    conn.commit()
+    rp, _pub = make_receipt(surfd.EVIDENCE_DIR, "20261116-000208-0", seed=b"\x0d" * 32, age=old)
+    check("account key: no keylinks table reads, faults nothing", sweep.receipt_step(conn), (1, 0))
+
+    # A read error: a note, never a fault.
+    if TOOLS not in sys.path:
+        sys.path.insert(0, TOOLS)
+    import rcptcheck
+
+    class Locked(object):
+        def execute(self, *args):
+            raise sqlite3.OperationalError("database is locked")
+    r = rcptcheck.read(rp)
+    sweep.join_account_key(r, Locked())
+    check("account key: CONTROL the receipt verifies", r.ok, True)
+    check("account key: a DB error is a note, not a fault",
+          (r.faults, any("account key not checked" in m for m in r.notes)), ([], True))
 
 
 def case_receipt_reread():
@@ -1992,6 +2146,7 @@ def main():
                  case_main_evidence,
                  case_receipt_valid_and_once, case_receipt_fault, case_receipt_settle,
                  case_receipt_key_binding, case_receipt_unbound_is_not_a_fault,
+                 case_receipt_server_allowlist, case_receipt_account_key,
                  case_receipt_reread,
                  case_receipt_angles_reach_the_database,
                  case_receipt_journal_reaches_the_database,
