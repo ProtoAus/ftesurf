@@ -7375,21 +7375,21 @@ float vbsp_prop_bboxphy_n;
 // either that cvar_set stopped working or the model genuinely failed to load,
 // and both look identical on screen (a prop you walk through) without it.
 float vbsp_prop_nobox_n;
-// P1581: solid props whose model FILE is missing (a missing model loads as a 32-unit placeholder box, so
-// no bounds test sees it): distinct names, spaces/control characters as '_', the first PROPMISS_MAX listed,
-// for the `.rec`'s `propmiss`.
+// P1581: props the map asks to be solid whose model FILE is missing (a missing model loads as a 32-unit
+// placeholder box, so no bounds test sees it): distinct names, space/tab/CR/LF/quote as '_', 120 characters
+// each, the first PROPMISS_MAX listed, for the `.rec`'s `propmiss`.
 string vbsp_prop_missing, vbsp_prop_missing_all;
 float vbsp_prop_missing_n;
 #define PROPMISS_MAX 8
 void(string m) SV_PropMissing =
 {
 	local string k;
-	m = strreplace(" ", "_", strreplace("\t", "_", strreplace("\n", "_", strreplace("\r", "_", strreplace("\"", "_", m)))));
+	m = substring(strreplace(" ", "_", strreplace("\t", "_", strreplace("\n", "_", strreplace("\r", "_", strreplace("\"", "_", m))))), 0, 120);
 	k = strcat(" ", m, " ");
 	if (strstrofs(vbsp_prop_missing_all, k) >= 0)
 		return;
 	vbsp_prop_missing_n = vbsp_prop_missing_n + 1;
-	if (strlen(vbsp_prop_missing_all) < 3000)        // past this a repeat may count again: a floor, not lost
+	if (strlen(vbsp_prop_missing_all) < 3000)        // past this a repeat may count again (n an upper bound)
 		vbsp_prop_missing_all = strzone(strcat(vbsp_prop_missing_all, m, " "));
 	if (vbsp_prop_missing_n <= PROPMISS_MAX)
 		vbsp_prop_missing = strzone(vbsp_prop_missing == "" ? m : strcat(vbsp_prop_missing, " ", m));
@@ -7898,6 +7898,8 @@ void(float defsolid) SV_SpawnProp =
 	srcsolid = SV_Key2(self.solid, self.Solid);
 	if (srcsolid == SRCSOLID_NONE)
 		srcsolid = defsolid;
+	local float srcsolid_asked;
+	srcsolid_asked = srcsolid;      // P1581: before the .phy rule below makes a contentless prop non-solid
 
 	/*
 	  .PHY OR NOTHING, which is what Source does -- see SV_PropHasPhy.
@@ -8046,9 +8048,10 @@ void(float defsolid) SV_SpawnProp =
 		self.solid = SOLID_PHYSICS_TRIMESH;
 	else
 		self.solid = SOLID_NOT;
-	// P1581: only a solid prop can change `state`/`pe`; its model file itself, as SV_PropHasPhy probes the .phy.
-	if (self.solid != SOLID_NOT)
-	if (substring(self.model, 0, 1) != "*")
+	// P1581: a prop the MAP asks to be solid, whatever this lobby made of it (a lobby missing a content pack
+	// lacks the .phy too, so the rule above turned it non-solid where a complete lobby collides with it);
+	// its model file itself, as SV_PropHasPhy probes the .phy.
+	if (srcsolid_asked != SRCSOLID_NONE)
 	{
 		local float pmh;
 		pmh = fopen(self.model, FILE_READ);

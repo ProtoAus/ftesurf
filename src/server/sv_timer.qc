@@ -3148,11 +3148,11 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             "not comparable" when the file predates the rule
                             rather than reporting it as a difference
     propmiss <n> [<model>...]
-                            Patch 1581, additive.  Solid props whose model file this
-                            lobby did not have when it spawned the map (each collided
-                            as a 32-unit placeholder box): n distinct (a floor past
-                            ~3000 characters of names), the first 8 listed, spaces and
-                            control characters as '_'.  A replay with the files present
+                            Patch 1581, additive.  Props the map asks to be solid whose
+                            model file this lobby did not have when it spawned the map:
+                            n distinct (an upper bound past ~3000 characters of names),
+                            the first 8 listed, 120 characters each, space/tab/CR/LF/
+                            quote as '_'.  A replay with the files present
                             may then differ on `state`/`pe`: a hint at content skew,
                             never proof.  Static props (hl2 plugin collision) are not
                             covered; a resumed run keeps its first session's line.
