@@ -119,7 +119,7 @@ def grade(log, control):
     c2 = b.get("C2", "")
     show("C2 resumed line", field(c2, r"(save 2 -- run resumed at \S+),"), None)
     show("C2 timer state", field(c2, r"timer: (\w+) on"), "running")
-    show("C2 shadow", field(c2, r"shadow (\d+)"), "1")
+    show("C2 resumed", field(c2, r"(?:shadow|resumed) (\d+)"), "1")   # `shadow` before 17 Nov
     show("C2 recording", field(c2, r"recording (\d)"), "1")
     show("C2 buffer", field(c2, r"recorder: buffer (-?\d+)"), None)
     s = b.get("S", "")

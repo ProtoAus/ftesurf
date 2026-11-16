@@ -1085,29 +1085,20 @@ float(vector scr, float state, float ticks, float flags, float pb,
 	  thing three times and buries the specific answer in the middle.  The most
 	  specific one wins.
 
-	  THE ORDER IS FS_RunClass's, WITH SHADOW SPLICED IN, and the splice is the
-	  only thing here that is not simply the shared rule:
+	  THE ORDER IS FS_RunClass's:
 
 	    practice  noclip/settings reason -- amber, matching other practice
-	    shadow    strictly narrower than segmented: the CLOCK came out of the save
-	              too, so the number above you is not a time you ran from the
-	              start.  Drawn instead of `segmented` because it is the more
-	              specific claim about the same gesture, which is exactly the
-	              argument build 17 made for it against `practice`.
-	    segmented a save state was used and the clock is your own
+	    segmented a save state was used, including a run resumed from one with its
+	              clock (TF_SHADOW, which had its own cyan `shadow` word until 17 Nov)
 	    practice   the residual -- today that is a hopped start and nothing else
 
-	  Colours: amber for practice, cyan for shadow, which this file has
-	  used for it since build 17 and which `armed`, `held` and `ghost` share --
-	  cyan is a mode on this line, amber is a verdict.
+	  Amber is a verdict; cyan is a mode on this line (`armed`, `held`, `ghost`).
 	*/
 	if (flags & TF_TAS)
 		s = strcat(s, (s != "") ? "  " : "", FS_TAS_COLOUR, FS_TAS_LABEL, "^7");
 	else if (flags & (TF_CHEAT | TF_BANKTAINT))   // P1079: bank taint is practice
 		s = strcat(s, (s != "") ? "  " : "", "^3practice^7");
-	else if (flags & TF_SHADOW)
-		s = strcat(s, (s != "") ? "  " : "", "^5shadow^7");
-	else if (flags & TF_SEGMENT)
+	else if (flags & (TF_SHADOW | TF_SEGMENT))  // Lex, 17 Nov: a resumed run reads "segmented" too
 		s = strcat(s, (s != "") ? "  " : "", "^3segmented^7");
 	else if (flags & TF_PRACTICE)
 		s = strcat(s, (s != "") ? "  " : "", "^3practice^7");

@@ -427,6 +427,7 @@ void() Scores_ForgetFinish =
 
 string() Scores_FinStyle =
 {
+	if (rec_sb_finflags & TF_TAS) return "tas";     // surfd files TF_TAS under community/tas
 	return (FS_RunClass(rec_sb_finflags) == RC_SEGMENT) ? "segmented" : "clean";
 };
 
@@ -506,6 +507,8 @@ void() Scores_ApplyFollow =
 		Scores_ModeSet(FALSE, (c == RC_SEGMENT) ? FS_MODE_SEG : 0);   // on no online board this player can see
 		rec_sb_tabauto = i;
 	}
+	else if (rec_sb_finflags & TF_TAS)
+		Scores_ModeSet(TRUE, FS_MODE_TAS);
 	else if (c == RC_SEGMENT)
 		Scores_ModeSet(TRUE, FS_MODE_SEG);
 	else if (c == RC_CLEAN)

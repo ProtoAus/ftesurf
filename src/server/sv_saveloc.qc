@@ -5135,7 +5135,7 @@ void(entity e, float n) SV_SaveLocLoad =
 
 	if (e.run_t_state == TS_RUNNING)
 		sprint(e, PRINT_HIGH,
-		       sprintf("^5save %g^7 -- run resumed at ^5%s^7, %g checkpoint(s), shadow run\n",
+		       sprintf("^5save %g^7 -- run resumed at ^5%s^7, %g checkpoint(s), segmented run\n",
 		               n, SV_TimerString(e.run_t_ticks), rec_sl_cps[r]));
 	else
 		SV_SaveLocSay(e);

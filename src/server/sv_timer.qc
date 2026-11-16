@@ -13853,7 +13853,7 @@ void(entity e, float ticks) SV_TimerFinish =
 		// and is never written as a best.
 		sprint(e, PRINT_HIGH,
 		       strcat(what,
-		              sprintf("^5%s^7 (shadow run from save %g -- not saved as a time)\n",
+		              sprintf("^5%s^7 (segmented run from save %g -- not saved as a time)\n",
 		                      SV_TimerString(ticks), e.run_t_fromsave)));
 	}
 	else if (e.run_t_flags & TF_PRACTICE)
@@ -17232,10 +17232,10 @@ void(entity e) SV_TimerReport =
 	       e.run_sp_phase, num_for_edict(e.pb_watch), e.run_sp_open ? 1 : 0,
 	       (e.run_t_flags & TF_SPEC) ? 1 : 0));
 	// Build 17.  Printed even when clear, and printed HERE rather than folded
-	// into the practice column, because "is this a shadow run and which save is
+	// into the practice column, because "is this a resumed run and which save is
 	// it from" is a question with two halves and this is the diagnostic that is
 	// supposed to answer why the timer says what it says.
-	sprint(e, PRINT_HIGH, sprintf("        shadow %g  from save %g  rec lines %g (%g samples)\n",
+	sprint(e, PRINT_HIGH, sprintf("        resumed %g  from save %g  rec lines %g (%g samples)\n",
 	       (e.run_t_flags & TF_SHADOW) ? 1 : 0, e.run_t_fromsave,
 	       e.rec_rec_lines, e.rec_rec_n));
 	// BUILD 87: the row-bound counts SV_RecRecount restores after a rewind.

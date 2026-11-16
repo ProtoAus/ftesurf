@@ -5858,7 +5858,8 @@ void(vector scr) Watch_Info =
 		s = strcat(s, !strcmp(rec_wt_playmap, serverkey("map")) ? " (linked build)" : " (elsewhere)");
 	Watch_InfoRow([p_x, y], w, sz, cw, "map", s);                           y = y + lh;
 
-	Watch_InfoRow([p_x, y], w, sz, cw, "tag", FS_TagName(rec_wt_tag));       y = y + lh;
+	// _shadow.rec files are resumed segmented runs; the file word stays for every reader.
+	Watch_InfoRow([p_x, y], w, sz, cw, "tag", (rec_wt_tag == RT_SHADOW) ? "segmented" : FS_TagName(rec_wt_tag));       y = y + lh;
 
 	Watch_InfoRow([p_x, y], w, sz, cw, "recorded",
 	              rec_wt_foreign ? "unknown (import)" : Watch_RunDate(rec_wt_runid));                              y = y + lh;
