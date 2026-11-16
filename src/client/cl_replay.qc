@@ -2544,6 +2544,10 @@ void(string keep, string keep2) Rec_StagedMapClear =
 	if (!strlen(serverkey("*movementprofile"))) Rec_StagedClearProfile("", keep, keep2);
 	Rec_StagedClearProfile("ag-100-v1", keep, keep2);
 	Rec_StagedClearProfile("ag-250-v1", keep, keep2);
+	Rec_StagedClearProfile("ag-1000-v1", keep, keep2);
+	Rec_StagedClearProfile("cs16-v1", keep, keep2);
+	Rec_StagedClearProfile("hl2-pre-v1", keep, keep2);
+	Rec_StagedClearProfile("hl2-post-v1", keep, keep2);
 };
 
 void() Rec_ViewInit =

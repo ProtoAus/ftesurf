@@ -2784,7 +2784,14 @@ string(float ticks) FS_RunStamp =
 // Only server-published, closed versioned identities may form a path component.
 float(string profile) FS_MovementProfileKnown =
 {
-	return !strlen(profile) || !strcmp(profile, "ag-100-v1") || !strcmp(profile, "ag-250-v1");
+	return !strlen(profile) || !strcmp(profile, "ag-100-v1") || !strcmp(profile, "ag-250-v1") ||
+		!strcmp(profile, "ag-1000-v1") || !strcmp(profile, "cs16-v1") ||
+		!strcmp(profile, "hl2-pre-v1") || !strcmp(profile, "hl2-post-v1");
+};
+// P1589: GoldSrc-mover profiles (centred 72 hull, carried AG water jump); hl2-* run the Source mover.
+float(string profile) FS_MovementProfileGoldSrc =
+{
+	return !strcmp(substring(profile, 0, 3), "ag-") || !strcmp(substring(profile, 0, 5), "cs16-");
 };
 string(string profile, string path) FS_MovementProfilePath =
 {

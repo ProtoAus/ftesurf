@@ -1114,7 +1114,19 @@ def _check_rec(r, path, verbose=False, *, data=None):
 
     if head.get("movementprofile"):
         r.info["movementprofile"] = head["movementprofile"]
-        if not pmpin or pin_physics_mode(pmpin.split()) != 2:
+        mode = pin_physics_mode(pmpin.split()) if pmpin else None
+        if head["movementprofile"] in ("hl2-pre-v1", "hl2-post-v1") and mode == 1:
+            # P1589: the Source mover plus HL2's jump boost, which nothing here models.
+            r.note("UNSUPPORTED optional movementprofile %s (Source mover + HL2 jump boost): "
+                   "shape checks only; no physics verdict" % head["movementprofile"])
+            try:
+                hl2_flags = int(file_float(head.get("flags", "0")))
+            except ValueError:
+                pass  # The ordinary header-flags check reports malformed values.
+            else:
+                if not (hl2_flags & TF_NORULESET):
+                    r.fault("HL2-profile recording lacks the unranked/no-ruleset safety flag")
+        elif mode != 2:
             r.fault("optional movementprofile has no matching AG physics pin; no Source fallback")
             r.note("UNSUPPORTED optional movementprofile: no physics verdict")
 
