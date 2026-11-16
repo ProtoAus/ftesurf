@@ -243,6 +243,15 @@
 - Site: rendered window/glass material alpha under world fog; exact map/material/view not yet identified. Owner confirms P1003 authored no-fog works, but separately reports "the window alpha with fog is broken". This is not a no-fog-policy acceptance failure or a diagnosed shader root cause. No fix claimed; owner may assign another agent.
 - Falsifier: on the affected window, capture the same fixed view/material with fog on/off and the expected transparency; fog should affect colour without incorrectly changing the window's intended alpha/compositing. Identify the map/material and relevant renderer before patching. Do not disable authored fog or change global alpha/sorting as a workaround.
 
+## Bhop-family maps after P1583 (16 Nov)
+
+- Movement: only cfg/lobby/mode_bhop.cfg exists, so ahop_ (mode/category ahop) and kz_ maps (mode kz, category climb)
+  play the base surf settings (engine SV_LoadGamemodeRuleset: mode_<mode>.cfg, else mode_<category>.cfg). The HL2/AG
+  bhop modes Lex is adding decide what these play in; a picker chip only lists them.
+- Downloads offer surf/bhop only: tools/maproster.py PREFIX, tools/mapscan.py, src/menu/m_lobby.qc Mdl_Row's mode
+  check, surfd/mapmanifest.py. An ahop or kz map a player lacks cannot be fetched from the menu, so the chips show
+  only what is installed. Falsifier: an ahop_ row in data/mapdl.txt and a fresh install fetching it from Maps.
+
 ## Save-lock at ping -- leftovers of P1544 and P1547 (14 Nov)
 
 - P1582 (16 Nov): the players' "load stutter" was the lead-in (default now 0). Loads that still wait for the server:
