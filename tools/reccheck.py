@@ -302,6 +302,7 @@ HEAD_V8 = HEAD_V7
 # fields are unchanged; each `hold <mt> <frozen>` updates only the angle clock.
 HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule", "movebnd", "holdclock", "viewclock", "anglecause",
                      "inprof",      # Patch 840, additive
+                     "inguard",     # Patch 1576, additive
                      "momtrig",     # Patch 869, additive
                      "entfile",     # Patch 890, additive
                      "tickparts",   # Patch 893, additive
@@ -415,7 +416,8 @@ RUN_MOVE_STD = 450   # P1083: sh_defs.qc; a larger axis is unranked (TF_NOPROFIL
 PROF_WORDS = ("ok", "rawinput", "m_filter", "m_accel", "rawmice", "silent",
               "platform", "changed", "move",   # P1083: move above the standard 450
               "clicks", "touchpad",            # P1573: injected clicks allowed / touchpad on
-              "keys")                          # P1576: injected keys not dropped
+              "keys",                          # P1576: injected keys not dropped
+              "keyguard")                      # P1576: the key guard cannot run
 # Patch 840.  The game clock fell behind server time (slow motion).  The
 # finish's `clk` record states its own bound and the measure judged against it,
 # so the bit is judged from the file alone, outside CLK_EPS of the boundary (the
@@ -1167,6 +1169,23 @@ def _check_rec(r, path, verbose=False, *, data=None):
             inprof_word = a[0]
             if len(a) != 6:
                 r.note("header 'inprof' has %d fields after its verdict, not 5" % (len(a) - 1))
+
+    # Patch 1576: `inguard <said> <have> <nolegacy> <touchpad> <keys>`, the guard values the
+    # verdict was judged on. Reported; a malformed one is a note.
+    ig = head.get("inguard")
+    if ig is not None:
+        r.info["inguard"] = ig.strip()
+        try:
+            vals = [float(x) for x in ig.split()]
+            if len(vals) != 5:
+                raise ValueError
+        except ValueError:
+            r.note("header 'inguard' is not five numbers: %r" % ig.strip())
+        else:
+            if int(vals[1]) & 8:
+                r.info["inguard_keys"] = {1: "dropped", 0: "off", 2: "cannot run"}.get(int(vals[4]), "unknown")
+            else:
+                r.info["inguard_keys"] = "not measured (engine before 1576)" if vals[0] else "not reported"
 
     # ---- body --------------------------------------------------------------
     samples = []            # (t, cols)

@@ -380,7 +380,8 @@ def receipt_arm(a, rig, gd):
     si.wShowWindow = 7
     client = subprocess.Popen(
         [str(a.client), "-nobrowse", "-basedir", str(rig), "-manifest",
-         str(rig / "default.fmf"), "-window", "+exec", "cfg/test/p417sign.cfg"],
+         str(rig / "default.fmf"), "-window", "+set", "in_keyguard", "0",   # P1576: posted keys
+         "+exec", "cfg/test/p417sign.cfg"],
         cwd=a.content, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, startupinfo=si)
     try:
         client.wait(timeout=a.timeout)

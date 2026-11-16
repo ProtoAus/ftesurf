@@ -2254,6 +2254,7 @@ float(float ver) FS_ProfileFields =
 #define PW_CLICKS    9   // P1573: in_rawinput_nolegacy is not 1, so injected clicks reach the game
 #define PW_TOUCHPAD  10  // P1573: in_rawinput_touchpad is not 0, so a touchpad can turn the view
 #define PW_KEYS      11  // P1576: the engine is not dropping injected keys (in_keyguard)
+#define PW_KEYGUARD  12  // P1576: the key guard cannot run (engine too old, no API, remote play)
 // P1083 (owner, 28 Oct): ranked runs use the standard move size, 450 per axis
 // (cl_forwardspeed/backspeed/sidespeed/upspeed, cl_movespeedkey 1). CSQC caps there.
 #define RUN_MOVE_STD 450
@@ -2291,8 +2292,8 @@ float(float have, float raw, float filt, float acc, float grant) FS_ProfileBroke
 #define IPG_NOLEGACY 1
 #define IPG_TOUCHPAD 2
 // P1576: the engine's read-only in_guard_live exists, so all three values are what it applies and
-// `keys` was measured. Without it (engines before 1576) the key block is unknown: the server ranks
-// that unless sv_rank_keyguard is 1 (SV_ProfileWhy).
+// `keys` was measured: 1 dropped, 0 switched off, 2 cannot run here. Without it (engines before
+// 1576) the key block is unknown: the server ranks that unless sv_rank_keyguard is 1 (SV_ProfileWhy).
 #define IPG_LIVE     8
 
 float(float have, float noleg, float touch, float keys) FS_GuardWhy =
@@ -2302,8 +2303,12 @@ float(float have, float noleg, float touch, float keys) FS_GuardWhy =
 	if (!(have & IPG_TOUCHPAD) || touch != 0)
 		return PW_TOUCHPAD;
 	if (have & IPG_LIVE)
-	if (keys != 1)
-		return PW_KEYS;
+	{
+		if (keys == 2)
+			return PW_KEYGUARD;
+		if (keys != 1)
+			return PW_KEYS;
+	}
 	return PW_OK;
 };
 
@@ -2322,6 +2327,7 @@ string(float why) FS_ProfileWord =
 	if (why == PW_CLICKS)   return "clicks";
 	if (why == PW_TOUCHPAD) return "touchpad";
 	if (why == PW_KEYS)     return "keys";
+	if (why == PW_KEYGUARD) return "keyguard";
 	return "unknown";
 };
 
@@ -2338,7 +2344,8 @@ string(float why) FS_ProfileText =
 	if (why == PW_MOVE)     return "a move input went above the standard 450";
 	if (why == PW_CLICKS)   return "injected clicks must be blocked (set in_rawinput_nolegacy 1)";
 	if (why == PW_TOUCHPAD) return "touchpads do not rank (set in_rawinput_touchpad 0)";
-	if (why == PW_KEYS)     return "keys sent by other programs must be blocked (set in_keyguard 1, or update the game)";
+	if (why == PW_KEYS)     return "keys sent by other programs must be blocked (set in_keyguard 1)";
+	if (why == PW_KEYGUARD) return "keys sent by other programs cannot be blocked here (update the game; it needs Windows 8 or newer)";
 	return "";
 };
 

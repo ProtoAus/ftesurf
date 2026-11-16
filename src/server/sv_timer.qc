@@ -3266,11 +3266,16 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             Patch 840, additive (v9+).  The input profile the START
                             was judged on: SV_ProfileWhy's word (FS_ProfileWord: ok
                             rawinput m_filter m_accel rawmice silent platform
-                            changed move clicks touchpad keys), then CSQC's `inprof`
+                            changed move clicks touchpad keys keyguard), then CSQC's `inprof`
                             report as the server held it (all 0 when it never spoke;
                             `silent` with non-zero numbers is P1573's `inguard` never
-                            arriving). The guard values are not in the file; the
-                            word is the only record of them.
+                            arriving). The guard values follow on `inguard`.
+    inguard <said> <have> <nolegacy> <touchpad> <keys>
+                            Patch 1576, additive.  CSQC's `inguard` report the verdict
+                            was judged on: said 0 = never reported (all 0); have is the
+                            IPG_* mask, 8 = the engine's in_guard_live (engine 1576+),
+                            without which keys is unmeasured; keys 1 dropped, 0 off,
+                            2 the key guard cannot run.
                             Not ok means TF_NOPROFILE was set in the same packet.
     begin                   header ends here; everything after is a record
 
@@ -6135,6 +6140,9 @@ void(entity e) SV_RecOpen =
 	SV_RecPut(e, sprintf("inprof %s %g %g %g %g %g", FS_ProfileWord(SV_ProfileWhy(e)),
 	                     e.run_t_pevhave, e.run_t_pevraw, e.run_t_pevfilt,
 	                     e.run_t_pevacc, e.run_t_pevgrant));
+	// P1576: the guard values the verdict above was judged on.
+	SV_RecPut(e, sprintf("inguard %g %g %g %g %g", e.run_t_gev, e.run_t_ghave,
+	                     e.run_t_gnoleg, e.run_t_gtouch, e.run_t_gkeys));
 
 	SV_RecPut(e, "begin");
 
@@ -11833,7 +11841,7 @@ float(entity e) SV_ProfileWhy =
 	// P1576: an engine before 1576 cannot drop injected keys; 1 once a release with it is out.
 	if (!(e.run_t_ghave & IPG_LIVE))
 	if (cvar("sv_rank_keyguard"))
-		return PW_KEYS;
+		return PW_KEYGUARD;
 	// P1083: the attempt's largest move axis, read by SV_MoveBoundFrame from the
 	// usercmds themselves -- nothing the client reports. 0 until the run starts.
 	if (e.run_t_movebig > RUN_MOVE_STD)

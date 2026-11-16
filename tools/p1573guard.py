@@ -22,8 +22,8 @@ from p808rewind import INSTALL, prepare, timer, unjunction  # noqa: E402
 MAP = "surf_dune"
 
 
-def section(text, name):
-    m = re.search(r"==== P1573 " + re.escape(name) + r" ====([\s\S]*?)(?===== P1573 |\Z)", text)
+def section(text, name, tag="P1573"):
+    m = re.search(r"==== " + tag + " " + re.escape(name) + r" ====([\s\S]*?)(?===== " + tag + r" |\Z)", text)
     return m.group(1) if m else ""
 
 
@@ -32,7 +32,7 @@ def last(pattern, text):
     return found[-1] if found else None
 
 
-def grade(cl, control):
+def grade(cl, control, rankkeys=False):
     log = (cl / "logs/p1573guard.log").read_text(errors="replace")
     faults = 0
 
@@ -42,7 +42,14 @@ def grade(cl, control):
         print(("PASS" if ok else "FAIL"), name, "--", detail, flush=True)
 
     prof = r"would (\d)  why (\w+)"
-    guard = r"inguard: said (\S+)  have (\S+)  nolegacy (\S+)  touchpad (\S+)(?:  keys (\S+))?"
+    # Four groups: P1576's progs add `keys`, which an engine before 1576 always reports as 0.
+    guard = r"inguard: said (\S+)  have (\S+)  nolegacy (\S+)  touchpad (\S+)(?:  keys \S+)?"
+    if rankkeys:
+        o = section(log, "OK")
+        check("rankkeys (sv_rank_keyguard 1, engine before 1576)", last(guard, o) == ("1", "3", "1", "0")
+              and last(prof, o) == ("1", "keyguard"), f"guard {last(guard, o)} would/why {last(prof, o)}")
+        print(f"{faults} failed")
+        return faults
     m = section(log, "MIGRATED")
     noleg = last(r'"in_rawinput_nolegacy" is "([^"]*)"', m)
     touch = last(r'"in_rawinput_touchpad" is "([^"]*)"', m)
@@ -77,6 +84,46 @@ def grade(cl, control):
     check("midrun", tm and tm["state"] == "running" and tm["class"] == "clean" and badat is not None
           and int(badat) >= 0 and last(prof, md) == ("1", "changed"),
           f"{tm} badat {badat} would/why after a toggle mid-run {last(prof, md)}")
+    print(f"{faults} failed")
+    return faults
+
+
+def grade_live(cl):
+    """--live without --latch: engine 1576+, cfg p1576live. All three values come from in_guard_live."""
+    log = (cl / "logs/p1576live.log").read_text(errors="replace")
+    faults = 0
+    prof = r"would (\d)  why (\w+)"
+    guard = r"inguard: said (\S+)  have (\S+)  nolegacy (\S+)  touchpad (\S+)  keys (\S+)"
+
+    def check(name, ok, detail):
+        nonlocal faults
+        faults += not ok
+        print(("PASS" if ok else "FAIL"), name, "--", detail, flush=True)
+
+    def cv(name, sec):
+        return last(r'"%s" is "([^"]*)"' % name, sec)
+
+    d = section(log, "DEFAULT", "P1576")
+    vals = tuple(cv(n, d) for n in ("in_keyguard", "in_rawinput_nolegacy", "in_rawinput_touchpad", "in_guard_live"))
+    check("defaults", vals == ("1", "1", "0", "7"), f"keyguard/nolegacy/touchpad/live {vals}")
+    check("default-ranks", last(guard, d) == ("1", "11", "1", "0", "1") and last(prof, d) == ("0", "ok"),
+          f"guard {last(guard, d)} would/why {last(prof, d)}")
+    for name, want_g, want_p in (("KEYS", ("1", "11", "1", "0", "0"), "keys"),
+                                 ("CLICKS", ("1", "11", "0", "0", "1"), "clicks"),
+                                 ("TOUCHPAD", ("1", "11", "1", "1", "1"), "touchpad")):
+        x = section(log, name, "P1576")
+        check(name.lower(), last(guard, x) == want_g and last(prof, x) == ("1", want_p),
+              f"guard {last(guard, x)} would/why {last(prof, x)}")
+    o = section(log, "OK", "P1576")
+    check("read-only", cv("in_guard_live", o) == "7", f"in_guard_live after `set in_guard_live 0`: {cv('in_guard_live', o)}")
+    check("ok", last(guard, o) == ("1", "11", "1", "0", "1") and last(prof, o) in (("0", "ok"), ("1", "changed")),
+          f"guard {last(guard, o)} would/why {last(prof, o)}")
+    md = section(log, "MIDRUN", "P1576")
+    tm = timer(md)
+    badat = last(r"badat (-?\d+)", md)
+    check("midrun", tm and tm["state"] == "running" and tm["class"] == "clean" and badat is not None
+          and int(badat) >= 0 and last(prof, md) == ("1", "changed"),
+          f"{tm} badat {badat} would/why after an in_keyguard toggle mid-run {last(prof, md)}")
     print(f"{faults} failed")
     return faults
 
@@ -119,7 +166,8 @@ def run(args, root, clroot=None):
         probe.bind(("127.0.0.1", args.port))
     server = subprocess.Popen([args.server, *common, "+sv_public", "0", "-port", str(args.port),
                                "+set", "log_enable", "1", "+set", "log_dir", "logs", "+set", "log_name", "p1573server",
-                               "+set", "fs_cache", "0", "+map", MAP],
+                               "+set", "fs_cache", "0", "+set", "sv_rank_keyguard", "1" if args.rankkeys else "0",
+                               "+map", MAP],
                               cwd=INSTALL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         time.sleep(4)
@@ -148,10 +196,11 @@ def main():
     ap.add_argument("--server", default="C:/FTEQuake/fteqwsv64.exe")
     ap.add_argument("--port", type=int, default=27561)
     ap.add_argument("--control", action="store_true")
-    ap.add_argument("--live", action="store_true", help="--latch on an engine 1576+ build: the lock is refused")
+    ap.add_argument("--live", action="store_true", help="engine 1576+ build: cfg p1576live, or with --latch the lock is refused")
+    ap.add_argument("--rankkeys", action="store_true", help="server sets sv_rank_keyguard 1; an engine before 1576 reads keys")
     ap.add_argument("--latch", type=pathlib.Path, help="the private tree's P1573 fixture pk3; runs cfg p1573latch")
     args = ap.parse_args()
-    args.cfg = "p1573latch" if args.latch else "p1573guard"
+    args.cfg = "p1573latch" if args.latch else "p1576live" if args.live else "p1573guard"
     args.out.mkdir(parents=True, exist_ok=True)
     rig = args.out / time.strftime("rig-%Y%m%dT%H%M%S")
     made = []
@@ -173,7 +222,9 @@ def main():
     if not (gd / f"logs/{args.cfg}.log").exists():
         print("FAIL no client log")
         return 1
-    return grade_latch(gd, args.control, args.live) if args.latch else grade(gd, args.control)
+    if args.latch:
+        return grade_latch(gd, args.control, args.live)
+    return grade_live(gd) if args.live else grade(gd, args.control, args.rankkeys)
 
 
 if __name__ == "__main__":

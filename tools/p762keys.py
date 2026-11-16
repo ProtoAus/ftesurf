@@ -68,7 +68,7 @@ class Client:
             [str(exe), '-plugin', '-nohome', '-noreset', '-nobrowse',
              '-basedir', str(base), '-manifest', str(base / 'default.fmf'),
              '-window', '-width', '1280', '-height', '720', '-nosound',
-             '+set', 'cfg_save_auto', '0', '+exec', cfg],
+             '+set', 'cfg_save_auto', '0', '+set', 'in_keyguard', '0', '+exec', cfg],   # P1576: posted keys
             cwd='C:/FTESurf', stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL, startupinfo=si)
         (base / 'owned-pid.txt').write_text(str(self.proc.pid) + '\n')

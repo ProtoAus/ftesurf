@@ -652,10 +652,12 @@ void() Rec_ProfileReport =
 	    (CVAR_TYPEFLAG_ENGINE | CVAR_TYPEFLAG_READONLY))
 	{
 		live  = cvar("in_guard_live");
+		if (strcmp(cvar_string("in_guard_live"), ftos(live)))
+			live = 0;            // only the engine's own digits count
 		ghave = ghave | IPG_LIVE;
 		noleg = (live & 1) ? 1 : 0;
 		touch = (live & 2) ? 0 : 1;
-		keys  = (live & 4) ? 1 : 0;
+		keys  = (live & 4) ? 1 : (live & 8) ? 2 : 0;
 	}
 	// Steps `bad` only where both exist: on Linux/SDL (no guard cvars) it would be bad from the first
 	// frame and stop the counter for the other settings. The server faults a missing one by itself.

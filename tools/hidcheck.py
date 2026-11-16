@@ -328,6 +328,10 @@ KINDS = {
     # Patch 1424: keyboard observation started (1) or stopped (0) -- written on
     # every transition, so an off-and-on again still leaves a record.
     "o": 1,     # kbdobserve
+    # Patch 1576: key presses in_keyguard DROPPED since the last such record (dt 0).
+    # They are also among the 'y' presses (the observer counts first) but, unlike
+    # those, they did NOT reach the game and have no '+' record.
+    "kd": 1,    # dropped
     # Patch 468: handle-less reports ACCEPTED as precision-touchpad input since
     # the last such record, the digitizer reports that armed the window, and
     # the releases admitted outside it (at most the accepted count on the
@@ -713,6 +717,7 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
     legacybtn = 0       # Patch 307: summed from the 'b' records
     saw_b = False
     legacykeys = 0      # Patch 1424: summed from the 'y' records
+    keydropped = 0      # Patch 1576: summed from the 'kd' records
     kbdnohandle = 0
     saw_y = False
     obs_changes = []    # Patch 1424: every 'o' (observation started/stopped), in order
@@ -1082,6 +1087,20 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
             else:
                 legacybtn += delta
                 saw_b = True
+        elif kind == "kd":
+            # Patch 1576. Not an event; written with dt 0 like 'y'.
+            if tok[1] != "0":
+                bad_key_observer = True
+                r.fault("line %d: 'kd' carries dt %s; the engine writes it with dt 0"
+                        % (lineno + 1, tok[1]))
+            try:
+                n = int(tok[2])
+                if n < 0:
+                    raise ValueError
+                keydropped += n
+            except ValueError:
+                bad_key_observer = True
+                r.fault("line %d: 'kd' count is not a non-negative number" % (lineno + 1))
         elif kind in ("y", "o"):
             # Patch 1424. NOT events, like 'b'. The engine writes both with dt 0
             # (an older hidcheck faults any other dt), so a nonzero one is not
@@ -1588,7 +1607,13 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
             r.note("kbdobserve %d -- legacy keys were not checked against raw "
                    "input, so an injected keystroke cannot be seen in this file"
                    % kbdobserve)
-        if legacykeys and not bad_key_observer:
+        if keydropped and not bad_key_observer:
+            r.info["keys_dropped"] = keydropped
+            r.note("%d key press(es) other programs sent were dropped by in_keyguard and "
+                   "never reached the game (Patch 1576); they are counted below too."
+                   % keydropped)
+        if legacykeys > keydropped and not bad_key_observer:
+            legacykeys -= keydropped
             if kbdnohandle:
                 shape = ("%d handle-less keyboard report(s) arrived beside them, "
                          "which is what SendInput leaves" % kbdnohandle)
@@ -1802,6 +1827,10 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
             len(inputcvars), len(nondefault))
         for n, v, d in nondefault:
             r.info["input[%s]" % n] = "%s (default %s)" % (v, d)
+            if n == "in_keyguard":
+                r.note("in_keyguard is %s, not its default %s -- keys other programs "
+                       "sent were not dropped. Recorded, not judged." % (v, d))
+                continue
             r.note("%s is %s, not its default %s -- this changes what the "
                    "player's counts become. Recorded, not judged." % (n, v, d))
         missing = [n for (n, v, d) in inputcvars if d == "-"]

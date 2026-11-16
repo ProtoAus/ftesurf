@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Patch 1576: injected keys dropped (in_keyguard), guard cvars refuse a map's cvar_ keys, in_guard_live.
+"""Patch 1576: keys other programs send are dropped (in_keyguard) and in_guard_live says what applies.
 
-One windowed listen-server client on a generated box map whose worldspawn sets cvar_ keys for the three
-guard cvars and for in_rawinput_rdp, which is not protected: it reading 1 shows the map lock ran. Keys are
-WM_KEYDOWN/UP posted to our own client's window (p762keys.Client; never focus, never the owner's input),
-which Windows reports as a posted message, not hardware. Graded on the subject's own lines: the bind's
-echo, cvar reads and the engine's dropped-key lines.
+One windowed listen-server client on a generated box map. Keys are WM_KEYDOWN/UP posted to our own
+client's window (p762keys.Client; never focus, never the owner's input), which Windows reports as a
+posted message, not hardware. No hardware key ever reaches this client, so the session fallback
+("every key so far came from another program") is reached on purpose at the end. Graded on the
+subject's own lines: the bind's echo, cvar reads and the engine's Input: lines. The map lock refusal
+is p1573guard.py --latch --live (a real map's entities; a generated .map sets no cvar_ keys).
 
---exe C:/FTESurf/ftesurf64.exe (a pre-1576 build) is the control: the map lock takes the guard cvars,
-in_keyguard is unknown and the posted key arrives in every phase.
+--exe C:/FTESurf/ftesurf64.exe (a pre-1576 build) is the control: in_keyguard is unknown there and
+the posted key arrives in every phase.
 Run under the rig lock. Writes only under --out.
 """
 import argparse
@@ -23,8 +24,6 @@ from p762keys import Client  # noqa: E402
 from test_ui_modern import make_map  # noqa: E402
 
 MAP = 'p1576box'
-KEYS = {'cvar_in_keyguard': '0', 'cvar_in_rawinput_nolegacy': '0', 'cvar_in_rawinput_touchpad': '1',
-        'cvar_in_rawinput_rdp': '1'}
 VK_K = 0x4B
 
 
@@ -39,10 +38,7 @@ def prepare(content, out):
     (game / 'data/consent.txt').write_text('version 4\n')
     for leaf in ('qwprogs.dat', 'csprogs.dat', 'menu.dat'):
         shutil.copy2(content / 'ftesurf' / leaf, game / leaf)
-    world = make_map().replace('"classname" "worldspawn"\n',
-                               '"classname" "worldspawn"\n' + ''.join('"%s" "%s"\n' % kv for kv in KEYS.items()), 1)
-    assert 'cvar_in_keyguard' in world
-    (game / f'maps/{MAP}.map').write_text(world)
+    (game / f'maps/{MAP}.map').write_text(make_map())
     (base / 'default.fmf').write_text('FTEMANIFEST 1\nGAME FTESurfP1576Fixture\nBASEGAME ftesurf\n'
                                       'DISABLEHOMEDIR 1\nMAINCONFIG p1576cfg\n')
     common = ['cfg_save_auto 0', 'con_savehistory 0', 'log_enable 1', 'log_dir logs', 'log_name probe',
@@ -75,43 +71,102 @@ def main():
         m = cl.query(name, r'"%s" is "([^"]*)"' % name, timeout=10)
         return m.group(1)
 
+    def bind(tag):
+        cl.send('bind k "echo P1576-ARRIVED-%s"' % tag)
+        time.sleep(.3)
+
+    def tap(settle=2.5):
+        off = len(cl.text())
+        cl.key(VK_K, settle=settle)
+        return off
+
+    def arrived(off, tag):
+        return ('P1576-ARRIVED-%s' % tag) in cl.text()[off:]
+
+    def subject(off):
+        for line in cl.text()[off:].splitlines():
+            if 'in_keyguard:' in line or 'Input: ' in line:
+                print('     subject: ' + line.strip(), flush=True)
+
     try:
         end = time.monotonic() + 90
-        rdp = ''
         while time.monotonic() < end:
             time.sleep(2)
-            rdp = read('in_rawinput_rdp')
-            if rdp == '1':
+            try:
+                read('in_guard_live')
                 break
-        check(rdp == '1', 'map lock ran (unprotected control cvar in_rawinput_rdp took the map value)', rdp)
-        for name, want in (('in_rawinput_nolegacy', '1'), ('in_rawinput_touchpad', '0'), ('in_keyguard', '1'),
-                           ('in_guard_live', '7')):
+            except RuntimeError:
+                pass
+        cl.send('in_keyguard 1')        # p762keys' launcher turns it off for its own arms
+        time.sleep(1.5)
+        for name, want in (('in_rawinput_nolegacy', '1'), ('in_rawinput_touchpad', '0'), ('in_guard_live', '7')):
             got = read(name)
-            check(got == want, '%s after a map setting it to %s' % (name, KEYS.get('cvar_' + name, '-')),
-                  'read %r, want %r' % (got, want))
+            check(got == want, 'engine default %s' % name, 'read %r, want %r' % (got, want))
         cl.send('menu_restart')
         time.sleep(1.5)
         cl.send('ui_close')
         time.sleep(1)
         for phase, guard, arrive in ((1, '0', True), (2, '1', False), (3, '0', True)):
             cl.send('in_keyguard ' + guard)
-            cl.send('bind k "echo P1576-ARRIVED-%d"' % phase)
-            time.sleep(.8)
+            bind(phase)
+            time.sleep(1.5)             # past GUARD_WEAKEN_DELAY
             live = read('in_guard_live')
-            off = len(cl.text())
-            cl.key(VK_K, settle=2.5)
-            text = cl.text()[off:]
-            got = ('P1576-ARRIVED-%d' % phase) in text
-            check(got == arrive, 'phase %d in_keyguard %s: posted key %s' % (phase, guard,
-                  'arrived' if got else 'dropped'), 'in_guard_live %s; want %s' % (live,
-                  'arrived' if arrive else 'dropped'))
-            for line in text.splitlines():
-                if 'in_keyguard:' in line or 'dropped a key' in line:
-                    print('     subject: ' + line.strip(), flush=True)
+            off = tap()
+            got = arrived(off, phase)
+            check(got == arrive, 'phase %d in_keyguard %s: posted key %s' % (phase, guard, 'arrived' if got else 'dropped'),
+                  'in_guard_live %s; want %s' % (live, 'arrived' if arrive else 'dropped'))
+            subject(off)
+        # Switched off: published at once, still applied for the delay, then applied.
+        cl.send('in_keyguard 1')
+        bind('W1')
+        time.sleep(1.5)
+        cl.send('in_keyguard 0')
+        time.sleep(.15)
+        live = read('in_guard_live')
+        off = tap(settle=.4)
+        check(live == '3' and not arrived(off, 'W1'), 'just switched off: in_guard_live says so at once, the key is still dropped',
+              'in_guard_live %s, arrived %s' % (live, arrived(off, 'W1')))
+        bind('W2')
+        time.sleep(1.5)
+        off = tap()
+        check(arrived(off, 'W2'), 'after the delay the switch-off applies')
+        # A release of a held key passes (nothing sticks), and bit 4 drops out for a moment.
+        bind('H')
+        off = len(cl.text())
+        cl.post(VK_K, 'down', settle=.6)
+        cl.send('in_keyguard 1')
+        time.sleep(.3)
+        cl.post(VK_K, 'up', settle=.05)
+        now_live = read('in_guard_live')
+        time.sleep(2.0)
+        after_live = read('in_guard_live')
+        check(arrived(off, 'H') and now_live == '3' and after_live == '7',
+              'held key: its injected release passes and in_guard_live loses 4, then gets it back',
+              'pressed %s, in_guard_live %s then %s' % (arrived(off, 'H'), now_live, after_live))
+        for name, want in (('in_rawinput_rdp', '10'), ('in_dinput', '6')):
+            cl.send(name + ' 1')
+            time.sleep(.5)
+            got = read('in_guard_live')
+            cl.send(name + ' 0')
+            time.sleep(1.5)
+            check(got == want, '%s 1: in_guard_live %s' % (name, want), 'read %s' % got)
+        # No hardware key on the rig: the 8th dropped message stops the dropping for the session.
+        bind('S')
+        off = len(cl.text())
+        cl.key(VK_K, settle=.4)
+        cl.key(VK_K, settle=1.0)
+        said = 'every key so far came from another program' in cl.text()[off:]
+        live = read('in_guard_live')
+        bind('S2')
+        off2 = tap()
+        check(said and live == '11' and arrived(off2, 'S2'),
+              'no hardware key and 8 drops: dropping stops, in_guard_live 11 (cannot run), keys arrive',
+              'said %s, in_guard_live %s, arrived %s' % (said, live, arrived(off2, 'S2')))
+        subject(off)
         cl.send('in_rawinput_nolegacy 0')
         time.sleep(.5)
         live = read('in_guard_live')
-        check(live == '2', 'in_guard_live drops bit 1 with in_rawinput_nolegacy 0 (keyguard 0 from phase 3)', live)
+        check(live == '10', 'in_guard_live drops bit 1 with in_rawinput_nolegacy 0', live)
         cl.send('in_rawinput_nolegacy 1')
     finally:
         cl.stop()

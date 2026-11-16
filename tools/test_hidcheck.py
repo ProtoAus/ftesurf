@@ -667,6 +667,26 @@ def case_keys_injected_noted():
           "keys injected: names the handle-less shape")
 
 
+def case_keys_dropped_by_guard():
+    """Patch 1576: 'kd' presses were dropped, not delivered: said apart from the rest."""
+    j = _clickrun(kbdobserve=1)
+    j.legacykey(3, 3)
+    j.lines.append("kd 0 2")
+    j.key(True, 57, prev=0)
+    j.legacykey(0, 0)
+    r = run(j.end())
+    check(r.ok, "keys dropped: not a fault (%s)" % (r.faults[:1] or "none"))
+    check(r.info.get("keys_dropped") == 2, "keys dropped: 2 summed (%r)" % r.info.get("keys_dropped"))
+    check(has_note(r, "2 key press(es) other programs sent were dropped"), "keys dropped: said as dropped")
+    check(has_note(r, "1 key press(es) reached the engine"),
+          "keys dropped: only the one not dropped is said to have reached the engine")
+    for bad, why in (("kd 5 1", "carries dt"), ("kd 0 -1", "not a non-negative")):
+        j = _clickrun(kbdobserve=1)
+        j.lines.append(bad)
+        r = run(j.end())
+        check(has_fault(r, why), "malformed %r: faulted" % bad)
+
+
 def case_keys_nohandle_only():
     """Handle-less reports with every press corroborated: a note, no key count."""
     j = _clickrun(kbdobserve=1)
@@ -3817,7 +3837,8 @@ def main():
                case_loss_declarations, case_closing_counters, case_closing_clocks,
                case_postcap_records, case_backend_count_availability,
                case_backend_trailer_isolation, case_review_rejected_observations,
-               case_review_malformed_boundaries, case_review_boundary_prefix_timing):
+               case_review_malformed_boundaries, case_review_boundary_prefix_timing,
+               case_keys_dropped_by_guard):
         print("%s:" % fn.__name__)
         fn()
         print("")
