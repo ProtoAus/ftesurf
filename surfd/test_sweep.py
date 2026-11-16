@@ -99,7 +99,7 @@ TOOLS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def make_receipt(evdir, runid, mapname="bhop_eazy", seed=b"\x01" * 32,
                  view=b"FTESURF-VIEW 2\n", tamper=False, age=None, hid=None,
-                 server="127.0.0.1:27696"):
+                 server="127.0.0.1:27696", svport=None):
     """A GENUINELY SIGNED receipt, with the sidecar it commits to.
 
     Signed here rather than copied from data/, because a fixture copied off this
@@ -146,7 +146,7 @@ def make_receipt(evdir, runid, mapname="bhop_eazy", seed=b"\x01" * 32,
         # cryptography can tell.
         signed[0] = ("server", "127.0.0.1:27697")
     body = [first, "map " + mapname, "runid " + runid, "owner ^3T^7",
-            "svticks -1", "svport 27696",
+            "svticks -1", "svport %s" % (svport if svport is not None else server.rpartition(":")[2]),
             "pub " + pub.hex(), "sig " + sig.hex()]
     body += ["signed %s %s" % kv for kv in signed]
     rp = os.path.join(d, runid + ".rcpt")
@@ -281,7 +281,7 @@ LOBBY_PORTS = ",".join(str(p) for p in range(27510, 27621, 10))   # the Pi's twe
 @contextlib.contextmanager
 def rcpt_settings(**values):
     """SURFD_RCPT_* in the environment for one arm, and gone after it."""
-    keys = ("SURFD_RCPT_HOSTS", "SURFD_RCPT_PORTS")
+    keys = ("SURFD_RCPT_HOSTS", "SURFD_RCPT_PORTS", "SURFD_RCPT_LAN")
     saved = {k: os.environ.pop(k, None) for k in keys}
     os.environ.update(values)
     try:
@@ -319,10 +319,10 @@ def case_receipt_server_allowlist():
     Pi's own.  Admin-only: `sig` stays 1, which is what credits a run."""
     servers = ("180.150.62.57:27510", "192.168.1.102:27620",
                "203.0.113.9:27510", "180.150.62.57:27698")
-    bad, got, _err = server_arm(servers, "allowlist", SURFD_RCPT_HOSTS="180.150.62.57, 192.168.1.102",
-                                SURFD_RCPT_PORTS=LOBBY_PORTS)
+    bad, got, _err = server_arm(servers, "allowlist", SURFD_RCPT_HOSTS="180.150.62.57",
+                                SURFD_RCPT_LAN="192.168.1.102", SURFD_RCPT_PORTS=LOBBY_PORTS)
     check("allowlist: public host VALID", got[0][0], "VALID")
-    check("allowlist: LAN host VALID", got[1][0], "VALID")
+    check("allowlist: LAN host VALID (a note, never a pass or a fault)", got[1][0], "VALID")
     check("allowlist: a third host FAULT, and says which address",
           (got[2][0], "203.0.113.9:27510" in got[2][1]), ("FAULT", True))
     check("allowlist: a port none of the lobbies' FAULT",

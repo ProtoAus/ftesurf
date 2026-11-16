@@ -449,13 +449,14 @@ def server_host(text):
     return getattr(addr, "ipv4_mapped", None) or addr
 
 
-def join_server_allowed(r, hosts, ports=None):
+def join_server_allowed(r, hosts, ports=None, lan=None):
     """The signed address against every address this host's lobbies answer on.
 
-    join_server needs the one writer, which a receipt does not name in a signed
-    line; this asks "one of ours at all" (plan item 12, the relayed nonce).
-    `hosts`: literal hosts; `ports`: ints, or None for any port.  No hosts is
-    "not configured": a note, never a fault.
+    Plan item 12, the relayed nonce.  `hosts`: public literal hosts; `ports`:
+    ints, or None for any port; `lan`: LAN hosts, reported but never passed or
+    faulted -- another server at that address on someone else's network reads
+    the same.  The unsigned `svport` the writing lobby recorded must equal the
+    signed port.  No hosts is "not configured": a note, never a fault.
     """
     got = signed_get(r, "server")
     if not hosts:
@@ -468,7 +469,15 @@ def join_server_allowed(r, hosts, ports=None):
     if not sep or not host or not re.fullmatch(r"[0-9]{1,5}", port):
         r.fault("the signed server %r is not host:port" % got[:80])
         return
-    if server_host(host) not in {server_host(h) for h in hosts}:
+    sv = (r.head.get("svport") or "").strip()
+    if sv and sv != port:
+        r.fault("signed for port %s, but the lobby that wrote this receipt is on %s -- "
+                "a signature made on another lobby is not a receipt here" % (port, sv[:8]))
+        return
+    if lan and server_host(host) in {server_host(h) for h in lan}:
+        r.note("signed on %r, a LAN address: a server at that address on another network "
+               "would read the same, so it is neither passed nor faulted" % got[:80])
+    elif server_host(host) not in {server_host(h) for h in hosts}:
         r.fault("signed on %r, which is none of this host's server addresses -- "
                 "a signature made on another server is not a receipt here" % got[:80])
     elif ports and int(port) not in ports:

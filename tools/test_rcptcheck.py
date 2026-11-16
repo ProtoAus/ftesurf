@@ -810,10 +810,10 @@ def test_server_allowlist():
     hosts = {"180.150.62.57", "192.168.1.102"}
     ports = set(range(27510, 27621, 10))
 
-    def judged(server, h=hosts, p=ports):
-        rp, _pub = fx.make_receipt(surfd.EVIDENCE_DIR, "20261116-000301-0", server=server)
+    def judged(server, h=hosts, p=ports, lan=None, svport=None):
+        rp, _pub = fx.make_receipt(surfd.EVIDENCE_DIR, "20261116-000301-0", server=server, svport=svport)
         r = rcptcheck.read(rp)
-        rcptcheck.join_server_allowed(r, h, p)
+        rcptcheck.join_server_allowed(r, h, p, lan)
         return r
 
     r = judged("180.150.62.57:27510")
@@ -827,6 +827,14 @@ def test_server_allowlist():
     r = judged("180.150.62.57:27698")
     check("server: a port none of the lobbies' faults",
           (len(r.faults), "port 27698" in r.faults[0] if r.faults else None), (1, True))
+    r = judged("180.150.62.57:27510", svport="27520")
+    check("server: a signed port that is not the writing lobby's (svport) faults",
+          (len(r.faults), "lobby that wrote this receipt is on 27520" in r.faults[0] if r.faults else None), (1, True))
+    r = judged("192.168.1.102:27620", h={"180.150.62.57"}, lan={"192.168.1.102"})
+    check("server: a LAN address is a note, neither passed nor faulted",
+          (r.faults, any("a LAN address" in m for m in r.notes)), ([], True))
+    check("server: CONTROL a LAN address not listed as LAN faults",
+          len(judged("192.168.1.102:27620", h={"180.150.62.57"}).faults), 1)
     check("server: CONTROL that port passes with no port set",
           judged("180.150.62.57:27698", p=None).faults, [])
     r = judged("203.0.113.9:27510", h=None)

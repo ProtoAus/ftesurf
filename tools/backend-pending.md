@@ -34,19 +34,20 @@ whose receipt key is in none of that account's keylinks/installs/runpins
 
 Set at activation, in `surfd.env`:
 
-    SURFD_RCPT_HOSTS=180.150.62.57,192.168.1.102
+    SURFD_RCPT_HOSTS=180.150.62.57
+    SURFD_RCPT_LAN=192.168.1.102
     SURFD_RCPT_PORTS=27510,27520,27530,27540,27550,27560,27570,27580,27590,27600,27610,27620
 
-Unset, the address check notes "not configured" and faults nothing. The 16 Nov
-corpus (2,296 receipts) has 2,295 on the public address and 1 on the LAN one, so
-both values pass all of it. Owner's call: AGENT_NOTES ("a private address is
-nobody's") warns that 192.168.1.102 also names a server on every other LAN that
-numbers one so; leaving it out makes a LAN player's receipt an admin-only FAULT.
+Unset, the address check notes "not configured" and faults nothing. The 16 Nov corpus (2,296
+receipts) has 2,295 on the public address and 1 on the LAN one. A LAN address is reported as a note, never
+passed or faulted (AGENT_NOTES: "a private address is nobody's" -- another network's server at that address
+reads the same). The signed port must also equal the unsigned `svport` the writing lobby recorded, which
+catches a nonce relayed between two of the Pi's own lobbies.
 If the public address changes, update the setting or every new receipt faults.
 Existing rows are judged only after `--reread-receipts` (200 a pass).
 
-Windows only, not run on the Pi: test_rcptcheck 813 checks/0 failed (was 800),
-test_sweep 416 ok/0 failed (was 388), test_receipt_{identity,initial_partial,
+Windows only, not run on the Pi: test_rcptcheck 816 checks/0 failed (was 800),
+test_sweep 0 failed (was 388 ok), test_receipt_{identity,initial_partial,
 late_hid,late_rec,late_view,metrics} 68/96/158/227/268/120 ok, 0 failed. 8 of 8
 mutants (each check or join removed, unset made to fault) fail a named arm.
 test_receipt_angle_reasons fails one check ("epoch: reader detail names the

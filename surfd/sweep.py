@@ -475,29 +475,30 @@ def receipt_identity(r):
 
 
 def server_allowlist():
-    """(hosts, ports, why) from SURFD_RCPT_HOSTS / SURFD_RCPT_PORTS: literal
-    addresses and port numbers, comma-separated, read each pass.  Hosts unset or
-    empty: not configured.  One entry that does not parse turns the check off
-    and says why, rather than faulting honest receipts on a typo.
+    """(hosts, ports, lan, why) from SURFD_RCPT_HOSTS / SURFD_RCPT_PORTS /
+    SURFD_RCPT_LAN: literal addresses and port numbers, comma-separated, read each
+    pass.  Hosts unset or empty: not configured.  One entry that does not parse
+    turns the check off and says why, rather than faulting honest receipts on a typo.
     """
-    hosts, ports = set(), set()
-    for part in (surfd.setting("SURFD_RCPT_HOSTS") or "").split(","):
-        part = part.strip()
-        if part:
-            try:
-                ipaddress.ip_address(part.strip("[]"))
-            except ValueError:
-                return None, None, "SURFD_RCPT_HOSTS entry %r is not an address" % part[:40]
-            hosts.add(part)
+    hosts, ports, lan = set(), set(), set()
+    for key, into in (("SURFD_RCPT_HOSTS", hosts), ("SURFD_RCPT_LAN", lan)):
+        for part in (surfd.setting(key) or "").split(","):
+            part = part.strip()
+            if part:
+                try:
+                    ipaddress.ip_address(part.strip("[]"))
+                except ValueError:
+                    return None, None, None, "%s entry %r is not an address" % (key, part[:40])
+                into.add(part)
     for part in (surfd.setting("SURFD_RCPT_PORTS") or "").split(","):
         part = part.strip()
         if part:
             if not re.fullmatch(r"[0-9]{1,5}", part) or not 0 < int(part) < 65536:
-                return None, None, "SURFD_RCPT_PORTS entry %r is not a port" % part[:40]
+                return None, None, None, "SURFD_RCPT_PORTS entry %r is not a port" % part[:40]
             ports.add(int(part))
     if not hosts:
-        return None, None, ""
-    return frozenset(hosts), frozenset(ports) or None, ""
+        return None, None, None, ""
+    return frozenset(hosts), frozenset(ports) or None, frozenset(lan) or None, ""
 
 
 def join_account_key(r, conn):
@@ -557,7 +558,7 @@ def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=
     not a later stat. `sig` is 1 when the signature verified, which a FAULT for any other
     reason can still have; `owed` is 1 when the journal is ABSENT and the
     receipt signs a kept one's digest, i.e. it may still be uploading.
-    `server_allow` (server_allowlist()[:2]) and `accounts` (a connection) feed
+    `server_allow` (server_allowlist()[:3]) and `accounts` (a connection) feed
     the full read's address and account-key joins; partial rereads skip both.
 
     IMPORTED INSIDE THE FUNCTION so that a host without the tools deployed runs
@@ -608,7 +609,7 @@ def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=
         # here would fail the whole receipt step every pass.
         allowed = getattr(rcptcheck, "join_server_allowed", None)
         if allowed is not None:
-            allowed(r, *(server_allow or (None, None)))
+            allowed(r, *(server_allow or (None, None, None)))
         if accounts is not None:
             join_account_key(r, accounts)
     rcptcheck.join_hid(r)
@@ -786,8 +787,8 @@ def receipt_step(conn, limit=200, now=None):
         # takes at 30 ms RTT.
         cutoff = t0 - surfd.EVIDENCE_SETTLE
         allow = server_allowlist()
-        if allow[2]:
-            print("sweep: receipt server check off: %s" % allow[2], file=sys.stderr)
+        if allow[3]:
+            print("sweep: receipt server check off: %s" % allow[3], file=sys.stderr)
         vkey = lambda f: "receipt_view_wait:" + os.path.relpath(f, surfd.EVIDENCE_DIR)
         view_wait = {r[0]: r[1] for r in conn.execute(
             "SELECT k, v FROM sweepmeta WHERE k GLOB 'receipt_view_wait:*'")}
@@ -951,7 +952,7 @@ def receipt_step(conn, limit=200, now=None):
                                    defer_view=vkey(path) in view_wait or rkey(path) in rec_wait,
                                    expected_identity=prior[2] if prior else None,
                                    expected_pub=prior[3] if prior else None,
-                                   server_allow=allow[:2], accounts=conn)
+                                   server_allow=allow[:3], accounts=conn)
             except ReceiptIdentityChanged as exc:
                 print("%s: %s" % (os.path.basename(path), exc), file=sys.stderr)
                 retry += 1
