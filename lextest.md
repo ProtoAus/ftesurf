@@ -11,7 +11,8 @@
   Backwards. Click each: only that one lights, the rest dim, and the list is that board. Online/Local keep the mode.
 - Right of the board: everyone in the server with their main time, in their colour. Say if it should show more.
   17 Nov (LIVE 04:04 local, cs 489fca3a): the board stays centred; the list sits in the margin, long names cut.
-- 17 Nov, P1592 part 1: load a save mid-run -- the chat line and the HUD tag say "segmented", never "shadow".
+- 17 Nov, P1592: load a save mid-run and finish -- chat, HUD tag and the finish banner say segmented, never
+  shadow; in your own game the replay file is `..._segmented.rec` (data/runs/<map>/main). Lobbies: part 3.
 - surfd LIVE 16 Nov 14:12Z: coloured lines between rows where the group changes, with a pill naming the group below
   (G1..G6, No group); your badge on each course you have a time on (hover a course: which board it was measured on);
   the footer says "groups from Momentum, N times". Main menu > a map's board shows the same.
