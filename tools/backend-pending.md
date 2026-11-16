@@ -12,6 +12,16 @@ renewed-fixture admission blockers. The activated
 backend entries have been removed from this queue, not relabelled as pending.
 Do not redeploy a healthy backend merely to refresh this handoff.
 
+## 16 Nov 2026 22:43Z: the P1592+P1595 generation shipped surfd.py + mapmanifest.py ONLY
+
+LIVE (tools/p1592-delivery.md): runtime delta surfd.py + mapmanifest.py at main 6d228cb1; `sweep.py`, `test_sweep.py`,
+`test_replays.py`, `test_mappool.py` stay at the previous bytes, so **P1469 and P1580 below are still pending**.
+The next generation should also carry:
+- `tascontent.py` as a new sealed runtime member: mapwatch has failed `ModuleNotFoundError: tascontent` under every
+  sealed generation since 15 Nov, so the map list (data/mapwatch/mapdl.txt) has not been rewritten since then;
+- mapwatch's canonical cron schedule `23,53 * * * *` (scan every 30 min) as a reviewed contract change;
+- main's sweep.py/test_sweep.py (P1469, P1580); ftesurf-a8 reviews that lens and later does P1580's env activation.
+
 ## 16 Nov 2026: the P1590 generation shipped surfd.py ONLY
 
 The generation that went live 16 Nov 14:12Z (P1590, tools/p1590-delivery.md) changed one runtime file, `surfd.py`

@@ -18,6 +18,11 @@
 - Arm tools/p1592seg.py (resume + finish on surf_dune): new engine + new QC `_segmented.rec`; P1591 engine + new QC
   `_shadow.rec`; new engine + part-1 QC `_shadow.rec`; installed exe + installed QC `_segmented.rec`; flags 133257.
 
-## Part 3 -- lobbies (pending: surfd generation shared with P1595)
-surfd `_LEAF_OK` takes history leaves (`-<32 hex>`, REC_LEAF_MAX 96) and `segmented`; live today it drops every
-lobby history leaf (11 on 16 Nov). After it is live, drop SV_RecTagName's lobby gate. BACKLOG has the rest.
+## Part 3 -- lobbies
+- surfd generation db11bd61 (P1592+P1595) LIVE 16 Nov 22:43Z: swap 22:34:15-22:43:00Z rc 0, ten execution members,
+  POSTFLIGHT PASS. `_LEAF_OK` takes history leaves (`-<32 hex>`, REC_LEAF_MAX 96) and `segmented`: lobby replays
+  are bound again (none were from the e26b5768 deploy, 15 Nov, until then; BACKLOG has the reindex idea).
+  P1595 live: /api/board?maps=1 2269 rows, 142 disabled (was 217).
+- SV_RecTagName's lobby gate removed (main): a lobby writes `segmented` once its engine answers rec_tagword. The Pi
+  runs fteqw-svarm64 patch-1568 (no rec_tagword) on 16 Nov, so lobbies keep `shadow` until the Pi engine is
+  next updated to patch >= 1592. No lobby deploy needed for this change alone.

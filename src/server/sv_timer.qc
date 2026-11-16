@@ -4238,13 +4238,13 @@ void(entity e, string leaf) SV_RecSetLeaf =
 // RT_* to the word in a run's filename (FS_TagName in sh_defs.qc, the readers' map).
 // P1592: `segmented` only where the engine's held close accepts it (rec_tagword); an older
 // engine rebuilds `_shadow` and would refuse the close. 0 not asked yet, -1 no, 1 yes.
-// Lobbies keep `shadow` until the live surfd's _LEAF_OK takes `segmented` (P1592 part 3).
+// Lobbies too since surfd generation db11bd61 (16 Nov 22:43Z) takes `segmented` history leaves (part 3);
+// a lobby still on an engine without rec_tagword (the Pi's patch-1568 on that day) keeps `shadow`.
 string(float tag) rec_tagword = #0;
 float sv_rec_segword;
 string(float tag) SV_RecTagName =
 {
 	if (tag == RT_SHADOW)
-	if (!cvar("lobby_enable"))
 	{
 		if (!sv_rec_segword)
 		{
@@ -4259,7 +4259,7 @@ string(float tag) SV_RecTagName =
 	return FS_TagName(tag);
 };
 
-// The word a queued destination was named with (review: SV_RecTagName reads lobby_enable live).
+// The word a queued destination was named with, not a fresh SV_RecTagName.
 string(float tag, string dst) SV_RecDestTagWord =
 {
 	if (tag == RT_SHADOW)
