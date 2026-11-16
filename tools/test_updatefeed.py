@@ -292,7 +292,11 @@ MUTANTS = {
     'fmf-block-comment-allowed': (' or "/*" in text:\n', ':\n', {'fmf-block-comment'}),
     'fmf-star-allowed': ('        if tokens and tokens[0].startswith("*"):\n', '        if False:\n', {'fmf-star-keyword'}),
     'fmf-repeat-allowed': ('            if tokens[0].lower() in found or ', '            if ', {'fmf-two-game-lines'}),
-    'fmf-backslash-allowed': (' or "\\\\" in line or ', ' or ', {'fmf-backslash-on-game-line'}),
+    'fmf-backslash-allowed': ('    if "\\\\" in text or \'""\' in text or ', '    if \'""\' in text or ',
+                              {'fmf-backslash-on-game-line', 'fmf-escaped-quote-line'}),
+    'fmf-empty-quotes-allowed': (' or \'""\' in text or ', ' or ', {'fmf-empty-quotes'}),
+    'fmf-odd-quotes-allowed': (' or any(line.count(\'"\') % 2 for line in text.split("\\n")):', ':',
+                               {'fmf-unclosed-quote-earlier'}),
 }
 
 
@@ -426,6 +430,10 @@ class IdentityTests(unittest.TestCase):
             'fmf-two-game-lines': refused(f.check_manifest, b'GAME "FTESurf"\n' + good, 'worldofsurf'),
             'fmf-backslash-on-game-line': refused(f.check_manifest, good.replace(b'"WorldofSurf"', b'"WorldofSurf" \\x'),
                                                   'worldofsurf'),
+            # the round-3 reviewer's inputs
+            'fmf-escaped-quote-line': refused(f.check_manifest, good + b'\\"basegame ftesurf"\n', 'worldofsurf'),
+            'fmf-empty-quotes': refused(f.check_manifest, b'GAME "FTESurf"\nBASEGAME "ftesurf"' b'""\n', 'ftesurf'),
+            'fmf-unclosed-quote-earlier': refused(f.check_manifest, b'set x "abc\n' + good, 'worldofsurf'),
         }
 
     def test_each_identity_accepts_its_own_feed(self):

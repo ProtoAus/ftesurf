@@ -24,7 +24,8 @@ if defined launcher (
     )
 )
 REM A failed bootstrap must NOT bypass its update/signature/lock refusal.
-REM Preserve the map shortcut, but pass option-first invocations unchanged.
+REM Preserve the map shortcut; option-first invocations go to the launcher, which forwards only
+REM +map, +connect, -window, -fullscreen, -width and -height (engine-only fallback: all of them).
 set "first=%~1"
 if not defined first goto args
 if "%first:~0,1%"=="-" goto args

@@ -3,7 +3,8 @@
 #   ./ftesurf.sh                  start the game
 #   ./ftesurf.sh <map> [args...]  start on a map (as ftesurf.bat does)
 #   ./ftesurf.sh --debug [...]    also log the console to ftesurf/logs (ftesurf_debug.bat)
-#   ./ftesurf.sh -window +exec x  arguments starting with - or + go to the engine unchanged
+#   ./ftesurf.sh -window +map x   options starting with - or +: WOS-Launcher forwards only +map, +connect,
+#                                 -window, -fullscreen, -width, -height (engine-only fallback: all)
 # No set -e: each failure below is handled or deliberately ignored.
 
 # stderr, plus a dialog when there is no terminal to read it (desktop launch).

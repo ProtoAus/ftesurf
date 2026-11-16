@@ -229,6 +229,8 @@ def check_manifest(data: bytes, game: str) -> None:
         raise ValueError("default.fmf is not UTF-8") from None
     if any((ord(c) < 32 and c not in "\n\t") or c == "\x7f" for c in text) or "/*" in text:
         raise ValueError("default.fmf holds a control character or a block comment")
+    if "\\" in text or '""' in text or any(line.count('"') % 2 for line in text.split("\n")):
+        raise ValueError("default.fmf holds a backslash, an empty quoted string or an unpaired quote")
     found = {}
     for line in text.split("\n"):
         tokens = []
@@ -239,7 +241,7 @@ def check_manifest(data: bytes, game: str) -> None:
         if tokens and tokens[0].startswith("*"):
             raise ValueError("default.fmf holds a *-prefixed keyword")
         if tokens and tokens[0].lower() in ("game", "basegame"):
-            if tokens[0].lower() in found or "\\" in line or len(tokens) < 2:
+            if tokens[0].lower() in found or len(tokens) < 2:
                 raise ValueError(f"default.fmf must hold one plain {tokens[0].upper()} line")
             found[tokens[0].lower()] = tokens[1]
     if found.get("game") != MANIFEST_GAME[game] or found.get("basegame") != game:
