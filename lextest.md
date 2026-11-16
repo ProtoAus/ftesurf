@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1591 autohop in every movement mode -- owner check PENDING (record: engine ENGINE_PATCHES.md Patch 1591)
+- Console in your own game: `sv_movementprofile ag-100`, then `map bhop_mom_training_beta`. Hold jump while moving:
+  you should keep hopping without letting go. Same with `ag-250`, `ag-1000`, `cs16`, `hl2-pre` and `hl2-post`.
+- cs16: held hops should still get lower and a fast jump drops to ~240. hl2-post: holding jump facing backwards
+  with no keys keeps gaining speed. `sv_movementprofile default` and a map to go back.
+
 ## P1590 Groups, one mode row, your server beside the board -- owner check PENDING (record: tools/p1590-delivery.md)
 - Hold TAB: the row under Online/Local reads Segmented (blue), TAS (purple), Normal, Sideways, Half-Sideways,
   Backwards. Click each: only that one lights, the rest dim, and the list is that board. Online/Local keep the mode.

@@ -17,6 +17,15 @@
 
 ## Movement profiles -- what P1589 left (16 Nov, ftesurf-64; root C:\FTESurf-worktrees\moveprof-20261116-64)
 
+- P1591 (autohop under every profile, 17 Nov): AG physics changed under the same identities (ag-*-v1, cs16-v1) and
+  pin (pmsrcver=1, autobunny=1 was already pinned and ignored before). Nothing replays AG today; a future AG
+  verifier must tell the eras apart (the header's engine stamp) or the identities need a -v2 (loses the saves).
+- P1591: hl2-* under autohop re-jump every tick under a ceiling within 2 units, and PMSrc_HL2JumpBoost adds each
+  time (hl2-pre +95/tick forward; hl2-post backwards s -> 2s-285). Stock Source rules with a free press; a guard
+  (no boost unless the last tick was airborne) would depart from HL2. Teleport exits: Patch 241's double-bounce
+  guard is normalizejump-only, which HL2 forces off. Falsifier: hl2-pre, crouch-height tunnel, hold W + jump.
+- P1591's client gate runs in SV_New_f only: flipping pm_autobunny 0->1 mid-map (lock off) leaves older clients
+  already in mispredicting AG hops until the next map.
 - TAS projects and revisions made under a profile go to the normal data/tasproj/<map>/ and are bound only by
   mapcrc/zonecrc/pmpin (sv_tasproject.qc:541-556). hl2-pre and hl2-post publish byte-identical pins (the boost rule
   is not a movevar), so a project made on one loads on the other and replays under the other boost. Default refuses

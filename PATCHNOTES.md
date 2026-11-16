@@ -21,6 +21,10 @@
 
 ## next
 
+### P1591 Autohop in every movement mode
+- Holding jump now hops again the moment you land in every practice movement mode (Half-Life 2 pre and post, AG 100, 250 and 1000, Counter-Strike 1.6), as it already did in normal surf.
+- Counter-Strike 1.6 still lowers each chained hop and caps fast jumps at about 240, as on a CS server with autobunnyhopping on. Half-Life 2 keeps its jump boost on every hop.
+
 ### P1590 Groups on the leaderboards, one row of modes, your server beside the board
 - Leaderboards now sort times into Groups like Momentum Mod and KSF: a Top 10, then G1 to G6, measured on Momentum's (or KSF's) full board for that course, since ours are still small. A coloured line marks where the group changes.
 - Your own group shows as a badge (G1 red down to G6 blue) on Main, each stage and each bonus in the board's course list, in the TAB board and the main menu's leaderboard.
