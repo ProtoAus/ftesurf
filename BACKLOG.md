@@ -73,6 +73,19 @@
   teleport -- require a fresh verdict (spr_skyat/spr_skythr); (c) far proxies alternate between too-small (-1, rays)
   and GPU answers (flicker where lamp models disagree) -- a separate too-small code that mode 2 keeps. Live play
   with the knife drawn may give back much of the replay-measured gain; measure with a viewmodel on first.
+- Draw calls and translucency, paused probes (artifacts/probe_static.py, probe-*.out; release exe P1568-era):
+  - surf_bossfight's window spot was GPU-bound by REFRACTING glass: each model pane takes a fresh screen copy
+    (P878 r_nearestsort 1), 458 panes -> Transparent 3.83 ms GPU; with hl2_refract 0 it is 0.21 ms and the frame
+    5.07 -> 4.02 ms (CPU-bound). P1587 made 0 the default (shipped 0.1.48). For players who pick Refracting: copy
+    again only when a pane overlaps the screen rect of one drawn since the last copy. Left: 1.5 ms CPU for the 458
+    sorted window batches. envmap/bumpmap/alpha-coverage/blendsort toggles moved nothing (probe-bossfight-var).
+  - colony's "2669 draws" are glMultiDrawElements sub-ranges (BE_SubmitMeshChainMultiDraw counts each range):
+    ~230 world batches, ~1.1 ms CPU of per-batch setup (program, uniforms, textures). pantheon: props cost ~0.9 ms
+    CPU / 1.5 ms GPU at t=5 (r_drawentities 3 A/B), mostly transparent model batches. Fewer state changes (sort
+    batches by program and textures, skip redundant uniform uploads) is the lever; not measured yet.
+- Spawn: the first live frame after the loading screen is 0.47-2.2 s on nova/ceaseless/null (artifacts/sp1,
+  run_spawn.py): network 0.2-1.6 s, CSQC 0.13-0.17 s (null: getentitytoken 65,535 calls, 39 ms), ceaseless hl2
+  props 0.35 s; the HUD textures made on first draw are small beside these. Break the network bucket down next.
 - Trigger prediction: TG_ChainStart probes every IO-owned trigger with a zero-length tracebox each frame (23-393
   triggers a map); a box-overlap test first would skip the builtin call exactly. ~3-6% of profiled CSQC.
 - Measured, not leads: a multisampled window beside P1260's MSAA scene target costs nothing measurable on the PC
