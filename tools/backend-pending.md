@@ -52,6 +52,10 @@ BEFORE ACTIVATION, run `sweep.join_account_key` over a COPY of the live DB (each
 never the live file) and record the fault count here. Expected sources of honest-looking faults: the
 owner's ranked rows moved to his account by hand on 11 Oct (signed by his old install's key), and runs
 older than the 90-day `runpins` prune whose key was unlinked when the account already had 64 `installs`.
+DONE 16 Nov (ftesurf-31, main 363ab0eb's sweep.py, SQLite backup of the live DB into agent-work, deleted after):
+2,299 receipts, all signed; **0 faults**; 1,147 "the receipt's key is one of the credited account's", 1,152
+"no account is credited with this run". Discriminates: each of the 1,147 with its key swapped for a made-up one,
+or for another receipt's real key, faults (1,147 of 1,147 both ways).
 
 Windows only, not run on the Pi: test_rcptcheck 827 checks/0 failed (was 800),
 test_sweep 427 ok/0 failed (was 388), test_receipt_{identity,initial_partial,
