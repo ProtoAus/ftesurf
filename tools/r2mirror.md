@@ -96,6 +96,13 @@ automatic deletion/repair of an allegedly immutable corrupted remote object.
 Fix that explicitly only after establishing exact ownership and intended bytes.
 Transport output is suppressed; report error classes, not signed URLs/paths.
 
+## Live runner (17 Nov 2026)
+
+The Pi runs `run` (no `--watch`) from proto's crontab at minutes 5 and 35 under `flock -n /tmp/r2mirror.lock`,
+logging to the root's artifacts/cron-run.log. The hand-started `--watch 900` process died around 27 Oct (nothing
+restarts it); 125 maps and 227 zones had piled up. r2gzip (17,47) gzips what this verifies. New maps reach R2 within
+about 30 min of mapwatch adding them, once mapwatch runs again (it has failed on `import tascontent` since 15 Nov).
+
 ## Selected registration (SDK only)
 
 `scan(db, config, only=["ftesurf/maps/example.bsp"])` registers or refreshes
