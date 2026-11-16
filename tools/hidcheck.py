@@ -134,6 +134,16 @@ HEAD_P1424 = {"kbdobserve"}
 # line; untimestamped `module+` lines beside devmap name those loaded later. A note, never a fault.
 HEAD_P1577 = {"modules"}
 MODULE_CLASSES = ("program", "user", "other")
+# Patch 1586: hooks below the journal, scanned as a journal is written. Untimestamped, beside module+:
+#   hook <kind> <site> <class> <owner> <hops>      at most HOOK_LINES of them
+#   hookskip <what> <why>                           why: unreadable, malformed, stale (file replaced since load)
+#   hooks <found> <codebytes> <funcs> <slots> <execregions> <execkib> <debugger>
+# kind: code (exe+rva/len), api (dll!export[+off]), eat, iat, ptr, wndproc, noread. class/owner: where the
+# patch leads -- a module's class and file, image (unlisted), unbacked, bad, int3, or -. codebytes -1: the
+# exe was not compared. Notes, never faults: anything inside the process can undo a patch first.
+HOOK_KINDS = ("code", "api", "eat", "iat", "ptr", "wndproc", "noread")
+HOOK_CLASSES = ("game", "windows", "program", "user", "other", "image", "unbacked", "bad", "int3", "-")
+HOOK_LINES = 16
 
 # Engine Patch 310 appended the render-integrity table:
 #   render <cvar> "<value>" "<default>"
@@ -534,6 +544,10 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
     modules = []           # Patch 1577: (class, file) as the journal began
     modules_late = []      # ...and `module+`, loaded during it
     bad_modules = False
+    hooks = []             # Patch 1586: (kind, site, class, owner, hops)
+    hookskips = []         # ...(what, why)
+    hooks_sum = None       # ...the `hooks` summary's seven numbers
+    bad_hooks = False
     i = 1
     while i < len(lines):
         parts = lines[i].split(None, 1)
@@ -889,6 +903,32 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
                 bad_modules = True
             else:
                 modules_late.append((tok[1], tok[2]))
+            continue
+
+        if kind in ("hook", "hookskip", "hooks"):
+            # Patch 1586: untimestamped, beside module+, so taken before the dt parse.
+            if end_seen:
+                r.fault("line %d: %r after 'end'" % (lineno + 1, kind))
+                continue
+            if kind == "hook":
+                if len(tok) != 6 or tok[1] not in HOOK_KINDS or tok[3] not in HOOK_CLASSES or not tok[5].isdigit():
+                    bad_hooks = True
+                else:
+                    hooks.append((tok[1], tok[2], tok[3], tok[4], int(tok[5])))
+            elif kind == "hookskip":
+                if len(tok) != 3:
+                    bad_hooks = True
+                else:
+                    hookskips.append((tok[1], tok[2]))
+            else:
+                try:
+                    vals = [int(x) for x in tok[1:]]
+                except ValueError:
+                    vals = []
+                if len(vals) != 7 or hooks_sum is not None:
+                    bad_hooks = True
+                else:
+                    hooks_sum = vals
             continue
 
         if kind not in KINDS:
@@ -1955,6 +1995,34 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
         r.note("module lines without the header's `modules` count")
     if bad_modules:
         r.note("a malformed module line was skipped")
+
+    # Patch 1586: what the hook scan saw. Overlays and Windows' own fixes patch too: listed, not judged.
+    if hooks_sum is not None:
+        found, codebytes, funcs, slots, regions, kib, dbg = hooks_sum
+        if found != len(hooks) and not (found > HOOK_LINES and len(hooks) == HOOK_LINES):
+            r.note("the hook summary counts %d finding(s) but names %d" % (found, len(hooks)))
+        r.info["hooks"] = "%d found; exe code %s; %d input function(s) and %d slot(s) checked; " \
+            "%d unbacked executable region(s), %d KiB; debugger %s" % (
+                found, "not compared" if codebytes < 0 else "%d bytes compared" % codebytes,
+                funcs, slots, regions, kib, "attached" if dbg else "none")
+        for idx, (kd, site, cls, owner, hops) in enumerate(hooks):
+            r.info["hook[%d]" % idx] = "%-7s %s -> %s %s (%d hop(s))" % (kd, site, cls, owner, hops)
+        for what, why in hookskips:
+            r.info["hookskip[%s]" % what] = why
+        if hooks:
+            r.note("%d patch(es) or redirect(s) below the journal (%s%s). Overlays and Windows' own fixes do "
+                   "this too; recorded, not judged." % (
+                       found, ", ".join("%s %s -> %s" % (kd, site, owner if owner != "-" else cls)
+                                        for kd, site, cls, owner, _h in hooks[:6]),
+                       ", ..." if found > 6 else ""))
+        if hookskips:
+            r.note("the hook scan could not check %s" % ", ".join("%s (%s)" % w for w in hookskips))
+        if dbg:
+            r.note("a debugger was attached as the journal was written")
+    elif hooks or hookskips:
+        r.note("hook lines without the `hooks` summary")
+    if bad_hooks:
+        r.note("a malformed hook line was skipped")
 
     # A pre-303 file has no tables at all.  That is reported and never faulted:
     # the question simply cannot be asked of those files, and "absent" must not

@@ -3815,6 +3815,44 @@ def case_modules_tripwire():
     check(r.ok and "modules" not in r.info, "modules: a pre-1577 journal says nothing about modules")
 
 
+def case_hooks_tripwire():
+    """Patch 1586: hook scan lines are listed and noted, never faulted."""
+    clean = "hooks 0 5849664 41 612 3 1024 0"
+    r = _modrun(["modules 0"], late=[clean])
+    check(r.ok, "hooks: a clean scan has no fault (%s)" % (r.faults[:1] or "none"))
+    check(r.info.get("hooks", "").startswith("0 found; exe code 5849664 bytes compared; 41 input function(s)"),
+          "hooks: the summary reads back (%r)" % r.info.get("hooks"))
+    check(not has_note(r, "below the journal") and not has_note(r, "unknown record kind"),
+          "hooks: a clean scan adds no note and no line kind is unknown")
+    r = _modrun(["modules 0"], late=["hook api user32!GetRawInputData unbacked - 1",
+                                     "hook iat user32!GetCursorPos program GameOverlayRenderer64.dll 2",
+                                     "hook code exe+1a2b/1 int3 - 0", "hooks 3 5849664 41 612 4 1028 0"])
+    check(r.ok and has_note(r, "3 patch(es) or redirect(s) below the journal"),
+          "hooks: findings are a note, never a fault (%s)" % (r.faults[:1] or "none"))
+    check(r.info.get("hook[1]", "") == "iat     user32!GetCursorPos -> program GameOverlayRenderer64.dll (2 hop(s))",
+          "hooks: each finding is listed with where it leads (%r)" % r.info.get("hook[1]"))
+    check(has_note(r, "code exe+1a2b/1 -> int3"), "hooks: an ownerless finding names its class")
+    r = _modrun(["modules 0"], late=["hookskip exe stale", "hookskip user32 unreadable", "hooks 0 -1 0 600 0 0 1"])
+    check(r.ok and "exe code not compared" in r.info.get("hooks", ""), "hooks: codebytes -1 reads as not compared")
+    check(has_note(r, "could not check exe (stale), user32 (unreadable)") and has_note(r, "debugger was attached"),
+          "hooks: skips and a debugger are noted")
+    r = _modrun(["modules 0"], late=["hook api x", "hook teleport a b c 1", "hooks 2 0 0 0 0 0 0"])
+    check(r.ok and has_note(r, "malformed hook line") and has_note(r, "counts 2 finding(s) but names 0"),
+          "hooks: malformed lines are skipped with a note, never a fault")
+    many = ["hook api user32!F%d unbacked - 1" % i for i in range(16)]
+    r = _modrun(["modules 0"], late=many + ["hooks 20 0 41 600 0 0 0"])
+    check(r.ok and not has_note(r, "but names") and has_note(r, "20 patch(es)"),
+          "hooks: past the engine's 16 lines the count carries the rest")
+    r = _modrun(["modules 0"], late=["hooks 0 0 0 0 0 0 0", "hooks 0 0 0 0 0 0 0"])
+    check(r.ok and has_note(r, "malformed hook line"), "hooks: a second summary is malformed, not a fault")
+    r = _modrun(["modules 0"], late=["hook api user32!F unbacked - 1"])
+    check(r.ok and has_note(r, "without the `hooks` summary"), "hooks: findings without a summary are noted")
+    r = _modrun(["modules 0"], after_end=["hooks 0 0 0 0 0 0 0"])
+    check(has_fault(r, "'hooks' after 'end'"), "hooks: a hook line after the trailer is a fault")
+    r = _modrun(["modules 0"])
+    check(r.ok and "hooks" not in r.info, "hooks: a pre-1586 journal says nothing about hooks")
+
+
 def main():
     print("test_hidcheck.py -- the Patch 293 yaw identity\n")
     for fn in (case_clean, case_mutated_delta, case_subtle_mutation,
@@ -3879,7 +3917,7 @@ def main():
                case_postcap_records, case_backend_count_availability,
                case_backend_trailer_isolation, case_review_rejected_observations,
                case_review_malformed_boundaries, case_review_boundary_prefix_timing,
-               case_keys_dropped_by_guard, case_modules_tripwire):
+               case_keys_dropped_by_guard, case_modules_tripwire, case_hooks_tripwire):
         print("%s:" % fn.__name__)
         fn()
         print("")
