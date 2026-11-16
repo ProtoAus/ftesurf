@@ -142,13 +142,15 @@ MODULE_CLASSES = ("program", "user", "other")
 #   hookskip <what> <why>                           why: unreadable, malformed, stale (the file is not the
 #                                                   one loaded: an update awaiting a restart, Wine), noheader,
 #                                                   emulated (x64 on ARM64: system DLLs rewritten as loaded),
-#                                                   imports (that module's import table could not be read)
-#   hooks <found> <codebytes> <funcs> <slots> <execregions> <execkib> <debugger> <scans> <unread> <unlisted>
+#                                                   imports (that module's import table could not be read),
+#                                                   exports (its export directory is not readable, so slots
+#                                                   importing from it were not checked)
+#   hooks <found> <codebytes> <funcs> <slots> <execregions> <execkib> <debugger> <scans> <unread> <unlisted> <inflight>
 # kind: wndproc, ptr, dll (a listed DLL loaded from outside the Windows folder), iat, eat, code (exe+rva/len),
 # api (dll!export[+off]), draw (SwapBuffers: overlays), noread (a place that could not be read, counted in
 # unread, not found). class/owner: where the patch leads -- a module's class (windows = under the Windows
 # folder) and file, image (unlisted), unbacked, bad, int3, or -. The distinct findings over the scans number
-# at least found; -1 with scans 0: no scan finished. codebytes..unlisted except found/dbg/scans/unread are the
+# at least found; -1 with scans 0: no scan finished (inflight 1: one was under way as the journal ended). codebytes..unlisted except found/dbg/scans/unread are the
 # last scan's; codebytes -1: the exe was not compared. debugger: 1 a debugger flag, 2 armed hardware
 # breakpoints, 4 some thread's debug registers could not be read. Fields may be appended. Notes, never faults.
 HOOK_KINDS = ("wndproc", "ptr", "dll", "iat", "eat", "code", "api", "draw", "noread")
@@ -934,9 +936,10 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
             else:
                 try:
                     vals = [int(x) for x in tok[1:11]]
+                    vals.append(int(tok[11]) if len(tok) > 11 else 0)   # inflight: absent before review 3
                 except ValueError:
                     vals = []
-                if len(vals) != 10 or hooks_sum is not None:
+                if len(vals) != 11 or hooks_sum is not None:
                     bad_hooks = True
                 else:
                     hooks_sum = vals
@@ -2009,7 +2012,7 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
 
     # Patch 1586: what the hook scans saw. Overlays, security software and Windows patch too: listed, not judged.
     if hooks_sum is not None:
-        found, codebytes, funcs, slots, regions, kib, dbg, scans, unread, unlisted = hooks_sum
+        found, codebytes, funcs, slots, regions, kib, dbg, scans, unread, unlisted, inflight = hooks_sum
         patches = [h for h in hooks if h[0] not in ("draw", "noread")]
         draws = [h for h in hooks if h[0] == "draw"]
         noreads = [h for h in hooks if h[0] == "noread"]
@@ -2023,7 +2026,9 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
                     except (IndexError, ValueError):
                         pass
                     break
-            if secs is not None and secs < 3.0:
+            if inflight:
+                r.note("a hook scan was under way when the journal ended")
+            elif secs is not None and secs < 3.0:
                 r.note("the journal ended (%.1f s) before its first hook scan (due 0.5-2.5 s in)" % secs)
             else:
                 r.note("no hook scan finished during the journal although one was due (its thread was held up "
@@ -2061,6 +2066,7 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
             why = {"stale": "the file on disk is not the one loaded: an update awaiting a restart, or Wine",
                    "emulated": "x64 on ARM64 Windows, whose system DLLs are rewritten as they load",
                    "noheader": "the loaded image has no PE header", "imports": "its import table could not be read",
+                   "exports": "its export directory is not readable, so the slots importing from it were not checked",
                    "unreadable": "the file could not be read", "malformed": "the file could not be parsed"}
             r.note("the hook scan could not check %s" % "; ".join(
                 "%s (%s)" % (what, why.get(reason, reason)) for what, reason in hookskips))

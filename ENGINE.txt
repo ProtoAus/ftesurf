@@ -1,4 +1,9 @@
 # The engine build this QuakeC requires.
+# Patch 1586 (engine only, client exe; QC unchanged): while a journal is open a worker thread scans the process
+# (exe code against its file, input/scanner exports and the import slots of the exe and those DLLs, in_win.c's
+# API pointers, the window procedure, debug registers, unbacked executable memory); a written .hid carries
+# `hookscan 1` and a `hook`/`hookskip`/`hooks` block. Notes only; hidcheck reads them. Record: engine
+# ENGINE_PATCHES.md (patch-1586, 9a157a682); arms tools/p1586hooks.py, tools/p1586perf.py.
 # Patch 1579 (QC only, sv_tasautosurf.qc): after a stage teleport that zeroes speed, Jargon replays the guide's own walk
 # and jump, then searches from the air with no hops; no backtrack crosses such a teleport (tas_jargon_off 8388608).
 # Record: tools/p1579-delivery.md.

@@ -3864,13 +3864,19 @@ def case_hooks_tripwire():
           "hooks: each skip is explained by its own reason")
     check(has_note(r, "debugger was attached") and has_note(r, "hardware breakpoints were armed")
           and has_note(r, "debug registers could not be read"), "hooks: all three debugger bits are noted")
-    r = _hookrun(["hooks -1 -1 -1 -1 -1 -1 0 0 -1 -1"])
+    r = _hookrun(["hooks -1 -1 -1 -1 -1 -1 0 0 -1 -1 0"])
     check(r.ok and r.info.get("hooks") == "no scan finished while the journal was open"
           and has_note(r, "before its first hook scan"), "hooks: a journal shorter than the first scan says so")
+    r = _hookrun(["hooks -1 -1 -1 -1 -1 -1 0 0 -1 -1 1"])
+    check(r.ok and has_note(r, "under way when the journal ended") and not has_note(r, "held up"),
+          "hooks: a scan in flight at the end is its own answer")
+    r = _hookrun(["hookskip kernel32 exports", "hooks 0 5853600 47 2000 1 128 0 1 0 0 0"])
+    check(r.ok and has_note(r, "kernel32 (its export directory is not readable"),
+          "hooks: an unreadable export directory is a stated skip")
     r = _hookrun(["hook api x", "hook teleport a b c 1", "hooks 2 0 0 0 0 0 0 1 0 0"])
     check(r.ok and has_note(r, "malformed hook line") and has_note(r, "counts 2 finding(s) but names 0"),
           "hooks: malformed lines are skipped with a note, never a fault")
-    r = _hookrun(["hook api user32!F unbacked - 1 later", "hooks 1 0 41 600 0 0 0 1 0 0 later"])
+    r = _hookrun(["hook api user32!F unbacked - 1 later", "hooks 1 0 41 600 0 0 0 1 0 0 0 later"])
     check(r.ok and not has_note(r, "malformed") and "hook[0]" in r.info,
           "hooks: fields appended later are accepted")
     many = ["hook api user32!F%d unbacked - 1" % i for i in range(16)]

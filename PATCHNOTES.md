@@ -21,6 +21,9 @@
 
 ## next
 
+### P1586 The game checks itself for tampering during runs
+- While a run is recorded, the game checks in the background that its own code and the Windows input functions it uses have not been altered, and writes what it finds into the run's input record. Nothing changes on screen; it runs alongside the game, and in testing it cost no frame time. Overlays and recording tools may show up in the record; that is expected.
+
 ## 0.1.47 2026-11-16
 
 ### P1584 Your crosshair is kept between sessions

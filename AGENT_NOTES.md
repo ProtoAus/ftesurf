@@ -1,5 +1,15 @@
 # AGENT_NOTES.md
 
+## P1586 hook scan: what it does to test arms (16 Nov 2026)
+
+- On Windows x64 a worker thread scans the client while a journal is open (0.5-2.5 s in, then every
+  10-20 s, ~70-90 ms each off the main thread). A journal shorter than ~2.5 s gets `hooks -1 ... 0` and the
+  note "ended before its first hook scan": hold a journal >= 4 s when grading the scan (tools/p1586hooks.py).
+- A debugger attached to the client sets the debugger bit and its breakpoints read as `code ... int3`.
+- tools/p1586hooks.py patches a live rig client from outside (VirtualAllocEx/WriteProcessMemory) and grades
+  each planted patch; tools/p1586perf.py is the frame-time A/B (it saves and restores the clipboard around
+  r_frametime_dump, and refuses if the clipboard holds anything but text).
+
 ## P1576 input guard: what it does to test arms (16 Nov 2026)
 
 - Since engine 1576, keys, clicks and wheel turns that Windows does not report as hardware are dropped by

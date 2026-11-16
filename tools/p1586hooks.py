@@ -292,7 +292,7 @@ def main():
         if len(sa) != 1 or len(sb) != 1:
             return 1
         va, vb = [int(x) for x in sa[0]], [int(x) for x in sb[0]]
-        check(len(va) == 10 and len(vb) == 10, 'the summary has ten fields')
+        check(len(va) == 11 and len(vb) == 11 and va[10] == 0 and vb[10] == 0, 'the summary has eleven fields')
         check(va[1] == textbytes and vb[1] == textbytes, 'the whole exe code was compared', '%d, %d of %d' % (va[1], vb[1], textbytes))
         check(va[2] >= 40 and va[3] >= 400, 'functions and slots were checked', 'funcs %d, slots %d' % (va[2], va[3]))
         check(va[7] >= 1 and vb[7] >= 2 and va[8] == 0 and vb[8] == 0 and va[6] == 0 and vb[6] == 0,

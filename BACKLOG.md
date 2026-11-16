@@ -107,6 +107,27 @@
 - tools/p1581skew.py needs a current lobby run, its map and its lobby zone json (--subject/--map/--zone):
   P349's b88fin.rec no longer matches bhop_eazy.
 
+## Hooks below the journal -- what P1586 left (16 Nov, ftesurf-31)
+
+- Engine only (client exe): live for players with the next release that carries patch-1586. hidcheck and the
+  tools are on main; the Pi's hidcheck learns the lines with the next tools deploy (an older one notes them).
+- It sees patches that stay in place; a tool that restores its bytes around the scans, works below user mode,
+  edits data rather than code, or targets the scan itself is not seen, and game-folder plugins are trusted.
+  Ranked follow-ups (incl. confirming key RELEASES against the raw keyboard, as P1424 confirms presses) are in
+  the private tree: cheatanalysis/p1586-hook-scan-limits.md.
+- Consent text: the journal now names other software by file name (overlays, security tools, IMEs, game-folder
+  mods such as a ReShade opengl32.dll), as P1577's module lines already did for DLLs outside the Windows
+  folder. Whether the terms (m_main.qc) need a line, and an FS_TERMS bump, is the owner's call.
+- Measured on one PC (Windows 11 24H2, i9-9900K): 0 findings on a clean client over 49 functions and 2,874
+  slots; frame-time A/B (tools/p1586perf.py, menu, 400 fps cap) no measurable cost. Unmeasured: Windows 10
+  (API-set import redirects), Wine, ARM64, third-party antivirus, a 4-core laptop, a real overlay's hooks
+  (OBS's hook DLL was loaded in the arm but hooked nothing). Read the first player journals before treating
+  any finding as interesting.
+- Pre-existing, not P1586's: devmap/module+ lines can spend the trailer's reserve on a journal near its cap
+  (IN_Journal_Raw allows in_jrn_max + 1024), so `end` may not fit and hidcheck faults "no 'end' trailer";
+  needs a journal near the cap (~256 MiB by default). P1586's block keeps 256 bytes for `end`.
+- in_journal_maxkb has no CVAR_NOTFROMSERVER: a server can shrink journals until they truncate (our servers).
+
 ## Shared saves with their run -- what P1567 left (15 Nov, ftesurf-16)
 
 - The online board (P1569, Lex 15 Nov: segmented, "<name> +N", runners on hover) is LIVE since 15 Nov 09:18Z
