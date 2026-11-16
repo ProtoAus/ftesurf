@@ -333,9 +333,9 @@ KINDS = {
     # Patch 1424: keyboard observation started (1) or stopped (0) -- written on
     # every transition, so an off-and-on again still leaves a record.
     "o": 1,     # kbdobserve
-    # Patch 1576: key presses in_keyguard DROPPED since the last such record (dt 0).
-    # They are also among the 'y' presses (the observer counts first) but, unlike
-    # those, they did NOT reach the game and have no '+' record.
+    # Patch 1576: key presses in_keyguard DROPPED since the last such record (dt 0),
+    # a held key's repeats once. The guard takes them out of the observer's pending
+    # set, so they are not among the 'y' presses; they have no '+' record.
     "kd": 1,    # dropped
     # Patch 468: handle-less reports ACCEPTED as precision-touchpad input since
     # the last such record, the digitizer reports that armed the window, and
@@ -1638,10 +1638,8 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
         if keydropped and not bad_key_observer:
             r.info["keys_dropped"] = keydropped
             r.note("%d key press(es) other programs sent were dropped by in_keyguard and "
-                   "never reached the game (Patch 1576); they are counted below too."
-                   % keydropped)
-        if legacykeys > keydropped and not bad_key_observer:
-            legacykeys -= keydropped
+                   "never reached the game (Patch 1576)." % keydropped)
+        if legacykeys and not bad_key_observer:
             if kbdnohandle:
                 shape = ("%d handle-less keyboard report(s) arrived beside them, "
                          "which is what SendInput leaves" % kbdnohandle)

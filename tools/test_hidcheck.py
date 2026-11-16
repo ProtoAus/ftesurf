@@ -678,8 +678,8 @@ def case_keys_dropped_by_guard():
     check(r.ok, "keys dropped: not a fault (%s)" % (r.faults[:1] or "none"))
     check(r.info.get("keys_dropped") == 2, "keys dropped: 2 summed (%r)" % r.info.get("keys_dropped"))
     check(has_note(r, "2 key press(es) other programs sent were dropped"), "keys dropped: said as dropped")
-    check(has_note(r, "1 key press(es) reached the engine"),
-          "keys dropped: only the one not dropped is said to have reached the engine")
+    check(has_note(r, "3 key press(es) reached the engine"),
+          "keys dropped: 'y' stays what reached the engine, apart from the dropped count")
     for bad, why in (("kd 5 1", "carries dt"), ("kd 0 -1", "not a non-negative")):
         j = _clickrun(kbdobserve=1)
         j.lines.append(bad)

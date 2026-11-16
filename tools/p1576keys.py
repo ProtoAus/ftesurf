@@ -143,13 +143,27 @@ def main():
         check(arrived(off, 'H') and now_live == '3' and after_live == '7',
               'held key: its injected release passes and in_guard_live loses 4, then gets it back',
               'pressed %s, in_guard_live %s then %s' % (arrived(off, 'H'), now_live, after_live))
-        for name, want in (('in_rawinput_rdp', '10'), ('in_dinput', '6')):
-            cl.send(name + ' 1')
-            time.sleep(.5)
-            got = read('in_guard_live')
-            cl.send(name + ' 0')
-            time.sleep(1.5)
-            check(got == want, '%s 1: in_guard_live %s' % (name, want), 'read %s' % got)
+        # What defeats a guard is read from what runs: the rdp setting changes nothing without a
+        # Remote Desktop device bound (none here); DirectInput takes over at in_restart.
+        cl.send('in_rawinput_rdp 1')
+        time.sleep(.5)
+        got = read('in_guard_live')
+        cl.send('in_rawinput_rdp 0')
+        check(got == '7', 'in_rawinput_rdp 1 with no RDP device bound: in_guard_live 7', 'read %s' % got)
+        cl.send('in_dinput 1')
+        cl.send('in_restart')
+        time.sleep(2.0)
+        got = read('in_guard_live')
+        cl.send('in_dinput 0')
+        cl.send('in_restart')
+        time.sleep(2.5)
+        back = read('in_guard_live')
+        check(got == '14' and back == '7', 'DirectInput running: click guard reported off and cannot-run (14), then 7',
+              'read %s then %s' % (got, back))
+        a = read('in_guard_lapses')
+        b = read('in_guard_lapses')
+        check(a.isdigit() and b.isdigit() and int(b) > int(a),
+              'a console command from another program (this driver\'s stdin) is a lapse', '%s then %s' % (a, b))
         # No hardware key on the rig: the 8th dropped message stops the dropping for the session.
         bind('S')
         off = len(cl.text())

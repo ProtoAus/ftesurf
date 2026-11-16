@@ -2298,17 +2298,16 @@ float(float have, float raw, float filt, float acc, float grant) FS_ProfileBroke
 
 float(float have, float noleg, float touch, float keys) FS_GuardWhy =
 {
+	if (have & IPG_LIVE)
+	if (keys == 2)
+		return PW_KEYGUARD;     // first: the engine then reports the click guard off too, and no setting helps
 	if (!(have & IPG_NOLEGACY) || noleg != 1)
 		return PW_CLICKS;
 	if (!(have & IPG_TOUCHPAD) || touch != 0)
 		return PW_TOUCHPAD;
 	if (have & IPG_LIVE)
-	{
-		if (keys == 2)
-			return PW_KEYGUARD;
-		if (keys != 1)
-			return PW_KEYS;
-	}
+	if (keys != 1)
+		return PW_KEYS;
 	return PW_OK;
 };
 
@@ -2345,7 +2344,7 @@ string(float why) FS_ProfileText =
 	if (why == PW_CLICKS)   return "injected clicks must be blocked (set in_rawinput_nolegacy 1)";
 	if (why == PW_TOUCHPAD) return "touchpads do not rank (set in_rawinput_touchpad 0)";
 	if (why == PW_KEYS)     return "keys sent by other programs must be blocked (set in_keyguard 1)";
-	if (why == PW_KEYGUARD) return "keys sent by other programs cannot be blocked here (update the game; it needs Windows 8 or newer)";
+	if (why == PW_KEYGUARD) return "input from other programs cannot be blocked here (latest game on Windows 8 or newer, no remote session or DirectInput)";
 	return "";
 };
 

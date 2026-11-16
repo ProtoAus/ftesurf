@@ -1,5 +1,18 @@
 # AGENT_NOTES.md
 
+## P1576 input guard: what it does to test arms (16 Nov 2026)
+
+- Since engine 1576, keys, clicks and wheel turns that Windows does not report as hardware are dropped by
+  default -- including WM_KEYDOWN posted by a test driver (origin 0). p762keys.Client and p615link launch
+  with `+set in_keyguard 0`; another driver that posts keys needs the same. Posted mouse messages are
+  dropped while `in_rawinput_nolegacy` is 1 (now the engine default).
+- With no hardware key seen in a session, the 8th dropped key message stops the key guard for that
+  session (`in_guard_live` gains 8). A rig never sees a hardware key, so a long key-posting arm reaches it.
+- Every console command from another program (the `-plugin` stdin pipe conbridge uses, WM_COPYDATA)
+  counts in `in_guard_lapses`, and CSQC turns any rise into a `bad` step: a ranked-run arm that types
+  commands mid-run reads `changed`. Drive ranked runs from a cfg (p1573guard.py does).
+- `in_guard_live` and `in_guard_lapses` are read-only and engine-written; a test cannot set them.
+
 ## P1568 large-history qualification boundaries (15 Nov 2026 UTC)
 
 - An odd byte total beyond2^24 needs integer counters and full-width file size;

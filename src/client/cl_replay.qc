@@ -320,6 +320,7 @@ float rec_rp_prof_have, rec_rp_prof_raw, rec_rp_prof_filter, rec_rp_prof_accel;
 float rec_rp_prof_grant;         // build 77: the GRANT, engine Patch 326
 float rec_rp_prof_ghave, rec_rp_prof_noleg, rec_rp_prof_touch;   // P1573: the `inguard` report
 float rec_rp_prof_keys;                                           // P1576
+float rec_rp_prof_lapses, rec_rp_prof_lapsesseen, rec_rp_prof_sentbad;   // P1576: in_guard_lapses
 float rec_rp_guardscan;          // P1573: this map's worldspawn has been scanned (CSQC_WorldLoaded)
 float rec_rp_guardmap;           // ...and names an in_rawinput cvar
 
@@ -607,7 +608,7 @@ float(string name, float bit, __inout float have) Rec_InputCvar =
 void() Rec_ProfileReport =
 {
 	local float have, raw, filt, acc, bad, grant;
-	local float ghave, noleg, touch, gbad, keys, live;
+	local float ghave, noleg, touch, gbad, keys, live, lapses;
 
 	have = 0;
 	raw  = Rec_InputCvar("in_rawinput", IPH_RAW,    have);
@@ -693,6 +694,23 @@ void() Rec_ProfileReport =
 	else
 		rec_rp_prof_wasbad = FALSE;
 
+	// P1576: the engine counts every lapse of the input guards (in_guard_lapses: a guard switched off,
+	// a key no keyboard vouched for, a held release let through, a console command from another
+	// program). Any change steps `bad`, so a lapse CSQC never saw as a state (minimized, between two
+	// frames) still reads PW_CHANGED. Engine-made, read-only, its own digits; anything else is a lapse.
+	if ((cvar_type("in_guard_lapses") & (CVAR_TYPEFLAG_ENGINE | CVAR_TYPEFLAG_READONLY)) ==
+	    (CVAR_TYPEFLAG_ENGINE | CVAR_TYPEFLAG_READONLY))
+	{
+		lapses = cvar("in_guard_lapses");
+		if (strcmp(cvar_string("in_guard_lapses"), ftos(lapses)))
+			lapses = rec_rp_prof_lapses + 1;
+		if (rec_rp_prof_lapsesseen)
+		if (lapses != rec_rp_prof_lapses)
+			rec_rp_prof_bad = rec_rp_prof_bad + 1;
+		rec_rp_prof_lapses = lapses;
+		rec_rp_prof_lapsesseen = TRUE;
+	}
+
 	bad = rec_rp_prof_bad;
 
 	/*
@@ -718,6 +736,7 @@ void() Rec_ProfileReport =
 	if (noleg == rec_rp_prof_noleg)
 	if (touch == rec_rp_prof_touch)
 	if (keys  == rec_rp_prof_keys)
+	if (bad   == rec_rp_prof_sentbad)      // P1576: a lapse moves `bad` with no state change
 		return;
 
 	rec_rp_profseen    = TRUE;
@@ -730,6 +749,7 @@ void() Rec_ProfileReport =
 	rec_rp_prof_noleg  = noleg;
 	rec_rp_prof_touch  = touch;
 	rec_rp_prof_keys   = keys;
+	rec_rp_prof_sentbad = bad;
 
 	// P1573: before inprof, so the guard values are on the server before the `bad` that counted them.
 	sendevent("inguard", "ffff", ghave, noleg, touch, keys);
