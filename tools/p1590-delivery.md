@@ -34,6 +34,9 @@ filters as one exclusive row (Segmented blue, TAS purple, the directions). Root 
   39d64915); csprogsvers 2cc0b58d.dat seeded in both.
 - pi_lobby_smoke against 27510 on the 0.1.48 exe: PASS (served csprogs 427bd885, board drew, no QC error).
 - 7b076341 rides ftesurf-64's P1589 ship build and -Pi (agreed by message); not deployed by this session.
+- Superseded the same day by ftesurf-64's P1589 deploy from main 811361e2 (carries P1590 and 7b076341):
+  lobbies cs e393efdc / qw d5774a9f (.prev 427bd885 / ccf0d9a4), 12/12 active; both installs cs e393efdc,
+  qw d5774a9f, menu 3b1928ae; tasrevd codes.txt 150 lines (.pre1589). Read back from the Pi and both installs.
 
 ## Not live: the surfd half
 
