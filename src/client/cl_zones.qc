@@ -339,7 +339,13 @@ float(string path) Zone_FromPackage =
 };
 
 // P1081: a loose file in this game's own folder (a data/ path, as written); null fails closed.
-float(string path) Zone_LooseOwn = { return (strcmp(whichpack(path, 2), "ftesurf") == 0); };
+// P1593: that folder is `worldofsurf` on a new install, `ftesurf` on dev trees and old installs.
+float(string path) Zone_LooseOwn =
+{
+	local string w;
+	w = whichpack(path, 2);
+	return (strcmp(w, "ftesurf") == 0 || strcmp(w, "worldofsurf") == 0);
+};
 
 float(string map) Zone_LoadOrdinary =
 {
