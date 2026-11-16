@@ -2457,6 +2457,16 @@ void() HE_MigrateDefaults =
 			print("surf_view/ent_view: translucent planes with edges now (surf_view_style 3; 1 was dither with edges)\n");
 		localcmd("seta r_video_rev 1402\n");
 	}
+	// Patch 1587 (Lex, 16 Nov): water and glass still on the old dithered defaults take the transparent plane and
+	// translucent glass, once the plugin carrying those defaults is here; Dithered and the rest stay in Graphics.
+	if (strstrofs(cvar_description("hl2_water"), "Patch 1587") >= 0 && cvar("r_video_rev") < 1587)
+	{
+		if (HE_MoveOne("hl2_water", 3, "0"))
+			print("water: a transparent plane now, not dithered (hl2_water 0)\n");
+		if (HE_MoveOne("hl2_refract", 2, "0"))
+			print("glass: translucent now, not dithered (hl2_refract 0)\n");
+		localcmd("seta r_video_rev 1587\n");
+	}
 	// Patch 1442: a config still on the warm-up budget's old 2 s takes 6, once the engine stays responsive through it
 	registercvar("r_mapready_rev", "0", CVAR_ARCHIVE);
 	if (strstrofs(cvar_description("r_mapready_budget"), "Patch 1442") >= 0 && cvar("r_mapready_rev") < 1442)
