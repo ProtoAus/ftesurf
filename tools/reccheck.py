@@ -3663,6 +3663,13 @@ ANG_LAG_EDGE = 4.0       # the winner must beat the runner-up by this factor
 ANG_LAG_SEP = 1.0        # ...by this many points as well, since 0 x 4 <= 0
 ANG_LAG_FLOOR = 2.0      # ...and must itself align, not merely align least badly
 ANG_LAG_MIN = 50         # ...on at least this many joined moves
+# P1599: when no offset aligns but the frames' angles name one, the delay wobbled and the one-frame rule
+# abstains; the sweep rules judge at that offset. Fleet, 17 Nov: 234 of 2,322 lobby receipts faulted at
+# offset 0 (sweep 5-97%); at the named offset the sweep rule peaks at 3.4%, while one-frame ticks still miss
+# 0.05 deg on 2.6-88% (honest clients, any lag). Same-run share >= 0.81; another run's .view on the same map
+# <= 0.30 at >= 10 sampled moves, and still >= 57% past the sweep cut at its own winner.
+ANG_LAG_VOTE = 0.5       # share of sampled moves naming the winner or a tick either side
+ANG_LAG_VOTE_MIN = 3     # ...over at least this many sampled moves (the sweep rule still decides)
 # THERE IS NO WINDOW, BECAUSE A WINDOW HAS AN EDGE AND THE EDGE CONVICTS.
 # Measured by a reviewer: at 12 ticks of lag an honest pair is clean and at 13
 # it draws both faults -- and widening 12 to 25 only moved the cliff to 26.
@@ -3814,6 +3821,16 @@ def angle_join(r, rec, frames):
             lag, bestsc = 0, score(0)[0]
     else:
         bestsc = score(0)[0]
+    # P1599 (see ANG_LAG_VOTE): nothing aligned, but exact angle matches prove one run. A delayed (networked)
+    # client only: at offset 0 the one-frame rule keeps judging, since a partial lie there has the same shape.
+    wobble = False
+    if votes and seen >= ANG_LAG_VOTE_MIN and bestsc > ANG_LAG_FLOOR:
+        vlag = max(votes.items(), key=lambda kv: (kv[1], -abs(kv[0])))[0]
+        near = votes[vlag] + votes.get(vlag - 1, 0) + votes.get(vlag + 1, 0)
+        if vlag and near >= ANG_LAG_VOTE * seen:
+            wobble = True
+            lag, top = vlag, votes[vlag]
+            bestsc = score(vlag)[0]
     try:
         ms = " (%.0f ms)" % (lag * 1000.0 * float(rec.info.get("tickrate")))
     except (TypeError, ValueError):
@@ -3824,7 +3841,13 @@ def angle_join(r, rec, frames):
                               100.0 * top / seen if seen else 0.0,
                               "; the first %d moves have no frame under it" % lag
                               if lag > 0 else ""))
-    if not lag and bestsc > ANG_LAG_FLOOR:
+    if wobble:
+        r.info["angle_lag"] += "; no offset holds to %g deg" % ANG_SOLO
+        r.note("the frames' own angles name %+d ticks (%.0f%% of sampled moves, with a tick either side %.0f%%) "
+               "but no offset holds to %g deg, as on honest lobby clients whose delay wobbles. The one-frame "
+               "rule abstains; the sweep rules judge at %+d" % (lag, 100.0 * top / seen, 100.0 * near / seen,
+                                                              ANG_SOLO, lag))
+    elif not lag and bestsc > ANG_LAG_FLOOR:
         # THE DIAGNOSTIC THAT USED TO BE MISSING.  When nothing lines the two
         # files up, "judged at offset zero" and "no offset exists" printed
         # identically, and the second is the one a reader needs: it is either a
@@ -3945,7 +3968,7 @@ def angle_join(r, rec, frames):
     # ticks to make a finding on; `covered` is whether they are enough of the
     # run to CLEAR it.  Folding them together is what let a sidecar that padded
     # 55% of its ticks print the cleanest line the rule can produce.
-    judged = tight and len(solo) >= ANG_SOLO_MIN
+    judged = tight and not wobble and len(solo) >= ANG_SOLO_MIN
     covered = judged and cover >= ANG_SOLO_COVER
     if tight:
         # THE COVERAGE IS PRINTED FIRST AND ALWAYS, INCLUDING AT ZERO.  What
@@ -3960,6 +3983,7 @@ def angle_join(r, rec, frames):
                                    sfrac, max(solo) if solo else 0.0,
                                    "" if covered else
                                    (" -- PARTIAL COVER" if judged
+                                    else " -- NOT JUDGED (no offset holds)" if wobble
                                     else " -- NOT ENOUGH TO JUDGE")))
         if judged and sfrac > ANG_SOLO_HOLD:
             # KEPT UNDER ~150 CHARACTERS ON PURPOSE.  rcptcheck wraps this in
@@ -3987,6 +4011,9 @@ def angle_join(r, rec, frames):
             why = ("this recording's angles are %s, which the tight rule cannot "
                    "use" % (source if not rec.angle_epoch else
                             "joined across a %s" % "/".join(rec.angle_epoch)))
+        elif wobble:
+            why = ("no offset holds -- at %+d ticks %.1f%% of sampled moves miss %g deg, as honest "
+                   "lobby clients' do" % (lag, bestsc, ANG_SOLO))
         elif len(solo) < ANG_SOLO_MIN:
             why = ("only %d moves held one rendered frame, under the %d it needs"
                    % (len(solo), ANG_SOLO_MIN))
