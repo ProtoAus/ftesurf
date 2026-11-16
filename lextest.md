@@ -1,5 +1,9 @@
 # lextest.md — things waiting on a human
 
+## P1576/P1577 keys and clicks from other programs blocked; DLL note -- INSTALL PENDING (record: tools/p1576-delivery.md)
+- Play as normal for a few minutes: every key, mouse button and the wheel should work exactly as before. If ANY key does nothing, open the console (it says "dropped a key another program sent" if the block is the cause), and tell me which key and what keyboard or software you use.
+- If you use a macro tool, remapper or remote play on purpose: those keys are now ignored; `in_keyguard 0` brings them back and runs then do not rank.
+
 ## P1574 Water warmed at load -- INSTALLED 15 Nov 20:32Z (both installs exe 27697bbc, patch-1574); owner check PENDING
 - Play a water map you have never played (or one whose water you have not seen since this update): the first look at the water should not hitch. Loading may take up to about a second longer the first time.
 - If a map still hitches the first time something comes into view, say the map and what came into view.
@@ -12,7 +16,7 @@
 ## P1573 no injected clicks / no touchpads on the ranked board -- owner check PENDING (deploy record: tools/p1573-delivery.md)
 - On your next join the console says clicks are now blocked in game (once). Play as normal: mouse buttons and any scroll-wheel binds (jump on the wheel) should feel the same. If the wheel feels like it does half as much in game, tell me.
 - If you have a laptop touchpad: it no longer moves the view in game; `in_rawinput_touchpad 1` brings it back, and a run on it then finishes with "touchpads do not rank".
-- Anti-cheat "no-mouse" check (30 s, no finish needed): with input recording on, leave the start box on any map using only the keyboard, don't touch the mouse, then reset. I read the journal from your install and the run's receipt from the Pi; nothing needs uploading.
+- Anti-cheat "no-mouse" check: DONE 16 Nov on surf_mom (2,192 judged frames, none with a mouse count, measured zero, no fault).
 
 ## P1569 With help runs on the segmented board -- waits on the surfd activation (your OK), then lobby_helped 1
 - After both: finish a run from a friend's shared save. The segmented board (in game and on the site) lists you as "<you> +1" in a soft blue; hovering shows every runner. Is the hint visible enough?
