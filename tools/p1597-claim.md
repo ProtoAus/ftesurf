@@ -18,4 +18,4 @@ Measured (tools/p1597terms.py, local game per stored answer, the server's own `c
 - control, the installed pre-1597 progs (931d6c00 / ac1837fe): 8 -> 8 (needs 8); 9 -> 8 (needs 8).
 - pi_lobby_smoke on the released 0.1.48 exe (af6a445c) against lobby 1: served cs 76a4e222, board drew, no QC error.
 - A real "Play online" in the 0.1.48 menu records 9: C:\FTESurf's data/consent.txt reads version 9, accepted
-  20261117-003130. (p647boot's unattended failure of that step on 16 Nov was the arm's clicks, not the menu.)
+  20261117-003130. (So p647boot's unattended failure of that step on 16 Nov is in the arm, not the menu; its cause is not traced.)
