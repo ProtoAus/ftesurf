@@ -27,7 +27,14 @@ migration (HE_MigrateDefaults).
 
 ## Measured
 
-See "Arm" (filled from the run).
+tmp/p1584xhair.py in the task root: an isolated basedir (tools/p1384lead.py prepare(), MAINCONFIG ftesurf), exe
+e004597b, local game on surf_dune; launch 1 types `hud_crosshair 3` after CSQC loads and runs `cfg_save`; launch 2
+reads the value after CSQC loads.
+
+| default.cfg | before | typed | saved by cfg_save | after restart |
+|---|---|---|---|---|
+| main (`set`) | 1 | 3 | no hud_crosshair line | 1 -- lost |
+| P1584 (`seta`) | 1 | 3 | `seta hud_crosshair "3"` | 3 -- kept |
 
 ## Delivery
 
