@@ -2,8 +2,9 @@
 
 ## Groups, mode row -- what P1590 left (16 Nov, ftesurf-06; root C:\FTESurf-worktrees\groups-20261116-c7)
 
-- The surfd half (game_groups, completion families) is on main, not live: it needs a guarded backend generation
-  (P1569/P1570's machinery, an owner root step). Until then the client's groups request 400s and it waits 30 s.
+- The surfd half went live 16 Nov 14:12Z in a generation carrying ONLY surfd.py from f052b3ec: its source_ref says
+  f052b3ec while sweep.py is the previous generation's bytes, so P1469/P1580 still wait (tools/backend-pending.md).
+  The next generation's builder must compare runtime BYTES with main, not trust source_ref.
 - A KSF board is crawled partly (a viewed map's main to 1,000 rows, others 100-200), so where KSF is the ladder
   its X is the rows held, a lower bound: the groups run tighter than KSF's own until the crawl ends
   (ksfimport's doc["done"]). Falsifier: a KSF-only main with done False, x against KSF's site count.

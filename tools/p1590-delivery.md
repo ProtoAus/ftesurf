@@ -38,12 +38,23 @@ filters as one exclusive row (Segmented blue, TAS purple, the directions). Root 
   lobbies cs e393efdc / qw d5774a9f (.prev 427bd885 / ccf0d9a4), 12/12 active; both installs cs e393efdc,
   qw d5774a9f, menu 3b1928ae; tasrevd codes.txt 150 lines (.pre1589). Read back from the Pi and both installs.
 
-## Not live: the surfd half
+## The surfd half -- LIVE 16 Nov 2026 14:12Z (Lex: "yes do it")
 
-game_groups and the completion families are on main but surfd runs a sealed guarded generation; a new one is
-built and cut over by the backend transition machinery with an owner root step (P1569/P1570). Until then:
-- the client's groups request is answered 400; it waits 30 s and asks again (no lines, no badges);
-- the Stats page still counts a map and its CS:S build twice.
+A guarded code-only successor generation of P1570's, built with P1570's transition tooling (private record in
+the owner's private worktree): runtime identical except `surfd.py` = main f052b3ec's (sha256 f3db8813...), schema 26,
+no reader, native, cron-route or QC change. `sweep.py` stays at the previous generation's bytes: **P1580's receipt
+checks and P1469 are NOT in it** (tools/backend-pending.md), although the generation's source_ref names f052b3ec.
+- Three review lenses on the prepared packet (Root proposal, packet, operator: no blocker; two process fixes), the
+  owner's Root install (13:40:54Z, three files + daemon-reload, no restart), then an independent review of the
+  exact source and captured live reference (CLEAR) before the one execute.
+- First staging refused: the new task root inherited the setgid bit of `/srv/nvme/agent-work` and the guard
+  requires mode 0700 exactly. The unreferenced root was recreated with `chmod g-s` and staged under `umask 077`.
+- Lobbies warned in chat at 14:00Z (one player on). Execute 14:04Z, returned 14:12:08Z (rc 0, completed, no
+  hold). Read-only postflight 14:13Z: new primary OPEN, its fallback and the previous generation CLOSED (both kept as
+  rollbacks: never delete either root), readers/launcher/stubs/native unchanged, cron restored, `/health` and
+  `/lobbies.json` 200.
+- Live: `/api/board?groups=surf_utopia&style=clean` ladders main on Momentum's 15,913 times (Top 10 to 53.790 s,
+  G6 to 63.825 s); surf_kitsune 11 legs. A busy profile's completion reads 174 / 1573 (families).
 
 ## Owner check
 

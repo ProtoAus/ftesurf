@@ -12,6 +12,13 @@ renewed-fixture admission blockers. The activated
 backend entries have been removed from this queue, not relabelled as pending.
 Do not redeploy a healthy backend merely to refresh this handoff.
 
+## 16 Nov 2026: the P1590 generation shipped surfd.py ONLY
+
+The generation that went live 16 Nov 14:12Z (P1590, tools/p1590-delivery.md) changed one runtime file, `surfd.py`
+(main f052b3ec). Its identity names f052b3ec as source_ref, but `sweep.py` and `test_sweep.py` are the bytes the
+previous generation ran: **the two entries below are still pending**. Compare runtime bytes with main when
+building the next generation.
+
 ## Next qualified generation — P1469 unavailable similarity reporting
 
 Include the published one-line `surfd/sweep.py` reporting fix from P1469: setup or

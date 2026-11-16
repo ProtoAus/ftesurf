@@ -4,10 +4,10 @@
 - Hold TAB: the row under Online/Local reads Segmented (blue), TAS (purple), Normal, Sideways, Half-Sideways,
   Backwards. Click each: only that one lights, the rest dim, and the list is that board. Online/Local keep the mode.
 - Right of the board: everyone in the server with their main time, in their colour. Say if it should show more.
-- Needs the surfd update (see the record): coloured lines between rows where the group changes, with a pill naming
-  the group below (G1..G6, No group); your badge on each course you have a time on (hover a course: which board it
-  was measured on); the footer says "groups from Momentum, N times". Main menu > a map's board shows the same.
-- Needs the surfd update: Stats page, maps finished / totals count surf_borderlands and its CS:S copy once.
+- surfd LIVE 16 Nov 14:12Z: coloured lines between rows where the group changes, with a pill naming the group below
+  (G1..G6, No group); your badge on each course you have a time on (hover a course: which board it was measured on);
+  the footer says "groups from Momentum, N times". Main menu > a map's board shows the same.
+- surfd LIVE: Stats page, maps finished / totals count surf_borderlands and its CS:S copy once.
 
 ## P1589 HL2 / AG 1000 / CS 1.6 movement profiles -- INSTALLED both installs 16 Nov (exe 51de336a patch-1589, cs e393efdc) + lobbies QC; owner feel check PENDING (record: engine ENGINE_PATCHES.md Patch 1589)
 - Console in your own game: `sv_movementprofile hl2-post`, then `map bhop_mom_training_beta` (any bhop map). Bhop
