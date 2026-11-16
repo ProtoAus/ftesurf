@@ -617,6 +617,13 @@ check("fetching it returns 200", st, 200)
 check("...with the file's exact bytes", data.decode("utf-8"), BODY)
 check("...and the byte count agrees with the disk", len(data), len(BODY))
 
+# P1592: a history leaf as lobbies post it since e26b5768 (`-<32 hex>`, here a 12-char slug)
+# goes through the route and binds a replay; MAX_FIELD_LEN 64 cut it.
+LONG = "%s_%s-%s_run.rec" % ("0004109", who("alice", "abcdefghijkl"), "0123456789abcdef" * 2)
+got = submit(m, ticks=4109, rec=LONG)
+check("a %d-char history leaf binds a replay" % len(LONG),
+      isinstance(got, dict) and got.get("rep", 0) > 0, True)
+
 # An id nobody issued.  404 and not 500, and not a stack trace.
 check("an unknown id is 404", fetch(m, 9999)[0], 404)
 check("id 0 -- what a row with no replay carries -- is 404",

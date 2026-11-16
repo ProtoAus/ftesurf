@@ -1947,7 +1947,7 @@ def rate_ok(ip, now, cap=None, bucket=""):
 _CTRL = re.compile(r"[\x00-\x1f\x7f]")
 
 
-REC_LEAF_MAX = 96  # 10 stamp + slug-digest-32hex who (<= 55) + _segmented.rec
+REC_LEAF_MAX = 96  # longest valid: 10 stamp + _ + 54 who (12-8-32) + _segmented.rec = 79
 
 
 def clean_text(raw, limit=MAX_FIELD_LEN):
@@ -1998,7 +1998,11 @@ _MAPNAME_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$")
 # `<stamp>_<who>_<tag>.rec`, and this is that grammar transcribed -- narrowly,
 # because the value arrives over the network and ends up as a path component.
 #
-# FOUR SHAPES, ALL REAL, and the middle group is optional for that reason:
+# SINCE e26b5768 (15 Nov) every finish is a history leaf: SV_RecHistoryWho appends
+# `-<32 hex>` to the who, so a lobby posts `0000279_lex-3eb1bd43-<32 hex>_pb.rec` (<= 79
+# chars; REC_LEAF_MAX). The four shapes below are the pre-history ones, still accepted;
+# `local-<32 hex>` / `s3-<32 hex>` (no digest) are refused -- BACKLOG, P1592.
+# FOUR SHAPES, and the middle group is optional for that reason:
 #   0000279_lex-3eb1bd43_pb.rec   the ordinary lobby case: slug + 8 hex of
 #                                 sha256(guid).  FS_NameSlug emits only [a-z0-9]
 #                                 and caps at FS_WHO_NAMEMAX (12).

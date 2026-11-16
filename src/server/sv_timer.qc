@@ -4254,7 +4254,7 @@ string(float tag) SV_RecTagName =
 string(float tag, string dst) SV_RecDestTagWord =
 {
 	if (tag == RT_SHADOW)
-	if (!strcmp(substring(dst, strlen(dst) - 14, 14), strcat("_", FS_SEGWORD, ".rec")))
+	if (!strcmp(substring(dst, strlen(dst) - strlen(FS_SEGWORD) - 5, strlen(FS_SEGWORD) + 5), strcat("_", FS_SEGWORD, ".rec")))
 		return FS_SEGWORD;
 	return FS_TagName(tag);
 };
