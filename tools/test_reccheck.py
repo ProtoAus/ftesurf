@@ -2147,13 +2147,12 @@ def case_angle_lag_is_recovered():
     # the search this same pair faults.
     L2 = build(sweep=128, packets=400)
     import reccheck as _rc
-    keep = _rc.ANG_LAG_FLOOR, _rc.ANG_LAG_VOTE
+    keep = _rc.ANG_LAG_FLOOR
     _rc.ANG_LAG_FLOOR = -1.0            # no offset can ever be accepted
-    _rc.ANG_LAG_VOTE = float("inf")     # ...nor named by the vote (P1599's path)
     try:
         f2 = run_inproc(L2, view_for(L2, shift=-3))
     finally:
-        _rc.ANG_LAG_FLOOR, _rc.ANG_LAG_VOTE = keep
+        _rc.ANG_LAG_FLOOR = keep
     check(any("the sidecar is not this recording's" in x for x in f2),
           "CONTROL: with the search switched off the same pair faults")
     check(not run_inproc(L2, view_for(L2, shift=-3)),
@@ -2294,49 +2293,44 @@ def case_angle_lag_is_not_claimed_when_the_winner_is_bad():
     """A RATIO HAS NO OPINION ABOUT THE WINNER BEING BAD.  At a wrong offset
     the runner-up is naturally 70-85%, so a 4x margin is nearly free, and the
     corpus accepted offsets whose own score was 15-20% past cut.  The winner has
-    to align, not merely align least badly.
-
-    P1599: the unrotated 35% still name +3 by exact angle matches, so the vote
-    path takes it -- but only as the SWEEP rules' join, with the one-frame rule
-    abstaining, and at +3 the rotated block is a sweep fault."""
+    to align, not merely align least badly.  P1599 moves only the SWEEP rules
+    to the offset the frames name, which says so in its own note."""
     L = build(sweep=128, packets=400)
     f, n = run(L, view=view_for(L, rot=90.0, lo=0.25, hi=0.9, shift=-3))
-    check(not any("ticks (" in x and "lines" in x for x in n),
-          "no offset is claimed to align for a sidecar that is wrong at all of them")
-    check(any("but no offset holds to" in x for x in n),
-          "...the checker says none holds, and the one-frame rule abstains")
-    check(any("the sidecar does not describe this recording" in x for x in f),
-          "...and the sweep rules, joined at the named offset, fault the rotated block")
-    if not any("the sidecar does not describe this recording" in x for x in f):
-        print("        faults=%s notes=%s" % (f, n))
+    check(not any(("-3 ticks" in x or "+3 ticks" in x) and "the sweep rules judge at" not in x for x in n),
+          "no offset is claimed for a sidecar that is wrong at all of them")
+    check(any("lines these two files up" in x for x in n),
+          "...and the checker says the search found nothing, not nothing at all")
+    if not any("lines these two files up" in x for x in n):
+        print("        notes=%s" % n)
+    check(any("the sidecar is not this recording's" in x for x in f)
+          and any("the sidecar does not describe this recording" in x for x in f),
+          "...and both rules still fault it, the sweep rules joined at the named offset")
 
 
 def wobble_view(lines, a=-3, b=-4, stretch=40, **kw):
-    """A sidecar whose delay changes between `a` and `b` ticks every `stretch` frames: the shape of a lobby
-    client's (P1599). The tick column only ever repeats or skips at a change, never runs backwards."""
+    """A sidecar whose delay changes between `a` and `b` ticks every `stretch` frames, the shape of a lobby
+    client's (P1599): the tick column only repeats or skips at a change, never runs backwards."""
     va, vb = view_for(lines, shift=a, **kw), view_for(lines, shift=b, **kw)
-    out, i = va[:4], 0
-    for la, lb in zip(va[4:], vb[4:]):
-        out.append(la if (i // stretch) % 2 == 0 else lb)
-        i += 1
-    return out
+    per = kw.get("dense", 1)            # frames a move: switch only between moves
+    return va[:4] + [la if (i // per // stretch) % 2 == 0 else lb for i, (la, lb) in enumerate(zip(va[4:], vb[4:]))]
 
 
-def case_angle_lag_wobble_is_not_a_fault():
-    """P1599.  ON THE LOBBIES THE DELAY WOBBLES, AND THE CHECK CONVICTED IT.
+def case_angle_sweep_joins_at_the_named_offset():
+    """P1599.  A SWEEP JUDGED AT THE WRONG OFFSET MEASURES NOTHING.
 
-    Fleet, 17 Nov: 234 of 2,322 lobby receipts carried an angle FAULT.  The
-    frames' own angles named one offset (share >= 0.81 with a tick either
-    side), but no offset held to 0.05 deg, so the join fell back to zero and
-    both rules convicted honest pairs.  At the named offset the sweep rule
-    peaked at 3.4% (cut 5%).  Here: a delay of three ticks, then four, in
-    stretches of 40 frames."""
-    L = build(sweep=128, packets=400)
-    view = wobble_view(L)
+    Lobby sidecars lag by a delay that changes by a tick within a run, so no
+    offset holds to 0.05 deg and the join stayed at zero -- where the sweep rule
+    faults any delayed pair whatever it holds.  148 of 234 lobby angle FAULTs
+    (17 Nov) came from that alone.  The sweep rules now join at the offset the
+    frames' own angles name; the one-frame rule keeps its join and verdicts.
+    `dense` gives the high-frame-rate shape (few one-frame ticks) of those 148."""
+    L = build(sweep=600, packets=400)    # ~1.3 deg a tick: a 4-tick error is past the 3x cut
+    view = wobble_view(L, dense=3)
     f, n = run(L, view=view)
-    check(not f, "a sidecar whose delay changes between three and four ticks is not a fault")
-    check(any("but no offset holds to" in x for x in n),
-          "...the one-frame rule says it abstains, and why")
+    check(not f, "a dense sidecar whose delay changes between three and four ticks is not a fault")
+    check(any("the sweep rules judge at +3 ticks" in x or "the sweep rules judge at +4 ticks" in x for x in n),
+          "...and the sweep rules say where they joined")
     if f:
         print("        got: %s" % f[:2])
     import reccheck as _rc
@@ -2346,20 +2340,22 @@ def case_angle_lag_wobble_is_not_a_fault():
         f2 = run_inproc(L, view)
     finally:
         _rc.ANG_LAG_VOTE = keep
-    check(bool(f2), "CONTROL: without the vote path the same pair faults (the old verdict)")
-    check(not run_inproc(L, view), "...and with it back, in the same process, it does not")
-    # Still a fault: a wobbling sidecar with a block of another view in it, and one from another run.
-    f3, _ = run(L, view=wobble_view(L, rot=90.0, lo=0.4, hi=0.7))
-    check(any("the sidecar does not describe this recording" in x for x in f3),
-          "a wobbling sidecar with a 90 deg block is still a fault")
-    other = build(sweep=97, packets=400)
-    f4, _ = run(L, view=wobble_view(other))
-    check(bool(f4), "a wobbling sidecar from another run is still a fault")
-    # LIMIT, not a goal (BACKLOG): at offset 0 the one-frame rule keeps judging, because a partial lie there
-    # has this same shape -- so the same wobble on a zero-delay (LAN) client still faults.
-    f5, _ = run(L, view=wobble_view(L, a=0, b=-1))
-    check(any("the sidecar is not this recording's" in x for x in f5),
-          "LIMIT: at offset 0 the same wobble is still the one-frame rule's fault (P1599 leaves it)")
+    check(any("the sidecar does not describe this recording" in x for x in f2),
+          "CONTROL: without the named offset the same pair is the sweep rule's fault")
+    check(not run_inproc(L, view), "...and with it back, in the same process, it is not")
+    # The one-frame rule is untouched: one frame a tick, the same wobble, still its fault at offset 0.
+    f3, _ = run(L, view=wobble_view(L))
+    check(any("the sidecar is not this recording's" in x for x in f3),
+          "with one frame a tick the one-frame rule still judges at offset 0 and faults (unchanged)")
+    # Still faults: a 90 deg block, and another run's sidecar.
+    f4, _ = run(L, view=wobble_view(L, dense=3, rot=90.0, lo=0.4, hi=0.7))
+    check(any("the sidecar does not describe this recording" in x for x in f4),
+          "a dense wobbling sidecar with a 90 deg block is still the sweep rule's fault")
+    f5, _ = run(L, view=wobble_view(build(sweep=450, packets=400), dense=3))
+    check(bool(f5), "a dense wobbling sidecar from another run is still a fault")
+    # A sidecar ahead of the recording is no delay: no named-offset join.
+    f6, n6 = run(L, view=view_for(L, shift=3, dense=3))
+    check(not any("the sweep rules judge at" in x for x in n6), "a sidecar AHEAD of the recording gets no named-offset join")
 
 
 def retry_clock_pair(retries=2, resets=2):
@@ -3663,7 +3659,7 @@ def main():
                case_angle_negative_run_clock_is_a_fault,
                case_angle_head_amnesty_costs_coverage,
                case_angle_lag_is_not_claimed_when_the_winner_is_bad,
-               case_angle_lag_wobble_is_not_a_fault,
+               case_angle_sweep_joins_at_the_named_offset,
                case_angle_omission_does_not_read_as_cover,
                case_angle_tight_rule_abstains_where_the_epoch_moves,
                case_angle_tight_rule_is_keyed_on_the_source_not_the_version,
