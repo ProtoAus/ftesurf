@@ -67,7 +67,8 @@ def main():
             t = st / p
             t.parent.mkdir(parents=True, exist_ok=True)
             # ftesurf.sh: same bytes on both, exec only on Linux, so it stays native per platform
-            t.write_bytes(('published ' + (p if p in shared or p == 'ftesurf.sh' else platform + ' ' + p) + '\n').encode())
+            t.write_bytes(b'FTEMANIFEST 1\nGAME "FTESurf"\nBASEGAME "ftesurf"\n' if p == 'default.fmf' else  # P1593: updatefeed reads GAME/BASEGAME
+                          ('published ' + (p if p in shared or p == 'ftesurf.sh' else platform + ' ' + p) + '\n').encode())
         stages[platform] = st
     sentinels = {'ftesurf/ftesurf.cfg': b'player settings sentinel\n', 'ftesurf/data/consent.txt': b'consent sentinel\n',
                  'ftesurf/maps/zones/local/surf_fixture.json': b'edited zone sentinel\n'}

@@ -296,7 +296,8 @@ def main():
     (root / 'OWNER.md').write_text('Synthetic signed Windows launcher UI controls; no real game/player data.\n')
     stage = root / 'stage'
     stage.mkdir()
-    contents = {'default.fmf': b'synthetic manifest\n', 'ftesurf64.exe': b'inert non-executable synthetic fixture\n',
+    contents = {'default.fmf': b'FTEMANIFEST 1\nGAME "FTESurf"\nBASEGAME "ftesurf"\n',  # P1593: updatefeed reads GAME/BASEGAME
+                'ftesurf64.exe': b'inert non-executable synthetic fixture\n',
                 'ftesurf/menu.dat': b'M' * (1024 * 1024), 'ftesurf/csprogs.dat': b'C' * (1024 * 1024),
                 'ftesurf/qwprogs.dat': b'Q' * (1024 * 1024)}
     for path, data in contents.items():

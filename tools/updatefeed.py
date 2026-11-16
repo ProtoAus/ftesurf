@@ -36,6 +36,8 @@ IDENTITIES = {
     WORLDOFSURF: ("worldofsurf/", {"win64": "WorldofSurf.exe", "linux64": "worldofsurf64"}),
 }
 REQUIRED = ("menu.dat", "csprogs.dat", "qwprogs.dat")  # below the identity's gamedir
+# default.fmf's GAME switches the signed updater and install lock on (qkupdate.c); BASEGAME picks the identity.
+MANIFEST_GAME = {LEGACY: "FTESurf", WORLDOFSURF: "WorldofSurf"}
 
 
 def identity(game) -> tuple[str, dict[str, str]]:
@@ -68,7 +70,7 @@ def managed(p: str, game: str = LEGACY) -> bool:
 
 
 def managed_legacy(p: str) -> bool:
-    if not p or not p.isascii() or len(p) >= 240 or any(c in p for c in '\\:"*<>?|'):
+    if not p or any(ord(c) >= 0x7f for c in p) or len(p) >= 240 or any(c in p for c in '\\:"*<>?|'):
         return False
     if any(not s or s in (".", "..") or s.endswith((".", " ")) or any(ord(c) < 32 for c in s) for s in p.split("/")):
         return False
@@ -110,14 +112,21 @@ def envelope(payload: dict, seed: bytes, public_key: str = PUBLIC_KEY) -> bytes:
     return result
 
 
+def unique_keys(pairs: list) -> dict:
+    """The engine's JSON reader takes a repeated key's first value, serde and json.loads the last: refuse both."""
+    if len({k for k, _ in pairs}) != len(pairs):
+        raise ValueError("duplicate key in signed update")
+    return dict(pairs)
+
+
 def verify(data: bytes, public_key: str = PUBLIC_KEY) -> dict:
     if len(data) > MAX_FEED:
         raise ValueError("update feed exceeds reader limit")
-    signed = json.loads(data)
+    signed = json.loads(data, object_pairs_hook=unique_keys)
     text = signed["payload"]
     if not isinstance(text, str) or "\0" in text or not ed25519.verify(bytes.fromhex(public_key), text.encode(), bytes.fromhex(signed["signature"])):
         raise ValueError("update manifest signature is invalid")
-    payload = json.loads(text)
+    payload = json.loads(text, object_pairs_hook=unique_keys)
     if not isinstance(payload, dict):
         raise ValueError("update payload must be an object")
     return payload
@@ -134,7 +143,8 @@ def validate(payload: dict, game: str | None = None) -> dict[str, int]:
     if (payload.get("schema") != 2
             or payload.get("channel") != "stable" or payload.get("hash_algo") != "blake2b-256"
             or payload.get("object_layout") != "objects/{h0h1}/{hash}"
-            or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", payload.get("version", ""))):
+            or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", payload.get("version", ""))
+            or payload.get("removed") != []):
         raise ValueError("unsupported update feed")
     files = payload.get("files")
     if not isinstance(files, list) or not files or len(files) > 8192:
@@ -206,10 +216,32 @@ def object_bytes(root: Path, h: str, size: int) -> bytes:
     return data
 
 
+def check_manifest(data: bytes, game: str) -> None:
+    """default.fmf must name this identity: GAME and the last BASEGAME, read as the engine reads them."""
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise ValueError("default.fmf is not UTF-8") from None
+    found = {}
+    for line in text.splitlines():
+        tokens = []
+        for t in re.findall(r'"[^"]*"|[^\s"]+', line):
+            if t.startswith("//"):
+                break
+            tokens.append(t[1:-1] if t.startswith('"') else t)
+        if len(tokens) >= 2 and tokens[0].lower() in ("game", "basegame"):
+            found[tokens[0].lower()] = tokens[1]
+    if found.get("game") != MANIFEST_GAME[game] or found.get("basegame") != game:
+        raise ValueError(f'default.fmf must say GAME "{MANIFEST_GAME[game]}" and BASEGAME "{game}"')
+
+
 def verify_objects(root: Path, payload: dict) -> dict[str, int]:
     objects = validate(payload)
     for h, size in objects.items():
         object_bytes(root, h, size)
+    for f in payload["files"]:
+        if f["path"] == "default.fmf":
+            check_manifest(object_bytes(root, f["hash"], f["size"]), payload["game"])
     return objects
 
 
@@ -255,16 +287,20 @@ def build(stages: dict[str, Path], output: Path, version: str, mirrors: list[str
         raise ValueError("output must be empty (do not reuse another release's objects)")
     output.mkdir(parents=True, exist_ok=True)
     old = verify(previous, public_key) if previous is not None else None
+    # One version line across both feeds: the shared state.json floor refuses anything older.
+    if game == WORLDOFSURF and old is None:
+        raise ValueError("a worldofsurf feed continues the legacy numbering: pass --previous <live legacy feed>")
     if old is not None:
-        validate(old, game)
+        validate(old, None if game == WORLDOFSURF else game)  # the first worldofsurf feed follows the legacy one
         if tuple(map(int, old["version"].split('.'))) >= tuple(map(int, version.split('.'))):
             raise ValueError("rollback or same-version release: version must advance")
+    same = old is not None and old["game"] == game
     files = []
-    # A Windows-only release must not drop the previous Linux installation's entries.
-    if old is not None:
+    # A Windows-only release must not drop the previous Linux installation's entries (never across identities).
+    if same:
         for q in sorted(platforms(old) - set(stages)):
             files.extend(dict(f, platform=q) for f in old["files"] if f["platform"] in (q, "all"))
-    executables = dict(old.get("exec_by_platform", {})) if old is not None else {}
+    executables = dict(old.get("exec_by_platform", {})) if same else {}
     omitted = []
     for platform, stage in stages.items():
         if platform not in ("win64", "linux64"):

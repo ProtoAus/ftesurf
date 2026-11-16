@@ -23,7 +23,8 @@ def stage(root: Path, platform: str) -> Path:
               'ftesurf64.exe' if platform == 'win64' else 'ftesurf64'):
         dest = root / p
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes((p + '\n').encode())
+        # P1593: updatefeed reads default.fmf's GAME/BASEGAME
+        dest.write_bytes(b'FTEMANIFEST 1\nGAME "FTESurf"\nBASEGAME "ftesurf"\n' if p == 'default.fmf' else (p + '\n').encode())
     return root
 
 

@@ -51,7 +51,8 @@ def main():
     for p in paths:
         target = stagedir / p
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(('published ' + p + '\n').encode())
+        # P1593: updatefeed reads default.fmf's GAME/BASEGAME
+        target.write_bytes(b'FTEMANIFEST 1\nGAME "FTESurf"\nBASEGAME "ftesurf"\n' if p == 'default.fmf' else ('published ' + p + '\n').encode())
     sentinels = {'ftesurf/ftesurf.cfg': b'player settings sentinel\n',
                  'ftesurf/data/consent.txt': b'player consent sentinel\n',
                  'hl2/pak01_dir.vpk': b'mounted content sentinel\n',

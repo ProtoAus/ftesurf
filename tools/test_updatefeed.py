@@ -17,13 +17,17 @@ KEY = ed25519.publickey(SEED).hex()
 WORK = None
 
 
+def manifest_text(game):
+    return f'FTEMANIFEST 1\nGAME "{feed.MANIFEST_GAME[game]}"\nBASEGAME "{game}"\n'
+
+
 def stage(root, platform='win64', game='ftesurf'):
     gamedir, exes = feed.IDENTITIES[game]
     paths = ['default.fmf', *(gamedir + leaf for leaf in feed.REQUIRED), exes[platform]]
     for p in paths:
         dest = root / p
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes((p + '\n').encode())
+        dest.write_bytes((manifest_text(game) if p == 'default.fmf' else p + '\n').encode())
     return root
 
 
@@ -251,7 +255,7 @@ class PublisherTests(unittest.TestCase):
 
 
 SOURCE = Path(feed.__file__).read_text()
-# P1593 controls: each mutant is a plausible wrong cut -> (needle, replacement, the refusals it must break).
+# P1593 controls: each mutant is a plausible wrong cut -> (needle, replacement, the checks it must break).
 MUTANTS = {
     'union-paths': ('    if p in old_exe.values() or p.startswith(old_dir):\n        return None\n', '',
                     {'new-feed-with-legacy-gamedir-file', 'new-feed-with-legacy-exe', 'legacy-gamedir-under-new',
@@ -259,16 +263,27 @@ MUTANTS = {
     'feed-picks-identity': ('    if feed_game not in IDENTITIES or (game is not None and feed_game != game):\n',
                             '    if feed_game not in IDENTITIES:\n',
                             {'new-feed-for-legacy-install', 'legacy-feed-for-new-install',
-                             'build-over-legacy-predecessor', 'publication-over-legacy-predecessor'}),
+                             'legacy-build-over-new-predecessor', 'publication-over-legacy-predecessor'}),
     'exec-unchecked': ('.get(platform) != {"cmd": exe, "args"',
                        '.get(platform) != {"cmd": payload["exec_by_platform"].get(platform, {}).get("cmd"), "args"',
                        {'new-feed-with-legacy-exec'}),
     'length-on-legacy-spelling': ('    if not isinstance(p, str) or len(p) >= 240:\n', '    if not isinstance(p, str):\n',
                                   {'new-path-240'}),
-    'build-predecessor-any-identity': ('        validate(old, game)\n', '        validate(old)\n',
-                                       {'build-over-legacy-predecessor'}),
+    'legacy-build-any-predecessor': ('        validate(old, None if game == WORLDOFSURF else game)', '        validate(old)',
+                                     {'legacy-build-over-new-predecessor'}),
     'publication-predecessor-any-identity': ('        validate(old, payload["game"])', '        validate(old)',
                                              {'publication-over-legacy-predecessor'}),
+    'new-feed-own-numbering': ('    if game == WORLDOFSURF and old is None:\n', '    if False:\n',
+                               {'new-build-without-predecessor'}),
+    'carry-across-identities': ('    same = old is not None and old["game"] == game\n', '    same = old is not None\n',
+                                {'new-win64-over-legacy-carries-nothing'}),
+    # build's own verify_objects pass is what refuses a stage's default.fmf
+    'fmf-unchecked': ('            check_manifest(object_bytes(root, f["hash"], f["size"]), payload["game"])\n', '            pass\n',
+                      {'objects-fmf-legacy-basegame', 'stage-fmf-legacy-basegame', 'stage-fmf-legacy-game'}),
+    'duplicate-keys-allowed': ('    payload = json.loads(text, object_pairs_hook=unique_keys)', '    payload = json.loads(text)',
+                               {'duplicate-game-key'}),
+    'del-allowed': ('any(ord(c) >= 0x7f for c in p)', 'not p.isascii()', {'path-with-del'}),
+    'removed-unchecked': ('\n            or payload.get("removed") != []):', '):', {'removed-missing', 'removed-nonempty'}),
 }
 
 
@@ -282,8 +297,13 @@ def variant(name):
     return module
 
 
+def signed_text(text):
+    """An envelope around exact payload text (feed.envelope reserializes, so it cannot repeat a key)."""
+    return json.dumps({'payload': text, 'signature': ed25519.sign(SEED, text.encode()).hex()}).encode()
+
+
 class IdentityTests(unittest.TestCase):
-    """P1593: exactly two identities, never mixed within one feed."""
+    """P1593: exactly two identities, never mixed within one feed, one version line across both."""
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='identity-', dir=WORK)
@@ -292,15 +312,16 @@ class IdentityTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def build(self, f, game, name, version='0.1.25', **kwargs):
+    def build(self, f, game, name, version, platforms=('win64', 'linux64'), **kwargs):
         base = self.root / f.__name__ / name
-        stages = {p: stage(base / p, p, game) for p in ('win64', 'linux64')}
+        stages = {p: stage(base / p, p, game) for p in platforms}
         f.build(stages, base / 'feed', version, ['https://dl.proto.bar/ftesurf/update'], SEED, KEY, game=game, **kwargs)
         return base / 'feed/update.json'
 
-    def refusals(self, f):
-        """case -> True when module f refuses it."""
-        legacy_path, new_path = self.build(f, 'ftesurf', 'ftesurf'), self.build(f, 'worldofsurf', 'worldofsurf')
+    def checks(self, f):
+        """case -> True when module f behaves as P1593 requires (almost all are refusals)."""
+        legacy_path = self.build(f, 'ftesurf', 'ftesurf', '0.1.24')
+        new_path = self.build(f, 'worldofsurf', 'worldofsurf', '0.1.25', previous=legacy_path.read_bytes())
         legacy, new = f.verify(legacy_path.read_bytes(), KEY), f.verify(new_path.read_bytes(), KEY)
         menu = next(x for x in new['files'] if x['path'] == 'worldofsurf/menu.dat')
         exe = next(x for x in new['files'] if x['path'] == 'WorldofSurf.exe')
@@ -315,17 +336,47 @@ class IdentityTests(unittest.TestCase):
         def plus(payload, row, path):
             return dict(payload, files=payload['files'] + [dict(row, path=path)])
 
-        mixed = stage(self.root / f.__name__ / 'mixed', 'win64', 'worldofsurf')
-        (mixed / 'ftesurf/gfx').mkdir(parents=True)
-        (mixed / 'ftesurf/gfx/x.png').write_bytes(b'legacy')
-        # a 0.1.24 legacy predecessor: only the identity rule can refuse the 0.1.25 worldofsurf feed
+        def stage_with(name, game, extra=None, fmf=None):
+            s = stage(self.root / f.__name__ / name, 'win64', game)
+            for rel, data in (extra or {}).items():
+                (s / rel).parent.mkdir(parents=True, exist_ok=True)
+                (s / rel).write_bytes(data)
+            if fmf:
+                (s / 'default.fmf').write_bytes(fmf)
+            return lambda: f.build({'win64': s}, self.root / f.__name__ / (name + '-out'), '0.1.26',
+                                   ['https://dl.proto.bar/ftesurf/update'], SEED, KEY, game=game,
+                                   previous=legacy_path.read_bytes())
+
+        def carries_nothing():
+            try:
+                path = self.build(f, 'worldofsurf', 'win-only', '0.1.26', ('win64',), previous=legacy_path.read_bytes())
+            except ValueError:
+                return False
+            m = f.verify(path.read_bytes(), KEY)
+            return f.platforms(m) == {'win64'} and not any(x['path'].startswith('ftesurf') for x in m['files'])
+
+        def objects_fmf_refused():
+            # the worldofsurf feed's default.fmf object swapped for a legacy-identity manifest
+            objects = self.root / f.__name__ / 'worldofsurf/feed/objects'
+            data = manifest_text('ftesurf').encode()
+            h = hashlib.blake2b(data, digest_size=32).hexdigest()
+            (objects / h[:2]).mkdir(exist_ok=True)
+            (objects / h[:2] / h).write_bytes(data)
+            files = [dict(x, hash=h, size=len(data)) if x['path'] == 'default.fmf' else x for x in new['files']]
+            return refused(f.verify_objects, objects, dict(new, files=files))
+
+        # the last "game" is the one json.loads keeps: a legacy feed that also says worldofsurf
+        text = json.dumps(legacy, separators=(',', ':'), sort_keys=True)
+        duplicate = '{"game":"worldofsurf",' + text[1:]
         prior, receipt = self.root / f.__name__ / 'prior.json', self.root / f.__name__ / 'receipt.json'
-        prior.write_bytes(f.envelope(dict(legacy, version='0.1.24'), SEED, KEY))
+        prior.write_bytes(legacy_path.read_bytes())
         receipt.write_text(json.dumps({'version': '0.1.25', 'feed_sha256': hashlib.sha256(new_path.read_bytes()).hexdigest(),
                                        'objects': len(f.validate(new)), 'verification': 'r2-roundtrip-blake2b-256'}))
         relabel = dict(new, game='ftesurf')
         execs = json.loads(json.dumps(new))
         execs['exec_by_platform']['win64']['cmd'] = 'ftesurf64.exe'
+        removed = dict(legacy)
+        del removed['removed']
         return {
             'new-feed-for-legacy-install': refused(f.validate, new, 'ftesurf'),
             'legacy-feed-for-new-install': refused(f.validate, legacy, 'worldofsurf'),
@@ -336,23 +387,39 @@ class IdentityTests(unittest.TestCase):
             'new-feed-with-legacy-exec': refused(f.validate, execs),
             'new-feed-outside-gamedir': refused(f.validate, plus(new, menu, 'worldofsurf/data/consent.txt')),
             'legacy-gamedir-under-new': not f.managed('ftesurf/menu.dat', 'worldofsurf'),
-            'new-stage-with-legacy-file': refused(f.build, {'win64': mixed}, self.root / f.__name__ / 'mixed-out', '0.1.25',
-                                                  ['https://dl.proto.bar/ftesurf/update'], SEED, KEY, game='worldofsurf'),
+            'new-stage-with-legacy-file': refused(stage_with('mixed', 'worldofsurf', {'ftesurf/gfx/x.png': b'legacy'})),
             'new-path-240': not f.managed('worldofsurf/gfx/' + 'a' * 220 + '.png', 'worldofsurf'),
             'unknown-identity': refused(f.validate, dict(new, game='WorldofSurf')),
-            'build-over-legacy-predecessor': refused(self.build, f, 'worldofsurf', 'successor', '0.1.26',
-                                                     previous=legacy_path.read_bytes()),
+            'legacy-build-over-new-predecessor': refused(self.build, f, 'ftesurf', 'legacy-after-new', '0.1.26',
+                                                         previous=new_path.read_bytes()),
             'publication-over-legacy-predecessor': refused(f.check_publication, new_path, receipt, '0.1.25', prior,
                                                            hashlib.sha256(prior.read_bytes()).hexdigest(), KEY),
+            'new-build-without-predecessor': refused(self.build, f, 'worldofsurf', 'no-previous', '0.1.26'),
+            'new-build-not-above-legacy': refused(self.build, f, 'worldofsurf', 'same-version', '0.1.24',
+                                                  previous=legacy_path.read_bytes()),
+            'new-win64-over-legacy-carries-nothing': carries_nothing(),
+            'stage-fmf-legacy-basegame': refused(stage_with('fmf-basegame', 'worldofsurf',
+                                                            fmf=b'FTEMANIFEST 1\nGAME "WorldofSurf"\nBASEGAME "ftesurf"\n')),
+            'stage-fmf-legacy-game': refused(stage_with('fmf-game', 'worldofsurf',
+                                                        fmf=b'FTEMANIFEST 1\nGAME "FTESurf"\nBASEGAME "worldofsurf"\n')),
+            'objects-fmf-legacy-basegame': objects_fmf_refused(),
+            'duplicate-game-key': refused(f.verify, signed_text(duplicate), KEY),
+            'path-with-del': not f.managed('worldofsurf/gfx/a\x7f.png', 'worldofsurf'),
+            'removed-missing': refused(f.validate, removed),
+            'removed-nonempty': refused(f.validate, dict(legacy, removed=['ftesurf/gfx/old.png'])),
         }
 
     def test_each_identity_accepts_its_own_feed(self):
-        for game in ('ftesurf', 'worldofsurf'):
+        legacy_path = self.build(feed, 'ftesurf', 'ftesurf', '0.1.24')
+        paths = {'ftesurf': legacy_path,
+                 'worldofsurf': self.build(feed, 'worldofsurf', 'worldofsurf', '0.1.25', previous=legacy_path.read_bytes())}
+        for game, path in paths.items():
             with self.subTest(game=game):
-                payload = feed.verify(self.build(feed, game, game).read_bytes(), KEY)
+                payload = feed.verify(path.read_bytes(), KEY)
                 gamedir, exes = feed.IDENTITIES[game]
                 self.assertEqual(payload['game'], game)
                 feed.validate(payload, game)
+                feed.verify_objects(path.parent / 'objects', payload)
                 self.assertEqual(payload['exec'], {'cmd': exes['win64'], 'args': ['-manifest', 'default.fmf']})
                 self.assertEqual(feed.platforms(payload), {'win64', 'linux64'})
                 for platform in ('win64', 'linux64'):
@@ -362,16 +429,27 @@ class IdentityTests(unittest.TestCase):
                 self.assertTrue(next(f for f in payload['files'] if f['path'] == exes['linux64'])['exec'])
 
     def test_cross_mixed_and_outside_feeds_are_refused(self):
-        for case, refused in self.refusals(feed).items():
+        for case, ok in self.checks(feed).items():
             with self.subTest(case):
-                self.assertTrue(refused)
+                self.assertTrue(ok)
+
+    def test_manifest_reader_matches_the_shipped_fmf(self):
+        feed.check_manifest((Path(feed.__file__).parents[1] / 'default.fmf').read_bytes(), 'ftesurf')
+        feed.check_manifest(b'// x\ngame WorldofSurf // trailing\nBASEGAME ftesurf\nbasegame "worldofsurf"\n', 'worldofsurf')
+        for bad in (b'GAME "WorldofSurf"\n', b'BASEGAME "worldofsurf"\n', b'// GAME "WorldofSurf"\nBASEGAME "worldofsurf"\n',
+                    b'GAME "WorldofSurf"\nBASEGAME "worldofsurf"\nBASEGAME "ftesurf"\n',
+                    b'GAME "worldofsurf"\nBASEGAME "worldofsurf"\n', b'GAME "WorldofSurf"\nBASEGAME "*worldofsurf"\n'):
+            with self.subTest(bad):
+                with self.assertRaisesRegex(ValueError, 'default.fmf'):
+                    feed.check_manifest(bad, 'worldofsurf')
 
     def test_new_allowlist_is_the_legacy_one_with_the_gamedir_swapped(self):
         probes = ['ftesurf/menu.dat', 'ftesurf/maps/tiers.txt', 'ftesurf/maps/zones/local/a.json',
                   'ftesurf/maps/zones/local/x/a.json', 'ftesurf/cfg/maps/a.cfg', 'ftesurf/cfg/settings.cfg',
                   'ftesurf/cfg/test/a.cfg', 'ftesurf/data/mapwr.txt', 'ftesurf/data/consent.txt', 'ftesurf/gfx/a.png',
                   'ftesurf/gfx/../../x', 'ftesurf/maps/a.bsp', 'ftesurf/ftesurf.cfg', 'ftesurf/textures/no_texture.png',
-                  'ftesurf/fs_addons.txt', 'ftesurf/MENU.DAT', 'ftesurf/menu.dat.', 'ftesurf/gfx/' + 'a' * 216 + '.png']
+                  'ftesurf/fs_addons.txt', 'ftesurf/MENU.DAT', 'ftesurf/menu.dat.', 'ftesurf/gfx/a\x7f.png',
+                  'ftesurf/gfx/' + 'a' * 216 + '.png']
         for p in probes:
             swapped = 'worldofsurf/' + p[len('ftesurf/'):]
             with self.subTest(p):
@@ -390,10 +468,10 @@ class IdentityTests(unittest.TestCase):
         self.assertTrue(feed.managed('ftesurf/gfx/' + 'a' * 220 + '.png', 'ftesurf'))
 
     def test_mutants_are_caught(self):
-        """Control: each wrong cut lets through exactly the refusals that guard against it."""
+        """Control: each wrong cut breaks exactly the checks that guard against it."""
         for name, (_, _, expected) in MUTANTS.items():
             with self.subTest(name):
-                got = {case for case, refused in self.refusals(variant(name)).items() if not refused}
+                got = {case for case, ok in self.checks(variant(name)).items() if not ok}
                 self.assertEqual(got, expected)
 
 
