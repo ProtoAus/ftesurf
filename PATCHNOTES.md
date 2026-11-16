@@ -33,7 +33,7 @@
 - Your own group shows as a badge (G1 red down to G6 blue) on Main, each stage and each bonus in the board's course list, in the TAB board and the main menu's leaderboard.
 - Segmented, TAS, Normal, Sideways, Half-Sideways and Backwards are one row of modes now: click one and only that board shows, the others dim. Segmented is blue and TAS purple; TAS is no longer a tab.
 - Holding TAB also lists everyone in your server to the right of the board, with their main time in their own colour. The board stays in the middle of the screen; long names are shortened to fit beside it.
-- A run you pick back up from a save is now called segmented everywhere you see it (it used to say "shadow").
+- A run you pick back up from a save is now called segmented everywhere you see it -- the HUD, chat, the finish banner, and its replay files in your own games (it used to say "shadow").
 - On the Stats page a map and its CS:S/KSF copy count as one map, so beating either one counts it as finished.
 
 ### P1589 New practice movement: Half-Life 2, AG 1000 and Counter-Strike 1.6

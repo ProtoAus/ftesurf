@@ -1,5 +1,20 @@
 # BACKLOG.md
 
+## Segmented file names -- what P1592 left (17 Nov, ftesurf-63; root C:\FTESurf-worktrees\groups-20261116-c7)
+- Lobbies write `_shadow` until the surfd generation carrying P1592's `_LEAF_OK` is live; then drop the
+  `lobby_enable` gate in sv_timer.qc SV_RecTagName (part 3). Falsifier: a lobby resumed-run finish posts a
+  `_segmented` leaf and binds a replay row.
+- Pre-existing (e26b5768): every history who is `<owner>-<32 hex>`, which the engine's Held_PrepareWho refuses
+  ("" locally, <= 21 chars ending in the GUID hash on a lobby), so a held close refuses every pb/run/segmented
+  finish. Dormant (`rec_held_metadata` 0). Falsifier: the private P923 dedicated held arm with a history who.
+- Lobby finishes from the e26b5768 deploy (15 Nov) until that generation have no replay row (surfd cut the leaf at
+  64 and refused the shape: 11 "rejecting malformed rec leaf" on 16 Nov). The files stay on the lobbies (history is
+  never pruned), so a one-off reindex could bind them.
+- surfd still refuses `local-<32 hex>` / `s<N>-<32 hex>` history leaves (no digest): reachable only from a trusted
+  server with `lobby_enable 0`.
+- test_replays' "FS_TagArchived is exactly PB, SHADOW, RUN, LOBBY" fails on main: RT_TAS is archived now.
+- `replay segmented|shadow` compares the 7-digit stamp prefix (as FS_NAMESORT does); a 10M+ tick run sorts wrong.
+
 ## Groups, mode row -- what P1590 left (16 Nov, ftesurf-06; root C:\FTESurf-worktrees\groups-20261116-c7)
 
 - The surfd half went live 16 Nov 14:12Z in a generation carrying ONLY surfd.py from f052b3ec: its source_ref says
