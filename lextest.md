@@ -1,6 +1,10 @@
 # lextest.md — things waiting on a human
 
-## P1588 local games: instant loads, no "Loading save" flash -- owner check PENDING (record: tools/p1588-localload.md)
+## 0.1.48 release -- PUBLISHED 16 Nov 09:02Z; both installs updated; owner check PENDING (record: tools/release-0.1.48.md)
+- The menu should say 0.1.48; water should be see-through and glass translucent unless you set them yourself.
+- Then the P1588 check below (local game, save-load key, with and without sv_minping 300).
+
+## P1588 local games: instant loads, no "Loading save" flash -- RELEASED 0.1.48 + both installs; owner check PENDING (record: tools/p1588-localload.md)
 - `map surf_colin_blaster_69000` from the console, save, hold the load key: you are at the save at once and no
   "Loading save" appears. Then `sv_minping 300` and again: still instant, no freeze before you can move.
 - `cl_predict_listenops 0` brings back the old behaviour (for comparison only).

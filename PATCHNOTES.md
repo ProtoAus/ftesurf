@@ -21,6 +21,8 @@
 
 ## next
 
+## 0.1.48 2026-11-16
+
 ### P1588 Save loads are instant in games you host too
 - In a game you start yourself (from the menu or with map in the console), loading a save now puts you there at once, as on the online servers, instead of waiting for your own server and flashing "Loading save".
 - "Loading save" now only appears when a load has waited longer than a third of a second.
