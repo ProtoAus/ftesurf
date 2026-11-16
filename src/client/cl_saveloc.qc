@@ -697,7 +697,8 @@ void(float scan) SaveLoc_LoadKey =
 		rec_sl_pred     = WarpOp_LoadLead();    // after rec_sl_holding: SaveLead_Ready reads it
 		return;
 	}
-	WarpOp_LoadNote();
+	if (!Trail_RequestBusy())
+		WarpOp_LoadNote();          // queued behind a save, SaveLoc_FifoLoad decides (and notes)
 	rec_sl_wophold = FALSE;
 	rec_sl_pred = FALSE;
 	rec_sl_fifoload = Trail_RequestBusy();
@@ -738,6 +739,7 @@ float() SaveLoc_FifoLoad =
 	if (!WarpOp_Able())
 	{
 		rec_sl_fifoload = FALSE;
+		WarpOp_LoadNote();          // P1582
 		return 0;
 	}
 	// WarpOp_Load refuses while any sl_ stringcmd is unanswered: one queued behind another reliable
@@ -755,7 +757,10 @@ float() SaveLoc_FifoLoad =
 	ok = WarpOp_Load();
 	wop_fifoload = FALSE;
 	if (!ok)
+	{
+		WarpOp_LoadNote();          // P1582
 		return 0;
+	}
 	rec_sl_wophold = TRUE;
 	rec_sl_holdack = rec_sl_holdackat = 0;
 	if (rec_sl_upwait && WarpOp_LoadPredicted())
@@ -807,9 +812,10 @@ float() SaveLoc_LeadDone =
 
 string() SaveLoc_LeadText =
 {
-	if (!rec_sl_holding || Spec_Active() || cvar("cl_sl_leadin") <= 0) return "";
+	if (!rec_sl_holding || Spec_Active()) return "";
 	if (!rec_sl_holdkey) return "";     // a rewind's countdown: no key to let go
-	if (!SaveLoc_LeadDone()) return "Loading save";
+	if (!SaveLoc_LeadDone()) return "Loading save";     // P1582: at any lead-in -- a load waiting on the server
+	if (cvar("cl_sl_leadin") <= 0) return "";
 	return rec_sl_upwait ? "" : "Release to play";    // P1462: no countdown; letting go is never held
 };
 

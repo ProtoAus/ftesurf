@@ -385,7 +385,7 @@ def grade(seg):
     if not held:
         # Down and up inside one frame: no rendered frame was held (lead-in 0 on a predicted load).
         return {'frames_held': 0, 'press_to_travel': None, 'press_to_release': 0.0 if 'run resumed' in seg else None,
-                'eye_jumps_held': [], 'texts': [], 'first_countdown': None,
+                'eye_jumps_held': [], 'eye_jumps_all': [], 'texts': [], 'first_countdown': None,
                 'prederr': len(re.findall(r'prederr: seq ', seg)), **split}
     t0 = held[0]['t0']
     first = held[0]['t']
@@ -483,6 +483,8 @@ def main():
             report['lead_kept'] = re.findall(r'"(cl_sl_leadin(?:_rev)?)" is "([^"]*)"', cl.text()[off:])
             report['lead_moved_msg'] = 'a load puts you at the save at once now' in cl.text()
             print('lead kept', report['lead_kept'], 'moved message', report['lead_moved_msg'], flush=True)
+            if len(report['lead_kept']) != 2:
+                raise SystemExit('--lead keep: no readback of cl_sl_leadin / cl_sl_leadin_rev')
         for line in ('menu_restart; ui_close', 'cl_prederror 4',
                      *([] if a.lead == 'keep' else [f'cl_sl_leadin {a.lead}']), 'cl_forwardspeed 200',
                      'rec_savelock 1', 'p1384_probe 0', f'p1437_split_stats {a.split_stats}', *a.set):
@@ -495,7 +497,8 @@ def main():
         if a.step:
             rounds = [(int(d), 'step') for d in a.delays.split(',')]
         for d, hold in rounds:
-            label = f'd{d}' + ('step' if hold == 'step' else 'hold' if hold else 'tap')
+            label = f'd{d}' + ('step' if hold == 'step' else 'hold' if hold
+                               else f'press{a.holdfor:g}' if a.holdfor else 'tap')
             cl.send(f'cl_delay_packets {d}')
             cl.send(f'setpos {O[0]} {O[1]} {O[2]} 0 55 0')
             time.sleep(2.0)
