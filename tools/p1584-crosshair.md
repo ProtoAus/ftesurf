@@ -38,4 +38,5 @@ reads the value after CSQC loads.
 
 ## Delivery
 
-Client config: both installs by hand; players with the next release (progs deploys do not carry cfg).
+Both installs' cfg/default.cfg 705ad2cd (.prev b82050b9 = main before P1584), 16 Nov ~15:10 local. Players get it
+with the next release (progs deploys do not carry cfg).

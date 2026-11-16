@@ -1,20 +1,21 @@
 # lextest.md — things waiting on a human
 
-## P1584 crosshair kept between sessions -- owner check PENDING (record: tools/p1584-crosshair.md)
+## P1584 crosshair kept between sessions -- INSTALLED both installs (default.cfg 705ad2cd); owner check PENDING
 - Type `hud_crosshair 3` in the console, quit, start again: crosshair 3 should still be there. Ask akatosh the
   same after the next release (players get default.cfg with a release, not with a lobby deploy).
+
 ## P1575/P1578 Water targets and fog shaders made at load -- INSTALLED 03:46Z (both installs exe e004597b, patch-1578); owner check PENDING
 - Play a water map you have not played since this update: the first look at the water should hitch less than before (some is left: the first draw of what the water shows).
 - Play surf_null (or any foggy map you have not played): no stutter the first time you look around; loading may take up to a quarter of a second longer the first time.
 - If something still hitches the first time it comes into view, say the map and what came into view.
 
-## P1583 Maps: ahop and kz/climb under Bhop -- owner check PENDING (record: tools/p1583-mapfilter.md)
+## P1583 Maps: ahop and kz/climb under Bhop -- INSTALLED both installs (menu cfea7114); owner check PENDING (record: tools/p1583-mapfilter.md)
 - Maps, Bhop: two chips beside the switch, "+ ahop" and "+ kz/climb". Each adds those maps to the list and stays
   on after a restart; Surf does not show them. Is the wording right, and do you want ahop on by default?
 - Note: ahop_ and kz_ maps still play with the normal (surf) settings until their mode has a ruleset
   (cfg/lobby/mode_ahop.cfg etc.) -- your HL2/AG modes will decide that.
 
-## P1582 save-lock lead-in off by default -- owner check PENDING (record: tools/p1582-savelock.md)
+## P1582 save-lock lead-in off by default -- LIVE 12 lobbies + installs (cs 92f9604e); owner check PENDING (record: tools/p1582-savelock.md)
 - On a lobby, press your load key the way you normally do: you should be at the save on the press with no
   run-up, and off at the saved speed the moment you let go. The console says "saves: a load puts you at the save at
   once now" the first time if your config still had the old lead-in.

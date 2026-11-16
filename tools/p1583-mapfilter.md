@@ -44,3 +44,13 @@ overriding; exe 4fffcfb1; 2286 rows), control = main's menu 76d94dfd, subject = 
   maps were zoned only in curated/dl and outside the download list.
 - Review (one round, read): no bugs; the chips could draw one frame unmeasured as the switch flipped (fixed: they
   follow the state the row was measured in).
+- Final menu cfea7114, 14:59-15:04 local: 2355 rows, Surf 1062, Bhop 511 (0 behind Show all), both chips +17 ok,
+  504 zoned only in curated/dl -- identical on exe 4fffcfb1 and e004597b in back-to-back runs. The counts moved
+  from 14:21 with the binaries ruled out: data/mapmeta.net.txt, mapdl.net.txt and mapdeps.net.txt (the network
+  copies the menu prefers when newer) were rewritten in the install between the runs ("CS:S build beside
+  Momentum's, one row" 405 -> 478, mapmeta matches 1695 -> 1764), folding more rows.
+
+## Delivery
+
+Menu only (lobbies do not serve menu.dat): both installs menu cfea7114 (.prev 76d94dfd), 16 Nov ~15:10 local.
+Players get it with the next release.
