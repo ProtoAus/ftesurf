@@ -1,5 +1,8 @@
 # lextest.md — things waiting on a human
 
+## P1584 crosshair kept between sessions -- owner check PENDING (record: tools/p1584-crosshair.md)
+- Type `hud_crosshair 3` in the console, quit, start again: crosshair 3 should still be there. Ask akatosh the
+  same after the next release (players get default.cfg with a release, not with a lobby deploy).
 ## P1575/P1578 Water targets and fog shaders made at load -- INSTALLED 03:46Z (both installs exe e004597b, patch-1578); owner check PENDING
 - Play a water map you have not played since this update: the first look at the water should hitch less than before (some is left: the first draw of what the water shows).
 - Play surf_null (or any foggy map you have not played): no stutter the first time you look around; loading may take up to a quarter of a second longer the first time.

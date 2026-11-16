@@ -1,4 +1,6 @@
 # The engine build this QuakeC requires.
+# Patch 1584 (cfg only): default.cfg seta for hud_crosshair/_size/_alpha -- a plain set left them unarchived,
+# so a crosshair typed at the console was gone next launch (akatosh). Record: tools/p1584-crosshair.md.
 # Patch 1581: the lobby writes `propmiss <n> [<model>...]` (props the map asks to be solid whose model file it
 # lacked) in every .rec; reccheck notes it and pm_verify (engine patch-1581, a75914b9d) names the models beside a
 # state/physents HOLD as possible content skew. Verdicts unchanged. The verifier text needs the Pi's server engine
