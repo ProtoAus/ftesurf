@@ -146,27 +146,29 @@ def main():
     resume.argtypes = [w.HANDLE]; resume.restype = w.LONG
     jobs = []
     def start(name, flags):
-        cfgdir = install / 'ftesurf/cfg/test'; cfgdir.mkdir(parents=True, exist_ok=True)
-        cfg = f'cfg/test/{name} actor with spaces.cfg'
-        (install / 'ftesurf' / cfg).write_text('cfg_save_auto 0\ncl_idlefps 0\ncl_maxfps 100\nvolume 0\nmusicvolume 0\n'
+        # P1593: the launcher forwards only allowlisted options, so the actor is the fixture's own
+        # ftesurf.cfg (MAINCONFIG: startup's "exec config.cfg" runs it, cmd.c:972-980) and the argv
+        # probe is an allowed -width, which CL_ArgumentOverrides applies after the configs.
+        width = 1101 + len(jobs)
+        protected['ftesurf/ftesurf.cfg'] = ('cfg_save_auto 0\n// owned player settings, P1593 actor\n'
+            'cl_idlefps 0\ncl_maxfps 100\nvolume 0\nmusicvolume 0\n'
             f'developer 1\nlog_developer 1\nlog_name {name}\nlog_enable 1\n'
             f'update_allow_insecure 1\nupdate_manifest_url "{url}/update.json"\n'
             f'echo bootstrap-actor: {name} started\n'
-            f'echo bootstrap-argv: $bootstrap_arg\n'
-            'ruleset_allow_in 1\nin 3 quit\n')
+            'ruleset_allow_in 1\nin 2 vid_width\nin 3 quit\n').encode()
+        (install / 'ftesurf/ftesurf.cfg').write_bytes(protected['ftesurf/ftesurf.cfg'])
         stdout = (root / f'{name}-stdout.log').open('wb')
         # Suspend until job assignment: even a fast launcher cannot create an uncontained child.
         process = subprocess.Popen([str(install / 'WOS-Launcher.exe'), *flags, '--',
-                                    '-window', '+set', 'cfg_save_auto', '0', '+set', 'bootstrap_arg', name + ' argument with spaces',
-                                    '+exec', cfg], cwd='C:/FTESurf', stdout=stdout, stderr=subprocess.STDOUT,
-                                   creationflags=0x4)
+                                    '-window', '-width', str(width), '-height', '600'],
+                                   cwd='C:/FTESurf', stdout=stdout, stderr=subprocess.STDOUT, creationflags=0x4)
         job = owned_job(process); jobs.append((process, stdout, job))
         assert resume(int(process._handle)) == 0, 'cannot resume owned bootstrap'
         process.wait(timeout=45)
         assert process.returncode == 0, (name, process.returncode)
         text = '\n'.join(p.read_text(errors='replace') for p in (install / 'ftesurf/logs').glob(name + '*.log'))
         assert f'bootstrap-actor: {name} started' in text, 'real engine actor missing'
-        assert f'bootstrap-argv: {name} argument with spaces' in text, 'engine argv was not preserved'
+        assert f'"vid_width" is "{width}"' in text, 'allowed engine argv did not reach the engine'
         for p, content in protected.items():
             assert (install / p).read_bytes() == content, 'player sentinel changed: ' + p
         # The bootstrap waits for its game; job closure is not success evidence.
@@ -179,7 +181,7 @@ def main():
                 break
             assert time.monotonic() < until, 'lingering owned descendant'
             time.sleep(.05)
-        print('PASS real archived bootstrap -> engine:', name, '(exact argv; normal exits; zero descendants)')
+        print('PASS real archived bootstrap -> engine:', name, '(allowed argv; normal exits; zero descendants)')
     try:
         start('explicit_offline', ['--offline'])
         assert not hits and not (meta / 'consent').exists()

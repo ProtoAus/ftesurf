@@ -22,3 +22,12 @@ Version line (review, 17 Nov): the first worldofsurf feed is built over the live
 version (updatefeed.py enforces it), and both identities share `.ftesurf-updater/state.json`'s floor. The legacy
 feed is frozen after the bridge release: no later legacy release, or the two lines would overlap. Stage 3
 enforces the freeze.
+
+INSTALL text for stage 3 (the launcher forwards only an allowlist since P1593). Replace "Engine options are
+forwarded" (Linux, release.ps1 ~1555) and "To forward engine options: WOS-Launcher.exe -- -window +map
+<mapname>." (Windows, ~1193) with:
+    Only these start options reach the game: +map <map>, +connect <host[:port]>, -window, -fullscreen,
+    -width N, -height N (ftesurf.sh also takes --debug). Names use only letters, digits and _ . : -
+    Anything else is refused; set it in the game's console or settings instead. Examples:
+        ./ftesurf.sh -window +map <mapname>
+        WOS-Launcher.exe -- -window +map <mapname>

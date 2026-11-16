@@ -130,7 +130,8 @@ def main():
         hits.clear()
         p = run(d, '--yes', good=False)
         assert hits == Counter({'/update.json': 1}), hits
-        assert 'signed envelope missing payload' in p.stderr or 'missing field' in p.stderr
+        # P1593: the envelope refuses keys other than payload and signature
+        assert any(s in p.stderr for s in ('signed envelope missing payload', 'missing field', 'unknown field'))
         results.append({'player_feed_request': 1, 'unsigned_refused': True})
     finally:
         server.shutdown()
@@ -193,13 +194,14 @@ def main():
         env = dict(os.environ, LAUNCH_TEST_REPORT=str(report), LAUNCH_TEST_STOP=str(stop))
         si = subprocess.STARTUPINFO()
         si.dwFlags, si.wShowWindow = subprocess.STARTF_USESHOWWINDOW, 0
-        cmd = [str(exe.resolve()), '--dir', str(d), '--offline', '--', '+map', 'fixture_map', 'space value']
+        # P1593: only allowlisted options reach the engine (no quotes/whitespace; see refused_args below)
+        cmd = [str(exe.resolve()), '--dir', str(d), '--offline', '--', '+map', 'fixture_map', '-width', '1024', '-height', '768']
         if batch:
             shutil.copyfile(exe, d / 'WOS-Launcher.exe')
             (d / 'ftesurf').mkdir()
             (d / 'ftesurf/fs_addons.txt').write_bytes(b'fixture\n')
             shutil.copyfile(Path(__file__).resolve().parent.parent / 'ftesurf.bat', d / 'ftesurf.bat')
-            cmd = [os.environ['COMSPEC'], '/c', str(d / 'ftesurf.bat'), '+map', 'fixture_map', 'space value']
+            cmd = [os.environ['COMSPEC'], '/c', str(d / 'ftesurf.bat'), '+map', 'fixture_map', '-width', '1024', '-height', '768']
         p = subprocess.Popen(cmd, cwd=root, env=env, creationflags=0x10 | 0x40, startupinfo=si)
         (d / 'owner.json').write_text(json.dumps({'launcher_pid': p.pid, 'synthetic': True, 'hidden': True}))
         attached, hin, hout, process = False, None, None, None
@@ -258,7 +260,7 @@ def main():
             process = open_process(0x100000, False, pid)
             assert process and wait(process, 0) == 258, 'actor is not live'
             assert Path(lines[2]).resolve() == d
-            assert lines[3:] == ['-manifest', 'default.fmf', '+map', 'fixture_map', 'space value'], lines
+            assert lines[3:] == ['-manifest', 'default.fmf', '+map', 'fixture_map', '-width', '1024', '-height', '768'], lines
             if expect_wait:
                 time.sleep(.4)
                 assert p.poll() is None, 'baseline did not reproduce waiting'
@@ -299,6 +301,19 @@ def main():
         handoff('baseline-waits', a.control, True, expect_wait=True)
     handoff('enter-detached', a.launcher, True)
     handoff('batch-enter-detached', a.launcher, True, batch=True)
+    # P1593: arguments outside the allowlist are refused before any engine start
+    for case, extra in (('space', ['+map', 'space value']), ('quote', ['+map', 'a"b']), ('set', ['+set', 'sensitivity', '2']),
+                        ('basegame', ['-basegame', 'x'])):
+        d = install('refused-args-' + case)
+        shutil.copyfile(actor, d / 'ftesurf64.exe')
+        report, stop = d / 'actor-report.txt', d / 'stop'
+        env = dict(os.environ, LAUNCH_TEST_REPORT=str(report), LAUNCH_TEST_STOP=str(stop))
+        p = subprocess.run([str(a.launcher), '--dir', str(d), '--offline', '--yes', '--', *extra],
+                           capture_output=True, text=True, timeout=10, env=env)
+        (root / f'refused-args-{case}.log').write_text(p.stdout + p.stderr)
+        assert p.returncode != 0 and 'game argument' in p.stderr and not report.exists(), (case, p.returncode, p.stderr)
+        stop.write_text('no actor expected\n')
+    results.append({'refused_args': 4, 'engine_started': False})
     d = install('invalid-engine')
     p = subprocess.run([str(a.launcher), '--dir', str(d), '--offline', '--yes'],
                        capture_output=True, text=True, timeout=10)
