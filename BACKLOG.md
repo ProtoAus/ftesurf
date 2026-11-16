@@ -29,16 +29,35 @@
   (surf_bossfight 491/496 fps, surf_null 620/637, window samples 4 vs 0 proven per session); NVIDIA's deferred
   first use of static buffers makes no 20 ms frame in play once its notices are not printed (2,516 on boreas).
 
-## Injected clicks / touchpads on the ranked board -- what P1573 left (16 Nov, ftesurf-31)
+## Input from other programs on the ranked board -- what P1573/P1576 left (16 Nov, ftesurf-31)
 
-- Engine half, the real fix for reviews 2-3: CVAR_NOTFROMSERVER on `in_rawinput_nolegacy` and
-  `in_rawinput_touchpad` (in_win.c:438-439), and publish `in_raw_nolegacy_live` as a read-only cvar so CSQC
-  reports what APPLIED, not what was asked (the block is grab-scoped). Until then Rec_GuardMapScan is a partial
-  defence. Falsifier and the open cases: the private tree's checkpoints/p1573-latch-20261116.md. Rides a release.
-- `.rec` carries only the verdict word, not the guard values (format contract in sv_timer.qc says so).
+- Engine 1576 closes P1573's open case (the guard settings refuse map and server sets, and CSQC reads what
+  the engine applies from `in_guard_live`). Older engines still go through P1573's reads and Rec_GuardMapScan,
+  a partial defence; the private tree's checkpoints/p1573-latch-20261116.md has the detail.
+- `sv_rank_keyguard 1` on the lobbies once a release carrying engine 1576 is out (owner agreed 16 Nov): until
+  then a run on an older engine ranks with keys unguarded (its `.rec` says so: `inguard` without the 8 bit).
+- Gamepads (XInput, winmm `joystick`) are not part of the guard, by the owner's decision of 16 Nov ("Gamepads
+  are fine"): controller input ranks.
+- Windows reports SendInput from a UIAccess program (signed, installed under Program Files) as hardware, so
+  in_keyguard passes it. P1424's observer still counts such keys (no raw device press behind them); making the
+  observer a gate instead of a count would close it, at the cost of holding each legacy key until the raw
+  report arrives.
+- Out of scope by design: an in-process hook, and a device that presents itself as a keyboard or mouse.
 - Relayed nonce (plan item 12): the sweeper never runs rcptcheck.join_server. Measured 16 Nov over 2,296 real
   receipts: 2,295 sign 180.150.62.57:<svport>, one the Pi's LAN address 192.168.1.102:<svport>. Allow those two
   and fault anything else (admin-only; receipt faults demote nothing). Needs the next surfd generation.
+
+## Content skew vs tampering (tree: "Tell content skew from tampering") -- scoped 16 Nov, ftesurf-31, not started
+
+- Today a lobby missing newly installed props shows only as pm_verify's HOLD "state: N packet(s) differ" or
+  "physents: N row(s) differ" (engine sv_ccmds.c:6450-6452); `mapcrc` covers the BSP alone and `pe` is a nameless
+  24-bit digest, so nothing says which models the server lacked.
+- Smallest record: SV_SpawnProp's existing no-bounds case (sv_entities.qc ~7988, the failed-load sign) keeps the
+  model names per map (reset in SV_EntityReset); SV_RecOpen writes an additive `propmiss <n> <model>...` header
+  key beside `proprule`; pm_verify's header loop parses it and the HOLD text adds "server lacked N prop model(s)"
+  when the verifier's own world has them; reccheck learns the key. Static props are built into world collision by
+  the hl2 plugin and never pass SV_SpawnProp: they need a count from the plugin's static-prop load in a serverinfo
+  key, as *mapcrc is. Mind sh_defs.qc's mapcrc skew-window rule for builds that do not write the key.
 
 ## Shared saves with their run -- what P1567 left (15 Nov, ftesurf-16)
 

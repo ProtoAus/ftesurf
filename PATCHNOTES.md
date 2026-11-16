@@ -21,6 +21,14 @@
 
 ## next
 
+### P1576 Keys and clicks sent by other programs are blocked
+- Keys, clicks and wheel turns that did not come from your keyboard or mouse (macro tools, remappers, remote-play apps) are now ignored in game. The console says so the first time it happens.
+- If you rely on one of those, set in_keyguard 0 for keys: it works again, and your runs are then not ranked. If every key you press is being sent by another program (for example over remote play), the game notices after a few keys and stops blocking for that session.
+- Click blocking and touchpad-off now stay as you set them: a map or server can no longer change them.
+
+### P1577 Input recordings list outside add-ons
+- An input recording now lists add-on files loaded into the game from outside the game and Windows folders (overlays, recorders and the like). It is a note for reviewers, never a reason to unrank a run.
+
 ### P1574 Water no longer stutters the first time you see it
 - On a map you have not played before, its water's shaders now compile while the map loads, not in the frame the water first comes into view (a 30-80 ms hitch on maps with water). The first load can take up to a second longer.
 

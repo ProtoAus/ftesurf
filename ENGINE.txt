@@ -1,4 +1,11 @@
 # The engine build this QuakeC requires.
+# Patch 1577: the .hid names modules loaded from outside the game and Windows folders (`modules`,
+# `module`, `module+`); hidcheck notes them, never faults. Client exe only.
+# Patch 1576: input other programs make is dropped (in_keyguard for keys; the click guard also covers
+# posted clicks, wheel and app commands; touch follows the touchpad setting); the guard settings refuse
+# map/server sets; read-only in_guard_live says what applies (1 clicks, 2 touchpad off, 4 keys, 8 the
+# key guard cannot run). QC reads it where the engine has it; older engines use P1573's reads and
+# sv_rank_keyguard decides whether they rank. The .rec gains `inguard`. Record: engine ENGINE_PATCHES.md.
 # Patch 1574: the activation warm-up then compiles every permutation of each program declaring at most 3
 # permutation bits (water, sky, sprites), so a map's water no longer compiles mid-run on first sight on a map
 # not played before. Client exe only; QC unchanged. Record: engine ENGINE_PATCHES.md, tools/p1574-claim.md.
