@@ -30,6 +30,28 @@
 - On a merged list the line's pill can cover part of the WHY word (cl_scores.qc, Scores_DrawOnlineRows).
 - `scores tab online|local` (console) set the tab alone; the clicks and arrow keys carry the mode.
 
+## Bhop doors and HL-mode teleports -- what P1596 left (17 Nov, ftesurf-64; root C:\FTESurf-worktrees\lexlist-pool-20261117-64)
+
+- Only doors moving straight down are emulated. Touch Opens doors that slide sideways over a teleport (38 on this PC's
+  bhop/kz/ahop maps) and func_door_rotating (2) stay solid forever; Source drops you once the door has slid away.
+- The door reset is server-only, like func_bhop: the client sees one snap per reset (not predicted), and on a lobby
+  each one can start a prediction-error report (review B; not measured). Timing is Momentum's block fix (0.22 s
+  standing, at once on the same door within ~1.1 s), stricter than CS:S's own sink times (per-map medians 0.17-0.56 s).
+- Two reviewers' census of this PC's library: 1,447 matching doors/buttons on 9 bhop maps by box; the brush test and
+  bhop-mode gate drop arcane's three ice buttons and the surf matches. bhop_playboy *26-*34/*264 pick a different
+  trigger with the same target (same outcome). Old TAS projects that stood on a door desync (beta policy).
+- A door's own outputs (OnOpen etc.) still fire only through the existing state machine, not on the reset.
+- The reset runs the trigger's own touch, so its OnStartTouch/OnEndTouch outputs fire (bhop_playboy *380 closes
+  doorF1-F6); Momentum's Touch() call does not fire them. Selection differs from Momentum's (any down-moving door,
+  a ray through the door): ~107 doors by review B's census; map Lock/Unlock blocks the reset here.
+- func_bhop still fires on held bodies (save-lock park, replay pin, resume countdown): SV_BhopFrame has no
+  SV_BodyHeld test; P1596's doors skip them (review C).
+- GoldSrc profiles (unranked) still use the Source feet hull at the body's centre origin in zone scans
+  (SV_RunHullMins), start-mark and save-pick traces and SV_TimeScaleReturnSupport; the published `!r`/`!m`
+  destinations go stale by 18 u on a duck between publishes; run_t_restz caches the duck state it first saw;
+  TAS legal-start projects saved before P1596 refuse (exact compare, sv_taslegal.qc); the tp_eye PVS eye sits
+  37 u low. The mover tick clocks lose integer precision past 2^24 ticks (4.7 h of one map at 1000 Hz).
+
 ## Movement profiles -- what P1589 left (16 Nov, ftesurf-64; root C:\FTESurf-worktrees\moveprof-20261116-64)
 
 - P1591 (autohop under every profile, 17 Nov): AG physics changed under the same identities (ag-*-v1, cs16-v1) and

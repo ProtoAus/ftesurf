@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1596 bhop doors reset you; HL-mode teleports land on your feet -- owner check PENDING (record: tools/p1596-claim.md)
+- `map bhop_1n5an3` (or any CS:S bhop map whose platforms sank in CS:S): walk onto the first platform and stand still --
+  about 0.2 s later you are back at the start. Hop across them (hold jump): no reset, unless you land on the same
+  platform twice within a second (Momentum's rule). The platforms never move. Surf maps: no change.
+- `sv_movementprofile ag-100` and a map with teleports: after each teleport, `!r` and `!s` you stand on the floor and
+  can walk at once (before: half in the floor, stuck). `sv_movementprofile default` and a map to go back.
+
 ## P1594 key timing -- INSTALLED both installs 17 Nov (exe 0734a4f4, patch-1594); owner check PENDING
 - Nothing to do but play normally: each run's input record gets a `keytimes` line. The first real journals are
   its calibration -- an agent reads them (matched presses should be most of your key presses, gaps expected under
@@ -832,7 +839,6 @@ Cancel/stale-job/exact Original recovery on the final22helper/fair-baseline sour
 all3VMs compile0warnings. This is basic runtime qualification, not whole-workflow
 or human acceptance. Deployment is recorded separately in tools/p1355-tas-solve.md.
 Changed-winner history, long selections and finish-specific context remain open.
-
 
 ## P1353 reported fixes — BOTH Windows/all12 lobbies deployed6Nov; owner check pending
 

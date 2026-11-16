@@ -21,11 +21,15 @@
 
 ## next
 
-### P1594 The game records how closely your key presses follow your keyboard
-- During a recorded run, the game now notes how long after your keyboard reported each key press and release the game received it, and writes the counts into the run's input record. A tool that delays or reshapes key presses inside the game shows up there. Nothing changes on screen.
+### P1596 Bhop platforms reset you, HL-mode teleports land on your feet
+- On bhop maps the platforms that sank under you in CS:S (doors and buttons over a reset) now send you back to the reset as in Momentum Mod: stay on one for about a fifth of a second, or land on the same one again within a second, and you are reset. They still do not move.
+- In the Half-Life movement modes (AG 100, 250 and 1000, Counter-Strike 1.6) teleports, !r, stage and bonus moves no longer leave you half in the floor.
 
 ### P1595 ahop_coast and 76 more bhop maps are back in Maps
 - ahop_coast, the kz, df, deathrun and hl bhop maps and a few others that Momentum lists as bhop were hidden from the Maps list (even if you had them) because their names do not start with bhop_. They are listed and playable again, and they count toward profile completion, so completion percentages dip a little.
+
+### P1594 The game records how closely your key presses follow your keyboard
+- During a recorded run, the game now notes how long after your keyboard reported each key press and release the game received it, and writes the counts into the run's input record. A tool that delays or reshapes key presses inside the game shows up there. Nothing changes on screen.
 
 ### P1591 Autohop in every movement mode
 - Holding jump now hops again the moment you land in every practice movement mode (Half-Life 2 pre and post, AG 100, 250 and 1000, Counter-Strike 1.6), as it already did in normal surf.
@@ -186,7 +190,6 @@
 ### P1547 Instant load right after a save
 - A load pressed straight after saving no longer waits for the save to reach the server: you move the moment you let go, at any ping.
 - At higher ping a save is taken exactly where you press it; before, it could land a little further along your path.
-
 
 ### P1546 Run-check maintenance
 - Run checks remain accounted for until their background work finishes, keeping maintenance from advancing too early.
@@ -1299,11 +1302,9 @@
 ### P1196 No snap when surf_network2008's spawn sends you on
 - Teleports that the map switches on and off with timers (surf_network2008's spawn and jail teleports, and others like them) are now predicted, so they no longer snap you back and forth by up to 2000 units.
 
-
 ### P1195 Report a prediction error with one key
 - When the game corrects your position by a lot (a "prediction error"), it now keeps a short record of the last few seconds and shows a box on the right. Press F6 to send it to the lobby so we can find the cause.
 - Nothing is sent unless you press F6. `cl_prederr_ask 0` keeps the reports on your PC without asking; `cl_prederr_report` sets how big an error has to be (32 units).
-
 
 ### P1193 surf_sirena's barriers open after their trigger
 - surf_sirena's invisible barriers now let you through once you have passed the trigger that opens them, as on Momentum, and stay shut for anyone who skipped it.
@@ -1312,11 +1313,9 @@
 ### P1192 surf_olivia's sky is back over the hub
 - On maps with a 3D sky, the whole sky is now drawn behind it, as Momentum does. surf_olivia's start area showed black (with smears) where the sky should be.
 
-
 ### P1191 Missing textures from a game you do not have draw as flat colours
 - Walls whose material comes from a game you do not have (surf_utopia without Team Fortress 2) now draw as a flat colour, lit like the rest of the map, as Momentum does, instead of the missing-texture checker.
 - A map whose sky comes from a game you do not have now shows the default sky instead of black.
-
 
 ### P1190 Teleports arrive with their ramps already there
 - Ramps and props at a teleport's destination, and at your reset point, are now there the moment you arrive instead of appearing a moment later (about one ping online).
@@ -1324,62 +1323,49 @@
 ### P1189 Newly zoned maps reach the Maps menu within a minute
 - When a zoner publishes a map's zones, the Maps menu now shows that map as zoned at its next refresh, within about a minute, instead of up to six minutes later.
 
-
 ### P1188 surf_skyhaven's glass is no longer a missing texture
 - surf_skyhaven's glass panes (and rj_tattarrattat's grates) use Momentum's own fallback materials. The game now finds them in your Momentum install instead of drawing the purple checker.
-
 
 ### P1187 One chat for every lobby and the main menu
 - With a linked Steam account, what you type in a lobby's chat now reaches every lobby and the main menu chat, tagged with your lobby number. Press TAB (or the team chat key) to talk to this lobby only.
 - Lines from other lobbies show their number, like [#4], and lines from the main menu show [menu]. Commands starting with ! stay in your lobby.
 
-
 ### P1186 Enter sends menu chat messages
 - In the main menu's chat, Enter (or keypad Enter) now sends your message on the Maps, Story and Stats screens too, not only on the front page.
 
-
 ### P1185 Boosters no longer put your next run in practice
 - On maps whose boosters switch themselves off and back on (surf_mesa and many others), riding one, then resetting or loading a save and riding it again, no longer marks the new run as practice.
-
 
 ### P1184 Zone editor: type a zone's exact size
 - The zone editor shows the selected zone's size and its six edges (x min/max, y min/max, bottom, top). Click one to type an exact number, or roll the wheel over it to move that edge a grid step.
 - `zone_edit face <xmin|xmax|ymin|ymax|bottom|top> <value>` does the same from the console.
 
-
 ### P1183 Two wrong console messages
 - Loading a save on a map where you have none says "nothing saved on this map" once instead of twice.
 - Shift + mouse wheel noclip speed now works on lobbies; it used to refuse with "first local seat only".
 
-
 ### P1182 The sun hides behind props
 - A map's sun glow (env_sun) no longer shines through pillars, statues and other props in front of it (surf_pantheon's columns, for one). Glass still lets it through.
 
-
 ### P1181 Stage resets face the right way
 - On maps whose zones were made in the zone editor, !r and !s now face you where the map's own stage teleport faces, instead of wherever the zoner happened to be looking (13 maps, e.g. surf_for_shareholder_value, surf_sirena, surf_midnight).
-
 
 ### P1180 Zone publishing is instant, with a history
 - Publish has one button now, and it takes effect at once: the lobbies on that map restart with the new zones straight away (runs in progress there end). A bad zone no longer waits for people to finish.
 - The zone editor's new History page lists every published version of the map, who published it and when; click one to load it, then Save and Publish to bring it back.
 - The site's Zoning page shows who zoned each map, and a map drops off the list as soon as it is published.
 
-
 ### P1178 Maps list: snug rows, map authors, sharper pictures
 - Each map in the Maps list now takes the height of its picture plus a little padding, so more maps fit on screen.
 - The map's author is shown after its name in the Maps list, and under the map name in the in-game Map info.
 - Map pictures in the list are sharper: they are now stored at the size they are drawn.
 
-
 ### P1177 Your hud_player colours are kept
 - The colours, belt, trail and glow you pick in hud_player now stay picked after you restart the game, instead of going back to a random colour.
-
 
 ### P1176 Site: a cleaner front page and a zoning list
 - The front page is down to the logo, a rainbow BETA and the downloads; hover BETA for the build details.
 - New Zoning page on the site: every KSF map that still needs zones, with its picture, tier, stages, bonuses, plays and mapper. Maps drop off a few minutes after a zoner publishes them.
-
 
 ### P1175 Zone publishing works again
 - Zone admins can publish from the zone editor again. Since 1 Nov every upload had answered "Zone uploads unavailable".
@@ -2074,7 +2060,6 @@
 
 ### P946 Glock shot kick
 - Glock shots now also give a small, smooth cosmetic view kick, including each bullet of a burst; aim and movement stay unchanged.
-
 
 ### P943 Source weapon controls and varied footsteps
 - Hold primary attack for repeated knife slashes; secondary attack stabs. Knife misses whoosh, while harmless player contacts can make an impact sound without damage or pushing.
