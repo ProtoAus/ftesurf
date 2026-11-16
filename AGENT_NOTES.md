@@ -6579,6 +6579,12 @@ measurements are valid bounded observations, not quiet/portable acceptance.
 
 ## Run and test
 
+- **A headless client never predicts (P1589, 16 Nov).** CL_PredictMove runs only from the render path (view.c,
+  pr_csqc.c), so `vid_renderer headless` makes no prediction comparison at all: prederr_dump wrote 0 rows and
+  `cl_prederror_count` read 0 on every profile, the default included. Prediction arms need a rendered client
+  (engine tools/test_ag_profile_runtime.py --rendered, under rig.lock) and must require ring rows > 0. The ring
+  prints origins %.2f: 0.01 is one print step. Default's own walk shows a 1-2 u sideways error at the walk start.
+
 ### P1564 native history controls — 14 Nov 2026 UTC
 
 - A TAS mode announcement is NOT a completion. The generic `Tool Assisted Speedrun` text matched the startup announcement while both attempts were still running. Require the actual finish suffix and a distinct completed native body; preserve the premature report and rerun only the missing TAS cases, not already-passed ordinary/segmented/camera checks.

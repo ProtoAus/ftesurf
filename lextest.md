@@ -9,7 +9,7 @@
   was measured on); the footer says "groups from Momentum, N times". Main menu > a map's board shows the same.
 - Needs the surfd update: Stats page, maps finished / totals count surf_borderlands and its CS:S copy once.
 
-## P1589 HL2 / AG 1000 / CS 1.6 movement profiles -- owner feel check PENDING (record: engine ENGINE_PATCHES.md Patch 1589)
+## P1589 HL2 / AG 1000 / CS 1.6 movement profiles -- INSTALLED both installs 16 Nov (exe 51de336a patch-1589, cs e393efdc) + lobbies QC; owner feel check PENDING (record: engine ENGINE_PATCHES.md Patch 1589)
 - Console in your own game: `sv_movementprofile hl2-post`, then `map bhop_mom_training_beta` (any bhop map). Bhop
   forward holding W: speed should stop at about 285. Turn to face backwards and keep hopping with no keys: speed
   should keep climbing (ABH). Shift sprints (320).
