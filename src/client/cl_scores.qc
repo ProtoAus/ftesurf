@@ -3723,7 +3723,7 @@ void(vector scr) Scores_Draw =
 	local vector p, sz, rp, rs, lp;
 	local float scale, bs, pad, w, h, x0, y0, sidew, tabh, chiph, chipw, segw, listh, n, vh;
 	local float ytabs, yhead, ylist, yfoot, yc, x, idx, on, hot, pick, native, online;
-	local float roomw, have, need, floorw, ow, tablew, rows, chrome, step, px, legh, stylew, fetchw, li, flw;
+	local float roomw, have, need, floorw, ow, tablew, rows, chrome, step, px, legh, stylew, fetchw, li, flw, flfull, flmin;
 	local string s, rid, gst;
 
 	if (!rec_sb_open && !sc_held)
@@ -3861,13 +3861,15 @@ void(vector scr) Scores_Draw =
 	listh = rows * rec_sb_rowh;
 	h = chrome + listh;
 
-	// Centred as a pair with a whole room list; a narrower one takes what the row has left.
-	// P1590: centred with the floating player list beside it, when that fits.
-	flw = (rec_sb_tab == SB_T_PLAYERS) ? 0 : Scores_RoomW(sb_szui);
-	if (w + flw + pad * 3 > scr_x)
-		flw = 0;
-	x0 = floor((scr_x - w - (flw ? flw + pad : 0)) * 0.5);
+	// The board stays centred (Lex, 17 Nov); the player list takes the margin to its right,
+	// names cut to fit, and is left out below room for a time and a few letters.
+	x0 = floor((scr_x - w) * 0.5);
 	if (x0 < pad) x0 = pad;
+	flfull = (rec_sb_tab == SB_T_PLAYERS) ? 0 : Scores_RoomW(sb_szui);
+	flmin = stringwidth("88:88.888", TRUE, [Font_Px(sb_szui), Font_Px(sb_szui)]) + Font_Px(sb_szui) * 7;
+	flw = min(flfull, scr_x - x0 - w - pad * 2);
+	if (flw < min(flfull, flmin))
+		flw = 0;
 	y0 = floor((scr_y - h - vh) * 0.5) + vh;
 	p  = [x0, y0];
 	sz = [w, h];
