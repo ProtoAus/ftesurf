@@ -20,8 +20,10 @@ and install qwprogs carry `inguard %g` and the `keys`/`keyguard` words; csprogs 
 
 ## Not yet done
 
-- `sv_rank_keyguard 1` on the lobbies once a public release carries engine 1576+ (owner agreed 16 Nov).
-  Until then a run on an older engine ranks with keys unguarded; its `.rec` `inguard` line has no 8 bit.
+- DONE 16 Nov ~07:45Z: `sv_rank_keyguard 1` on all 12 lobbies (release 0.1.47 public 07:33:59Z with engine
+  patch-1581, which carries 1576). Set live by rcon on each port and read back "1"; lobby.cfg (main e9b31a30,
+  Pi 84cbf035, `.pre-keyguard` kept) carries it across restarts. A run on an older engine (no 8 bit in its
+  `.rec` `inguard` line) now reads `keyguard` and does not rank. Undo: rcon `set sv_rank_keyguard 0` + the backup.
 - The Pi's tools (hidcheck, reccheck) still read the new `.hid`/`.rec` lines as notes (unknown key/kind);
   they learn them with the next tools deploy. No fault either way (checked against origin/main's readers).
 - Owner check (lextest.md): normal play, every key and button works.

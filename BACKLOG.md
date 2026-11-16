@@ -68,8 +68,7 @@
 - Engine 1576 closes P1573's open case (the guard settings refuse map and server sets, and CSQC reads what
   the engine applies from `in_guard_live`). Older engines still go through P1573's reads and Rec_GuardMapScan,
   a partial defence; the private tree's checkpoints/p1573-latch-20261116.md has the detail.
-- `sv_rank_keyguard 1` on the lobbies once a release carrying engine 1576 is out (owner agreed 16 Nov): until
-  then a run on an older engine ranks with keys unguarded (its `.rec` says so: `inguard` without the 8 bit).
+- DONE 16 Nov: `sv_rank_keyguard 1` on the lobbies (release 0.1.47 carries engine 1576; tools/p1576-delivery.md).
 - Gamepads (XInput, winmm `joystick`) are not part of the guard, by the owner's decision of 16 Nov ("Gamepads
   are fine"): controller input ranks.
 - Windows reports SendInput from a UIAccess program (signed, installed under Program Files) as hardware, so
