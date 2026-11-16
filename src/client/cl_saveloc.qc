@@ -811,7 +811,10 @@ string() SaveLoc_LeadText =
 {
 	if (!rec_sl_holding || Spec_Active()) return "";
 	if (!rec_sl_holdkey) return "";     // a rewind's countdown: no key to let go
-	if (!SaveLoc_LeadDone()) return "Loading save";     // P1582: at any lead-in -- a load waiting on the server
+	// P1582: at any lead-in, a load waiting on the server; P1588: only once it has waited 0.3 s, so a load
+	// answered within a frame or two (an unpredicted one at low ping) never flashes it.
+	if (!SaveLoc_LeadDone())
+		return (cltime - rec_sl_holdt0 >= 0.3) ? "Loading save" : "";
 	if (cvar("cl_sl_leadin") <= 0) return "";
 	return rec_sl_upwait ? "" : "Release to play";    // P1462: no countdown; letting go is never held
 };
