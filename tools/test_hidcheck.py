@@ -3835,18 +3835,19 @@ def case_hooks_tripwire():
     """Patch 1586: hook scan lines are listed and noted, never faulted."""
     r = _hookrun(["hooks 0 5853600 47 2400 1 128 0 3 0 0"])
     check(r.ok, "hooks: a clean scan has no fault (%s)" % (r.faults[:1] or "none"))
-    check(r.info.get("hooks", "").startswith("0 found over 3 scan(s); exe code 5853600 bytes compared; 47 function(s)"),
+    check(r.info.get("hooks", "").startswith("0 found over 3 scan(s); no debugger seen; the last scan: exe code "
+                                             "5853600 bytes compared, 47 function(s)"),
           "hooks: the summary reads back (%r)" % r.info.get("hooks"))
     check(not has_note(r, "below the journal") and not has_note(r, "unknown") and not has_note(r, "announced"),
           "hooks: a clean scan adds no note and no line kind or header key is unknown")
     r = _hookrun(["hook wndproc window user hook.dll 1", "hook api user32!GetRawInputData unbacked - 1",
                   "hook iat user32!GetCursorPos program GameOverlayRenderer64.dll 2", "hook code exe+1a2b/1 int3 - 0",
                   "hooks 4 5853600 47 2400 2 132 0 2 0 0"])
-    check(r.ok and has_note(r, "4 patch(es) or redirect(s) below the journal"),
+    check(r.ok and has_note(r, "4 patch(es) or redirect(s) in the game"),
           "hooks: findings are a note, never a fault (%s)" % (r.faults[:1] or "none"))
     check(r.info.get("hook[2]", "") == "iat     user32!GetCursorPos -> program GameOverlayRenderer64.dll (2 hop(s))",
           "hooks: each finding is listed with where it leads (%r)" % r.info.get("hook[2]"))
-    check(has_note(r, "code exe+1a2b/1 -> int3"), "hooks: an ownerless finding names its class")
+    check(has_note(r, "code exe+1a2b/1 -> int3 -"), "hooks: an ownerless finding names its class")
     r = _hookrun(["hook draw gdi32!SwapBuffers program RTSSHooks64.dll 2", "hooks 1 5853600 47 2400 2 132 0 1 0 0"])
     check(r.ok and has_note(r, "gdi32!SwapBuffers -> RTSSHooks64.dll are hooked") and not has_note(r, "patch(es)"),
           "hooks: a draw hook is its own note, not a patch below the journal")
@@ -3854,14 +3855,18 @@ def case_hooks_tripwire():
     check(r.ok and has_note(r, "could not read 1 place(s) (exe+5000/4096)") and not has_note(r, "patch(es)"),
           "hooks: an unreadable place is 'could not read', not a patch")
     r = _hookrun(["hook dll xinput1_4 game xinput1_4.dll 0", "hooks 1 5853600 47 2400 1 128 0 1 0 0"])
-    check(r.ok and has_note(r, "dll xinput1_4 -> xinput1_4.dll"), "hooks: a stand-in DLL is named")
-    r = _hookrun(["hookskip exe stale", "hookskip user32 emulated", "hooks 0 -1 0 600 0 0 3 2 0 0"])
+    check(r.ok and has_note(r, "dll xinput1_4 -> game xinput1_4.dll"), "hooks: a stand-in DLL is named with its class")
+    r = _hookrun(["hookskip exe stale", "hookskip user32 emulated", "hookskip win32u imports",
+                  "hooks 0 -1 0 600 0 0 7 2 0 0"])
     check(r.ok and "exe code not compared" in r.info.get("hooks", ""), "hooks: codebytes -1 reads as not compared")
-    check(has_note(r, "could not check exe (stale), user32 (emulated)") and has_note(r, "debugger was attached")
-          and has_note(r, "hardware breakpoints were armed"), "hooks: skips and both debugger bits are noted")
+    check(has_note(r, "could not check exe (the file on disk is not the one loaded")
+          and has_note(r, "user32 (x64 on ARM64") and has_note(r, "win32u (its import table could not be read)"),
+          "hooks: each skip is explained by its own reason")
+    check(has_note(r, "debugger was attached") and has_note(r, "hardware breakpoints were armed")
+          and has_note(r, "debug registers could not be read"), "hooks: all three debugger bits are noted")
     r = _hookrun(["hooks -1 -1 -1 -1 -1 -1 0 0 -1 -1"])
     check(r.ok and r.info.get("hooks") == "no scan finished while the journal was open"
-          and has_note(r, "did not finish during the journal"), "hooks: no finished scan says so, never 'clean'")
+          and has_note(r, "before its first hook scan"), "hooks: a journal shorter than the first scan says so")
     r = _hookrun(["hook api x", "hook teleport a b c 1", "hooks 2 0 0 0 0 0 0 1 0 0"])
     check(r.ok and has_note(r, "malformed hook line") and has_note(r, "counts 2 finding(s) but names 0"),
           "hooks: malformed lines are skipped with a note, never a fault")

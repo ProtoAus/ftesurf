@@ -135,20 +135,22 @@ HEAD_P1424 = {"kbdobserve"}
 HEAD_P1577 = {"modules"}
 MODULE_CLASSES = ("program", "user", "other")
 # Patch 1586: hooks below the journal. Header `hookscan 1` promises, beside module+ in the written journal,
-# the distinct findings of every scan a worker thread made while the journal was open (at its start, then
-# every 15 s), most telling first, then the skips and the summary; all one block, dropped whole if it would
-# not fit under the cap:
+# the distinct findings of every scan a worker thread made while the journal was open (0.5-2.5 s in, then
+# every 10-20 s), most telling first, then the skips and the summary; all one block, dropped whole if it
+# would not fit under the cap:
 #   hook <kind> <site> <class> <owner> <hops>      at most HOOK_LINES
 #   hookskip <what> <why>                           why: unreadable, malformed, stale (the file is not the
 #                                                   one loaded: an update awaiting a restart, Wine), noheader,
-#                                                   emulated (x64 on ARM64: system DLLs rewritten as loaded)
+#                                                   emulated (x64 on ARM64: system DLLs rewritten as loaded),
+#                                                   imports (that module's import table could not be read)
 #   hooks <found> <codebytes> <funcs> <slots> <execregions> <execkib> <debugger> <scans> <unread> <unlisted>
 # kind: wndproc, ptr, dll (a listed DLL loaded from outside the Windows folder), iat, eat, code (exe+rva/len),
 # api (dll!export[+off]), draw (SwapBuffers: overlays), noread (a place that could not be read, counted in
 # unread, not found). class/owner: where the patch leads -- a module's class (windows = under the Windows
-# folder) and file, image (unlisted), unbacked, bad, int3, or -. found is at least the distinct findings
-# over the scans; -1 with scans 0: no scan finished. codebytes -1: the exe was not compared. debugger: 1 a
-# debugger flag, 2 armed hardware breakpoints. Fields may be appended. Notes, never faults.
+# folder) and file, image (unlisted), unbacked, bad, int3, or -. The distinct findings over the scans number
+# at least found; -1 with scans 0: no scan finished. codebytes..unlisted except found/dbg/scans/unread are the
+# last scan's; codebytes -1: the exe was not compared. debugger: 1 a debugger flag, 2 armed hardware
+# breakpoints, 4 some thread's debug registers could not be read. Fields may be appended. Notes, never faults.
 HOOK_KINDS = ("wndproc", "ptr", "dll", "iat", "eat", "code", "api", "draw", "noread")
 HOOK_CLASSES = ("game", "windows", "program", "user", "other", "image", "unbacked", "bad", "int3", "-")
 HOOK_LINES = 16
@@ -2013,27 +2015,41 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
         noreads = [h for h in hooks if h[0] == "noread"]
         if scans <= 0:
             r.info["hooks"] = "no scan finished while the journal was open"
-            r.note("the hook scan did not finish during the journal (a very short run, or its thread was stopped)")
+            secs = None
+            for line in reversed(lines):
+                if line.startswith("end "):
+                    try:
+                        secs = float(line.split()[2])
+                    except (IndexError, ValueError):
+                        pass
+                    break
+            if secs is not None and secs < 3.0:
+                r.note("the journal ended (%.1f s) before its first hook scan (due 0.5-2.5 s in)" % secs)
+            else:
+                r.note("no hook scan finished during the journal although one was due (its thread was held up "
+                       "or stopped)")
         else:
             if len(patches) + len(draws) > found or (found > len(patches) + len(draws) and len(hooks) < HOOK_LINES):
                 r.note("the hook summary counts %d finding(s) but names %d" % (found, len(patches) + len(draws)))
-            r.info["hooks"] = "%d found over %d scan(s); exe code %s; %d function(s) and %d slot(s) checked; " \
-                "%d unbacked executable region(s), %d KiB; %d unlisted executable image(s); %s" % (
-                    found, scans, "not compared" if codebytes < 0 else "%d bytes compared" % codebytes,
-                    funcs, slots, regions, kib, unlisted,
-                    ", ".join(w for b, w in ((1, "debugger flag set"), (2, "hardware breakpoints armed")) if dbg & b)
-                    or "no debugger seen")
+            r.info["hooks"] = "%d found over %d scan(s); %s; the last scan: exe code %s, %d function(s) and %d " \
+                "slot(s) checked, %d unbacked executable region(s) of %d KiB, %d unlisted executable image(s)" % (
+                    found, scans,
+                    ", ".join(w for b, w in ((1, "debugger flag set"), (2, "hardware breakpoints armed"),
+                                             (4, "some debug registers not readable")) if dbg & b)
+                    or "no debugger seen",
+                    "not compared" if codebytes < 0 else "%d bytes compared" % codebytes,
+                    funcs, slots, regions, kib, unlisted)
         for idx, (kd, site, cls, owner, hops) in enumerate(hooks):
             r.info["hook[%d]" % idx] = "%-7s %s -> %s %s (%d hop(s))" % (kd, site, cls, owner, hops)
         for what, why in hookskips:
             r.info["hookskip[%s]" % what] = why
         if patches:
-            r.note("%d patch(es) or redirect(s) below the journal (%s%s). Overlays, security software, IMEs, "
-                   "accessibility tools and Windows itself do this too ('windows': a file under the Windows "
-                   "folder); recorded, not judged." % (
+            r.note("%d patch(es) or redirect(s) in the game's code, input functions or import slots (%s%s). "
+                   "Overlays, security software, IMEs, accessibility tools, mods and Windows itself do this too "
+                   "('windows': a file under the Windows folder; 'unbacked': memory no file backs, where overlay "
+                   "and security-software trampolines also end); recorded, not judged." % (
                        max(len(patches), found - len(draws)),
-                       ", ".join("%s %s -> %s" % (kd, site, owner if owner != "-" else cls)
-                                               for kd, site, cls, owner, _h in patches[:8]),
+                       ", ".join("%s %s -> %s %s" % (kd, site, cls, owner) for kd, site, cls, owner, _h in patches[:8]),
                        ", ..." if max(len(patches), found - len(draws)) > 8 else ""))
         if draws:
             r.note("the draw function(s) %s are hooked (overlays and recorders do this)"
@@ -2042,13 +2058,20 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
             r.note("the hook scan could not read %d place(s) (%s)" % (
                 max(unread, len(noreads)), ", ".join(site for _k, site, _c, _o, _h in noreads[:4]) or "not named"))
         if hookskips:
-            r.note("the hook scan could not check %s (stale: the file on disk is not the one loaded -- an update "
-                   "awaiting a restart, or Wine)" % ", ".join("%s (%s)" % w for w in hookskips))
+            why = {"stale": "the file on disk is not the one loaded: an update awaiting a restart, or Wine",
+                   "emulated": "x64 on ARM64 Windows, whose system DLLs are rewritten as they load",
+                   "noheader": "the loaded image has no PE header", "imports": "its import table could not be read",
+                   "unreadable": "the file could not be read", "malformed": "the file could not be parsed"}
+            r.note("the hook scan could not check %s" % "; ".join(
+                "%s (%s)" % (what, why.get(reason, reason)) for what, reason in hookskips))
         if dbg & 1:
             r.note("a debugger was attached during the journal")
         if dbg & 2:
-            r.note("hardware breakpoints were armed on a game thread during the journal (a debugger, or a tool "
+            r.note("hardware breakpoints were armed on a game thread during the journal (a debugger; Windows "
+                   "Exploit Protection's export filtering and anti-exploit products also arm them; or a tool "
                    "that changes no bytes)")
+        if dbg & 4:
+            r.note("some game thread's debug registers could not be read")
     elif hooks or hookskips:
         r.note("hook lines without the `hooks` summary")
     elif "hookscan" in head:

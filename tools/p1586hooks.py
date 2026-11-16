@@ -237,7 +237,7 @@ def main():
     try:
         time.sleep(6)
         cl.send('in_journal_begin')
-        time.sleep(0.5)
+        time.sleep(4.0)                      # the first scan is due 0.5-2.5 s in
         cl.send('developer 1')
         cl.send('in_journal_end data/p1586_a.hid')
         written(game / 'data/p1586_a.hid')
@@ -255,7 +255,7 @@ def main():
         t.write(eat_entry, struct.pack('<I', cursor_rva))           # eat: the export now resolves elsewhere
         print('patched: region %x' % region, flush=True)
         cl.send('in_journal_begin')
-        time.sleep(1.0)
+        time.sleep(25.0)                     # long enough for a second scan (10-20 s after the first)
         cl.send('in_journal_end data/p1586_b.hid')
         written(game / 'data/p1586_b.hid')
     finally:
@@ -281,7 +281,7 @@ def main():
         for l in [l for l in lines if l.startswith('hook')]:
             print('     %s: %s' % (k.upper(), l), flush=True)
         parsed[k] = (sums, found, skips)
-    for m in re.finditer(r'hook scan: .*', cl.text()):
+    for m in re.finditer(r'hook scans: .*', cl.text()):
         print('     log: ' + m.group(0), flush=True)
     if a.control:
         check(all(not s and not f and not k for s, f, k in parsed.values()), 'control: no hook lines in either journal')
@@ -295,7 +295,7 @@ def main():
         check(len(va) == 10 and len(vb) == 10, 'the summary has ten fields')
         check(va[1] == textbytes and vb[1] == textbytes, 'the whole exe code was compared', '%d, %d of %d' % (va[1], vb[1], textbytes))
         check(va[2] >= 40 and va[3] >= 400, 'functions and slots were checked', 'funcs %d, slots %d' % (va[2], va[3]))
-        check(va[7] >= 1 and vb[7] >= 1 and va[8] == 0 and vb[8] == 0 and va[6] == 0 and vb[6] == 0,
+        check(va[7] >= 1 and vb[7] >= 2 and va[8] == 0 and vb[8] == 0 and va[6] == 0 and vb[6] == 0,
               'each journal saw a finished scan, nothing unread, no debugger', 'scans %d/%d unread %d/%d dbg %d/%d'
               % (va[7], vb[7], va[8], vb[8], va[6], vb[6]))
         check(not ka and not kb, 'nothing skipped, and the header promised the scan', '%r %r' % (ka, kb))
