@@ -1772,7 +1772,7 @@ float(float i, float seq) TG_FireTeleport =
 	}
 	else
 	{
-		newpos  = tt_org[drow] + '0 0 1';
+		newpos  = tt_org[drow] + [0, 0, 1 - predmove_mins_z];   // P1596: SV_FeetToOrigin
 		snapang = !(tg_flags[i] & TG_SF_TELE_KEEPANGLES);   // Patch 398: as sv_entities.qc
 	}
 
@@ -1841,7 +1841,7 @@ float(float i, float seq) TG_FireRelTele =
 	if (tg_flags[i] && !(tg_flags[i] & TG_SF_TELE_CLIENTS))
 		return 0;
 	TG_IOEdge(i, seq);
-	p = TG_RelTelePoint(i);
+	p = TG_RelTelePoint(i) + [0, 0, -predmove_mins_z];   // P1596: SV_FeetToOrigin
 	// As a hull: player clip too, and not cl_sprites' occluder copies (the server's server-side brush
 	// entities have no copy here either).  The cl_lines.qc probe idiom.
 	if (!tg_relprobe)

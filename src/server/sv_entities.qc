@@ -860,6 +860,9 @@ void(entity p) SV_TouchForget =
 .entity vbsp_bhop_on;
 .float  vbsp_bhop_since;
 .float  vbsp_bhop_sincemt;	// P1085: run_movetick at the landing
+.entity vbsp_dbhop_on;		// P1596: the bhop door stood on, timed as the func_bhop dwell
+.float  vbsp_dbhop_since;
+.float  vbsp_dbhop_sincemt;
 .float  run_movetick;		// the native mover counter, first declared here for the dwell
 // Ground state as it stood BEFORE this command's move, stamped by PlayerPreThink
 // and read by SV_TriggerIOTouch after it -- which is how OnJump can tell a jump
@@ -2434,6 +2437,10 @@ string(string s) SV_IOTrim =
 // A held body is not moved by the map; defined in sv_saveloc.qc, after the hold fields.
 float(entity p) SV_MapMoveHeld;
 
+// P1596: Source teleports place the feet; a GoldSrc profile's origin is its hull centre (mins_z -36, ducked -18),
+// so a map's point lifts by -mins_z. 0 for the Source and HL2 hulls. cl_triggers.qc mirrors it.
+vector(entity p) SV_FeetToOrigin = { return [0, 0, -p.mins_z]; };
+
 void(entity p, vector org) SV_PlacePlayer =
 {
 	setorigin(p, org);
@@ -2469,7 +2476,7 @@ void(entity t, string who, entity act) SV_PointTeleport =
 	if (SV_DevOn())
 		dprint(sprintf("point_teleport %s: %s to %v\n", t.targetname, p.netname, t.origin));
 	SV_BankAffect(p);
-	SV_PlacePlayer(p, t.origin);
+	SV_PlacePlayer(p, t.origin + SV_FeetToOrigin(p));
 	// Absent is Source's own point_teleport (pointteleport.cpp:143 Teleport with the
 	// entity's angles); the Momentum FGD's key, when written, decides.
 	if (SV_KeyTri(t.UseDestinationAngles, t.usedestinationangles) != 0)
@@ -2651,7 +2658,7 @@ void(entity t, string param) SV_IOAddOutput =
 		if (!SV_MapMoveHeld(t))
 		{
 			SV_BankAffect(t);
-			SV_PlacePlayer(t, stov(v));
+			SV_PlacePlayer(t, stov(v) + SV_FeetToOrigin(t));
 			SV_RecWarp(t, "tele");
 			SV_TimerMapTeleport(t);
 		}
@@ -8400,15 +8407,16 @@ void() trigger_teleport_touch =
 	else
 	{
 		// Source lifts the destination by one unit after aligning it to the hull
-		// (CTriggerTeleport::Touch: tmp.z -= WorldAlignMins().z; tmp.z++).  Our
-		// hull is already Source's with the origin at the feet, so the alignment
-		// term is zero and the lift is all that was missing -- and it is what
-		// keeps a destination sitting exactly on the floor from arriving solid.
-		newpos  = dest.origin + '0 0 1';
+		// (CTriggerTeleport::Touch: tmp.z -= WorldAlignMins().z; tmp.z++).  The
+		// alignment term is 0 on a feet-origin hull and 36 on a GoldSrc one (P1596);
+		// the lift keeps a destination sitting exactly on the floor from arriving solid.
+		newpos  = dest.origin + '0 0 1' + SV_FeetToOrigin(other);
 		snapang = !(self.spawnflags & SF_TELEPORT_PRESERVE_ANGLES);
 	}
 
 	setorigin(other, newpos);
+	if (cvar("developer"))             // P1596: the landing, for arms (per event: developer only)
+		dprint(sprintf("teleport: %s to %v (hull mins_z %g)\n", other.netname, newpos, other.mins_z));
 
 	/*
 	  "I did not travel here, I was put here."  Build 20, and it was missing.
@@ -8830,7 +8838,7 @@ void() trigger_teleport_relative_touch =
 
 	// absmin/absmax are symmetric about the model centre, so their midpoint is
 	// WorldSpaceCenter; no hull alignment, origins are at the feet on both sides.
-	p = SV_RelTelePoint(self);
+	p = SV_RelTelePoint(self) + SV_FeetToOrigin(other);
 	// Lift 1 only if resting there is solid (surf_excavation lands exactly on
 	// its floor); if that is solid too, keep Source's point.
 	tracebox(p, other.mins, other.maxs, p, TRUE, other);
@@ -14331,7 +14339,7 @@ void(entity b, entity pl) SV_BhopTeleport =
 		return;
 	}
 
-	setorigin(pl, dest.origin + '0 0 1');
+	setorigin(pl, dest.origin + '0 0 1' + SV_FeetToOrigin(pl));
 
 	// A teleport into a fall must not spend its first tick believing it is
 	// standing -- the same rule trigger_teleport_touch follows, and here it is
@@ -14394,6 +14402,112 @@ void(entity b, entity pl) SV_BhopTeleport =
 };
 
 /*
+  P1596: CS:S bhop doors.  A func_door with Touch Opens (a func_button with Touch Activates) moving
+  straight down sinks whoever stands on it into the teleport trigger under it -- the map's reset --
+  unless they hop off first.  Doors stay put here (SV_SpawnDoor), so standing on one for
+  sv_bhop_time_limit, the func_bhop dwell, fires that trigger's own touch instead.  The trigger
+  counts only if the door's travel takes the feet into it.  Census of this PC's library, 17 Nov:
+  1,444 such doors on 87 of 597 bhop_/kz_/ahop_ maps (tools/p1596-claim.md).
+*/
+#define SF_DOOR_TOUCH 1024              // doors.h:31 "Touch Opens"
+.entity vbsp_dbhop_reset;               // on the door: its reset trigger, world for none
+.float  vbsp_dbhop_q;                   // ...looked up
+
+void(entity d, entity t) SV_DoorBhopTry =
+{
+	local float top, reach;
+	if (t.touch != trigger_teleport_touch && t.touch != trigger_teleport_relative_touch)
+		return;
+	if (t.absmin_x >= d.absmax_x || t.absmax_x <= d.absmin_x || t.absmin_y >= d.absmax_y || t.absmax_y <= d.absmin_y)
+		return;
+	// Source's travel is |movedir . (OBBSize - 2)| - lip; FTE's bounds keep the one-unit expansion.
+	top = d.absmax_z - 1;
+	reach = top - max(0, d.size_z - 2 - d.lip);
+	if (t.absmax_z <= reach || t.absmin_z >= top)
+		return;
+	if (d.vbsp_dbhop_reset == world || t.absmax_z > d.vbsp_dbhop_reset.absmax_z)
+		d.vbsp_dbhop_reset = t;
+};
+
+entity(entity d) SV_DoorBhopReset =
+{
+	local entity t;
+	if (d.vbsp_dbhop_q)
+		return d.vbsp_dbhop_reset;
+	d.vbsp_dbhop_q = TRUE;
+	d.vbsp_dbhop_reset = world;
+	if (d.solid != SOLID_BSP || d.movedir != '90 0 0')
+		return world;
+	if (d.classname == "func_door")
+	{
+		if (!(d.spawnflags & SF_DOOR_TOUCH) || (d.spawnflags & SF_DOOR_LOCKED))
+			return world;
+	}
+	else if (d.classname == "func_button")
+	{
+		if (!(d.spawnflags & SF_BUTTON_TOUCH) || (d.spawnflags & (SF_DOOR_LOCKED | SF_BUTTON_DONTMOVE)))
+			return world;
+	}
+	else
+		return world;
+	for (t = find(world, classname, "trigger_teleport"); t; t = find(t, classname, "trigger_teleport"))
+		SV_DoorBhopTry(d, t);
+	for (t = find(world, classname, "trigger_momentum_teleport"); t; t = find(t, classname, "trigger_momentum_teleport"))
+		SV_DoorBhopTry(d, t);
+	for (t = find(world, classname, "trigger_teleport_relative"); t; t = find(t, classname, "trigger_teleport_relative"))
+		SV_DoorBhopTry(d, t);
+	if (cvar("developer") && d.vbsp_dbhop_reset != world)    // per event: not on lobby_enable
+		dprint(sprintf("bhopdoor: %s %s resets through %s %s\n", d.classname, d.model,
+		               d.vbsp_dbhop_reset.classname, d.vbsp_dbhop_reset.target));
+	return d.vbsp_dbhop_reset;
+};
+
+// TRUE when the door's reset moved the player.  Its dwell clock is the func_bhop one (P1085).
+float(entity pl, entity b) SV_DoorBhopFrame =
+{
+	local entity t, os, oo;
+	local float lim, dwell;
+	local vector o;
+
+	t = world;
+	if (b != world && b.solid == SOLID_BSP)
+		t = SV_DoorBhopReset(b);
+	if (t == world)
+	{
+		pl.vbsp_dbhop_on = world;
+		return FALSE;
+	}
+	if (pl.vbsp_dbhop_on != b)
+	{
+		pl.vbsp_dbhop_on = b;
+		pl.vbsp_dbhop_since = time;
+		pl.vbsp_dbhop_sincemt = pl.run_movetick;
+	}
+	lim = cvar("sv_bhop_time_limit");
+	if (lim <= 0)
+		lim = 0.1;
+	if (pl.run_movetickrate > 0)
+		dwell = (pl.run_movetick - pl.vbsp_dbhop_sincemt) * pl.run_movetickrate + 0.0001;
+	else
+		dwell = time - pl.vbsp_dbhop_since;
+	if (dwell < lim)
+		return FALSE;
+	pl.vbsp_dbhop_on = world;
+	o = pl.origin;
+	os = self;
+	oo = other;
+	self = t;
+	other = pl;
+	t.touch();
+	self = os;
+	other = oo;
+	if (cvar("developer"))
+		dprint(sprintf("bhopdoor: %s stood %g s on %s -- %s at %v\n", pl.netname, dwell, b.model,
+		               (pl.origin != o) ? "reset" : "the trigger refused", pl.origin));
+	return pl.origin != o;
+};
+
+/*
   The dwell and landing check, called once per usercmd from PlayerPostThink.
 
   NOT a .touch: a SOLID_BSP brush does not receive touches from a player
@@ -14410,6 +14524,8 @@ void(entity pl) SV_BhopFrame =
 	b = world;
 	if (pl.flags & FL_ONGROUND)
 		b = pl.groundentity;
+	if (SV_DoorBhopFrame(pl, b))
+		return;
 
 	// P1492: bhop_on is contact-only and is cleared in the air. cntblk retains the
 	// last landing, so ResetOnOtherBlock also works across an ordinary jump.

@@ -1747,7 +1747,7 @@ void(entity e, string name, string cpname, string expected, float first, float l
 	setorigin(e, tpr_bo);
 	e.velocity = tpr_bv;
 	// P1085: the base is a native checkpoint, so never mid func_bhop dwell (see SV_TASGo).
-	e.vbsp_bhop_on = world; e.vbsp_bhop_since = 0;
+	e.vbsp_bhop_on = world; e.vbsp_bhop_since = 0; e.vbsp_dbhop_on = world;
 	SV_TASHistoryReset(e);
 	SV_TASProjectReset(e);
 	if (warm)
