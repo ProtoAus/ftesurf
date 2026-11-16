@@ -22,7 +22,9 @@ STUB = r'''
 typedef int qboolean;
 typedef uintptr_t quintptr_t;
 #define MAX_QPATH 128
-#define PERMUTATIONS 8
+#define PERMUTATIONS 16
+#define PERMUTATION_FOG 8
+#define FOGTYPE_COUNT 3
 #define SHADER_PASS_MAX 2
 #define MAX_PRECACHE_MODELS 3
 #define MAX_CSMODELS 3
@@ -57,8 +59,9 @@ static int r_regsequence=1;
 static struct {
  model_t *model_precache[3],*model_csqcprecache[3],*model_precache_vwep[3];
  char model_name[3][32],model_csqcname[3][32],model_name_vwep[3][32];
+ struct {float density;} fog[FOGTYPE_COUNT];
 } cl;
-typedef struct {const char *name;unsigned supportedpermutations;void *permu[8];} program_t;
+typedef struct {const char *name;unsigned supportedpermutations;void *permu[PERMUTATIONS];} program_t;
 typedef struct {int uses,numpasses;program_t *prog;struct {program_t *prog;} passes[2];} shader_t;
 static shader_t **r_shaders;
 static unsigned r_numshaders;
@@ -179,7 +182,26 @@ int main(void) {
   GLSLWarm_MapActive();
   CHECK(mapready.overflow && !mapready.eligible && compile_calls==2 && mapready.wholecompiled==2);
   glslwarm_mem=1;r_shaders=shaders;}
- puts("PASS readiness acting controls: dedup/masking, completion, timeout, fallback, failed/unrequested resources, renderer modes, late work/reset, whole small programs");
+ // Patch 1578: on a fogged map a 4-bit program with the fog bit warms the fog variant of each listed permutation and the
+ // fog-only one, counted apart; a 2-bit one is the whole pass's, an unfogged map warms none, a missing list the fog-only.
+ {program_t f={"known",15,{0}},g={"unlisted",PERMUTATION_FOG|1,{0}};shader_t sf={1,0,&f,{{NULL},{NULL}}};
+  shader_t sg={1,0,&g,{{NULL},{NULL}}};shader_t *fs[]={&sf,&sg};
+  f.permu[0]=(void *)4;g.permu[0]=(void *)5;r_shaders=fs;r_numshaders=2;r_mapready_budget.value=2;compile_calls=0;
+  GLSLWarm_MapActive();
+  CHECK(!mapready.fogged && !mapready.fog && !mapready.fogeligible && mapready.compiled==4 && mapready.wholecompiled==3);
+  cl.fog[1].density=.5f;compile_calls=0;
+  GLSLWarm_MapActive();
+  CHECK(mapready.fogged && mapready.fog==1 && mapready.fogeligible==5 && mapready.fogcompiled==5 && compile_calls==5);
+  CHECK(f.permu[8] && f.permu[9] && f.permu[10] && f.permu[13] && f.permu[14] && !f.permu[12]);
+  CHECK(!strcmp(mapready.state,"ready-closure") && mapready.available==4 && mapready.wholeavailable==3);
+  f.permu[8]=f.permu[9]=NULL;r_mapready_budget.value=0;compile_calls=0;
+  GLSLWarm_MapActive();
+  CHECK(mapready.fogpending==2 && mapready.fogavailable==3 && !compile_calls && !mapready.pending);
+  r_mapready_budget.value=2;glslwarm_mem=0;compile_calls=0;
+  GLSLWarm_MapActive();
+  CHECK(mapready.fogeligible==1 && mapready.fogcompiled==1 && compile_calls==1 && !f.permu[9]);
+  glslwarm_mem=1;cl.fog[1].density=0;r_shaders=shaders;}
+ puts("PASS readiness acting controls: dedup/masking, completion, timeout, fallback, failed/unrequested resources, renderer modes, late work/reset, whole small programs, fog variants");
  printf("checks %i\n",checks);return 0;
 }
 '''
