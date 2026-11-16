@@ -395,6 +395,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	CR_Init();                      // P1418: a crash report waiting to be offered
 	registercommand("sp_dump");     // P1387: the server's `cmd spdump` asks for it
 	Gfx_RegisterCvars();
+	GameMode_RegisterCvars();     // P1598: hud_gamemode
 	Vote_RegisterCvars();           // Patch 372: the vote box
 	Watch_RegisterCvars();
 	Scores_RegisterCvars();
@@ -1610,6 +1611,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	if (TASUI_Input(evtype, scanx, chary, devid)) return TRUE;
 	if (WPU_Input(evtype, scanx, chary, devid)) return TRUE;
 	if (Gfx_Input(evtype, scanx, chary, devid)) return TRUE;     // P1566: the replay's chrome yields to its claim
+	if (GameMode_Input(evtype, scanx, chary, devid)) return TRUE;    // P1598: ahead of SaveLoc's digits
 	if (av_open)
 		if (Av_InputEvent(evtype, scanx, chary, devid))
 			return TRUE;
@@ -2392,6 +2394,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		WPU_Draw(scr);
 		TASUI_Draw(scr);
 		Gfx_Draw(scr);                  // P1566: the last bracket before the board's, so its clicks are its own
+		GameMode_Draw(scr);             // P1598: never in a frame with Gfx_Draw's bracket (it yields)
 		Friends_Finish();
 
 		// And the leaderboard over THAT: it is opened from inside a replay to
@@ -2892,6 +2895,8 @@ float(string cmd) CSQC_ConsoleCommand =
 	// BUILD 33 gave it arguments -- see Gfx_Console.
 	if (argv(0) == "gfx_menu")
 		return Gfx_Console();
+	if (GameMode_Console())         // P1598: `hud_gamemode`
+		return TRUE;
 	if (argv(0) == "config_menu")      // Patch 762
 		return KC_Console(cmd);
 	if (Report_Console())           // P1391: `report`

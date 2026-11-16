@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1598 movement mode picker -- owner check PENDING (record: engine ENGINE_PATCHES.md Patch 1598)
+- In a local game: `hud_gamemode` (or `bind j hud_gamemode`). The panel lists 1-7 with the running mode lit. Click one or
+  press its number: the map reloads in that mode. Esc closes. Say if it should get a default key or a menu button.
+- On a lobby: the panel opens but the rows are greyed out with "Only in a game you host".
+
 ## P1597 lobbies need the 0.1.48 online terms -- LIVE 17 Nov; owner check PENDING (record: tools/p1597-claim.md)
 - From C:\FTESurf (your answer there is 9, from 00:31 today): finish a run on a lobby -- it uploads and ranks as before.
 - C:\FTEQuake and the Desktop 0.1.32 install still hold an answer of 8: there the lobbies record no online answer

@@ -149,6 +149,8 @@ client/cl_gfx.qc
 // Patch 372: the vote box.  After cl_gfx.qc (Gfx_Row, Gfx_Field) and cl_hud.qc
 // (HUD_SK, the map clock); cl_hudedit.qc and cl_main.qc call into it.
 client/cl_vote.qc
+// P1598: the movement mode picker. After cl_gfx.qc (Gfx_Chip, Gfx_Close) and cl_hud.qc (the cursor register).
+client/cl_gamemode.qc
 // P1559: durable, attempt-bound local VIEW association for delayed completion.
 client/cl_historyview.qc
 client/cl_replay.qc

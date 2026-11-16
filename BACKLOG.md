@@ -30,6 +30,15 @@
 - On a merged list the line's pill can cover part of the WHY word (cl_scores.qc, Scores_DrawOnlineRows).
 - `scores tab online|local` (console) set the tab alone; the clicks and arrow keys carry the mode.
 
+## Movement mode picker -- what P1598 left (17 Nov, ftesurf-29; root C:\FTESurf-worktrees\gamemode-20261117-29)
+
+- No default key and no menu entry: `hud_gamemode` is console/bind only (Lex asked for the command). The key panel
+  (cl_keycfg.qc) and the bottom hint bar would need a row for it.
+- A digit held through the reload a pick starts reaches the new VM's SaveLoc as a fresh press (unverified); a
+  synthetic `vote key`/`hud_edit ui down` digit marks gm_kmine though the pick is refused, swallowing the next real press
+  of that digit until its release (nuisance).
+- The modes are unranked; no records are kept for them yet.
+
 ## Bhop doors and HL-mode teleports -- what P1596 left (17 Nov, ftesurf-64; root C:\FTESurf-worktrees\lexlist-pool-20261117-64)
 
 - Only doors moving straight down are emulated. Touch Opens doors that slide sideways over a teleport (38 on this PC's

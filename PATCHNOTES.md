@@ -21,6 +21,10 @@
 
 ## next
 
+### P1598 Pick your movement mode in game
+- In a game you host, the console command hud_gamemode opens a small panel listing the seven movement modes (Default, Half-Life 2 pre and post, AG 100, 250 and 1000, Counter-Strike 1.6). Click one or press its number and the map reloads in that mode. Bind it to a key with bind <key> hud_gamemode.
+- On a lobby the panel shows the modes but cannot switch them: a lobby keeps its own mode. These modes are unranked for now.
+
 ### P1593 World of Surf names, part 1
 - The game is getting ready to carry the World of Surf name on disk too: a coming update moves your install to a `worldofsurf` folder and a `WorldofSurf.exe`, keeping all your settings, saves and runs. Servers keep working with either name.
 - WOS-Launcher now passes only these start options to the game: `+map <map>`, `+connect <host[:port]>`, `-window`, `-fullscreen`, `-width N`, `-height N`. Set anything else in the game's console or settings.
