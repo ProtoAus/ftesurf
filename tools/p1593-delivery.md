@@ -17,3 +17,5 @@ Stage 1 = readers that understand both identities; nothing a player sees changes
 
 Next: stage 2 (launcher moves `ftesurf/` -> `worldofsurf/` with the marker, journalled), stage 3 (release, new feed,
 the legacy feed's last release points at the new launcher; INSTALL text in tools/p1593-claim.md).
+- cl_zones.qc reached the lobbies and both installs in P1598's deploy (17 Nov, cs 83467981); both installs' engine is
+  now patch-1598 (client 424548fb), which carries patch-1593.

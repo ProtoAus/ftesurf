@@ -26,3 +26,4 @@
 - SV_RecTagName's lobby gate removed (main): a lobby writes `segmented` once its engine answers rec_tagword. The Pi
   runs fteqw-svarm64 patch-1568 (no rec_tagword) on 16 Nov, so lobbies keep `shadow` until the Pi engine is
   next updated to patch >= 1592. No lobby deploy needed for this change alone.
+- Lobby QC with the gate removed reached the lobbies in P1598's deploy (17 Nov, lobbies cs 83467981 / qw 21ff074b).
