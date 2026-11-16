@@ -21,6 +21,8 @@
 
 ## next
 
+## 0.1.47 2026-11-16
+
 ### P1584 Your crosshair is kept between sessions
 - A crosshair set in the console (hud_crosshair, its size and alpha) is now saved, and is still there the next time you start the game instead of going back to the default at every launch.
 

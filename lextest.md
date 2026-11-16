@@ -1,11 +1,16 @@
 # lextest.md — things waiting on a human
 
+## 0.1.47 release -- PUBLISHED 16 Nov 07:33Z; both installs updated; owner check PENDING (record: tools/release-0.1.47.md)
+- Start the game: the menu should say 0.1.47. On a lobby, hold a save-load key: you should be at the save at once,
+  with no run-up and no snap.
+- Your Desktop WorldofSurf install updates itself the next time you start it through WOS-Launcher.
+
 ## P1579 Jargon stage starts -- owner check PENDING (record: tools/p1579-delivery.md)
 - surf_rookie main course in your own game: after each stage teleport Jargon should walk a moment, jump once onto the first ramp, and carry on. It should not finish a stage again after it has gone through its teleport.
 
 ## P1584 crosshair kept between sessions -- INSTALLED both installs (default.cfg 705ad2cd); owner check PENDING
 - Type `hud_crosshair 3` in the console, quit, start again: crosshair 3 should still be there. Ask akatosh the
-  same after the next release (players get default.cfg with a release, not with a lobby deploy).
+  same now that 0.1.47 is out (players get default.cfg with a release, not with a lobby deploy).
 
 ## P1575/P1578 Water targets and fog shaders made at load -- INSTALLED 03:46Z (both installs exe e004597b, patch-1578); owner check PENDING
 - Play a water map you have not played since this update: the first look at the water should hitch less than before (some is left: the first draw of what the water shows).
