@@ -95,9 +95,13 @@
 - Live only when the lobbies' QC carries P1581 (next combined lobby deploy) and the Pi's server engine carries
   engine patch-1581 (pm_verify's text); reccheck on the Pi learns `propmiss` with the next tools deploy.
 - First live reading (16 Nov ~04:30Z, after the combined deploy): 11 lobbies report no missing model file;
-  lobby 6 on surf_1969 reports one solid prop, models/effects/saxxy_flash/saxxy_flash.mdl -- a TF2 model the Pi
-  lacks and this PC has (cache/team_fortress_2_tf_*). A client with TF2 content collides with the real model where
-  the lobby has a 32-unit placeholder: real content skew. Owner's call whether the Pi gets the model.
+  lobby 6 on surf_1969 reports models/effects/saxxy_flash/saxxy_flash.mdl, a TF2 model the Pi lacks (it has no
+  Steam; TF2 is only Momentum's stand-in pack there). NO COLLISION EFFECT: the prop_dynamic asks `solid 6`, and
+  TF2's tf2_misc pack ships its .mdl/.vvd/.vtx but no .phy, so it is non-solid with or without the model -- on the
+  lobby, on a TF2-mounted machine and in Source. Not copied to the Pi (it would change nothing).
+- So a reading matters only where the pack would make the prop solid: a `solid 2` prop always (placeholder box
+  against the real bounds), a `solid 6` one only if the pack ships a .phy, which the lobby cannot see. A PC-side
+  check of a `propmiss` list against the local Steam packs would tell them apart.
 - Static props (built into collision by the hl2 plugin, mod_vbsp.c's static-prop load) are not covered: they
   need a count from the plugin in a serverinfo key, as *mapcrc is.
 - A resumed run keeps its first session's `propmiss` line (sv_resume.qc carries the original header).
