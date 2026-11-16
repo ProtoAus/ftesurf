@@ -193,16 +193,15 @@ string(string s) PE_Safe =
 	return o;
 };
 
-// Patch 1207: CSQC_PredictPlayerPreMove runs on every replayed command.  The engine skips it, and
-// every CSQC prediction hook, while this process hosts a server (pr_csqc.c: sv.state != ss_dead).
+// Patch 1207: CSQC_PredictPlayerPreMove runs on every replayed command.  The engine skipped it while
+// this process hosts a server until P1588 (cl_predict_listenops, default 1).
 float() PE_Predicting =
 {
 	return WarpOp_HookAlive();      // P1238: the gate the ops use
 };
 
-// This PC hosts the game: no warp op or trigger is predicted, so a line is a server move, not a
-// misprediction; nor is a report sent to itself.  (P1195 read cvar("sv_running"), which the engine
-// does not have: always 0.)
+// This PC hosts the game: no report is sent to itself.  (P1195 read cvar("sv_running"), which the
+// engine does not have: always 0.)
 float() PE_Local =
 {
 	return !strncmp(serverkey("ip"), "QLoopBack", 9);
@@ -408,7 +407,7 @@ void() PE_Frame =
 		pred = (n >= 9) ? stov(sprintf("%s %s %s", argv(3), argv(4), argv(5))) : '0 0 0';
 		PE_Note(strcat("prederr ", cvar_string("cl_prederror_last")));
 		if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report") && PE_Local())
-			PE_Note("not reported: this PC hosts the game, so nothing is predicted");
+			PE_Note("not reported: this PC hosts the game");
 		else if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report") && cltime - pe_join_t < 3)
 			PE_Note("not reported: the first moments on the map");     // P1238: the spawn's first comparison
 		else if (cvar("cl_prederr_report") > 0 && e >= cvar("cl_prederr_report") && n >= 9 && PE_Expected(s))

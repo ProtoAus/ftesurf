@@ -109,7 +109,7 @@ float() WarpOp_Able =
 		return FALSE;
 	// P1238: within a frame or two of the last hook, not 0.5 s of wall time: the first frames on a map
 	// can each take longer (outra, starvald: 0.8 and 1.6 s), and the op then went unpredicted.
-	wop_why = "no prediction hook in the last frames (this PC hosts the game, or prediction is off)";
+	wop_why = "no prediction hook in the last frames (prediction is off, or this PC hosts the game with cl_predict_listenops 0)";
 	if (!WarpOp_HookAlive())
 		return FALSE;
 	wop_why = "no input frame to carry it";
