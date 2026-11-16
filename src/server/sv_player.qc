@@ -925,7 +925,10 @@ void() PlayerPostThink =
 	SV_PeNameSync(self);                // P1405: the client's name filters
 	SV_VsVelPost(self);                 // P1205: a VScript velocity write from this command's touches
 	SV_SourcePhaseClear(self);
-	self.svpm_phase_stat = strzone(sprintf("%.0f:%.0f:%.0f:%.9g", num_for_edict(self), self.svpm_phase_lo, self.svpm_phase_hi, self.run_movecarry));
+	if (strcmp(serverkey("*movementprofile"), "cs16-v1"))
+		self.svpm_phase_stat = strzone(sprintf("%.0f:%.0f:%.0f:%.9g", num_for_edict(self), self.svpm_phase_lo, self.svpm_phase_hi, self.run_movecarry));
+	else // P1589: cs16's stamina rides the phase so the client's replay seed has it
+		self.svpm_phase_stat = strzone(sprintf("%.0f:%.0f:%.0f:%.9g:%.9g", num_for_edict(self), self.svpm_phase_lo, self.svpm_phase_hi, self.run_movecarry, self.run_movestamina));
 	self.run_pkn = self.run_pkn + 1;    // Patch 382: the trigger gate's packet count
 
 	SV_WatchHoldMove(self);             // Patch 499: ahead of the watcher that reads it
