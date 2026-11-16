@@ -4,6 +4,7 @@ Pool entries are per BUILD, not per display group. Defaults admit surf maps
 and bhop maps with a zone file; explicit admin disables still take precedence.
 The catalogue's explicit `of` links are separate from zone compatibility.
 """
+import os
 import re
 
 DDL = ("CREATE TABLE IF NOT EXISTS map_pool ("
@@ -45,22 +46,47 @@ def read_list(path):
 
 def pool_policy(name, zone_files):
     """Empty if eligible, otherwise the automatic disable explanation."""
-    if name.startswith("surf_"):
+    mode = map_mode(name)
+    if mode == "surf":
         return ""
-    if name.startswith("bhop_"):
+    if mode == "bhop":
         return "" if name in zone_files else "Bhop map has no zone file"
     return "Not a surf or zoned bhop map"
 
 
 MODES = ("surf", "bhop")
 
+# P1595: mapwatch's list (surfd sets the path) carries the catalogue's mode for a native map named
+# outside surf_/bhop_ (P1496: ahop_coast, kz_*, df_* ...). Without it those read "" and were disabled.
+LIST_PATH = None
+_listed = (None, {})
+
+
+def listed_mode(name):
+    """The map list's mode for `name`, else "". Re-read when the file's mtime or size changes."""
+    global _listed
+    try:
+        st = os.stat(LIST_PATH) if LIST_PATH else None
+    except OSError:
+        st = None
+    if st is None:
+        return ""
+    sig = (st.st_mtime_ns, st.st_size)
+    if _listed[0] != sig:
+        try:
+            modes = {r["map"]: r["mode"] for r in read_list(LIST_PATH)}
+        except (OSError, ValueError):
+            modes = {}
+        _listed = (sig, modes)
+    return _listed[1].get(name.lower(), "")
+
 
 def map_mode(name):
-    """"surf" or "bhop" by pool_policy's prefixes (the profile's filter, P853), else ""."""
+    """"surf" or "bhop" by prefix (the profile's filter, P853), else the map list's mode (P1595), else ""."""
     for mode in MODES:
         if name.startswith(mode + "_"):
             return mode
-    return ""
+    return listed_mode(name)
 
 
 def disabled(db, names=(), zone_files=frozenset()):

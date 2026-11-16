@@ -54,6 +54,7 @@ import momprofile       # P1117: a signed-in player's Momentum PBs, paced by mom
 import fetchq           # P1448: Fetch-button demand (Momentum boards, full KSF walks)
 import recplot          # .rec -> plot data; stdlib only, never raises
 import steam            # the only module that asks Steam anything
+import mapmanifest      # map list grammar and pool policy
 
 # --------------------------------------------------------------------------
 # Configuration
@@ -61,6 +62,7 @@ import steam            # the only module that asks Steam anything
 
 BASE_DIR = os.environ.get("SURFD_HOME", "/srv/nvme/surfd")
 DATA_DIR = os.path.join(BASE_DIR, "data")
+mapmanifest.LIST_PATH = os.path.join(DATA_DIR, "mapwatch", "mapdl.txt")   # P1595: native maps' modes
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 DB_PATH = os.environ.get("SURFD_DB", os.path.join(DATA_DIR, "surfd.db"))
 ENV_PATH = os.environ.get("SURFD_ENV", os.path.join(BASE_DIR, "surfd.env"))

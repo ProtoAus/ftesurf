@@ -153,6 +153,35 @@ def main():
           [r['name'] for r in c.get('/board/api/map?map='+names[4]+'&tier=combined').get_json()['rows']], ['version-only'])
     setmap(names[1], '0')
     check('disable preserves board history', c.get('/board/api/map?map='+names[1]).status_code, 200)
+    # P1595: a native map named outside surf_/bhop_ takes its mode from mapwatch's list (the catalogue's).
+    native = (('ahop_coast', 'bhop', True), ('kz_unzoned', 'bhop', False), ('ph_plain', 'surf', False))
+    for n, _mode, zoned in native + (('odd_unlisted', None, False),):
+        with open(os.path.join(S.MAPS_DIR, n+'.bsp'), 'wb') as f:
+            f.write(b'held build')
+        if zoned:
+            with open(os.path.join(S.ZONES_DIR, n+'.json'), 'w') as f:
+                f.write('{}')
+    with open(os.path.join(watch, 'mapdl.txt'), 'a') as f:
+        for n, mode, _zoned in native:
+            f.write('dl %s %s m 1 1 2026-11-17 0 1 0\n' % (n, mode))
+    S.maps_reset()
+    settle()
+    check('P1595 list path is surfd\'s', S.mapmanifest.LIST_PATH, os.path.join(watch, 'mapdl.txt'))
+    feed = c.get('/api/board?maps=1').get_data(as_text=True).splitlines()
+    state = lambda n: next(x for x in feed if x.startswith('dl '+n+' ')).split()[-2:]
+    check('P1595 zoned native bhop map enabled', state('ahop_coast'), ['1', '1'])
+    check('P1595 unzoned native bhop map stays off', state('kz_unzoned'), ['0', '0'])
+    check('P1595 native surf map enabled', state('ph_plain'), ['0', '1'])
+    check('P1595 modes by list', [S.mapmanifest.map_mode(n) for n in ('ahop_coast', 'ph_plain', 'odd_unlisted')],
+          ['bhop', 'surf', ''])
+    check('P1595 join reaches allocator', c.get('/api/join?map=ahop_coast').status_code, 503)
+    check('P1595 unzoned join denied', c.get('/api/join?map=kz_unzoned').status_code, 403)
+    check('P1595 unlisted join denied', c.get('/api/join?map=odd_unlisted').status_code, 403)
+    check('P1595 admin cannot enable an unzoned bhop map', 'no zone file' in setmap('kz_unzoned', '1').get_data(as_text=True), True)
+    check('P1595 admin enable of a listed native map', setmap('ahop_coast', '1').get_json()['ok'], True)
+    saved, S.mapmanifest.LIST_PATH = S.mapmanifest.LIST_PATH, None
+    check('P1595 control: without the list the old rule denies it', c.get('/api/join?map=ahop_coast').status_code, 403)
+    S.mapmanifest.LIST_PATH = saved
     print('\n%d failed' % len(FAILED))
     for fail in FAILED:
         print(fail)
