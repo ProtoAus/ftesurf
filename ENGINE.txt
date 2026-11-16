@@ -1,4 +1,8 @@
 # The engine build this QuakeC requires.
+# Patch 1581: the lobby writes `propmiss <n> [<model>...]` (props the map asks to be solid whose model file it
+# lacked) in every .rec; reccheck notes it and pm_verify (engine patch-1581, a75914b9d) names the models beside a
+# state/physents HOLD as possible content skew. Verdicts unchanged. The verifier text needs the Pi's server engine
+# to carry patch-1581. Record: engine ENGINE_PATCHES.md; arm tools/p1581skew.py.
 # Patch 1578: the activation warm-up then compiles the other fog variant of each listed permutation where the map
 # can draw fog (every Source map), so a fogged map not played before compiles no fog variant mid-run.
 # Patch 1575: the main view's water reflection/refraction targets and the reflection's MSAA pair are made at

@@ -85,17 +85,15 @@
 - Activation: run join_account_key over a copy of the live DB first and record the fault count
   (tools/backend-pending.md).
 
-## Content skew vs tampering (tree: "Tell content skew from tampering") -- scoped 16 Nov, ftesurf-31, not started
+## Content skew vs tampering -- what P1581 left (16 Nov, ftesurf-31)
 
-- Today a lobby missing newly installed props shows only as pm_verify's HOLD "state: N packet(s) differ" or
-  "physents: N row(s) differ" (engine sv_ccmds.c:6450-6452); `mapcrc` covers the BSP alone and `pe` is a nameless
-  24-bit digest, so nothing says which models the server lacked.
-- Smallest record: SV_SpawnProp's existing no-bounds case (sv_entities.qc ~7988, the failed-load sign) keeps the
-  model names per map (reset in SV_EntityReset); SV_RecOpen writes an additive `propmiss <n> <model>...` header
-  key beside `proprule`; pm_verify's header loop parses it and the HOLD text adds "server lacked N prop model(s)"
-  when the verifier's own world has them; reccheck learns the key. Static props are built into world collision by
-  the hl2 plugin and never pass SV_SpawnProp: they need a count from the plugin's static-prop load in a serverinfo
-  key, as *mapcrc is. Mind sh_defs.qc's mapcrc skew-window rule for builds that do not write the key.
+- Live only when the lobbies' QC carries P1581 (next combined lobby deploy) and the Pi's server engine carries
+  engine patch-1581 (pm_verify's text); reccheck on the Pi learns `propmiss` with the next tools deploy.
+- Static props (built into collision by the hl2 plugin, mod_vbsp.c's static-prop load) are not covered: they
+  need a count from the plugin in a serverinfo key, as *mapcrc is.
+- A resumed run keeps its first session's `propmiss` line (sv_resume.qc carries the original header).
+- tools/p1581skew.py needs a current lobby run, its map and its lobby zone json (--subject/--map/--zone):
+  P349's b88fin.rec no longer matches bhop_eazy.
 
 ## Shared saves with their run -- what P1567 left (15 Nov, ftesurf-16)
 
