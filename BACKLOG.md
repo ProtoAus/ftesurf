@@ -1,5 +1,14 @@
 # BACKLOG.md
 
+## Local games' save ops -- what P1588 left (16 Nov, ftesurf-06; root C:\FTESurf-worktrees\localload-20261116-06)
+
+- With the server paused (`pausable 1` + pause, or a 1-slot game's auto-pause) an op pressed in the first ~0.5 s
+  (WarpOp_HookAlive's window) rides a usercmd the paused server drops (sv_user.c), where the old stringcmd ran:
+  the load is undone after unpause. Not reachable by default (sv_playerslots 2; deathmatch refuses pause).
+  A fix needs a CSQC pause signal (none exists); guessing from server-time gaps would misfire online.
+- The movevars.entgravity the hook leaves after a frame's last piece is read by SV_New_f/MVD/AntiKnockBack before
+  svc_entgravity overwrites it (bounded +-1000); pre-existing (it was cl.playerview's before), noted by review.
+
 ## Jargon -- what P1572 left (16 Nov, ftesurf-dc; root C:\FTESurf-worktrees\jargon4-20261116-dc)
 - Tape playback is one tick per client command: the bench's headless client played found lines at 9 ticks a second
   (7x slower than real time, rigs d1/d2), and an unfocused game window would too. Jargon's own tapes admitting several

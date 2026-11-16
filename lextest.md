@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1588 local games: instant loads, no "Loading save" flash -- owner check PENDING (record: tools/p1588-localload.md)
+- `map surf_colin_blaster_69000` from the console, save, hold the load key: you are at the save at once and no
+  "Loading save" appears. Then `sv_minping 300` and again: still instant, no freeze before you can move.
+- `cl_predict_listenops 0` brings back the old behaviour (for comparison only).
+
 ## P1586 tamper check + new terms -- INSTALLED both installs 16 Nov (exe 31354ac0 = 0.1.47 + P1586, menu 9ccffd84); owner check PENDING
 - Start the game: the home screen should say online is off and ask you to choose your terms again. Read the new
   lines (the journal names programs that load into or change the game, by file name) and take "play online".
