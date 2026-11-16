@@ -157,13 +157,16 @@ HOOK_KINDS = ("wndproc", "ptr", "dll", "iat", "eat", "code", "api", "draw", "nor
 HOOK_CLASSES = ("game", "windows", "program", "user", "other", "image", "unbacked", "bad", "int3", "-")
 HOOK_LINES = 16
 HEAD_P1586 = {"hookscan"}
-# Patch 1594: one untimestamped line beside module+, while the keyboard is observed (kbdobserve 1):
-#   keytimes <8 press buckets> <8 release buckets> <releases alone>
-# how long after (or before) a real keyboard's raw report of the same scancode each legacy press and release
-# arrived -- <0.5, <1, <2, <5, <10, <20, <50, <=100 ms -- and legacy releases no raw release met within 100 ms.
-# A note, never a fault: Windows' own synthesized keys (AltGr's Ctrl, Shift around keypad keys) and remappers
-# arrive alone too. Fields may be appended.
-KEYTIME_EDGES = ("0.5", "1", "2", "5", "10", "20", "50", "100")
+# Patch 1594: header `keytiming 1` promises one untimestamped line before `end`, while the keyboard is observed:
+#   keytimes <8 press buckets> <8 release buckets> <releases alone> [<presses legacy-first> <releases
+#            legacy-first> <raw presses alone>]
+# how far apart a real keyboard's raw report of the same scancode and each legacy press / release arrived --
+# 0-0.5, 0.5-1, 1-2, 2-5, 5-10, 10-20, 20-50, 50-100 ms -- legacy releases no raw release met within 100 ms,
+# matched pairs whose legacy message came first, and raw presses no legacy press met. The 8+8+1 layout is fixed;
+# fields are appended. Covers the whole journal only with kbdobserve 1 and no 'o' (as P1424's 'y'). Notes, never
+# faults; real-keyboard gaps are being calibrated.
+KEYTIME_BINS = ("0-0.5", "0.5-1", "1-2", "2-5", "5-10", "10-20", "20-50", "50-100")
+HEAD_P1594 = {"keytiming"}
 
 # Engine Patch 310 appended the render-integrity table:
 #   render <cvar> "<value>" "<default>"
@@ -567,7 +570,7 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
     hooks = []             # Patch 1586: (kind, site, class, owner, hops)
     hookskips = []         # ...(what, why)
     hooks_sum = None       # ...the `hooks` summary's ten numbers
-    keytimes = None        # Patch 1594: (press buckets, release buckets, releases alone)
+    keytimes = None        # Patch 1594: (press buckets, release buckets, releases alone, extras)
     bad_keytimes = False
     bad_hooks = False
     i = 1
@@ -629,7 +632,8 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
            and parts[0] not in HEAD_P301 and parts[0] not in HEAD_P303 \
            and parts[0] not in HEAD_P307 and parts[0] not in HEAD_P310 \
            and parts[0] not in HEAD_P468 and parts[0] not in HEAD_P1424 \
-           and parts[0] not in HEAD_P1577 and parts[0] not in HEAD_P1586:
+           and parts[0] not in HEAD_P1577 and parts[0] not in HEAD_P1586 \
+           and parts[0] not in HEAD_P1594:
             r.note("unknown header key %r" % parts[0])
         i += 1
     else:
@@ -932,14 +936,18 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
             if end_seen:
                 r.fault("line %d: 'keytimes' after 'end'" % (lineno + 1))
                 continue
+            if truncated is not None:
+                r.note("line %d: 'keytimes' after the journal was truncated -- the engine never writes that"
+                       % (lineno + 1))
             try:
                 vals = [int(x) for x in tok[1:18]]
+                extra = [int(x) for x in tok[18:21]]
             except ValueError:
-                vals = []
-            if len(vals) != 17 or min(vals) < 0 or keytimes is not None:
+                vals, extra = [], []
+            if len(vals) != 17 or min(vals + extra + [0]) < 0 or keytimes is not None:
                 bad_keytimes = True
             else:
-                keytimes = (vals[0:8], vals[8:16], vals[16])
+                keytimes = (vals[0:8], vals[8:16], vals[16], extra)
             continue
 
         if kind in ("hook", "hookskip", "hooks"):
@@ -2107,21 +2115,40 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
     elif "hookscan" in head:
         r.note("the journal announced a hook scan but carries no summary (a journal near its size cap drops "
                "the block whole)")
-    # Patch 1594: key timing against the keyboard's own reports.
+    # Patch 1594: key timing against the keyboard's own reports.  Whole-journal only as P1424's counts are.
+    try:
+        kt_obs = int(head["kbdobserve"]) if "kbdobserve" in head else None
+    except ValueError:
+        kt_obs = None
+    kt_whole = not bad_key_observer and kt_obs == 1 and not obs_changes
     if keytimes is not None:
-        presses, releases, alone = keytimes
+        presses, releases, alone, extra = keytimes
+        span = "" if kt_whole else "PARTIAL (the keyboard was observed for part of this journal): "
 
         def spread(b):
-            return ", ".join("%d under %s ms" % (n, KEYTIME_EDGES[i]) for i, n in enumerate(b) if n)
-        r.info["keytimes"] = "presses matched %d (%s); releases matched %d (%s); releases alone %d" % (
-            sum(presses), spread(presses) or "none", sum(releases), spread(releases) or "none", alone)
+            return ", ".join("%d at %s ms" % (n, KEYTIME_BINS[i]) for i, n in enumerate(b) if n)
+        r.info["keytimes_raw"] = " ".join(str(x) for x in presses + releases + [alone] + extra)
+        if not sum(presses) and not sum(releases):
+            r.info["keytimes"] = span + "no keystroke paired with a keyboard report: the timing measured nothing" \
+                + ("; releases alone %d" % alone if alone else "")
+        else:
+            r.info["keytimes"] = span + "presses matched %d (%s); releases matched %d (%s); releases alone %d" % (
+                sum(presses), spread(presses), sum(releases), spread(releases), alone)
+            if len(extra) >= 2:
+                r.info["keytimes"] += "; legacy message first in %d press(es), %d release(s)" % (extra[0], extra[1])
+        if len(extra) >= 3:
+            r.info["keytimes_rawalone"] = extra[2]
         late_p, late_r = sum(presses[3:]), sum(releases[3:])
         if late_p or late_r:
-            r.note("%d key press(es) and %d release(s) arrived 2 ms or more apart from the keyboard's own report "
-                   "of the same key (recorded, not judged; real-keyboard gaps are being calibrated)" % (late_p, late_r))
+            r.note("%s%d key press(es) and %d release(s) arrived 2 ms or more apart from the keyboard's own report "
+                   "of the same key (recorded, never a verdict; real-keyboard gaps are being calibrated)"
+                   % (span, late_p, late_r))
         if alone:
-            r.note("%d key release(s) arrived with no release reported by a keyboard (Windows' own synthesized "
-                   "keys, remappers and injected input do this)" % alone)
+            r.note("%s%d key release(s) arrived with no release reported by a keyboard (Windows' own synthesized "
+                   "keys, on-screen keyboards, controller-to-key and remapping tools, and remote play do this; "
+                   "recorded, never a verdict)" % (span, alone))
+    elif "keytiming" in head and kt_whole and not cap_seen:
+        r.note("the journal promised key timing but carries no keytimes line (the journal was near its size cap)")
     if bad_keytimes:
         r.note("a malformed keytimes line was skipped")
     if bad_hooks:

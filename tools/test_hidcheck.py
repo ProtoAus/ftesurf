@@ -3898,25 +3898,44 @@ def case_hooks_tripwire():
 
 def case_keytimes():
     """Patch 1594: key timing is listed and noted, never faulted."""
+    obs = ("modules 0", "kbdobserve 1", "keytiming 1")
     ok = "keytimes 40 2 0 0 0 0 0 0 38 3 1 0 0 0 0 0 0"
-    r = _hookrun([ok], header=("modules 0",))
-    check(r.ok and r.info.get("keytimes", "").startswith("presses matched 42 (40 under 0.5 ms, 2 under 1 ms)"),
+    r = _hookrun([ok], header=obs)
+    check(r.ok and r.info.get("keytimes", "").startswith("presses matched 42 (40 at 0-0.5 ms, 2 at 0.5-1 ms)"),
           "keytimes: the counts read back (%r)" % r.info.get("keytimes"))
+    check(r.info.get("keytimes_raw") == "40 2 0 0 0 0 0 0 38 3 1 0 0 0 0 0 0", "keytimes: the raw counts are kept")
     check(not has_note(r, "apart from the keyboard") and not has_note(r, "unknown record kind"),
           "keytimes: tight gaps and no lone release add no note; the kind is known")
-    r = _hookrun(["keytimes 10 0 0 4 0 0 0 0 9 0 0 0 0 2 1 0 3"], header=("modules 0",))
+    r = _hookrun(["keytimes 10 0 0 4 0 0 0 0 9 0 0 0 0 2 1 0 3 1 2 5"], header=obs)
     check(r.ok and has_note(r, "4 key press(es) and 3 release(s) arrived 2 ms or more apart")
-          and has_note(r, "3 key release(s) arrived with no release reported"),
+          and has_note(r, "3 key release(s) arrived with no release reported") and not has_note(r, "injected"),
           "keytimes: late pairs and lone releases are notes, never faults (%s)" % (r.faults[:1] or "none"))
-    r = _hookrun(["keytimes 1 2 3", "keytimes 1 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 -1"], header=("modules 0",))
+    check("legacy message first in 1 press(es), 2 release(s)" in r.info.get("keytimes", "")
+          and r.info.get("keytimes_rawalone") == 5, "keytimes: the appended order and raw-alone counts read back")
+    r = _hookrun(["keytimes 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 4"], header=obs)
+    check(r.info.get("keytimes", "").startswith("no keystroke paired with a keyboard report: the timing measured "
+                                                "nothing"), "keytimes: nothing paired says it measured nothing")
+    r = _hookrun([ok], header=("modules 0", "kbdobserve 0", "keytiming 1"))
+    check(r.ok and r.info.get("keytimes", "").startswith("PARTIAL"), "keytimes: observation off at begin is partial")
+    r = _hookrun(["keytimes 10 0 0 4 0 0 0 0 9 0 0 0 0 2 1 0 3"], header=("modules 0",))
+    check(r.ok and r.info.get("keytimes", "").startswith("PARTIAL") and has_note(r, "PARTIAL"),
+          "keytimes: no kbdobserve header reads as partial, and so do its notes")
+    r = _hookrun(["keytimes 1 2 3", "keytimes 1 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 -1"], header=obs)
     check(r.ok and has_note(r, "malformed keytimes") and "keytimes" not in r.info,
           "keytimes: short or negative lines are skipped with a note")
-    r = _hookrun([ok + " later"], header=("modules 0",))
+    r = _hookrun([ok, ok], header=obs)
+    check(r.ok and has_note(r, "malformed keytimes") and "keytimes" in r.info,
+          "keytimes: a second line is malformed and the first is kept")
+    r = _hookrun([ok + " 0 0 0 later"], header=obs)
     check(r.ok and not has_note(r, "malformed keytimes"), "keytimes: fields appended later are accepted")
-    r = _hookrun(header=("modules 0",), after_end=[ok])
+    r = _hookrun(header=obs, after_end=[ok])
     check(has_fault(r, "'keytimes' after 'end'"), "keytimes: a keytimes line after the trailer is a fault")
+    r = _hookrun(header=obs)
+    check(r.ok and has_note(r, "promised key timing but carries no keytimes line"),
+          "keytimes: a promised line that is missing is noted")
     r = _hookrun(header=("modules 0",))
-    check(r.ok and "keytimes" not in r.info, "keytimes: a pre-1594 journal says nothing about key timing")
+    check(r.ok and "keytimes" not in r.info and not has_note(r, "key timing"),
+          "keytimes: a pre-1594 journal says nothing about key timing")
 
 
 def main():
