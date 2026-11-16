@@ -21,6 +21,9 @@
 
 ## next
 
+### P1587 Water and glass are see-through by default
+- Water now draws as a see-through sheet and glass as see-through panes by default, instead of a dotted (dithered) pattern; if your settings were still on the old dotted defaults they move over once. The dotted, reflecting and refracting options are all still in Graphics.
+
 ### P1586 The game checks itself for tampering during runs
 - While a run is recorded, the game checks in the background that its own code and the Windows input functions it uses have not been altered, and writes what it finds into the run's input record. Nothing changes on screen; it runs alongside the game, and in testing it cost no frame time. Overlays and recording tools may show up in the record; that is expected.
 

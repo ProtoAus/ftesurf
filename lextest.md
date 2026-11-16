@@ -1,5 +1,9 @@
 # lextest.md — things waiting on a human
 
+## P1587 Water and glass defaults -- on main (engine 76823c993, patch-1587), ships in the next release; owner check PENDING
+- On a fresh install (or a friend's), water should be a see-through sheet and glass see-through panes, not dotted. Graphics still offers Dithered, Refracting and the reflection modes.
+- Your own settings (water 2, glass 0) are not touched; only configs still on the old dotted defaults (water 3, glass 2) move, once.
+
 ## 0.1.47 release -- PUBLISHED 16 Nov 07:33Z; both installs updated; owner check PENDING (record: tools/release-0.1.47.md)
 - Start the game: the menu should say 0.1.47. On a lobby, hold a save-load key: you should be at the save at once,
   with no run-up and no snap.
