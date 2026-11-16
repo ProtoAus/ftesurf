@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import tempfile
+import types
 import unittest
 
 import ed25519
@@ -16,9 +17,9 @@ KEY = ed25519.publickey(SEED).hex()
 WORK = None
 
 
-def stage(root, platform='win64'):
-    paths = ['default.fmf', 'ftesurf/menu.dat', 'ftesurf/csprogs.dat', 'ftesurf/qwprogs.dat',
-             'ftesurf64.exe' if platform == 'win64' else 'ftesurf64']
+def stage(root, platform='win64', game='ftesurf'):
+    gamedir, exes = feed.IDENTITIES[game]
+    paths = ['default.fmf', *(gamedir + leaf for leaf in feed.REQUIRED), exes[platform]]
     for p in paths:
         dest = root / p
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -247,6 +248,152 @@ class PublisherTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'rollback'): self.build(name='older', version='0.1.24', previous=previous)
         with self.assertRaisesRegex(ValueError, 'same-version'): self.build(name='same', version='0.1.25', previous=previous)
         with self.assertRaisesRegex(ValueError, 'empty'): self.build()
+
+
+SOURCE = Path(feed.__file__).read_text()
+# P1593 controls: each mutant is a plausible wrong cut -> (needle, replacement, the refusals it must break).
+MUTANTS = {
+    'union-paths': ('    if p in old_exe.values() or p.startswith(old_dir):\n        return None\n', '',
+                    {'new-feed-with-legacy-gamedir-file', 'new-feed-with-legacy-exe', 'legacy-gamedir-under-new',
+                     'new-stage-with-legacy-file'}),
+    'feed-picks-identity': ('    if feed_game not in IDENTITIES or (game is not None and feed_game != game):\n',
+                            '    if feed_game not in IDENTITIES:\n',
+                            {'new-feed-for-legacy-install', 'legacy-feed-for-new-install',
+                             'build-over-legacy-predecessor', 'publication-over-legacy-predecessor'}),
+    'exec-unchecked': ('.get(platform) != {"cmd": exe, "args"',
+                       '.get(platform) != {"cmd": payload["exec_by_platform"].get(platform, {}).get("cmd"), "args"',
+                       {'new-feed-with-legacy-exec'}),
+    'length-on-legacy-spelling': ('    if not isinstance(p, str) or len(p) >= 240:\n', '    if not isinstance(p, str):\n',
+                                  {'new-path-240'}),
+    'build-predecessor-any-identity': ('        validate(old, game)\n', '        validate(old)\n',
+                                       {'build-over-legacy-predecessor'}),
+    'publication-predecessor-any-identity': ('        validate(old, payload["game"])', '        validate(old)',
+                                             {'publication-over-legacy-predecessor'}),
+}
+
+
+def variant(name):
+    """updatefeed with one mutant applied, as its own module (the subject is never patched in place)."""
+    needle, replacement, _ = MUTANTS[name]
+    assert SOURCE.count(needle) == 1, name
+    module = types.ModuleType('updatefeed_' + name.replace('-', '_'))
+    module.__file__ = feed.__file__
+    exec(compile(SOURCE.replace(needle, replacement), feed.__file__, 'exec'), module.__dict__)
+    return module
+
+
+class IdentityTests(unittest.TestCase):
+    """P1593: exactly two identities, never mixed within one feed.
+
+    Windows stages only: the worldofsurf Linux exe and gamedir share one name, so no directory can hold that stage."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix='identity-', dir=WORK)
+        self.root = Path(self.temp.name)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def build(self, f, game, name, version='0.1.25', **kwargs):
+        base = self.root / f.__name__ / name
+        f.build({'win64': stage(base / 'win64', 'win64', game)}, base / 'feed', version,
+                ['https://dl.proto.bar/ftesurf/update'], SEED, KEY, game=game, **kwargs)
+        return base / 'feed/update.json'
+
+    def refusals(self, f):
+        """case -> True when module f refuses it."""
+        legacy_path, new_path = self.build(f, 'ftesurf', 'ftesurf'), self.build(f, 'worldofsurf', 'worldofsurf')
+        legacy, new = f.verify(legacy_path.read_bytes(), KEY), f.verify(new_path.read_bytes(), KEY)
+        menu = next(x for x in new['files'] if x['path'] == 'worldofsurf/menu.dat')
+        exe = next(x for x in new['files'] if x['path'] == 'WorldofSurf.exe')
+
+        def refused(call, *args, **kwargs):
+            try:
+                call(*args, **kwargs)
+            except ValueError:
+                return True
+            return False
+
+        def plus(payload, row, path):
+            return dict(payload, files=payload['files'] + [dict(row, path=path)])
+
+        mixed = stage(self.root / f.__name__ / 'mixed', 'win64', 'worldofsurf')
+        (mixed / 'ftesurf/gfx').mkdir(parents=True)
+        (mixed / 'ftesurf/gfx/x.png').write_bytes(b'legacy')
+        # a 0.1.24 legacy predecessor: only the identity rule can refuse the 0.1.25 worldofsurf feed
+        prior, receipt = self.root / f.__name__ / 'prior.json', self.root / f.__name__ / 'receipt.json'
+        prior.write_bytes(f.envelope(dict(legacy, version='0.1.24'), SEED, KEY))
+        receipt.write_text(json.dumps({'version': '0.1.25', 'feed_sha256': hashlib.sha256(new_path.read_bytes()).hexdigest(),
+                                       'objects': len(f.validate(new)), 'verification': 'r2-roundtrip-blake2b-256'}))
+        relabel = dict(new, game='ftesurf')
+        execs = json.loads(json.dumps(new))
+        execs['exec_by_platform']['win64']['cmd'] = 'ftesurf64.exe'
+        return {
+            'new-feed-for-legacy-install': refused(f.validate, new, 'ftesurf'),
+            'legacy-feed-for-new-install': refused(f.validate, legacy, 'worldofsurf'),
+            'new-feed-relabelled-legacy': refused(f.validate, relabel) and refused(f.validate, relabel, 'ftesurf'),
+            'legacy-feed-with-new-gamedir-file': refused(f.validate, plus(legacy, menu, 'worldofsurf/gfx/x.png')),
+            'new-feed-with-legacy-gamedir-file': refused(f.validate, plus(new, menu, 'ftesurf/gfx/x.png')),
+            'new-feed-with-legacy-exe': refused(f.validate, plus(new, exe, 'ftesurf64.exe')),
+            'new-feed-with-legacy-exec': refused(f.validate, execs),
+            'new-feed-outside-gamedir': refused(f.validate, plus(new, menu, 'worldofsurf/data/consent.txt')),
+            'legacy-gamedir-under-new': not f.managed('ftesurf/menu.dat', 'worldofsurf'),
+            'new-stage-with-legacy-file': refused(f.build, {'win64': mixed}, self.root / f.__name__ / 'mixed-out', '0.1.25',
+                                                  ['https://dl.proto.bar/ftesurf/update'], SEED, KEY, game='worldofsurf'),
+            'new-path-240': not f.managed('worldofsurf/gfx/' + 'a' * 220 + '.png', 'worldofsurf'),
+            'unknown-identity': refused(f.validate, dict(new, game='WorldofSurf')),
+            'build-over-legacy-predecessor': refused(self.build, f, 'worldofsurf', 'successor', '0.1.26',
+                                                     previous=legacy_path.read_bytes()),
+            'publication-over-legacy-predecessor': refused(f.check_publication, new_path, receipt, '0.1.25', prior,
+                                                           hashlib.sha256(prior.read_bytes()).hexdigest(), KEY),
+        }
+
+    def test_each_identity_accepts_its_own_feed(self):
+        for game in ('ftesurf', 'worldofsurf'):
+            with self.subTest(game=game):
+                payload = feed.verify(self.build(feed, game, game).read_bytes(), KEY)
+                gamedir, exes = feed.IDENTITIES[game]
+                self.assertEqual(payload['game'], game)
+                feed.validate(payload, game)
+                self.assertEqual(payload['exec'], {'cmd': exes['win64'], 'args': ['-manifest', 'default.fmf']})
+                self.assertEqual(payload['exec_by_platform']['win64']['cmd'], exes['win64'])
+                self.assertEqual(sorted(f['path'] for f in payload['files']),
+                                 sorted([exes['win64'], 'default.fmf', *(gamedir + leaf for leaf in feed.REQUIRED)]))
+
+    def test_cross_mixed_and_outside_feeds_are_refused(self):
+        for case, refused in self.refusals(feed).items():
+            with self.subTest(case):
+                self.assertTrue(refused)
+
+    def test_new_allowlist_is_the_legacy_one_with_the_gamedir_swapped(self):
+        probes = ['ftesurf/menu.dat', 'ftesurf/maps/tiers.txt', 'ftesurf/maps/zones/local/a.json',
+                  'ftesurf/maps/zones/local/x/a.json', 'ftesurf/cfg/maps/a.cfg', 'ftesurf/cfg/settings.cfg',
+                  'ftesurf/cfg/test/a.cfg', 'ftesurf/data/mapwr.txt', 'ftesurf/data/consent.txt', 'ftesurf/gfx/a.png',
+                  'ftesurf/gfx/../../x', 'ftesurf/maps/a.bsp', 'ftesurf/ftesurf.cfg', 'ftesurf/textures/no_texture.png',
+                  'ftesurf/fs_addons.txt', 'ftesurf/MENU.DAT', 'ftesurf/menu.dat.', 'ftesurf/gfx/' + 'a' * 216 + '.png']
+        for p in probes:
+            swapped = 'worldofsurf/' + p[len('ftesurf/'):]
+            with self.subTest(p):
+                self.assertEqual(feed.managed(swapped, 'worldofsurf'), feed.managed(p, 'ftesurf'))
+                self.assertFalse(feed.managed(p, 'worldofsurf'))
+                self.assertFalse(feed.managed(swapped, 'ftesurf'))
+        for p in ('default.fmf', 'LICENSE', 'notices/a.txt', 'ftesurf.sh', 'fteplug_hl2_x64.dll'):
+            self.assertTrue(feed.managed(p, 'worldofsurf') and feed.managed(p, 'ftesurf'), p)
+        for legacy, new in (('ftesurf64.exe', 'WorldofSurf.exe'), ('ftesurf64', 'worldofsurf')):
+            self.assertTrue(feed.managed(legacy, 'ftesurf') and feed.managed(new, 'worldofsurf'))
+            self.assertFalse(feed.managed(new, 'ftesurf') or feed.managed(legacy, 'worldofsurf'))
+        for p in ('worldofsurf.exe', 'WORLDOFSURF/menu.dat', 'WorldofSurf/menu.dat', 'quakers/menu.dat'):
+            self.assertFalse(feed.managed(p, 'worldofsurf'), p)
+        # The 240 limit is on the real path: the longer gamedir never buys a longer on-disk path.
+        self.assertTrue(feed.managed('worldofsurf/gfx/' + 'a' * 219 + '.png', 'worldofsurf'))
+        self.assertTrue(feed.managed('ftesurf/gfx/' + 'a' * 220 + '.png', 'ftesurf'))
+
+    def test_mutants_are_caught(self):
+        """Control: each wrong cut lets through exactly the refusals that guard against it."""
+        for name, (_, _, expected) in MUTANTS.items():
+            with self.subTest(name):
+                got = {case for case, refused in self.refusals(variant(name)).items() if not refused}
+                self.assertEqual(got, expected)
 
 
 if __name__ == '__main__':

@@ -27,9 +27,47 @@ GAME = {"ftesurf/csprogs.dat", "ftesurf/qwprogs.dat", "ftesurf/menu.dat",
         "ftesurf/fs_addons.default.txt", "ftesurf/fs_addons.txt", "ftesurf/maps/tiers.txt"}
 DATA = {f"ftesurf/data/{name}.txt" for name in ("mapmeta", "mapdeps", "mapmeta_override", "mapparticles", "mapwr", "mapdl", "mapmanifest")}
 PREFIXES = ("ftesurf/gfx/", "ftesurf/glsl/", "ftesurf/particles/", "ftesurf/scripts/", "ftesurf/models/", "ftesurf/sound/")
+# P1593: the two install identities, game id -> (gamedir, exec per platform). Must agree with qkupdate.c
+# and the launcher's ftesurf_update.rs. A feed is wholly one identity; worldofsurf's allowlist is the one
+# above with the gamedir and exe swapped (legacy_spelling), so the two cannot drift.
+LEGACY, WORLDOFSURF = "ftesurf", "worldofsurf"
+IDENTITIES = {
+    LEGACY: ("ftesurf/", {"win64": "ftesurf64.exe", "linux64": "ftesurf64"}),
+    WORLDOFSURF: ("worldofsurf/", {"win64": "WorldofSurf.exe", "linux64": "worldofsurf"}),
+}
+REQUIRED = ("menu.dat", "csprogs.dat", "qwprogs.dat")  # below the identity's gamedir
 
 
-def managed(p: str) -> bool:
+def identity(game) -> tuple[str, dict[str, str]]:
+    if game not in IDENTITIES:
+        raise ValueError("unsupported update feed")
+    return IDENTITIES[game]
+
+
+def legacy_spelling(p: str, game: str) -> str | None:
+    """p as the ftesurf policy spells it, or None when p belongs to the other identity."""
+    if game == LEGACY:
+        return p
+    if game not in IDENTITIES:
+        return None
+    old_dir, old_exe = IDENTITIES[LEGACY]
+    new_dir, new_exe = IDENTITIES[game]
+    if p in old_exe.values() or p.startswith(old_dir):
+        return None
+    for platform, exe in new_exe.items():
+        if p == exe:
+            return old_exe[platform]
+    return old_dir + p[len(new_dir):] if p.startswith(new_dir) else p
+
+
+def managed(p: str, game: str = LEGACY) -> bool:
+    if not isinstance(p, str) or len(p) >= 240:
+        return False
+    q = legacy_spelling(p, game)
+    return q is not None and managed_legacy(q)
+
+
+def managed_legacy(p: str) -> bool:
     if not p or not p.isascii() or len(p) >= 240 or any(c in p for c in '\\:"*<>?|'):
         return False
     if any(not s or s in (".", "..") or s.endswith((".", " ")) or any(ord(c) < 32 for c in s) for s in p.split("/")):
@@ -85,9 +123,15 @@ def verify(data: bytes, public_key: str = PUBLIC_KEY) -> dict:
     return payload
 
 
-def validate(payload: dict) -> dict[str, int]:
-    """Validate descriptors before using signed paths as filesystem/network operands."""
-    if (payload.get("schema") != 2 or payload.get("game") != "ftesurf"
+def validate(payload: dict, game: str | None = None) -> dict[str, int]:
+    """Validate descriptors before using signed paths as filesystem/network operands.
+
+    The feed's own "game" picks the identity every check uses; `game` additionally requires that one."""
+    feed_game = payload.get("game")
+    if feed_game not in IDENTITIES or (game is not None and feed_game != game):
+        raise ValueError("unsupported update feed")
+    gamedir, exes = IDENTITIES[feed_game]
+    if (payload.get("schema") != 2
             or payload.get("channel") != "stable" or payload.get("hash_algo") != "blake2b-256"
             or payload.get("object_layout") != "objects/{h0h1}/{hash}"
             or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", payload.get("version", ""))):
@@ -99,7 +143,7 @@ def validate(payload: dict) -> dict[str, int]:
     for f in files:
         platform = f.get("platform")
         p, h, size = f.get("path"), f.get("hash"), f.get("size")
-        if (platform not in ("all", "win64", "linux64") or not isinstance(p, str) or not managed(p)
+        if (platform not in ("all", "win64", "linux64") or not isinstance(p, str) or not managed(p, feed_game)
                 or not isinstance(h, str) or not re.fullmatch(r"[0-9a-f]{64}", h)
                 or type(size) is not int or not 0 <= size <= 32 * 1024 * 1024
                 or type(f.get("exec")) is not bool):
@@ -122,8 +166,8 @@ def validate(payload: dict) -> dict[str, int]:
                 if f["path"].lower() in names:
                     raise ValueError("duplicate update path")
                 names.add(f["path"].lower())
-        exe = "ftesurf64.exe" if platform == "win64" else "ftesurf64"
-        if not {exe, "default.fmf", "ftesurf/menu.dat", "ftesurf/csprogs.dat", "ftesurf/qwprogs.dat"} <= names:
+        exe = exes[platform]
+        if not {exe.lower(), "default.fmf", *(gamedir + leaf for leaf in REQUIRED)} <= names:
             raise ValueError("feed missing required updater file")
         if payload.get("exec_by_platform", {}).get(platform) != {"cmd": exe, "args": ["-manifest", "default.fmf"]}:
             raise ValueError("invalid platform executable")
@@ -193,7 +237,7 @@ def check_publication(feed: Path, receipt: Path, version: str, previous: Path,
         if hashlib.sha256(old_data).hexdigest() != expected_previous:
             raise ValueError("published prior feed changed; refusing stale publication")
         old = verify(old_data, public_key)
-        validate(old)
+        validate(old, payload["game"])  # P1593: an old reader refuses a feed whose identity changed
         if tuple(map(int, payload["version"].split('.'))) <= tuple(map(int, old["version"].split('.'))):
             raise ValueError("update version must advance (no rollback or same-version replacement)")
         if not platforms(old) <= platforms(payload):
@@ -202,7 +246,8 @@ def check_publication(feed: Path, receipt: Path, version: str, previous: Path,
 
 def build(stages: dict[str, Path], output: Path, version: str, mirrors: list[str], seed: bytes,
           public_key: str = PUBLIC_KEY, previous: bytes | None = None,
-          previous_objects: Path | None = None) -> dict:
+          previous_objects: Path | None = None, game: str = LEGACY) -> dict:
+    gamedir, exes = identity(game)
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         raise ValueError("version must be MAJOR.MINOR.PATCH")
     no_link(output)
@@ -211,7 +256,7 @@ def build(stages: dict[str, Path], output: Path, version: str, mirrors: list[str
     output.mkdir(parents=True, exist_ok=True)
     old = verify(previous, public_key) if previous is not None else None
     if old is not None:
-        validate(old)
+        validate(old, game)
         if tuple(map(int, old["version"].split('.'))) >= tuple(map(int, version.split('.'))):
             raise ValueError("rollback or same-version release: version must advance")
     files = []
@@ -233,7 +278,7 @@ def build(stages: dict[str, Path], output: Path, version: str, mirrors: list[str
             if not source.is_file():
                 continue
             p = source.relative_to(stage).as_posix()
-            if not managed(p):
+            if not managed(p, game):
                 # Ordinary distribution docs and the launcher itself are not self-managed.
                 # Anything player-owned in a stage is still a fatal publishing mistake.
                 if p in ("WOS-Launcher.exe", "WOS-Launcher", "ftesurf-launcher.exe", "ftesurf-launcher"):  # P1209
@@ -252,19 +297,19 @@ def build(stages: dict[str, Path], output: Path, version: str, mirrors: list[str
             if not obj.exists():
                 obj.write_bytes(content)
             files.append({"path": p, "hash": h, "size": len(content), "platform": platform,
-                          "exec": platform == "linux64" and (p == "ftesurf64" or p.endswith(".sh"))})
-        exe = "ftesurf64.exe" if platform == "win64" else "ftesurf64"
-        for required in (exe, "default.fmf", "ftesurf/menu.dat", "ftesurf/csprogs.dat", "ftesurf/qwprogs.dat"):
+                          "exec": platform == "linux64" and (p == exes["linux64"] or p.endswith(".sh"))})
+        exe = exes[platform]
+        for required in (exe, "default.fmf", *(gamedir + leaf for leaf in REQUIRED)):
             if required.lower() not in paths:
                 raise ValueError(f"stage missing required updater file: {required}")
         executables[platform] = {"cmd": exe, "args": ["-manifest", "default.fmf"]}
     files = merge_shared(files)
-    payload = {"schema": 2, "hash_algo": "blake2b-256", "game": "ftesurf", "channel": "stable",
+    payload = {"schema": 2, "hash_algo": "blake2b-256", "game": game, "channel": "stable",
                "version": version, "object_layout": "objects/{h0h1}/{hash}", "mirrors": mirrors,
                "files": sorted(files, key=lambda f: (f["path"], f["platform"])),
-               "exec": {"cmd": "ftesurf64.exe", "args": ["-manifest", "default.fmf"]},
+               "exec": {"cmd": exes["win64"], "args": ["-manifest", "default.fmf"]},
                "exec_by_platform": executables, "removed": []}
-    objects = validate(payload)
+    objects = validate(payload, game)
     # Retained platforms need their bytes too, not only descriptors in the new feed.
     for h, size in objects.items():
         obj = output / "objects" / h[:2] / h
@@ -318,6 +363,7 @@ def main() -> None:
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--version", required=True)
     p.add_argument("--mirror", action="append", required=True)
+    p.add_argument("--game", choices=sorted(IDENTITIES), default=LEGACY, help="install identity (P1593)")
     p.add_argument("--seed-file", type=Path, default=Path(os.environ.get("FTESURF_UPDATE_SEED_FILE", "C:/FTESurf-private/keys/ftesurf-updates/seed")))
     policy = p.add_mutually_exclusive_group(required=True)
     policy.add_argument("--previous", type=Path)
@@ -331,7 +377,8 @@ def main() -> None:
         p.error("first feed requires verified Windows AND Linux stages")
     # Do not echo seed bytes or exceptions containing private file contents.
     result = build(stages, a.output, a.version, a.mirror, a.seed_file.read_bytes(),
-                   previous=a.previous.read_bytes() if a.previous else None, previous_objects=a.previous_objects)
+                   previous=a.previous.read_bytes() if a.previous else None, previous_objects=a.previous_objects,
+                   game=a.game)
     print(json.dumps(result, sort_keys=True))
 
 
