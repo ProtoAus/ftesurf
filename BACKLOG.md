@@ -200,8 +200,9 @@
 
 ## Key timing -- what P1594 left (17 Nov, ftesurf-48)
 
-- Engine only (client exe): reaches players with the next release that carries patch-1594. hidcheck and the
-  arm are on main; the Pi's hidcheck learns `keytimes` with the next tools deploy (an older one notes it).
+- Engine only (client exe): reaches players with the next release that carries patch-1594; INSTALLED on both of
+  the owner's installs 17 Nov (exe 0734a4f4 = the patch-1592 install + P1594 only; `.pre1594` backups). hidcheck
+  and the arm are on main; the Pi's hidcheck learns `keytimes` with the next tools deploy.
 - NOT CALIBRATED: a rig cannot press a real key, so the pairing and bucketing are first exercised by the owner's
   journals (lextest). Read them before giving any bucket a meaning: matched presses should be about the legacy
   presses minus 'y', and the gaps are expected (not shown) to sit in the first bucket or two.

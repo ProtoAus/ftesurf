@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1594 key timing -- on engine main (patch-1594); owner check PENDING once installed or released
+## P1594 key timing -- INSTALLED both installs 17 Nov (exe 0734a4f4, patch-1594); owner check PENDING
 - Nothing to do but play normally: each run's input record gets a `keytimes` line. The first real journals are
   its calibration -- an agent reads them (matched presses should be most of your key presses, gaps expected under
   a millisecond or two). Say if anything about keys feels different.
