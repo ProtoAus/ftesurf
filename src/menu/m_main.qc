@@ -5890,13 +5890,14 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 		ui_tm_dot(p, w, draw, "your position, velocity and view angles, on every tick of the game's clock (66 or 100 a second)");
 		ui_tm_dot(p, w, draw, "which movement keys you are holding, once per drawn frame");
 		ui_tm_dot(p, w, draw, "a journal of raw mouse and keyboard events, with timings");
+		ui_tm_dot(p, w, draw, "which other programs load into or change the game itself (overlays, recorders, security software, mods), by file name only, and whether a debugger is attached");
 		ui_tm_head(p, draw, "Where it goes");
 		ui_tm_par(p, w, draw, "Files under this game's own data folder, on this machine.", COL_TEXT);
 		ui_tm_par(p, w, draw, "Playing on your own, nothing about a run leaves this machine: there is no upload.", SUI_THEME_GOOD);
 		ui_tm_head(p, draw, "What it is for");
 		ui_tm_par(p, w, draw, "Replaying your runs, and telling a real run from a scripted one.", COL_TEXT);
 		ui_tm_head(p, draw, "What is never recorded");
-		ui_tm_par(p, w, draw, "Anything you type. While the console or a menu has focus the journal keeps the timing of a keypress and drops which key it was, so a password typed in the console cannot end up in a file. Nothing outside this game's window is watched, ever.", COL_TEXT);
+		ui_tm_par(p, w, draw, "Anything you type. While the console or a menu has focus the journal keeps the timing of a keypress and drops which key it was, so a password typed in the console cannot end up in a file. Nothing outside the game is watched: another program is noted only when it loads into or changes the game itself.", COL_TEXT);
 		ui_tm_head(p, draw, "Updates");
 		ui_tm_par(p, w, draw, "Choosing Play online also turns on automatic updates: World of Surf checks proto.bar and downloads game-owned files from dl.proto.bar. Those services see your IP address; settings, recordings and mounted game assets are not uploaded. Play offline does not turn them on. F2's Updates page turns them off.", COL_TEXT);
 		ui_tm_head(p, draw, "Turning it off");
@@ -5910,7 +5911,7 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 		ui_tm_par(p, w, draw, "Your finish time goes to play.proto.bar and appears on a public leaderboard. That server also keeps its own recording of the run (positions, velocities and angles), which anyone can download from the board.", SUI_THEME_WARN);
 		ui_tm_par(p, w, draw, "Public server replays can also include limited pause-check timing and order, movement settings, physical state and clock snapshots. This adds no raw paused input to those replays and no new player or device identifiers. The same public downloads and replay retention apply.", SUI_THEME_WARN);
 		ui_tm_par(p, w, draw, "Detailed pause-check records appear only for qualifying intervals. Their presence indicates the permitted movement/jump mode and absence of relevant use actions, unmodeled transitions and effects. Other intervals receive only a generic unsupported or incomplete result.", SUI_THEME_WARN);
-		ui_tm_par(p, w, draw, "Your client's view-angle sidecar also goes to that server for anti-cheat review (rec_upload controls it). Choosing play online includes raw mouse and keyboard event journals, with timings, sent to play.proto.bar over HTTPS for private review, not public replays. Untick the journal box on the summary to opt out, or stop uploads later with F2. Stopping does not delete evidence already received.", COL_TEXT);
+		ui_tm_par(p, w, draw, "Your client's view-angle sidecar also goes to that server for anti-cheat review (rec_upload controls it). Choosing play online includes raw mouse and keyboard event journals, with timings, sent to play.proto.bar over HTTPS for private review, not public replays. A journal also names the programs that load into or change the game (overlays, recorders, security software, mods), by file name only, never folders or your user name. Untick the journal box on the summary to opt out, or stop uploads later with F2. Stopping does not delete evidence already received.", COL_TEXT);
 		ui_tm_par(p, w, draw, "With online features enabled, play.proto.bar refreshes the map list at startup and serves zones, leaderboards and player pictures. Selecting a map can fetch its backdrop from dl.proto.bar. These services see your IP address, as does any lobby you join.", COL_TEXT);
 		ui_tm_par(p, w, draw, "A zone admin can upload saved zones to play.proto.bar. They are stored with the linked account and go live on the lobbies once none of them has the map loaded; existing times stay.", COL_TEXT);
 		ui_tm_head(p, draw, "Playtime and attempts");
@@ -5975,12 +5976,12 @@ float() ui_synth =
 float(vector p, float w, float draw) ui_terms_short =
 {
 	tm_y = 0;
-	ui_tm_dot(p, w, draw, "Each run is recorded on this PC: your position, speed and view, and your mouse and keyboard input.");
+	ui_tm_dot(p, w, draw, "Each run is recorded on this PC: your position, speed and view, your mouse and keyboard input, and which other programs load into or change the game (by file name).");
 	ui_tm_dot(p, w, draw, "Offline, nothing about a run leaves your PC.");
 	ui_tm_dot(p, w, draw, "Online, times and server replays are public. Your view-angle file and, unless you untick below, input journal go to play.proto.bar for anti-cheat review. Playing online also turns on automatic updates from proto.bar. Players see your play and chat; servers see your IP address.");
 	ui_tm_dot(p, w, draw, "Public replays can also include pause-check timing, order, movement settings and physical/clock snapshots, but no raw paused input or new player/device identifiers.");
 	ui_tm_dot(p, w, draw, "Detailed pause checks mean the interval qualified: they indicate the allowed movement/jump mode and absence of relevant use actions or unmodeled effects/transitions. Other intervals get only a generic unsupported/incomplete result.");
-	ui_tm_dot(p, w, draw, "Never recorded: what you type (only that a key was pressed, and when), or anything outside the game.");
+	ui_tm_dot(p, w, draw, "Never recorded: what you type (only that a key was pressed, and when), or anything outside the game beyond those program names.");
 	return tm_y - 3;
 };
 

@@ -115,9 +115,11 @@
   edits data rather than code, or targets the scan itself is not seen, and game-folder plugins are trusted.
   Ranked follow-ups (incl. confirming key RELEASES against the raw keyboard, as P1424 confirms presses) are in
   the private tree: cheatanalysis/p1586-hook-scan-limits.md.
-- Consent text: the journal now names other software by file name (overlays, security tools, IMEs, game-folder
-  mods such as a ReShade opengl32.dll), as P1577's module lines already did for DLLs outside the Windows
-  folder. Whether the terms (m_main.qc) need a line, and an FS_TERMS bump, is the owner's call.
+- Consent text DONE (owner, 16 Nov: "add whatever is necessary"): the terms say the journal names programs that
+  load into or change the game, by file name; the menu asks for online tier 9 (MENU-only FS_TERMS_ONLINE).
+  OWED after the release that carries this menu: FS_TERMS_ONLINE 9 for csprogs/qwprogs too (drop the #ifdef in
+  sh_defs.qc) and deploy the lobbies, so a lobby requires the new answer; until then a 9 reports 8 and an older
+  menu's 8 still uploads, from engines that write no hook lines.
 - Measured on one PC (Windows 11 24H2, i9-9900K): 0 findings on a clean client over 49 functions and 2,874
   slots; frame-time A/B (tools/p1586perf.py, menu, 400 fps cap) no measurable cost. Unmeasured: Windows 10
   (API-set import redirects), Wine, ARM64, third-party antivirus, a 4-core laptop, a real overlay's hooks
