@@ -70,6 +70,15 @@
   in_restart, on the installed engine (27697bbc) as on 1576's. P1576 reports the click guard off while
   DirectInput runs, but nothing can reach that state until the crash is fixed.
 
+## Receipt checks -- what P1580 left (16 Nov, ftesurf-31)
+
+- A check that could not run (address list unset, a LAN address, no credited account yet, a DB error, an old
+  rcptcheck) stores VALID with an empty reason, the same as a pass; only `--reread-receipts` looks again.
+- The admin run page labels the receipt verdict "signature" (admin_run.html ~348): an address or key FAULT reads
+  as a signature fault on a signature that verified. Relabel it "receipt".
+- Activation: run join_account_key over a copy of the live DB first and record the fault count
+  (tools/backend-pending.md).
+
 ## Content skew vs tampering (tree: "Tell content skew from tampering") -- scoped 16 Nov, ftesurf-31, not started
 
 - Today a lobby missing newly installed props shows only as pm_verify's HOLD "state: N packet(s) differ" or
