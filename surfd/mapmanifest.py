@@ -71,12 +71,14 @@ def listed_mode(name):
         st = None
     if st is None:
         return ""
-    sig = (st.st_mtime_ns, st.st_size)
+    sig = (LIST_PATH, st.st_ino, st.st_mtime_ns, st.st_size)
     if _listed[0] != sig:
         try:
             modes = {r["map"]: r["mode"] for r in read_list(LIST_PATH)}
-        except (OSError, ValueError):
-            modes = {}
+        except OSError:
+            return ""                   # transient: not cached, the next call reads again (review)
+        except ValueError:
+            modes = {}                  # this file's content; game_list refuses it too
         _listed = (sig, modes)
     return _listed[1].get(name.lower(), "")
 

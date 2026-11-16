@@ -182,6 +182,19 @@ def main():
     saved, S.mapmanifest.LIST_PATH = S.mapmanifest.LIST_PATH, None
     check('P1595 control: without the list the old rule denies it', c.get('/api/join?map=ahop_coast').status_code, 403)
     S.mapmanifest.LIST_PATH = saved
+    # Review: a failed read is not cached; a rewritten list is read again.
+    M = S.mapmanifest
+    M._listed = (None, {})
+    real = M.read_list
+    def broken(path):
+        raise OSError('transient')
+    M.read_list = broken
+    check('P1595 a failed read answers no mode', M.map_mode('ahop_coast'), '')
+    M.read_list = real
+    check('P1595 ...and is not cached', M.map_mode('ahop_coast'), 'bhop')
+    with open(os.path.join(watch, 'mapdl.txt'), 'a') as f:
+        f.write('dl kz_later bhop m 1 1 2026-11-17 0 1 0\n')
+    check('P1595 a rewritten list is read again', M.map_mode('kz_later'), 'bhop')
     print('\n%d failed' % len(FAILED))
     for fail in FAILED:
         print(fail)

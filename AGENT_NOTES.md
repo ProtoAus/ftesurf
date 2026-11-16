@@ -4390,7 +4390,7 @@ executable path and hash, not a similarly named maintained copy.
 ## Tier completion by kind (P853) and the launcher-first page (P852), 2026-10-20
 
 - **One rule says which kind a map is**: `mapmanifest.map_mode`, pool_policy's `surf_` / `bhop_`
-  prefixes. Every map `_completion_scope` counts is one of the two (disabled() drops the rest), so
+  prefixes, else (P1595) the mode mapwatch's list gives a native map (ahop_coast, kz_*). Every map `_completion_scope` counts is one of the two (disabled() drops the rest), so
   `completion.modes.surf` + `.bhop` add up to the whole, per tier and unrated. The per-kind lists are
   `/board/api/player/<h>/maps?mode=` and the game's `player=&ct=&mode=`, both echo `mode`.
 - **The game keeps the three tables in one memalloc'd block** (`pf_cmt`, PF_CMF floats each), not
