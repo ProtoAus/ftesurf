@@ -76,7 +76,7 @@ def stats(path):
         if k == "end":
             trailer = f
             continue
-        if k == "truncated":
+        if k in ("truncated", "hooks"):   # hooks: Patch 1586's summary, untimed
             continue
 
         try:

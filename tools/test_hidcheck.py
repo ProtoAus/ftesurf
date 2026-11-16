@@ -3815,42 +3815,74 @@ def case_modules_tripwire():
     check(r.ok and "modules" not in r.info, "modules: a pre-1577 journal says nothing about modules")
 
 
+def _hookrun(late=(), header=("modules 0", "hookscan 1"), truncated=False, after_end=()):
+    """Patch 1586: a clean journal with hook lines beside the trailer."""
+    j = Journal()
+    for i in range(10):
+        j.frame(3000 + i)
+    if truncated:
+        j.truncate()
+    lines = j.end().splitlines()
+    begin = lines.index("begin")
+    lines[begin:begin] = list(header)
+    endat = max(i for i, line in enumerate(lines) if line.startswith("end "))
+    lines[endat:endat] = list(late)
+    lines.extend(after_end)
+    return run("\n".join(lines) + "\n")
+
+
 def case_hooks_tripwire():
     """Patch 1586: hook scan lines are listed and noted, never faulted."""
-    clean = "hooks 0 5849664 41 612 3 1024 0"
-    r = _modrun(["modules 0"], late=[clean])
+    r = _hookrun(["hooks 0 5853600 47 2400 1 128 0 3 0 0"])
     check(r.ok, "hooks: a clean scan has no fault (%s)" % (r.faults[:1] or "none"))
-    check(r.info.get("hooks", "").startswith("0 found; exe code 5849664 bytes compared; 41 input function(s)"),
+    check(r.info.get("hooks", "").startswith("0 found over 3 scan(s); exe code 5853600 bytes compared; 47 function(s)"),
           "hooks: the summary reads back (%r)" % r.info.get("hooks"))
-    check(not has_note(r, "below the journal") and not has_note(r, "unknown record kind"),
-          "hooks: a clean scan adds no note and no line kind is unknown")
-    r = _modrun(["modules 0"], late=["hook api user32!GetRawInputData unbacked - 1",
-                                     "hook iat user32!GetCursorPos program GameOverlayRenderer64.dll 2",
-                                     "hook code exe+1a2b/1 int3 - 0", "hooks 3 5849664 41 612 4 1028 0"])
-    check(r.ok and has_note(r, "3 patch(es) or redirect(s) below the journal"),
+    check(not has_note(r, "below the journal") and not has_note(r, "unknown") and not has_note(r, "announced"),
+          "hooks: a clean scan adds no note and no line kind or header key is unknown")
+    r = _hookrun(["hook wndproc window user hook.dll 1", "hook api user32!GetRawInputData unbacked - 1",
+                  "hook iat user32!GetCursorPos program GameOverlayRenderer64.dll 2", "hook code exe+1a2b/1 int3 - 0",
+                  "hooks 4 5853600 47 2400 2 132 0 2 0 0"])
+    check(r.ok and has_note(r, "4 patch(es) or redirect(s) below the journal"),
           "hooks: findings are a note, never a fault (%s)" % (r.faults[:1] or "none"))
-    check(r.info.get("hook[1]", "") == "iat     user32!GetCursorPos -> program GameOverlayRenderer64.dll (2 hop(s))",
-          "hooks: each finding is listed with where it leads (%r)" % r.info.get("hook[1]"))
+    check(r.info.get("hook[2]", "") == "iat     user32!GetCursorPos -> program GameOverlayRenderer64.dll (2 hop(s))",
+          "hooks: each finding is listed with where it leads (%r)" % r.info.get("hook[2]"))
     check(has_note(r, "code exe+1a2b/1 -> int3"), "hooks: an ownerless finding names its class")
-    r = _modrun(["modules 0"], late=["hookskip exe stale", "hookskip user32 unreadable", "hooks 0 -1 0 600 0 0 1"])
+    r = _hookrun(["hook draw gdi32!SwapBuffers program RTSSHooks64.dll 2", "hooks 1 5853600 47 2400 2 132 0 1 0 0"])
+    check(r.ok and has_note(r, "gdi32!SwapBuffers -> RTSSHooks64.dll are hooked") and not has_note(r, "patch(es)"),
+          "hooks: a draw hook is its own note, not a patch below the journal")
+    r = _hookrun(["hook noread exe+5000/4096 - - 0", "hooks 0 5849504 47 2400 1 128 0 2 1 0"])
+    check(r.ok and has_note(r, "could not read 1 place(s) (exe+5000/4096)") and not has_note(r, "patch(es)"),
+          "hooks: an unreadable place is 'could not read', not a patch")
+    r = _hookrun(["hook dll xinput1_4 game xinput1_4.dll 0", "hooks 1 5853600 47 2400 1 128 0 1 0 0"])
+    check(r.ok and has_note(r, "dll xinput1_4 -> xinput1_4.dll"), "hooks: a stand-in DLL is named")
+    r = _hookrun(["hookskip exe stale", "hookskip user32 emulated", "hooks 0 -1 0 600 0 0 3 2 0 0"])
     check(r.ok and "exe code not compared" in r.info.get("hooks", ""), "hooks: codebytes -1 reads as not compared")
-    check(has_note(r, "could not check exe (stale), user32 (unreadable)") and has_note(r, "debugger was attached"),
-          "hooks: skips and a debugger are noted")
-    r = _modrun(["modules 0"], late=["hook api x", "hook teleport a b c 1", "hooks 2 0 0 0 0 0 0"])
+    check(has_note(r, "could not check exe (stale), user32 (emulated)") and has_note(r, "debugger was attached")
+          and has_note(r, "hardware breakpoints were armed"), "hooks: skips and both debugger bits are noted")
+    r = _hookrun(["hooks -1 -1 -1 -1 -1 -1 0 0 -1 -1"])
+    check(r.ok and r.info.get("hooks") == "no scan finished while the journal was open"
+          and has_note(r, "did not finish during the journal"), "hooks: no finished scan says so, never 'clean'")
+    r = _hookrun(["hook api x", "hook teleport a b c 1", "hooks 2 0 0 0 0 0 0 1 0 0"])
     check(r.ok and has_note(r, "malformed hook line") and has_note(r, "counts 2 finding(s) but names 0"),
           "hooks: malformed lines are skipped with a note, never a fault")
+    r = _hookrun(["hook api user32!F unbacked - 1 later", "hooks 1 0 41 600 0 0 0 1 0 0 later"])
+    check(r.ok and not has_note(r, "malformed") and "hook[0]" in r.info,
+          "hooks: fields appended later are accepted")
     many = ["hook api user32!F%d unbacked - 1" % i for i in range(16)]
-    r = _modrun(["modules 0"], late=many + ["hooks 20 0 41 600 0 0 0"])
+    r = _hookrun(many + ["hooks 20 0 41 600 0 0 0 1 0 0"])
     check(r.ok and not has_note(r, "but names") and has_note(r, "20 patch(es)"),
           "hooks: past the engine's 16 lines the count carries the rest")
-    r = _modrun(["modules 0"], late=["hooks 0 0 0 0 0 0 0", "hooks 0 0 0 0 0 0 0"])
+    r = _hookrun(["hooks 0 0 0 0 0 0 0 1 0 0", "hooks 0 0 0 0 0 0 0 1 0 0"])
     check(r.ok and has_note(r, "malformed hook line"), "hooks: a second summary is malformed, not a fault")
-    r = _modrun(["modules 0"], late=["hook api user32!F unbacked - 1"])
+    r = _hookrun(["hook api user32!F unbacked - 1"])
     check(r.ok and has_note(r, "without the `hooks` summary"), "hooks: findings without a summary are noted")
-    r = _modrun(["modules 0"], after_end=["hooks 0 0 0 0 0 0 0"])
+    r = _hookrun(truncated=True)
+    check(r.ok and has_note(r, "announced a hook scan but carries no summary"),
+          "hooks: a capped journal that dropped the block is noted, not faulted (%s)" % (r.faults[:1] or "none"))
+    r = _hookrun(after_end=["hooks 0 0 0 0 0 0 0 1 0 0"])
     check(has_fault(r, "'hooks' after 'end'"), "hooks: a hook line after the trailer is a fault")
-    r = _modrun(["modules 0"])
-    check(r.ok and "hooks" not in r.info, "hooks: a pre-1586 journal says nothing about hooks")
+    r = _hookrun(header=("modules 0",))
+    check(r.ok and "hooks" not in r.info and not has_note(r, "hook"), "hooks: a pre-1586 journal says nothing about hooks")
 
 
 def main():

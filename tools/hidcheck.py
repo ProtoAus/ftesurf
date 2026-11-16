@@ -134,16 +134,25 @@ HEAD_P1424 = {"kbdobserve"}
 # line; untimestamped `module+` lines beside devmap name those loaded later. A note, never a fault.
 HEAD_P1577 = {"modules"}
 MODULE_CLASSES = ("program", "user", "other")
-# Patch 1586: hooks below the journal, scanned as a journal is written. Untimestamped, beside module+:
-#   hook <kind> <site> <class> <owner> <hops>      at most HOOK_LINES of them
-#   hookskip <what> <why>                           why: unreadable, malformed, stale (file replaced since load)
-#   hooks <found> <codebytes> <funcs> <slots> <execregions> <execkib> <debugger>
-# kind: code (exe+rva/len), api (dll!export[+off]), eat, iat, ptr, wndproc, noread. class/owner: where the
-# patch leads -- a module's class and file, image (unlisted), unbacked, bad, int3, or -. codebytes -1: the
-# exe was not compared. Notes, never faults: anything inside the process can undo a patch first.
-HOOK_KINDS = ("code", "api", "eat", "iat", "ptr", "wndproc", "noread")
+# Patch 1586: hooks below the journal. Header `hookscan 1` promises, beside module+ in the written journal,
+# the distinct findings of every scan a worker thread made while the journal was open (at its start, then
+# every 15 s), most telling first, then the skips and the summary; all one block, dropped whole if it would
+# not fit under the cap:
+#   hook <kind> <site> <class> <owner> <hops>      at most HOOK_LINES
+#   hookskip <what> <why>                           why: unreadable, malformed, stale (the file is not the
+#                                                   one loaded: an update awaiting a restart, Wine), noheader,
+#                                                   emulated (x64 on ARM64: system DLLs rewritten as loaded)
+#   hooks <found> <codebytes> <funcs> <slots> <execregions> <execkib> <debugger> <scans> <unread> <unlisted>
+# kind: wndproc, ptr, dll (a listed DLL loaded from outside the Windows folder), iat, eat, code (exe+rva/len),
+# api (dll!export[+off]), draw (SwapBuffers: overlays), noread (a place that could not be read, counted in
+# unread, not found). class/owner: where the patch leads -- a module's class (windows = under the Windows
+# folder) and file, image (unlisted), unbacked, bad, int3, or -. found is at least the distinct findings
+# over the scans; -1 with scans 0: no scan finished. codebytes -1: the exe was not compared. debugger: 1 a
+# debugger flag, 2 armed hardware breakpoints. Fields may be appended. Notes, never faults.
+HOOK_KINDS = ("wndproc", "ptr", "dll", "iat", "eat", "code", "api", "draw", "noread")
 HOOK_CLASSES = ("game", "windows", "program", "user", "other", "image", "unbacked", "bad", "int3", "-")
 HOOK_LINES = 16
+HEAD_P1586 = {"hookscan"}
 
 # Engine Patch 310 appended the render-integrity table:
 #   render <cvar> "<value>" "<default>"
@@ -546,7 +555,7 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
     bad_modules = False
     hooks = []             # Patch 1586: (kind, site, class, owner, hops)
     hookskips = []         # ...(what, why)
-    hooks_sum = None       # ...the `hooks` summary's seven numbers
+    hooks_sum = None       # ...the `hooks` summary's ten numbers
     bad_hooks = False
     i = 1
     while i < len(lines):
@@ -607,7 +616,7 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
            and parts[0] not in HEAD_P301 and parts[0] not in HEAD_P303 \
            and parts[0] not in HEAD_P307 and parts[0] not in HEAD_P310 \
            and parts[0] not in HEAD_P468 and parts[0] not in HEAD_P1424 \
-           and parts[0] not in HEAD_P1577:
+           and parts[0] not in HEAD_P1577 and parts[0] not in HEAD_P1586:
             r.note("unknown header key %r" % parts[0])
         i += 1
     else:
@@ -911,21 +920,21 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
                 r.fault("line %d: %r after 'end'" % (lineno + 1, kind))
                 continue
             if kind == "hook":
-                if len(tok) != 6 or tok[1] not in HOOK_KINDS or tok[3] not in HOOK_CLASSES or not tok[5].isdigit():
+                if len(tok) < 6 or tok[1] not in HOOK_KINDS or tok[3] not in HOOK_CLASSES or not tok[5].isdigit():
                     bad_hooks = True
                 else:
                     hooks.append((tok[1], tok[2], tok[3], tok[4], int(tok[5])))
             elif kind == "hookskip":
-                if len(tok) != 3:
+                if len(tok) < 3:
                     bad_hooks = True
                 else:
                     hookskips.append((tok[1], tok[2]))
             else:
                 try:
-                    vals = [int(x) for x in tok[1:]]
+                    vals = [int(x) for x in tok[1:11]]
                 except ValueError:
                     vals = []
-                if len(vals) != 7 or hooks_sum is not None:
+                if len(vals) != 10 or hooks_sum is not None:
                     bad_hooks = True
                 else:
                     hooks_sum = vals
@@ -1996,31 +2005,55 @@ def check_hid(path, verbose=False, *, data=None, angle_authority=None):
     if bad_modules:
         r.note("a malformed module line was skipped")
 
-    # Patch 1586: what the hook scan saw. Overlays and Windows' own fixes patch too: listed, not judged.
+    # Patch 1586: what the hook scans saw. Overlays, security software and Windows patch too: listed, not judged.
     if hooks_sum is not None:
-        found, codebytes, funcs, slots, regions, kib, dbg = hooks_sum
-        if found != len(hooks) and not (found > HOOK_LINES and len(hooks) == HOOK_LINES):
-            r.note("the hook summary counts %d finding(s) but names %d" % (found, len(hooks)))
-        r.info["hooks"] = "%d found; exe code %s; %d input function(s) and %d slot(s) checked; " \
-            "%d unbacked executable region(s), %d KiB; debugger %s" % (
-                found, "not compared" if codebytes < 0 else "%d bytes compared" % codebytes,
-                funcs, slots, regions, kib, "attached" if dbg else "none")
+        found, codebytes, funcs, slots, regions, kib, dbg, scans, unread, unlisted = hooks_sum
+        patches = [h for h in hooks if h[0] not in ("draw", "noread")]
+        draws = [h for h in hooks if h[0] == "draw"]
+        noreads = [h for h in hooks if h[0] == "noread"]
+        if scans <= 0:
+            r.info["hooks"] = "no scan finished while the journal was open"
+            r.note("the hook scan did not finish during the journal (a very short run, or its thread was stopped)")
+        else:
+            if len(patches) + len(draws) > found or (found > len(patches) + len(draws) and len(hooks) < HOOK_LINES):
+                r.note("the hook summary counts %d finding(s) but names %d" % (found, len(patches) + len(draws)))
+            r.info["hooks"] = "%d found over %d scan(s); exe code %s; %d function(s) and %d slot(s) checked; " \
+                "%d unbacked executable region(s), %d KiB; %d unlisted executable image(s); %s" % (
+                    found, scans, "not compared" if codebytes < 0 else "%d bytes compared" % codebytes,
+                    funcs, slots, regions, kib, unlisted,
+                    ", ".join(w for b, w in ((1, "debugger flag set"), (2, "hardware breakpoints armed")) if dbg & b)
+                    or "no debugger seen")
         for idx, (kd, site, cls, owner, hops) in enumerate(hooks):
             r.info["hook[%d]" % idx] = "%-7s %s -> %s %s (%d hop(s))" % (kd, site, cls, owner, hops)
         for what, why in hookskips:
             r.info["hookskip[%s]" % what] = why
-        if hooks:
-            r.note("%d patch(es) or redirect(s) below the journal (%s%s). Overlays and Windows' own fixes do "
-                   "this too; recorded, not judged." % (
-                       found, ", ".join("%s %s -> %s" % (kd, site, owner if owner != "-" else cls)
-                                        for kd, site, cls, owner, _h in hooks[:6]),
-                       ", ..." if found > 6 else ""))
+        if patches:
+            r.note("%d patch(es) or redirect(s) below the journal (%s%s). Overlays, security software, IMEs, "
+                   "accessibility tools and Windows itself do this too ('windows': a file under the Windows "
+                   "folder); recorded, not judged." % (
+                       max(len(patches), found - len(draws)),
+                       ", ".join("%s %s -> %s" % (kd, site, owner if owner != "-" else cls)
+                                               for kd, site, cls, owner, _h in patches[:8]),
+                       ", ..." if max(len(patches), found - len(draws)) > 8 else ""))
+        if draws:
+            r.note("the draw function(s) %s are hooked (overlays and recorders do this)"
+                   % ", ".join("%s -> %s" % (site, owner if owner != "-" else cls) for _k, site, cls, owner, _h in draws))
+        if noreads or unread > 0:
+            r.note("the hook scan could not read %d place(s) (%s)" % (
+                max(unread, len(noreads)), ", ".join(site for _k, site, _c, _o, _h in noreads[:4]) or "not named"))
         if hookskips:
-            r.note("the hook scan could not check %s" % ", ".join("%s (%s)" % w for w in hookskips))
-        if dbg:
-            r.note("a debugger was attached as the journal was written")
+            r.note("the hook scan could not check %s (stale: the file on disk is not the one loaded -- an update "
+                   "awaiting a restart, or Wine)" % ", ".join("%s (%s)" % w for w in hookskips))
+        if dbg & 1:
+            r.note("a debugger was attached during the journal")
+        if dbg & 2:
+            r.note("hardware breakpoints were armed on a game thread during the journal (a debugger, or a tool "
+                   "that changes no bytes)")
     elif hooks or hookskips:
         r.note("hook lines without the `hooks` summary")
+    elif "hookscan" in head:
+        r.note("the journal announced a hook scan but carries no summary (a journal near its size cap drops "
+               "the block whole)")
     if bad_hooks:
         r.note("a malformed hook line was skipped")
 

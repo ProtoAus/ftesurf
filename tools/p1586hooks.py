@@ -177,6 +177,25 @@ def owner_of(addr):
     return Path(path.value).name.lower()
 
 
+def follow(addr):
+    """Where the engine's hop loop ends from addr, through jmp rel32/rel8 and jmp [rip+x]: (owner, jumps)."""
+    jumps = 0
+    while jumps < 4:
+        b = ctypes.string_at(addr, 16)
+        if b[0] == 0xe9:
+            addr += 5 + struct.unpack('<i', b[1:5])[0]
+        elif b[0] == 0xeb:
+            addr += 2 + struct.unpack('<b', b[1:2])[0]
+        elif b[:2] == b'\xff\x25':
+            addr = struct.unpack('<Q', ctypes.string_at(addr + 6 + struct.unpack('<i', b[2:6])[0], 8))[0]
+        elif b[:3] == b'\x48\xff\x25':
+            addr = struct.unpack('<Q', ctypes.string_at(addr + 7 + struct.unpack('<i', b[3:7])[0], 8))[0]
+        else:
+            break
+        jumps += 1
+    return owner_of(addr), jumps
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--exe', type=Path, required=True)
@@ -209,7 +228,9 @@ def main():
     eat_entry, cursor_rva = user32_export_entry('GetPhysicalCursorPos')
     sleep = k32.GetProcAddress(k32.GetModuleHandleW('kernel32.dll'), b'Sleep')
     rib = k32.GetProcAddress(k32.GetModuleHandleW('user32.dll'), b'GetRawInputBuffer')
-    sleepdll = owner_of(sleep)
+    gks = k32.GetProcAddress(k32.GetModuleHandleW('user32.dll'), b'GetKeyState')
+    sleepdll, sleepj = follow(sleep)        # a finding through the region ends where Sleep's own jumps end
+    gksdll, gksj = follow(gks)
     print('exe', a.exe, hashlib.sha256(exe_bytes).hexdigest()[:8], 'out', out, flush=True)
     print('plan: pads exe+%x exe+%x, iat %s at exe+%x, code bytes %d' % (pad1, pad2, iatname, iatrva, textbytes), flush=True)
     cl = Client(a.exe, base, 'probe.cfg')
@@ -234,7 +255,7 @@ def main():
         t.write(eat_entry, struct.pack('<I', cursor_rva))           # eat: the export now resolves elsewhere
         print('patched: region %x' % region, flush=True)
         cl.send('in_journal_begin')
-        time.sleep(0.5)
+        time.sleep(1.0)
         cl.send('in_journal_end data/p1586_b.hid')
         written(game / 'data/p1586_b.hid')
     finally:
@@ -254,7 +275,9 @@ def main():
         lines = hid.read_text(encoding='utf-8', errors='replace').splitlines()
         sums = [l.split()[1:] for l in lines if l.startswith('hooks ')]
         found = [[w.lower() if i == 3 else w for i, w in enumerate(l.split()[1:])] for l in lines if l.startswith('hook ')]
-        skips = [l for l in lines if l.startswith('hookskip ')]
+        skips = [l for l in lines if l.startswith('hookskip ')] + \
+            (['(no hookscan header)'] if 'hookscan 1' not in lines and not a.control else []) + \
+            (['(hookscan header)'] if 'hookscan 1' in lines and a.control else [])
         for l in [l for l in lines if l.startswith('hook')]:
             print('     %s: %s' % (k.upper(), l), flush=True)
         parsed[k] = (sums, found, skips)
@@ -269,21 +292,26 @@ def main():
         if len(sa) != 1 or len(sb) != 1:
             return 1
         va, vb = [int(x) for x in sa[0]], [int(x) for x in sb[0]]
+        check(len(va) == 10 and len(vb) == 10, 'the summary has ten fields')
         check(va[1] == textbytes and vb[1] == textbytes, 'the whole exe code was compared', '%d, %d of %d' % (va[1], vb[1], textbytes))
-        check(va[2] >= 30 and va[3] >= 100, 'input functions and slots were checked', 'funcs %d, slots %d' % (va[2], va[3]))
-        check(not ka and not kb, 'nothing skipped')
-        check(all(f[1] in DRAW for f in fa) and va[0] == len(fa), 'A: nothing below the journal (draw hooks aside)',
+        check(va[2] >= 40 and va[3] >= 400, 'functions and slots were checked', 'funcs %d, slots %d' % (va[2], va[3]))
+        check(va[7] >= 1 and vb[7] >= 1 and va[8] == 0 and vb[8] == 0 and va[6] == 0 and vb[6] == 0,
+              'each journal saw a finished scan, nothing unread, no debugger', 'scans %d/%d unread %d/%d dbg %d/%d'
+              % (va[7], vb[7], va[8], vb[8], va[6], vb[6]))
+        check(not ka and not kb, 'nothing skipped, and the header promised the scan', '%r %r' % (ka, kb))
+        check(all(f[0] == 'draw' for f in fa) and va[0] == len(fa), 'A: nothing below the journal (draw hooks aside)',
               '%d found' % va[0])
+        via = ['windows', sleepdll, str(2 + sleepj)]
         planted = {
-            'code jump': lambda f: f[0] == 'code' and f[1].startswith('exe+%x/' % pad1) and f[2:] == ['windows', sleepdll, '2'],
+            'code jump': lambda f: f[0] == 'code' and f[1].startswith('exe+%x/' % pad1) and f[2:] == via,
             'code int3': lambda f: f == ['code', 'exe+%x/1' % pad2, 'int3', '-', '0'],
-            'api jump': lambda f: f == ['api', 'user32!GetRawInputBuffer', 'windows', sleepdll, '2'],
-            'iat slot': lambda f: f == ['iat', 'user32!' + iatname, 'windows', sleepdll, '2'],
-            'eat entry': lambda f: f == ['eat', 'user32!GetPhysicalCursorPos', 'windows', 'user32.dll', '1'],
+            'api jump': lambda f: f == ['api', 'user32!GetRawInputBuffer'] + via,
+            'iat slot': lambda f: f == ['iat', 'user32!' + iatname] + via,
+            'eat entry': lambda f: f == ['eat', 'user32!GetPhysicalCursorPos', 'windows', gksdll, str(1 + gksj)],
         }
         for name, test in planted.items():
             check(any(test(f) for f in fb), 'B names the %s' % name)
-        extra = [f for f in fb if not any(t(f) for t in planted.values()) and f[1] not in DRAW]
+        extra = [f for f in fb if not any(t(f) for t in planted.values()) and f[0] != 'draw']
         check(not extra and vb[0] == len(fb), 'B: nothing else, and the count matches', '%r' % extra)
         check(vb[4] >= va[4] + 1 and vb[5] >= va[5] + 4, 'B: the allocated region is counted',
               'regions %d -> %d, KiB %d -> %d' % (va[4], vb[4], va[5], vb[5]))
