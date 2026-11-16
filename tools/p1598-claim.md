@@ -8,3 +8,11 @@ process hosts (refused when not hosting, and from insecure sources on a dedicate
 calls it; on a lobby it lists the modes inert ("only in a game you host").
 Engine sv_phys.c; QC src/client/cl_gamemode.qc (+ cl_main.qc hooks, cl_progs.src). Root
 C:\FTESurf-worktrees\gamemode-20261117-29.
+
+## Delivery (17 Nov 2026, LIVE)
+
+Engine main 7cc93e58e (tag patch-1598, stamp git-8842-patch-1598-0-g7cc93e58e, TLS check clean): both installs
+client 424548fb, fteqwsv64 2d0fea30, hl2 fc1c9afc, ui_imgui dfbb11c2 (.prev = patch-1593). QC main 0c92a57e: lobbies
+12/12 restarted (-Pi, 0 players) and both installs, qw 21ff074b / cs 83467981, menu f43460fe unchanged; tasrevd
+codes.txt 154 -> 155 (.pre1598). pi_lobby_smoke on the released 0.1.48 exe: PASS. Final binaries: the local phase's
+17 checks pass. Evidence and limits: engine ENGINE_PATCHES.md Patch 1598, BACKLOG "Movement mode picker".
