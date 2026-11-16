@@ -1483,4 +1483,8 @@ void() SV_MsSweep =
 	if (!strlen(serverkey("*movementprofile"))) SV_MsSweepProfile("");
 	SV_MsSweepProfile("ag-100-v1");
 	SV_MsSweepProfile("ag-250-v1");
+	SV_MsSweepProfile("ag-1000-v1");
+	SV_MsSweepProfile("cs16-v1");
+	SV_MsSweepProfile("hl2-pre-v1");
+	SV_MsSweepProfile("hl2-post-v1");
 };

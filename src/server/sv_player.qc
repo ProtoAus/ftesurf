@@ -273,10 +273,16 @@ void() PutClientInServer =
 	setmodel(self, "");
 
 	// CS:S hull, origin AT THE FEET (Source convention, not Quake's centre).
-	if (strlen(serverkey("*movementprofile")))
+	// GoldSrc profiles: centred 72 hull, eyes 28 (CS 1.6: 17). HL2: feet origin, 72 tall, eyes 64.
+	if (FS_MovementProfileGoldSrc(serverkey("*movementprofile")))
 	{
 		setsize(self, '-16 -16 -36', '16 16 36');
-		self.view_ofs = '0 0 28';
+		self.view_ofs = strcmp(serverkey("*movementprofile"), "cs16-v1") ? '0 0 28' : '0 0 17';
+	}
+	else if (strlen(serverkey("*movementprofile")))
+	{
+		setsize(self, '-16 -16 0', '16 16 72');
+		self.view_ofs = '0 0 64';
 	}
 	else
 	{
@@ -292,7 +298,7 @@ void() PutClientInServer =
 	if (spot)
 	{
 		// CBasePlayer::Spawn nudges 1 unit up off the spawn pad.
-		setorigin(self, spot.origin + (strlen(serverkey("*movementprofile")) ? '0 0 37' : '0 0 1'));
+		setorigin(self, spot.origin + (FS_MovementProfileGoldSrc(serverkey("*movementprofile")) ? '0 0 37' : '0 0 1'));
 		self.angles = spot.angles;
 	}
 	else

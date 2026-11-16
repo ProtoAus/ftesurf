@@ -1261,7 +1261,7 @@ float(entity e, float id, float seq) SV_SaveWriteState =
 	local string p, agwater;
 
 	agwater = "";
-	if (strlen(serverkey("*movementprofile")))
+	if (FS_MovementProfileGoldSrc(serverkey("*movementprofile")))
 	{
 		agwater = SV_AGWaterSave(e);
 		if (!strlen(agwater)) return FALSE; // no unknown-to-zero saved state, before opening anything
@@ -1898,7 +1898,7 @@ float(float rows) SL_StateProfileValid =
 	{
 		line = bufstr_get(rows, row);
 		if (!strlen(line)) break;
-		if (strlen(serverkey("*movementprofile")) && !strcmp(substring(line, 0, 12), "agwaterjump "))
+		if (FS_MovementProfileGoldSrc(serverkey("*movementprofile")) && !strcmp(substring(line, 0, 12), "agwaterjump "))
 		{
 			if (water || !SL_AGWaterValid(line)) return FALSE;
 			water = 1;
@@ -1907,7 +1907,7 @@ float(float rows) SL_StateProfileValid =
 		if (seen) return FALSE;
 		seen = 1; profile = substring(line, 16, -1);
 	}
-	return FS_MovementProfileKnown(profile) && !strcmp(profile, serverkey("*movementprofile")) && (!strlen(profile) || water);
+	return FS_MovementProfileKnown(profile) && !strcmp(profile, serverkey("*movementprofile")) && (!FS_MovementProfileGoldSrc(profile) || water);
 };
 void(entity e) SV_SaveProfileBind =
 {
@@ -2057,7 +2057,7 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 		if (n < 2)
 			continue;
 
-		if (!strcmp(k, "agwaterjump") && strlen(serverkey("*movementprofile")))
+		if (!strcmp(k, "agwaterjump") && FS_MovementProfileGoldSrc(serverkey("*movementprofile")))
 		{
 			e.run_agwateractive = stof(argv(1)); e.run_agwatertime = stof(argv(2));
 			e.run_agwaterpush = [stof(argv(3)), stof(argv(4)), 0];
@@ -3564,7 +3564,7 @@ void(float row) SV_SaveDemote =
 	if (!SV_SaveReadIdent(id) || !SV_SaveRowIs(row))
 		return;
 	agwater = "";
-	if (strlen(serverkey("*movementprofile")))
+	if (FS_MovementProfileGoldSrc(serverkey("*movementprofile")))
 	{
 		rows = SL_StateSnapshot(id);
 		if (rows < 1) return;
