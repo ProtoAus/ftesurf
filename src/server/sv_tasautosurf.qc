@@ -1995,9 +1995,11 @@ float(entity e) SV_TASAutoCoastPredict =
 		as_crows[i*7+3] = SV_TASPWord(e.v_angle_x); as_crows[i*7+4] = SV_TASPWord(e.v_angle_y);
 	}
 	SV_TASOptSimStart(e);       // review G: else the last search's rollout state
+	SV_TASOptPushes(e);
 	SV_NoColPre(e);
 	ran = tas_rollout(e, as_crows, n, as_cout);
 	SV_NoColPost(e);
+	e.run_tasrollpush = 0;
 	if (ran <= 0) return 0;
 	k = (e.as_cleg >= 1) ? SV_ZoneFindLeg(e.as_ctrack, e.as_cleg) : -1;      // the course's end, as its finish search had it
 	e.topt_endz = k; e.topt_endtrack = (k >= 0) ? -1 : e.as_ctrack;

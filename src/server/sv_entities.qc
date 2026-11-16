@@ -9412,6 +9412,134 @@ void() trigger_push =
 		self.solid = SOLID_NOT;
 };
 
+// P1572: tas_rollout follows a push from these (sv_tas_rollout.inc), for a body whose run_tasrollpush is 1:
+// 1 continuous (carrier tas_rpush), 2 one-time kick tas_rpush, 3 a kick that also takes the ground, 4 never moves
+// a player, 5 continuous with self-toggle outputs only (SV_TASPushSelfToggle), 6 such a push held in the body's own
+// touch slot (followed while the body, standing in it at the start, stays in it; its owed end edge disables it once
+// the body is out, so touched otherwise it ends the line: the rollout's start walk decides); 0 its touch does more than
+// trigger_push_touch's physics (other outputs, a filter, an edge or delay of its own still owed) and ends the
+// prediction. The vectors are the touch's own arithmetic, so the rollout stays exact.
+.float tas_rpushk;
+.vector tas_rpush;
+.float run_tasrollpush;
+// every output only disables the push itself on leaving, or enables it later: surf_rookie's 24 and stonework's are
+// "OnEndTouch !self Disable" with "!self Enable" a second later, one push a pass. Its touch is a plain push's, and
+// the rollout's kind 5 ends a line that touches it again after leaving. A Disable on touch (or jump, or land) acts
+// within the pass, which the rollout does not follow (review).
+float(entity t) SV_TASPushSelfToggle =
+{
+	local entity o;
+	if (strcmp(t.classname, "trigger_push")) return FALSE;
+	if (t.touch != trigger_push_touch) return FALSE;
+	if (!t.vbsp_io_out) return FALSE;
+	for (o = t.vbsp_io_out; o; o = o.vbsp_io_next)
+	{
+		if (strcasecmp(o.vbsp_io_target, "!self")) return FALSE;
+		if (o.vbsp_io_name != "onendtouch" && o.vbsp_io_name != "onendtouchall") return FALSE;
+		if (!strcasecmp(o.vbsp_io_input, "Enable")) { if (!(o.vbsp_io_delay > 0)) return FALSE; }
+		else if (strcasecmp(o.vbsp_io_input, "Disable") && strcasecmp(o.vbsp_io_input, "Toggle")) return FALSE;
+	}
+	return TRUE;
+};
+// a push another entity's output targets by name (a timer's Toggle, SetPushDirection) or that rides a parent can change
+// within a rollout's horizon: never followed (review). Names resolve as SV_FindByName's (any case, a trailing '*'); scanned
+// at each prep, since templates spawn outputs and AddOutput renames after the map's I/O build (review 2).
+.float tas_rpushx;
+.string parentname;         // declared again with the parenting code below (fteqcc: one field)
+hashtable tas_rpushtab;
+void() SV_TASPushScan =
+{
+	local entity o, t;
+	local string w;
+	local float hit, n, nx;
+	if (tas_rpushtab) hash_destroytab(tas_rpushtab);
+	tas_rpushtab = hash_createtab(1024, EV_FLOAT);
+	n = nx = 0;
+	for (t = find(world, classname, "trigger_push"); t; t = find(t, classname, "trigger_push"))
+		t.tas_rpushx = 0;
+	for (o = find(world, classname, "vbsp_output"); o; o = find(o, classname, "vbsp_output"))
+	{
+		w = o.vbsp_io_target;
+		if (w == "" || substring(w, 0, 1) == "!") continue;
+		if (strstrofs(w, "*", 0) < 0) { hash_add(tas_rpushtab, strtolower(w), 1, HASH_REPLACE); continue; }
+		for (t = find(world, classname, "trigger_push"); t; t = find(t, classname, "trigger_push"))
+			if (t.targetname != "" && SV_NamesMatch(w, t.targetname))
+				t.tas_rpushx = 1;
+	}
+	for (t = find(world, classname, "trigger_push"); t; t = find(t, classname, "trigger_push"))
+	{
+		if (t.targetname != "")
+		{
+			hit = hash_get(tas_rpushtab, strtolower(t.targetname), 0);
+			if (hit) t.tas_rpushx = 1;
+		}
+		n = n + 1; nx = nx + t.tas_rpushx;
+	}
+	if (cvar("developer")) dprint(sprintf("tas pushes: %.0f, %.0f named by another entity's output\n", n, nx));
+};
+float(entity e, entity t) SV_TASInTouchSlot =
+{
+	if (t == world) return FALSE;
+	return t == e.run_tl1 || t == e.run_tl2 || t == e.run_tl3 || t == e.run_tl4 || t == e.run_tl5 || t == e.run_tl6
+		|| t == e.run_tl7 || t == e.run_tl8;
+};
+void(entity e) SV_TASPushPrep =
+{
+	local entity t;
+	local float spd, l, st, n;
+	local int ebit;
+	local vector v;
+	n = num_for_edict(e) - 1;
+	ebit = 0;
+	if (n >= 0 && n < 32) ebit = (int)1 << (int)n;
+	SV_TASPushScan();
+	for (t = find(world, classname, "trigger_push"); t; t = find(t, classname, "trigger_push"))
+	{
+		t.tas_rpushk = 0;
+		t.tas_rpush = '0 0 0';
+		if (t.touch != trigger_push_touch) continue;
+		if (t.tas_rpushx || t.parentname != "") continue;
+		if (!SV_TriggerTakesPlayers(t)) { t.tas_rpushk = 4; continue; }
+		if (t.filtername != "" && vbsp_io_on) continue;
+		st = SV_TASPushSelfToggle(t);
+		if (t.vbsp_io_out && !st) continue;
+		makevectors(t.pushdir);
+		spd = SV_Key2(t.speed, t.Speed);
+		if (!spd)
+			spd = 100;
+		v = v_forward * spd;
+		if (t.spawnflags & SF_PUSH_ONCE)
+		{	// SV_ClampImpulse without its census line
+			l = vlen(v);
+			if (l >= PUSH_DISCARD) v = '0 0 0';
+			else if (l > PUSH_MAXSPEED) v = v * (PUSH_MAXSPEED / l);
+			t.tas_rpushk = (v_forward_z > 0) ? 3 : 2;
+		}
+		else if (!st)
+			t.tas_rpushk = 1;
+		else if (!(t.vbsp_touch_in | t.vbsp_touch_seen | t.vbsp_touch_out) && t.vbsp_touch_who == world)
+			t.tas_rpushk = 5;       // no end touch owed (SV_TASRollPending waited for it)
+		else if (ebit && SV_TASInTouchSlot(e, t) && !((t.vbsp_touch_in | t.vbsp_touch_seen | t.vbsp_touch_out) & ~ebit))
+		if (t.vbsp_touch_who == world || t.vbsp_touch_who == e)
+			t.tas_rpushk = 6;       // the body's own touch only (rig e1: surf_rookie's stage-end push stood in)
+		t.tas_rpush = v;
+	}
+	for (t = find(world, classname, "vbsp_iodelay"); t; t = find(t, classname, "vbsp_iodelay"))
+		if (t.owner)
+		if (t.owner.owner.classname == "trigger_push")
+			t.owner.owner.tas_rpushk = 0;      // its Enable is still to come
+	// any other in the body's touch slots still owes its end edge (SV_TouchEndSlot in PreThink, which a paused body does
+	// not run): it disables on the first command, so a touch again must end the line (review)
+	if (e.run_tl1.classname == "trigger_push" && e.run_tl1.tas_rpushk != 6) e.run_tl1.tas_rpushk = 0;
+	if (e.run_tl2.classname == "trigger_push" && e.run_tl2.tas_rpushk != 6) e.run_tl2.tas_rpushk = 0;
+	if (e.run_tl3.classname == "trigger_push" && e.run_tl3.tas_rpushk != 6) e.run_tl3.tas_rpushk = 0;
+	if (e.run_tl4.classname == "trigger_push" && e.run_tl4.tas_rpushk != 6) e.run_tl4.tas_rpushk = 0;
+	if (e.run_tl5.classname == "trigger_push" && e.run_tl5.tas_rpushk != 6) e.run_tl5.tas_rpushk = 0;
+	if (e.run_tl6.classname == "trigger_push" && e.run_tl6.tas_rpushk != 6) e.run_tl6.tas_rpushk = 0;
+	if (e.run_tl7.classname == "trigger_push" && e.run_tl7.tas_rpushk != 6) e.run_tl7.tas_rpushk = 0;
+	if (e.run_tl8.classname == "trigger_push" && e.run_tl8.tas_rpushk != 6) e.run_tl8.tas_rpushk = 0;
+};
+
 /*
 ===========================================================================
   FTESurf Patch 256 -- trigger_setspeed.  372 instances across 94 maps, and

@@ -41,13 +41,16 @@
                                 // reach ~80 (braking turns), the follow optimum on ramp 0 ~130
 #define TOPT_CEPOP 20           // P1449 curve: samples a generation
 #define TOPT_CEEL  5            // ...the best kept
-#define TOPT_CEGEN 30           // ...generations after the seeding grid
+var float topt_k_gens = 30;      // P1572: tas_jargon_w_gens (SV_TASOptKnobs)
+#define TOPT_CEGEN topt_k_gens  // ...generations after the seeding grid
 #define TOPT_CEMIN 12           // P1449: at least these, then a search ends after TOPT_CESTALL generations without a gain
-#define TOPT_CESTALL 8          // over 0.5 (surf_null's searches mostly settled by generation 5-10 and ran 20 more);
+var float topt_k_stall = 8;      // P1572: tas_jargon_w_stall
+#define TOPT_CESTALL topt_k_stall   // over 0.5 (surf_null's searches mostly settled by generation 5-10 and ran 20 more);
                                 // a target search only once it has a reach (the pillar stretch's first came at 10-20)
 #define TOPT_CEGRID 38          // the seeding grid: 13 constant commands, then 25 two-part ones (q1 then q2,
                                 // sides changing included: a flight steers by switching sides)
-#define TOPT_FRAMEBUDGET 0.04   // P1449: wall seconds of rollouts per call (a shared server stalls meanwhile)
+var float topt_k_frame = 0.04;   // P1572: tas_jargon_w_framems / 1000
+#define TOPT_FRAMEBUDGET topt_k_frame   // P1449: wall seconds of rollouts per call (a shared server stalls meanwhile)
 #define TOPT_EFOLLOW 256        // P1449: tas_rollout row bits (sv_tas_rollout.inc): the engine sets the yaw and
 #define TOPT_EPITCHV 512        // side from the velocity each tick (yaw slot = turn command), the pitch too
 #define TOPT_DOFF  6            // P1449 curve demo: the yaw correction's range, degrees either way
@@ -147,13 +150,16 @@ void(entity e) SV_TASAutoFrame;
 // 50 u radius asked for his spot, and every miss on surf_null's second platform came in beside it, 10 Nov)
 #define TOPT_HOPR 128
 #define TOPT_HOPZ 16
-#define TOPT_FACEDOT 0.95       // P1449: a contact boards the target's face within ~18 degrees of it: a bent ramp's two faces
+var float topt_k_facedot = 0.95; // P1572: tas_jargon_w_facedot
+#define TOPT_FACEDOT topt_k_facedot // P1449: a contact boards the target's face within ~18 degrees of it: a bent ramp's two faces
                                 // sit 11.4 degrees apart (surf_monolith's ramp 2: 0.9797, under the old 0.98); its flat top
                                 // (0.72 there) and sides stay out
-#define TOPT_WALLPEN 120        // P1449: score lost per tick a wall or ceiling is touched in flight (kind 4): a graze, not a
+var float topt_k_wall = 120;     // P1572: tas_jargon_w_wall
+#define TOPT_WALLPEN topt_k_wall   // P1449: score lost per tick a wall or ceiling is touched in flight (kind 4): a graze, not a
                                 // cut (surf_null board 2: a pillar 18 u off farsh's line cut 400-580 of 638 candidates and
                                 // autosurf stuck there after 6 backtracks, 10 Nov); 40 left lines brushing walls 1-18 ticks
-#define TOPT_GROUNDPEN 60       // P1449: a board target's score lost per tick on the ground before the reach (surf_null ramp 0's
+var float topt_k_ground = 60;    // P1572: tas_jargon_w_ground
+#define TOPT_GROUNDPEN topt_k_ground   // P1449: a board target's score lost per tick on the ground before the reach (surf_null ramp 0's
                                 // segments have angled tops, normal z 0.85: a high arrival stood on one; Lex, 10 Nov)
 // P1449: a hop's score lost per unit its jump comes before the demo's along the demo's heading after it (none past it):
 // with the whole platform counting (TOPT_HOPR), a near-edge jump left surf_null's last flight to fall into the teleport
@@ -164,8 +170,10 @@ void(entity e) SV_TASAutoFrame;
 // candidate of the next stretch left the tube at tick 18 (10 Nov); from farsh's own state there it boarded 56 u off
 #define TOPT_RIDEMIN 40
 #define TOPT_RIDEFRAC 0.4
-#define TOPT_HOPDIR 20          // P1449: a hop target's score lost per degree off the demo's heading after it
-#define TOPT_LOOKW 0.01         // P1449 `look N`: a reach's score per unit of demo route survived after it (a reach scores
+var float topt_k_hopdir = 20;    // P1572: tas_jargon_w_hopdir
+#define TOPT_HOPDIR topt_k_hopdir   // P1449: a hop target's score lost per degree off the demo's heading after it
+var float topt_k_look = 0.01;    // P1572: tas_jargon_w_look
+#define TOPT_LOOKW topt_k_look   // P1449 `look N`: a reach's score per unit of demo route survived after it (a reach scores
                                 // sqrt(E + EREF) ~ 5700: 40 u/s at 1800 is ~13; 100 ticks survived ~27 -- at 0.5 survival
                                 // swamped energy and boards gave up 50 u/s for it, 9 Nov)
 float(entity e, float ran) SV_TASOptTargetScore;
@@ -582,31 +590,51 @@ float(entity e, float r, float y, float f, float i) SV_TASOptYaw =
 // nothing near the body -- an OnJump or OnEndTouch edge of a trigger touched (run_tl*, the triggers'
 // touch bits), a delayed output with this player as activator (SV_TrigPending 2), the Monolith B4
 // latch. A rollout from such a head is not the real move: refuse (-31 latch, -32 edges/delays).
+// P1572: -33 when the only ones owed are a self-toggle push's (SV_TASPushSelfToggle): they clear by themselves in
+// server time (its Enable a second on), and the paused body loses no run time waiting.
 string(entity t) SV_TASOptRename;
 float(entity t) SV_TASOptRenameOnly = { return t == world || SV_TASOptRename(t) != ""; };
+// 0 nothing a rollout loses, 1 a self-toggle push's (waited out), 2 anything else (pushes not followed: as before)
+float(entity t) SV_TASOptEdge =
+{
+	if (SV_TASOptRenameOnly(t)) return 0;
+	if (cvar("tas_jargon_off") & 4194304) return 2;
+	return SV_TASPushSelfToggle(t) ? 1 : 2;
+};
 float(entity e) SV_TASRollPending =
 {
 	local entity t;
-	local float n;
+	local float n, w;
 	local int bit;
 	if (e.run_mono_phase || e.vsv_on) return -31;
 	if (e.vbsp_grav_trig) return -31;   // a persist-0 trigger_gravity's reset is owed (SV_GravityFrame)
 	// P1449: a touch edge owed by a trigger that only renames its toucher is not one the rollout loses:
 	// SV_TASOptRoll starts its filter name as the rename (SV_TASOptSimStart). surf_monolith's bonus boards
 	// its ramps inside such triggers, and every search after the first was refused (9 Nov).
-	if (!SV_TASOptRenameOnly(e.run_tl1) || !SV_TASOptRenameOnly(e.run_tl2) || !SV_TASOptRenameOnly(e.run_tl3) || !SV_TASOptRenameOnly(e.run_tl4)
-	    || !SV_TASOptRenameOnly(e.run_tl5) || !SV_TASOptRenameOnly(e.run_tl6) || !SV_TASOptRenameOnly(e.run_tl7) || !SV_TASOptRenameOnly(e.run_tl8))
-		return -32;
+	// a self-toggle push in a touch slot is not waited for: the slot ends only in PreThink, which a paused body never runs
+	// (SV_TASPushPrep makes it kind 6: followed only while the body, standing in it, stays in it)
+	w = max(max(max(SV_TASOptEdge(e.run_tl1), SV_TASOptEdge(e.run_tl2)), max(SV_TASOptEdge(e.run_tl3), SV_TASOptEdge(e.run_tl4))),
+		max(max(SV_TASOptEdge(e.run_tl5), SV_TASOptEdge(e.run_tl6)), max(SV_TASOptEdge(e.run_tl7), SV_TASOptEdge(e.run_tl8))));
+	if (w == 2) return -32;
+	w = 0;
 	n = num_for_edict(e) - 1;           // SV_TrigPending's walk, a rename-only trigger excepted
 	bit = 0;
 	if (n >= 0 && n < 32) bit = (int)1 << (int)n;
 	for (t = nextent(world); t; t = nextent(t))
 	{
-		if (t.enemy == e && t.classname == "vbsp_iodelay") return -32;
+		if (t.enemy == e && t.classname == "vbsp_iodelay")
+		{
+			if (!t.owner) return -32;
+			if (!SV_TASPushSelfToggle(t.owner.owner)) return -32;
+			w = 1;
+		}
 		if (t.vbsp_touch_who == e || ((t.vbsp_touch_in | t.vbsp_touch_seen | t.vbsp_touch_out) & bit))
-		if (!SV_TASOptRenameOnly(t)) return -32;
+		{
+			if (SV_TASOptEdge(t) == 2) return -32;
+			if (SV_TASOptEdge(t) == 1 && !SV_TASInTouchSlot(e, t)) w = 1;  // a slotted one keeps the bit (review 2)
+		}
 	}
-	return 0;
+	return w ? -33 : 0;
 };
 
 // P1443: the candidate's rows through tas_rollout into topt_out. Returns the ticks that count and
@@ -614,6 +642,7 @@ float(entity e) SV_TASRollPending =
 // negative refusal; -20 without the builtin or buffers. Callers check SV_TASRollPending first, once
 // per head (it walks every edict).
 .float topt_rollcut;
+.float topt_pwait, topt_pprep;     // P1572: until when a self-toggle push is waited for; pushes described
 .float topt_rollran;            // the last fast candidate's counted ticks (0 with a cut: a start volume)
 // P1449 curve: the knots are a TURN COMMAND q. Its sign picks the strafe side (+ left), and the view
 // is set from the velocity so the wish direction's dot with it is 30 - |q|: 0 no acceleration (either
@@ -1445,7 +1474,8 @@ float(float i, float ran) SV_TASOptEdgeAt =
 // Lex, 10 Nov: Jargon hits the roof and loses speed at the changeover to ramp 9 -- the played lines reaching it touched a
 // wall or the roof 1-11 ticks before the board, and one roof tick in flight took 589 u/s (troof1); a flat TOPT_WALLPEN a
 // tick scored that like a graze. The energy each wall tick took (the drop in speed-and-height over the tick before it).
-#define TOPT_WALLLOSS 2
+var float topt_k_wallloss = 2;   // P1572: tas_jargon_w_wallloss
+#define TOPT_WALLLOSS topt_k_wallloss
 float(entity e, float n) SV_TASOptWallLoss =
 {
 	local float i, l, ep, en, z0, g;
@@ -2066,6 +2096,54 @@ float(entity e, float ran) SV_TASOptTargetScore =
 	return (ran < e.topt_n || e.topt_rollcut == 1 || tx >= 0) ? d * 0.5 : d;
 };
 
+// P1572 (Lex: "the numbers to adjust the search"): the score's weights and the search's size, from tas_jargon_w_* when
+// set (the panel's Tuning tab; a local game shares the server's cvars), else the measured defaults. Read at each start.
+float(string c, float d, float lo, float hi) SV_TASOptKnob =
+{
+	local string v;
+	v = cvar_string(c);
+	if (!strlen(v)) return d;
+	return bound(lo, stof(v), hi);
+};
+void() SV_TASOptKnobs =
+{
+	topt_k_wall = SV_TASOptKnob("tas_jargon_w_wall", 120, 0, 5000);
+	topt_k_wallloss = SV_TASOptKnob("tas_jargon_w_wallloss", 2, 0, 50);
+	topt_k_ground = SV_TASOptKnob("tas_jargon_w_ground", 60, 0, 5000);
+	topt_k_hopdir = SV_TASOptKnob("tas_jargon_w_hopdir", 20, 0, 500);
+	topt_k_look = SV_TASOptKnob("tas_jargon_w_look", 0.01, 0, 1);
+	topt_k_facedot = SV_TASOptKnob("tas_jargon_w_facedot", 0.95, 0.5, 0.999);
+	topt_k_gens = rint(SV_TASOptKnob("tas_jargon_w_gens", 30, 4, 200));
+	topt_k_stall = rint(SV_TASOptKnob("tas_jargon_w_stall", 8, 2, 200));
+	topt_k_frame = SV_TASOptKnob("tas_jargon_w_framems", 40, 5, 1000) / 1000;
+};
+// the knobs moved off their defaults, as words ("" none): each search says what it was tuned with
+string() SV_TASOptKnobsSaid =
+{
+	local string s;
+	s = "";
+	if (topt_k_wall != 120) s = strcat(s, sprintf(" wall %g", topt_k_wall));
+	if (topt_k_wallloss != 2) s = strcat(s, sprintf(" wallloss %g", topt_k_wallloss));
+	if (topt_k_ground != 60) s = strcat(s, sprintf(" ground %g", topt_k_ground));
+	if (topt_k_hopdir != 20) s = strcat(s, sprintf(" hopdir %g", topt_k_hopdir));
+	if (topt_k_look != 0.01) s = strcat(s, sprintf(" look %g", topt_k_look));
+	if (topt_k_facedot != 0.95) s = strcat(s, sprintf(" facedot %g", topt_k_facedot));
+	if (topt_k_gens != 30) s = strcat(s, sprintf(" gens %g", topt_k_gens));
+	if (topt_k_stall != 8) s = strcat(s, sprintf(" stall %g", topt_k_stall));
+	if (topt_k_frame != 0.04) s = strcat(s, sprintf(" framems %g", topt_k_frame * 1000));
+	return s;
+};
+
+// P1572: rollouts follow trigger_push (tas_jargon_off 4194304: every push ends the prediction, as before). Only
+// while the run is live: an armed start box's speed cap (SV_StartCapClamp) acts on the carrier, which the rollout skips;
+// and not from the ground of a map with conveyors, whose PreThink re-arms a carrier the rollout would cash out (review).
+void(entity e) SV_TASOptPushes =
+{
+	e.run_tasrollpush = (e.run_t_state == TS_RUNNING && !(cvar("tas_jargon_off") & 4194304));
+	if (vbsp_conveyor_any && (e.flags & FL_ONGROUND)) e.run_tasrollpush = 0;
+	if (e.run_tasrollpush) SV_TASPushPrep(e);
+};
+
 // P1443: what an engine refusal (SV_TASRollout's code) means to the player.
 string(float why) SV_TASRollWhy =
 {
@@ -2201,7 +2279,7 @@ void(entity e, float v) SV_TASOptResult =
 				e.topt_tkran, e.topt_tkre, e.topt_tkvol, e.topt_tkuse));
 			sprint(e, PRINT_HIGH, sprintf("tas optimize: maps that moved: %.0f before the line's volume cut, %.0f only after it%s\n",
 				e.topt_mapbefore, e.topt_mapafter, e.topt_mapcut ? " (those not rolled again)" : ""));
-			sprint(e, PRINT_HIGH, sprintf("tas optimize: frames: %.0f server frames worked in, %.2f s of work in them, %.2f s between them\n",
+			sprint(e, PRINT_HIGH, sprintf("tas optimize: frames: %.0f server frames worked in, %.2f s of work in them, %.2f s outside them (tapes play one tick a client command)\n",
 				e.topt_nfr, e.topt_twork, gettime(1) - e.topt_tstart - e.topt_twork));
 			}
 		}
@@ -2969,10 +3047,73 @@ void(entity e, float v) SV_TASOptCurveResult =
 
 void(entity e) SV_TASDemoFrame;
 // After SV_TASProjectFrame: one step of the search a frame.
-float topt_frtime, topt_frstart;  // the server frame the search budget counts in, and its wall-clock start
+float topt_frtime, topt_frstart, topt_fr2;  // the server frame the search budget counts in (gettime(0)), its gettime(1) and gettime(2) start
+// the frame's budget spent: gettime(2) (P1488: 0.1 ms steps, from the frame's first call) where the engine has it; an older
+// engine answers realtime there (over 0.5 s), and whole-ms gettime(1) as a float serves, coarse after hours of uptime (review 2)
+float() SV_TASOptFrameSpent = { return (topt_fr2 < 0.5) ? gettime(2) - topt_fr2 : gettime(1) - topt_frstart; };
+// P1443: up to ~4000 rollout ticks a frame, at the head; the best is played by SV_TASOptFrame once found.
+void(entity e) SV_TASOptFastWork =
+{
+	local float k, v, t0v, tc0;
+	if (gettime(0) == topt_frtime && SV_TASOptFrameSpent() > TOPT_FRAMEBUDGET) return;   // the frame's spent: not even the walk below
+	v = SV_TASRollPending(e);
+	if (v == -33)
+	{	// P1572: wait for the push to re-arm (5 s of server time at most, then refused as before)
+		if (!e.topt_pwait) e.topt_pwait = time + 5;
+		if (time < e.topt_pwait) return;
+		v = -32;
+	}
+	if (v)
+	{
+		SV_TASOptStop(e, e.vbsp_grav_trig ? "the body is inside a trigger_gravity volume that resets gravity on leaving; step out of it first"
+			: ((v == -31) ? "QC owes this body a velocity change on its next move (a script write or a pad latch); step a few ticks and retry"
+			: "a trigger edge or delayed output is pending at this tick; step a few ticks and retry"));
+		return;
+	}
+	if (!e.topt_pprep) { SV_TASOptPushes(e); e.topt_pprep = 1; }    // P1572: after the wait, as the pushes stand now
+	// The budget is the server FRAME's, not the call's: a call comes with each client packet (~100 a
+	// second), and 40 ms a call kept one frame running for a whole search -- the clock stood still, the
+	// rate-limited drawing sent one best line, and everything else on the server waited (9 Nov).
+	// A frame is gettime(0), the engine's realtime cached at the frame's start: the same for StartFrame (whose `time` is the
+	// physics clock) and every packet of the frame (sv.time), P1572 review. Its start is gettime(1) at its first call (the
+	// two clocks' difference measures nothing).
+	if (gettime(0) != topt_frtime) { topt_frtime = gettime(0); topt_frstart = gettime(1); topt_fr2 = gettime(2); e.topt_nfr = e.topt_nfr + 1; }
+	if (SV_TASOptFrameSpent() > TOPT_FRAMEBUDGET) return;
+	tc0 = gettime(1);
+	for (k = 0; k < 256 && (k == 0 || SV_TASOptFrameSpent() < TOPT_FRAMEBUDGET) && e.topt_on && e.topt_phase != 3; k = k + 1)
+	{	// P1449: ~40 ms of rollouts a call, not a tick count (a follow candidate rolls up to 12 times to
+		// its fixed point; calls come with the client's packets, a few a second from an unfocused window)
+		if (e.topt_kn && e.topt_ebatch && e.topt_kidx == 0 && e.topt_batgen != e.topt_kgen + 2)
+			SV_TASOptBatchPrefetch(e);      // P1467: a generation at once on the worker threads
+		if (e.topt_kn) SV_TASOptCurveNext(e);
+		v = SV_TASOptRollScore(e, SV_TASOptValue(e, 1), SV_TASOptValue(e, 2), SV_TASOptValue(e, 3));
+		if (v == -1 && e.topt_rollcut == 1 && !e.topt_rollran)
+		{	// cut before tick 1: the volume the body starts in, whatever the inputs
+			SV_TASOptStop(e, sprintf("the body starts inside a trigger volume QC acts on (%s, filter '%s', named '%s' here); step out of it first",
+				edict_num(fabs(topt_out[12])).classname, edict_num(fabs(topt_out[12])).filtername, topt_simname));
+			return;
+		}
+		if (v == -1) e.topt_fcut = e.topt_fcut + 1;
+		if (v == -2)
+		{
+			SV_TASOptStop(e, SV_TASRollWhy(e.topt_rwhy));
+			return;
+		}
+		t0v = e.topt_bestv;
+		if (e.topt_kn) SV_TASOptCurveResult(e, v);
+		else SV_TASOptResult(e, v);
+		if (e.topt_bestv > t0v) SV_TASOptVizSend(e, 5, e.topt_rollran);     // P1449: topt_out is still this one's
+		else SV_TASOptVizSend(e, (v >= TOPT_REACH) ? 2 : ((v == -1) ? 3 : 1), e.topt_rollran);
+	}
+	e.topt_twork = e.topt_twork + gettime(1) - tc0;
+	SV_TASOptVizFlush(e);
+	if (e.topt_on && e.topt_phase == 3 && e.topt_bestv < 0)
+		SV_TASOptStop(e, sprintf("all %.0f candidates met a trigger, touch or carrier QC acts on (or stopped early): nothing to play", e.topt_evals));
+};
 void(entity e) SV_TASOptFrame =
 {
-	local float head, k, v, t0v, tc0;
+	local float head, k;
+	if (e.run_tasrollpush && (!e.topt_on || e.run_t_state != TS_RUNNING)) e.run_tasrollpush = 0;    // P1572: a search's own
 	SV_TASDemoFrame(e);             // P1449
 	SV_TASAutoFrame(e);             // P1449: an autosurf's next stretch, between its searches
 	if (e.topt_on || e.tdem_on || e.as_on) topt_busyt = time;   // the chain holds the guard across its rewinds, armed too (it owns as_rows)
@@ -3040,53 +3181,8 @@ void(entity e) SV_TASOptFrame =
 	}
 	e.topt_backed = 0;
 	if (e.topt_fast && e.topt_phase != 3)
-	{	// P1443: up to ~4000 rollout ticks a frame, at the head; the best is played below once found
-		if (time == topt_frtime && gettime(1) - topt_frstart > TOPT_FRAMEBUDGET) return;   // the frame's spent: not even the walk below
-		v = SV_TASRollPending(e);
-		if (v)
-		{
-			SV_TASOptStop(e, e.vbsp_grav_trig ? "the body is inside a trigger_gravity volume that resets gravity on leaving; step out of it first"
-				: ((v == -31) ? "QC owes this body a velocity change on its next move (a script write or a pad latch); step a few ticks and retry"
-				: "a trigger edge or delayed output is pending at this tick; step a few ticks and retry"));
-			return;
-		}
-		// The budget is the server FRAME's, not the call's: a call comes with each client packet (~100 a
-		// second), and 40 ms a call kept one frame running for a whole search -- the clock stood still, the
-		// rate-limited drawing sent one best line, and everything else on the server waited (9 Nov).
-		// A frame is marked by the server's clock changing (gettime(0) is realtime, gettime(1) another clock:
-		// their difference measures nothing), its start by gettime(1) at its first call.
-		if (time != topt_frtime) { topt_frtime = time; topt_frstart = gettime(1); e.topt_nfr = e.topt_nfr + 1; }
-		if (gettime(1) - topt_frstart > TOPT_FRAMEBUDGET) return;
-		tc0 = gettime(1);
-		for (k = 0; k < 256 && (k == 0 || gettime(1) - topt_frstart < TOPT_FRAMEBUDGET) && e.topt_on && e.topt_phase != 3; k = k + 1)
-		{	// P1449: ~40 ms of rollouts a call, not a tick count (a follow candidate rolls up to 12 times to
-			// its fixed point; calls come with the client's packets, a few a second from an unfocused window)
-			if (e.topt_kn && e.topt_ebatch && e.topt_kidx == 0 && e.topt_batgen != e.topt_kgen + 2)
-				SV_TASOptBatchPrefetch(e);      // P1467: a generation at once on the worker threads
-			if (e.topt_kn) SV_TASOptCurveNext(e);
-			v = SV_TASOptRollScore(e, SV_TASOptValue(e, 1), SV_TASOptValue(e, 2), SV_TASOptValue(e, 3));
-			if (v == -1 && e.topt_rollcut == 1 && !e.topt_rollran)
-			{	// cut before tick 1: the volume the body starts in, whatever the inputs
-				SV_TASOptStop(e, sprintf("the body starts inside a trigger volume QC acts on (%s, filter '%s', named '%s' here); step out of it first",
-					edict_num(fabs(topt_out[12])).classname, edict_num(fabs(topt_out[12])).filtername, topt_simname));
-				return;
-			}
-			if (v == -1) e.topt_fcut = e.topt_fcut + 1;
-			if (v == -2)
-			{
-				SV_TASOptStop(e, SV_TASRollWhy(e.topt_rwhy));
-				return;
-			}
-			t0v = e.topt_bestv;
-			if (e.topt_kn) SV_TASOptCurveResult(e, v);
-			else SV_TASOptResult(e, v);
-			if (e.topt_bestv > t0v) SV_TASOptVizSend(e, 5, e.topt_rollran);     // P1449: topt_out is still this one's
-			else SV_TASOptVizSend(e, (v >= TOPT_REACH) ? 2 : ((v == -1) ? 3 : 1), e.topt_rollran);
-		}
-		e.topt_twork = e.topt_twork + gettime(1) - tc0;
-		SV_TASOptVizFlush(e);
-		if (e.topt_on && e.topt_phase == 3 && e.topt_bestv < 0)
-			SV_TASOptStop(e, sprintf("all %.0f candidates met a trigger, touch or carrier QC acts on (or stopped early): nothing to play", e.topt_evals));
+	{
+		SV_TASOptFastWork(e);
 		return;
 	}
 	SV_TASOptPredict(e, SV_TASOptValue(e, 1), SV_TASOptValue(e, 2), SV_TASOptValue(e, 3));
@@ -3607,6 +3703,8 @@ void(entity e, float argc) SV_TASOptCommand =
 	e.topt_mode = mode; e.topt_fk = fk; e.topt_srch = 0; e.topt_besty = 0; e.topt_bestf = 0; e.topt_bestp = 12;
 	e.topt_pfoff = fixp; e.topt_pfon = 0;
 	e.topt_kn = kn; e.topt_kgen = -1; e.topt_kidx = 0; e.topt_wok = e.topt_bok = 0; e.topt_vizt = 0;   // vizt before the clear below
+	SV_TASOptKnobs();
+	if (SV_TASOptKnobsSaid() != "") sprint(e, PRINT_HIGH, sprintf("tas optimize: tuned%s\n", SV_TASOptKnobsSaid()));
 	e.topt_efol = 0; e.topt_tube = tube; e.topt_tubeex = (slack > 0) ? slack : 0; e.topt_tubeout = e.topt_wallhit = e.topt_bdirn = e.topt_wayn = e.topt_slidn = e.topt_exdirn = 0; e.topt_hop = hop; e.topt_look = look; e.topt_pace = pace; e.topt_emin = emin; e.topt_weakn = 0; e.topt_cegen = gens ? gens : TOPT_CEGEN; e.topt_cestall = stall ? stall : TOPT_CESTALL; e.topt_low = low; e.topt_edgeok = edgeok; e.topt_edgen = 0; e.topt_earlycut = 0; e.topt_lowneed = 0; e.topt_airdir = airdir; e.topt_lookw = (lookw > 0) ? lookw : 0; e.topt_catch = (catch > 0) ? catch : 0; e.topt_flick = (flick > 0) ? flick : 0; e.topt_endsafe = 0; e.topt_hardq = hardq; e.topt_boarddir = boarddir; e.topt_kind23 = kind23; e.topt_freeq = freeq; e.topt_rideout = rideout;
 	e.topt_rgnon = (rgnak == 2 && rgnuk == 2); e.topt_rgna = rgna; e.topt_rgnu = rgnu; e.topt_landed = landed; e.topt_boardway = boardway;
 	e.topt_teleon = (telexk == 2 && teleyk == 2 && telezk == 2); e.topt_tele = [tdx, tdy, tdz];
@@ -3617,6 +3715,7 @@ void(entity e, float argc) SV_TASOptCommand =
 			if (vlen([topt_dpos[i*3], topt_dpos[i*3+1], topt_dpos[i*3+2]] - e.topt_tgt) <
 			    vlen([topt_dpos[e.topt_tgtj*3], topt_dpos[e.topt_tgtj*3+1], topt_dpos[e.topt_tgtj*3+2]] - e.topt_tgt)) e.topt_tgtj = i;
 	e.topt_ewall = e.topt_ewide = 0;
+	SV_TASOptPushes(e); e.topt_pwait = e.topt_pprep = 0;   // P1572: before the engine probes, whose rollouts read the flag (review)
 	if (kn) { i = SV_TASOptEngineFollows(e); if (i == 1) e.topt_efol = 1; }    // demo too: its command in the engine
 	if (e.topt_efol) e.topt_ewall = SV_TASOptEngineWalls(e);
 	if (e.topt_efol && wide)

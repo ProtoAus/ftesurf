@@ -16,6 +16,15 @@ float taso_rb[TASO_STRETCHES], taso_rf[TASO_STRETCHES];   // each reached stretc
 var float taso_lastk = -1;          // the stretch last reached (the line under the strip)
 var float taso_sel = -1;            // the stretch picked under the strip to redo the run from
 float taso_stale;               // the strip is another course's (a switch since its run): hidden until a run starts
+// P1572 Results tab: each stretch's searches summed from TAS_EV_SEARCH -- tries, seconds, candidates, the last closest
+// miss, and why lines ended (memalloc: csprogs sits near fteqcc's global limit)
+#define JR_N 10
+float *jr_t;
+var float jr_k = -1;            // the stretch the live search (tsp_*) belongs to; it joins the sums when the next starts
+var float jr_sel = -1;          // the row picked for its hint
+vector jr_scroll;
+float jr_rows;
+float jr_pel, jr_pev, jr_pcl, jr_ptu, jr_pwa, jr_pwe, jr_ped, jr_pbr, jr_pcu, jr_pfl;    // the live search's last numbers
 // the guide run's name for the panel's lines (Lex: farsh's name was baked into Jargon)
 string() TASOptUI_Guide = { return (jg_pick < jg_gn) ? jg_gl[jg_pick] : "the guide"; };
 
@@ -31,10 +40,36 @@ float tsp_brief;                        // boards that left the ramp at once
 #define TSP_HIST 48
 float tsp_hist[TSP_HIST];   // the best line's speed after each generation, this search
 float tsp_histn;
+void() TASResults_Clear =
+{
+	local float k;
+	if (!jr_t) jr_t = (float*)memalloc(TASO_STRETCHES * JR_N * 4);
+	if (jr_t)
+		for (k = 0; k < TASO_STRETCHES * JR_N; k = k + 1) jr_t[k] = 0;
+	jr_k = -1; jr_sel = -1;
+};
+// the live search's numbers into its stretch's sums (a new search began, so tsp_* hold the next one's)
+void() TASResults_Commit =
+{
+	local float o;
+	if (!jr_t) TASResults_Clear();
+	if (jr_t)
+	if (jr_k >= 0 && jr_k < TASO_STRETCHES)
+	{
+		o = jr_k * JR_N;
+		jr_t[o] = jr_t[o] + 1; jr_t[o+1] = jr_t[o+1] + jr_pel; jr_t[o+2] = jr_t[o+2] + jr_pev;
+		jr_t[o+3] = (jr_pfl & 1) ? 0 : jr_pcl;
+		jr_t[o+4] = jr_t[o+4] + jr_ptu; jr_t[o+5] = jr_t[o+5] + jr_pwa; jr_t[o+6] = jr_t[o+6] + jr_pwe;
+		jr_t[o+7] = jr_t[o+7] + jr_ped; jr_t[o+8] = jr_t[o+8] + jr_pbr; jr_t[o+9] = jr_t[o+9] + jr_pcu;
+	}
+	jr_k = -1;
+};
 void() TASSearch_Event =
 {
 	local float evals0, i;
 	evals0 = tsp_evals;
+	jr_pel = tsp_elapsed; jr_pev = tsp_evals; jr_pcl = tsp_closest; jr_ptu = tsp_tube; jr_pwa = tsp_wall; jr_pwe = tsp_weak;
+	jr_ped = tsp_edge; jr_pbr = tsp_brief; jr_pcu = tsp_cut; jr_pfl = tsp_flags;
 	tsp_phase = readbyte(); tsp_flags = readbyte();
 	tsp_gen = readshort(); tsp_evals = readshort(); tsp_elapsed = readfloat();
 	tsp_speed = readshort(); tsp_ref = readshort(); tsp_closest = readshort();
@@ -45,7 +80,20 @@ void() TASSearch_Event =
 	tsp_cegen = readbyte(); tsp_kstall = readbyte(); tsp_cestall = readbyte(); tsp_cemin = readbyte();
 	tsp_width = readbyte(); tsp_widen = readbyte(); tsp_mem = readbyte();
 	tsp_brief = readshort();
-	if (tsp_evals < evals0 || !tsp_t) tsp_histn = 0;      // a new search
+	if (tsp_evals < evals0 || !tsp_t) tsp_histn = 0;       // a new search
+	// the Results sums: the last numbers of a search join its stretch when it reports its end (phase 2), or when the next
+	// search or stretch begins without one (an early stop reports none); then the next is live
+	if (jr_k >= 0 && (tsp_evals < evals0 || (taso_state == 1 && taso_i != jr_k)))
+		TASResults_Commit();
+	if (tsp_phase == 2)
+	{
+		jr_pel = tsp_elapsed; jr_pev = tsp_evals; jr_pcl = tsp_closest; jr_ptu = tsp_tube; jr_pwa = tsp_wall; jr_pwe = tsp_weak;
+		jr_ped = tsp_edge; jr_pbr = tsp_brief; jr_pcu = tsp_cut; jr_pfl = tsp_flags;
+		if (jr_k < 0 && taso_state == 1) jr_k = taso_i;
+		TASResults_Commit();
+	}
+	else if (jr_k < 0 && taso_state == 1)
+		jr_k = taso_i;
 	if (tsp_histn == TSP_HIST)
 	{
 		for (i = 1; i < TSP_HIST; i = i + 1) tsp_hist[i - 1] = tsp_hist[i];
@@ -206,7 +254,7 @@ void() TASAuto_Event =
 	if (taso_note != "") strunzone(taso_note);
 	taso_note = strzone(readstring());
 	rk = readshort(); rb = readshort(); rf = readshort();
-	if (taso_state == 1 && was != 1) { for (k = 0; k < TASO_STRETCHES; k = k + 1) taso_rb[k] = taso_rf[k] = 0; taso_lastk = -1; taso_stale = 0; }
+	if (taso_state == 1 && was != 1) { for (k = 0; k < TASO_STRETCHES; k = k + 1) taso_rb[k] = taso_rf[k] = 0; taso_lastk = -1; taso_stale = 0; TASResults_Clear(); }
 	else if (taso_state == 1 && taso_i < wasi)      // a backtrack: what came after it is to be done again
 		for (k = taso_i; k < TASO_STRETCHES; k = k + 1) taso_rb[k] = taso_rf[k] = 0;
 	if (rk >= 0 && rk < TASO_STRETCHES) { taso_rb[rk] = rb; taso_rf[rk] = (rf > 0) ? rf : -1; taso_lastk = rk; }   // -1: a route point
@@ -502,6 +550,75 @@ void(float b, float on) TASOptUI_RuleSet =
 	v = on ? (v - (v & b)) : (v | b);
 	cvar_set("tas_jargon_off", sprintf("%.0f", v));      // %.0f: ftos may print a large one in exponent form
 };
+// ---- P1572 Tuning (Lex, 16 Nov: "giving me the numbers to adjust the search results"): the score's weights. The first
+// three are autosurf words (sent with Start/Arm), the rest tas_jargon_w_* cvars the server reads at each search's start
+// (SV_TASOptKnobs; a local game shares them). Unset means the default. ----
+#define JGT_N 12
+string(float i) TASOptUI_TuneCvar =
+{
+	if (i == 0) return "tas_jargon_emin"; if (i == 1) return "tas_jargon_pace"; if (i == 2) return "tas_jargon_look";
+	if (i == 3) return "tas_jargon_w_wall"; if (i == 4) return "tas_jargon_w_wallloss"; if (i == 5) return "tas_jargon_w_ground";
+	if (i == 6) return "tas_jargon_w_hopdir"; if (i == 7) return "tas_jargon_w_look"; if (i == 8) return "tas_jargon_w_facedot";
+	if (i == 9) return "tas_jargon_w_gens"; if (i == 10) return "tas_jargon_w_stall";
+	return "tas_jargon_w_framems";
+};
+string(float i) TASOptUI_TuneName =
+{
+	if (i == 0) return "Energy floor (share of the guide's)"; if (i == 1) return "Time weight"; if (i == 2) return "Look-ahead (ticks)";
+	if (i == 3) return "Wall touch cost (a tick)"; if (i == 4) return "Energy lost to walls, times"; if (i == 5) return "Ground cost before a board (a tick)";
+	if (i == 6) return "Hop heading cost (a degree)"; if (i == 7) return "Look-ahead weight"; if (i == 8) return "Board face match (dot)";
+	if (i == 9) return "Generations a search"; if (i == 10) return "Stop after N without a gain";
+	return "Search time a frame (ms)";
+};
+string(float i) TASOptUI_TuneTip =
+{
+	if (i == 0) return "A ramp counts only when Jargon arrives with this share of the guide's energy there. Lower accepts slower lines; higher demands better ones (Polish uses 0.99).";
+	if (i == 1) return "How much arriving sooner counts against carrying energy. 0: energy alone.";
+	if (i == 2) return "How far past each ramp a line is followed to see whether it survives what comes next.";
+	if (i == 3) return "Score lost for each tick a line brushes a wall or ceiling. Higher steers clear of walls; too high gives up good lines that graze.";
+	if (i == 4) return "Score lost for each unit of energy a wall took, times this.";
+	if (i == 5) return "Score lost for each tick on the ground before boarding a ramp.";
+	if (i == 6) return "Score lost for each degree a hop leaves off the guide's heading.";
+	if (i == 7) return "How much surviving the look-ahead counts beside energy. 0.5 swamped energy when tried.";
+	if (i == 8) return "How closely a contact must match the ramp's face to count as boarding it (1 = exactly). Lower accepts bent ramps; too low confuses neighbouring ramps.";
+	if (i == 9) return "Most generations one search runs. More finds better lines, slower.";
+	if (i == 10) return "A search ends after this many generations with no better line.";
+	return "Milliseconds of searching in each server frame. Higher searches faster but the game stutters while Jargon thinks.";
+};
+float(float i) TASOptUI_TuneDef =
+{
+	if (i == 0) return 0.95; if (i == 1) return 1; if (i == 2) return 100; if (i == 3) return 120; if (i == 4) return 2; if (i == 5) return 60;
+	if (i == 6) return 20; if (i == 7) return 0.01; if (i == 8) return 0.95; if (i == 9) return 30; if (i == 10) return 8;
+	return 40;
+};
+float(float i) TASOptUI_TuneStep =
+{
+	if (i == 0) return 0.01; if (i == 1) return 0.25; if (i == 2) return 25; if (i == 3) return 20; if (i == 4) return 0.5; if (i == 5) return 10;
+	if (i == 6) return 5; if (i == 7) return 0.005; if (i == 8) return 0.01; if (i == 9) return 5; if (i == 10) return 1;
+	return 10;
+};
+// the server's own bounds (SV_TASOptKnob, the autosurf word parser)
+vector(float i) TASOptUI_TuneRange =
+{
+	if (i == 0) return '0.5 1.2 0'; if (i == 1) return '0 10 0'; if (i == 2) return '0 400 0'; if (i == 3) return '0 5000 0';
+	if (i == 4) return '0 50 0'; if (i == 5) return '0 5000 0'; if (i == 6) return '0 500 0'; if (i == 7) return '0 1 0';
+	if (i == 8) return '0.5 0.999 0'; if (i == 9) return '4 200 0'; if (i == 10) return '2 200 0';
+	return '5 1000 0';
+};
+float(float i) TASOptUI_TuneGet =
+{
+	local string v;
+	v = cvar_string(TASOptUI_TuneCvar(i));
+	return strlen(v) ? stof(v) : TASOptUI_TuneDef(i);
+};
+void(float i, float v) TASOptUI_TuneSet =
+{
+	local vector r;
+	r = TASOptUI_TuneRange(i);
+	v = bound(r_x, v, r_y);
+	if (TASOptUI_TuneStep(i) < 0.1) v = rint(v * 1000) / 1000; else v = rint(v * 100) / 100;
+	localcmd(sprintf("set %s %g\n", TASOptUI_TuneCvar(i), v));      // set: creates the cvar a fresh game lacks
+};
 // a label over a row of choices
 void(vector at, string s, float hint) TASOptUI_OptHead = { sui_text(at, [hint, hint], s, SUI_THEME_DIM, 1, 0); };
 float jgo_exp;     // the experiments shown (folded by default: the panel does not scroll -- review 1531)
@@ -617,10 +734,20 @@ string() TASOptUI_ContinueWords =
 	return strcat(s, TASJargon_Airs() ? " air" : "", (TASJargon_CourseWords() != "") ? " finish" : "", (autocvar_tas_jargon_exp & 1) ? " spots" : "",
 		(autocvar_tas_jargon_exp & 16) ? " wide" : "");
 };
+// P1572 Tuning: the three that are autosurf words, sent only when moved off the defaults (0.95, 1, 100)
+string() TASOptUI_TuneWords =
+{
+	local string s;
+	s = "";
+	if (fabs(TASOptUI_TuneGet(0) - 0.95) > 0.001) s = strcat(s, sprintf(" emin %.2f", TASOptUI_TuneGet(0)));
+	if (fabs(TASOptUI_TuneGet(1) - 1) > 0.001) s = strcat(s, sprintf(" pace %.2f", TASOptUI_TuneGet(1)));
+	if (TASOptUI_TuneGet(2) != 100) s = strcat(s, sprintf(" look %.0f", TASOptUI_TuneGet(2)));
+	return s;
+};
 string() TASOptUI_DemoWords =
 {
 	local string s;
-	s = strcat(TASOptUI_Effort(), (autocvar_tas_jargon_polish || autocvar_tas_jargon_effort == 2) ? " polish" : "", autocvar_tas_jargon_low ? " low" : "",
+	s = strcat(TASOptUI_TuneWords(), TASOptUI_Effort(), (autocvar_tas_jargon_polish || autocvar_tas_jargon_effort == 2) ? " polish" : "", autocvar_tas_jargon_low ? " low" : "",
 		(autocvar_tas_jargon_tube != 300) ? sprintf(" tube %.0f", bound(50, autocvar_tas_jargon_tube, 2000)) : "");
 	return strcat(s, autocvar_tas_jargon_endany ? " safe" : "", TASJargon_Airs() ? " air" : "", (TASJargon_CourseWords() != "") ? " finish" : "", TASOptUI_Exps());
 };
@@ -940,6 +1067,15 @@ float(float evtype, float scanx) TASOptUI_Wheel =
 		jgw_wheel = jgw_wheel | bit;
 		return TRUE;
 	}
+	if (jgo_open == 2)
+	if (sui_hover_index("jr_list") >= 0)
+	{	// P1572
+		d = max(1, jgw_rowh) * 2;
+		if (scanx == K_MWHEELUP) d = 0 - d;
+		jr_scroll_y = bound(0, jr_scroll_y + d, max(0, (min(taso_n, TASO_STRETCHES) - jr_rows) * jgw_rowh));
+		jgw_wheel = jgw_wheel | bit;
+		return TRUE;
+	}
 	if (sui_hover_index("jgw_list") < 0) return FALSE;
 	d = max(1, jgw_rowh) * 2;
 	if (scanx == K_MWHEELUP) d = 0 - d;
@@ -1059,7 +1195,7 @@ void(float argc) TASOptUI_Verb =
 		if (argc == 4) if (i >= 0 && i < jg_n) TASOptUI_Go(sprintf("tas autosurf redo %g %.3f\n", i + 1, jg_t[i]));
 		return;
 	}
-	if (w == "options") { if (argc == 4) { if (jgf_on) TASOptUI_FieldCommit(); jgo_open = (stof(argv(3)) != 0); } print(sprintf("tas jargon: options %g, words%s\n", jgo_open, TASOptUI_DemoWords())); return; }
+	if (w == "options") { if (argc == 4) { if (jgf_on) TASOptUI_FieldCommit(); jgo_open = bound(0, rint(stof(argv(3))), 3); } print(sprintf("tas jargon: options %g, words%s\n", jgo_open, TASOptUI_DemoWords())); return; }
 	if (w == "drop") { if (argc == 4) { jgd_open = bound(0, floor(stof(argv(3))), 2); jgd_scroll = '0 0 0'; print(sprintf("tas jargon: dropdown %g\n", jgd_open)); } return; }
 	if (w == "guides")
 	{
@@ -1109,6 +1245,116 @@ void(float argc) TASOptUI_Verb =
 		return;
 	}
 	print("tas jargon: start | takeover | redofrom N | mode 0|1|2|3 | guide N | guides | set N x|y|z V | field N x|y|z | air N | del N | undo | redo | list\n");
+};
+// P1572: why the lines of stretch k ended, the largest share first ("" when none ended for a reason)
+string(float k, float live) TASResults_Why =
+{
+	local float o, n, m, w, v;
+	local string s;
+	if (!jr_t) return "";
+	o = k * JR_N; n = jr_t[o+2] + (live ? tsp_evals : 0);
+	if (n < 1) return "";
+	m = 0; w = -1;
+	v = jr_t[o+4] + (live ? tsp_tube : 0); if (v > m) { m = v; w = 0; }
+	v = jr_t[o+5] + (live ? tsp_wall : 0); if (v > m) { m = v; w = 1; }
+	v = jr_t[o+6] + (live ? tsp_weak : 0); if (v > m) { m = v; w = 2; }
+	v = jr_t[o+7] + (live ? tsp_edge : 0); if (v > m) { m = v; w = 3; }
+	v = jr_t[o+8] + (live ? tsp_brief : 0); if (v > m) { m = v; w = 4; }
+	v = jr_t[o+9] + (live ? tsp_cut : 0); if (v > m) { m = v; w = 5; }
+	if (w < 0) return "";
+	s = (w == 0) ? "strayed" : ((w == 1) ? "walls" : ((w == 2) ? "too slow" : ((w == 3) ? "edge bug" : ((w == 4) ? "slid off" : "trigger"))));
+	return sprintf("%s %g%%", s, rint(m / n * 100));
+};
+// what the reason suggests turning (the hint under the table)
+string(float k, float live) TASResults_Hint =
+{
+	local string w;
+	local float o, cl;
+	w = TASResults_Why(k, live);
+	o = k * JR_N;
+	cl = (live && !(tsp_flags & 1)) ? tsp_closest : (jr_t ? jr_t[o+3] : 0);
+	if (substring(w, 0, 7) == "strayed") return "Lines left the guide's path: try Options, Path Wide.";
+	if (substring(w, 0, 5) == "walls") return "Lines brushed walls: raise Wall touch cost, or move the waypoint.";
+	if (substring(w, 0, 8) == "too slow") return "Lines arrived too slow: lower Energy floor, or turn on Polish.";
+	if (substring(w, 0, 8) == "slid off") return "Lines slid off the ramp: move the waypoint along it.";
+	if (substring(w, 0, 7) == "trigger") return "Lines hit a trigger (fall zone): move the waypoint higher.";
+	if (substring(w, 0, 8) == "edge bug") return "Lines made it only by an edge bug, which does not count.";
+	if (cl > 0) return sprintf("Nothing made it yet: closest line %g u off.", cl);
+	return "";
+};
+float(vector at, float width, float tsz, float hint, float row, float running) TASOptUI_DrawResults =
+{
+	local float i, o, live, rows, c1, c2, c3, c4, c5, r;
+	local vector lp, col;
+	local string res, h;
+	if (!jr_t) TASResults_Clear();
+	jgw_rowh = row;
+	if (taso_n < 1 || taso_stale || !jr_t)
+	{
+		sui_text(at, [hint, hint], "Each waypoint's tries, time and why lines failed show here once Jargon runs.", SUI_THEME_MUTED, 1, 0);
+		return at_y + hint * 1.6;
+	}
+	sui_text(at, [hint, hint], sprintf("%g waypoints, %g backtracks. Pick a row for a hint.", taso_n, taso_backs), SUI_THEME_DIM, 1, 0);
+	at_y = at_y + hint * 1.5;
+	c1 = width * 0.07; c2 = width * 0.36; c3 = width * 0.12; c4 = width * 0.1; c5 = width * 0.1;
+	sui_text(at + [4, 0, 0], [hint * 0.85, hint * 0.85], "#", SUI_THEME_MUTED, 1, 0);
+	sui_text(at + [c1, 0, 0], [hint * 0.85, hint * 0.85], "Result", SUI_THEME_MUTED, 1, 0);
+	TASOptUI_RText(at + [c1 + c2, 0, 0], [c3, hint * 0.85, 0], "Tries", hint * 0.85, SUI_THEME_MUTED);
+	TASOptUI_RText(at + [c1 + c2 + c3, 0, 0], [c4, hint * 0.85, 0], "Time", hint * 0.85, SUI_THEME_MUTED);
+	sui_text(at + [c1 + c2 + c3 + c4 + c5 * 0.3, 0, 0], [hint * 0.85, hint * 0.85], "Lines ended by", SUI_THEME_MUTED, 1, 0);
+	at_y = at_y + hint * 1.3;
+	rows = min(taso_n, 8); jr_rows = rows;
+	sui_list_view_begin("jr_list", at, [width, rows * row, 0], [width - tsz, row, 0], min(taso_n, TASO_STRETCHES), jr_scroll, [0, tsz]);
+	lp = '0 0 0';
+	for (i = sui_list_item(lp); i > -1; i = sui_list_item(lp))
+	{
+		o = i * JR_N; live = (i == jr_k);
+		if (i == jr_sel || (running && i == taso_i)) sui_fill(lp, [width - tsz, row - 2, 0], SUI_THEME_CHIP, (i == jr_sel) ? 0.6 : 0.35, 0);
+		col = TASOptUI_StretchCol(i);
+		if (taso_rf[i] > 0) res = sprintf("made it, %g%%", rint(taso_rb[i] / taso_rf[i] * 100));
+		else if (taso_rf[i] < 0) res = "made it";
+		else if (running && i == taso_i) { res = (tsp_flags & 1) ? "searching, a line makes it" : sprintf("searching, %g u off", tsp_closest); col = SUI_THEME_ACCENT; }
+		else if (jr_t[o] > 0 || live) { r = live ? tsp_closest : jr_t[o+3]; res = (r > 0) ? sprintf("missed by %g u", r) : "not made"; col = SUI_THEME_BAD; }
+		else res = "to come";
+		if (TASOptUI_Cell(sprintf("jr_r%g", i), lp, [c1 + c2 - 4, row - 2, 0], sprintf("%g   %s", i + 1, res), hint, i == jr_sel, FALSE))
+			jr_sel = (jr_sel == i) ? -1 : i;
+		TASOptUI_RText(lp + [c1 + c2, 0, 0], [c3, row - 2, 0], sprintf("%g", jr_t[o] + (live ? 1 : 0)), hint, SUI_THEME_TEXT);
+		TASOptUI_RText(lp + [c1 + c2 + c3, 0, 0], [c4, row - 2, 0], sprintf("%.0f s", jr_t[o+1] + (live ? tsp_elapsed : 0)), hint, SUI_THEME_TEXT);
+		sui_text(lp + [c1 + c2 + c3 + c4 + c5 * 0.3, (row - 2 - hint) * 0.5, 0], [hint, hint], TASResults_Why(i, live), col, 1, 0);
+	}
+	sui_list_view_end();
+	at_y = at_y + rows * row + 4;
+	i = (jr_sel >= 0) ? jr_sel : (running ? taso_i : taso_lastk + 1);
+	h = (i >= 0 && i < min(taso_n, TASO_STRETCHES)) ? TASResults_Hint(i, i == jr_k) : "";
+	if (h != "") { sui_text(at, [hint, hint], sprintf("%g: %s", i + 1, h), SUI_THEME_TEXT, 1, 0); at_y = at_y + hint * 1.6; }
+	return at_y;
+};
+float(vector at, float width, float tsz, float hint, float row) TASOptUI_DrawTuning =
+{
+	local float i, v, d, lw, cw, on;
+	local string id;
+	sui_text(at, [hint, hint], "From the next search (the next waypoint). Hover a name for what it does.", SUI_THEME_MUTED, 1, 0);
+	at_y = at_y + hint * 1.6;
+	on = TASOptUI_RuleOn(4194304);
+	if (Profile_Chip("jgt_push", at, [width, row, 0], on ? "Follow push triggers: on" : "Follow push triggers: off (every push stops a line)", hint, on))
+		TASOptUI_RuleSet(4194304, !on);
+	sui_tooltip_for("jgt_push", "Its predictions carry a line through boosters and pushes as the game does. Off: a line that touches one is cut there, as before.", max(1, hint / 7));
+	at_y = at_y + row + 3;
+	lw = width * 0.52; cw = (width - lw - 18) / 4;
+	for (i = 0; i < JGT_N; i = i + 1)
+	{
+		v = TASOptUI_TuneGet(i); d = TASOptUI_TuneDef(i);
+		id = sprintf("jgt_n%g", i);
+		sui_action_element(at, [lw, row - 2, 0], id, sui_noop);
+		sui_text(at + [0, (row - 2 - hint) * 0.5, 0], [hint, hint], TASOptUI_TuneName(i), sui_is_hovered(id) ? SUI_THEME_TEXT : SUI_THEME_DIM, 1, 0);
+		sui_tooltip_for(id, sprintf("%s Default %g.", TASOptUI_TuneTip(i), d), max(1, hint / 7));
+		TASOptUI_RText(at + [lw, 0, 0], [cw, row - 2, 0], sprintf("%g", v), hint, (fabs(v - d) > 0.0001) ? SUI_THEME_ACCENT : SUI_THEME_TEXT);
+		if (Profile_Chip(sprintf("jgt_m%g", i), at + [lw + cw + 6, 0, 0], [cw, row - 2, 0], "-", hint, FALSE)) TASOptUI_TuneSet(i, v - TASOptUI_TuneStep(i));
+		if (Profile_Chip(sprintf("jgt_p%g", i), at + [lw + 2 * cw + 12, 0, 0], [cw, row - 2, 0], "+", hint, FALSE)) TASOptUI_TuneSet(i, v + TASOptUI_TuneStep(i));
+		if (Profile_Chip(sprintf("jgt_d%g", i), at + [lw + 3 * cw + 18, 0, 0], [cw, row - 2, 0], "default", hint, FALSE)) TASOptUI_TuneSet(i, d);
+		at_y = at_y + row;
+	}
+	return at_y;
 };
 void(vector at, float width, float tsz, float hint, float row, float running, string label) TASOptUI_DrawJargon =
 {
@@ -1177,10 +1423,14 @@ void(vector at, float width, float tsz, float hint, float row, float running, st
 	if (Profile_Chip("jgs_c1", at + [2 * (third + 6), 0, 0], chip3, "Overview", hint, autocvar_tas_viz_cam == 1)) cvar_set("tas_viz_cam", "1");
 	at_y = at_y + row + hint;
 	// the lower half: the waypoints, or the options
-	if (Profile_Chip("jgl_w", at, [half, row, 0], "Waypoints", hint, !jgo_open)) jgo_open = 0;
-	if (Profile_Chip("jgl_o", at + [half + 6, 0, 0], [half, row, 0], "Options", hint, jgo_open)) { if (jgf_on) TASOptUI_FieldCommit(); jgo_open = 1; }
+	if (Profile_Chip("jgl_w", at, [q, row, 0], "Waypoints", hint, !jgo_open)) jgo_open = 0;
+	if (Profile_Chip("jgl_r", at + [q + 6, 0, 0], [q, row, 0], "Results", hint, jgo_open == 2)) { if (jgf_on) TASOptUI_FieldCommit(); jgo_open = 2; }
+	if (Profile_Chip("jgl_t", at + [2 * (q + 6), 0, 0], [q, row, 0], "Tuning", hint, jgo_open == 3)) { if (jgf_on) TASOptUI_FieldCommit(); jgo_open = 3; }
+	if (Profile_Chip("jgl_o", at + [3 * (q + 6), 0, 0], [q, row, 0], "Options", hint, jgo_open == 1)) { if (jgf_on) TASOptUI_FieldCommit(); jgo_open = 1; }
 	at_y = at_y + row + hint;
-	if (jgo_open) at_y = TASOptUI_DrawOptions(at, width, hint, row);
+	if (jgo_open == 1) at_y = TASOptUI_DrawOptions(at, width, hint, row);
+	else if (jgo_open == 2) at_y = TASOptUI_DrawResults(at, width, tsz, hint, row, running);
+	else if (jgo_open == 3) at_y = TASOptUI_DrawTuning(at, width, tsz, hint, row);
 	else
 	{
 	// the waypoints: in order, X Y Z typed (Enter sets one, Esc leaves it), the selected one lit in the world
