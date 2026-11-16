@@ -109,8 +109,9 @@
 
 ## Hooks below the journal -- what P1586 left (16 Nov, ftesurf-31)
 
-- Engine only (client exe): live for players with the next release that carries patch-1586. hidcheck and the
-  tools are on main; the Pi's hidcheck learns the lines with the next tools deploy (an older one notes them).
+- Engine only (client exe): live for players with the next release that carries patch-1586; INSTALLED on both
+  of the owner's installs 16 Nov (exe 31354ac0 = 0.1.47's engine + P1586, menu 9ccffd84; `.pre1586` backups).
+  hidcheck and the tools are on main; the Pi's hidcheck learns the lines with the next tools deploy.
 - It sees patches that stay in place; a tool that restores its bytes around the scans, works below user mode,
   edits data rather than code, or targets the scan itself is not seen, and game-folder plugins are trusted.
   Ranked follow-ups (incl. confirming key RELEASES against the raw keyboard, as P1424 confirms presses) are in

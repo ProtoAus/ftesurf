@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1586 tamper check + new terms -- INSTALLED both installs 16 Nov (exe 31354ac0 = 0.1.47 + P1586, menu 9ccffd84); owner check PENDING
+- Start the game: the home screen should say online is off and ask you to choose your terms again. Read the new
+  lines (the journal names programs that load into or change the game, by file name) and take "play online".
+- Then play normally, on a lobby and offline. Nothing should look or feel different; if anything stutters or
+  crashes that didn't before, say so (undo: the `.pre1586` exes and `menu.dat.pre1586terms` beside them).
+- Your journals now carry the scan; OBS's hook DLL is loaded on this PC, so its lines are the first real overlay
+  readings. Nothing to do -- they are read from the journal files.
+
 ## P1587 Water and glass defaults -- on main (engine 76823c993, patch-1587), ships in the next release; owner check PENDING
 - On a fresh install (or a friend's), water should be a see-through sheet and glass see-through panes, not dotted. Graphics still offers Dithered, Refracting and the reflection modes.
 - Your own settings (water 2, glass 0) are not touched; only configs still on the old dotted defaults (water 3, glass 2) move, once.
