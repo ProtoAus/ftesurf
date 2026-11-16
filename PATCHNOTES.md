@@ -21,6 +21,10 @@
 
 ## next
 
+### P1593 World of Surf names, part 1
+- The game is getting ready to carry the World of Surf name on disk too: a coming update moves your install to a `worldofsurf` folder and a `WorldofSurf.exe`, keeping all your settings, saves and runs. Servers keep working with either name.
+- WOS-Launcher now passes only these start options to the game: `+map <map>`, `+connect <host[:port]>`, `-window`, `-fullscreen`, `-width N`, `-height N`. Set anything else in the game's console or settings.
+
 ### P1597 Ranked runs on the lobbies need the current online terms
 - The lobbies now ask for the online terms that 0.1.48 shows (the journal also names programs that load into or change the game). If you accepted them in 0.1.48, nothing changes. On an older version, or if you chose Stay offline there, ranked uploads and the online features stop until you update and choose Play online.
 
