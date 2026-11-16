@@ -1255,6 +1255,11 @@ void() CL_MoveToStandard =
 void() CSQC_Input_Frame =
 {
 	SaveEvent_Frame();          // P1437: publish only a seq-bound event capsule
+	// P1576: per usercmd too, since CSQC_UpdateView stops while minimized -- but only once the view frame has
+	// sent this map's first report: input frames start before the server takes events, and a lost first
+	// send would sit in the cache.
+	if (rec_rp_viewsent)
+		Rec_ProfileReport();
 	if (PE_ReplayInputFrame())      // P1404: a rig replaying a prederror report (sv_cheats only)
 		return;
 	GA_InputFrame();                // read-only walk intent for local Foley

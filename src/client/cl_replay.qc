@@ -321,6 +321,7 @@ float rec_rp_prof_grant;         // build 77: the GRANT, engine Patch 326
 float rec_rp_prof_ghave, rec_rp_prof_noleg, rec_rp_prof_touch;   // P1573: the `inguard` report
 float rec_rp_prof_keys;                                           // P1576
 float rec_rp_prof_lapses, rec_rp_prof_lapsesseen, rec_rp_prof_sentbad;   // P1576: in_guard_lapses
+float rec_rp_viewsent;     // P1576: the view frame has reported since this map loaded (gates CSQC_Input_Frame's)
 float rec_rp_guardscan;          // P1573: this map's worldspawn has been scanned (CSQC_WorldLoaded)
 float rec_rp_guardmap;           // ...and names an in_rawinput cvar
 
@@ -658,7 +659,7 @@ void() Rec_ProfileReport =
 		ghave = ghave | IPG_LIVE;
 		noleg = (live & 1) ? 1 : 0;
 		touch = (live & 2) ? 0 : 1;
-		keys  = (live & 4) ? 1 : (live & 8) ? 2 : 0;
+		keys  = (live & 8) ? 2 : (live & 4) ? 1 : 0;   // 8 first: cannot-run wins over a stale 4
 	}
 	// Steps `bad` only where both exist: on Linux/SDL (no guard cvars) it would be bad from the first
 	// frame and stop the counter for the other settings. The server faults a missing one by itself.
@@ -2195,6 +2196,7 @@ void() Rec_ViewFrame =
 
 	// Build 72: the same argument, the same place.  See Rec_ProfileReport.
 	Rec_ProfileReport();
+	rec_rp_viewsent = TRUE;
 
 	// Patch 486: and the third report, for the same reason in the same place --
 	// the server has to hold it before a run arms, not when one does, or the run
@@ -2576,6 +2578,7 @@ void() Rec_ViewInit =
 	  lesson one field earlier.  See Rec_ProfileReport.
 	*/
 	rec_rp_profseen = FALSE;
+	rec_rp_viewsent = FALSE;            // P1576
 	rec_rp_guardscan = FALSE;           // P1573: rescan each map's worldspawn
 
 	// Patch 486: FALSE, so the first report always goes out.  This was -1,
