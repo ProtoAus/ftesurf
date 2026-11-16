@@ -275,7 +275,7 @@ void(float tail) Bn_PlaceRaw =
 	}
 	if ((flags & TF_SHADOW) && !(flags & TF_BANKTAINT))
 	{
-		ui_bn_pl1 = "SHADOW";
+		ui_bn_pl1 = "SEGMENTED";        // P1592: was SHADOW
 		ui_bn_pl2 = "from a save";
 		ui_bn_plc = TC_SHADOW;
 		ui_bn_placc = TC_SHADOW;
