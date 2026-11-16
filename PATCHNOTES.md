@@ -21,6 +21,9 @@
 
 ## next
 
+### P1597 Ranked runs on the lobbies need the current online terms
+- The lobbies now ask for the online terms that 0.1.48 shows (the journal also names programs that load into or change the game). If you accepted them in 0.1.48, nothing changes. On an older version, or if you chose Stay offline there, ranked uploads and the online features stop until you update and choose Play online.
+
 ### P1596 Bhop platforms reset you, HL-mode teleports land on your feet
 - On bhop maps the platforms that sank under you in CS:S (doors and buttons over a reset) now send you back to the reset as in Momentum Mod: stay on one for about a fifth of a second, or land on the same one again within a second, and you are reset. They still do not move.
 - In the Half-Life movement modes (AG 100, 250 and 1000, Counter-Strike 1.6) teleports, !r, stage and bonus moves no longer leave you half in the floor.

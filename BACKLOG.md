@@ -247,9 +247,9 @@
   the private tree: cheatanalysis/p1586-hook-scan-limits.md.
 - Consent text DONE (owner, 16 Nov: "add whatever is necessary"): the terms say the journal names programs that
   load into or change the game, by file name; the menu asks for online tier 9 (MENU-only FS_TERMS_ONLINE).
-  OWED after the release that carries this menu: FS_TERMS_ONLINE 9 for csprogs/qwprogs too (drop the #ifdef in
-  sh_defs.qc) and deploy the lobbies, so a lobby requires the new answer; until then a 9 reports 8 and an older
-  menu's 8 still uploads, from engines that write no hook lines.
+  DONE by P1597 (17 Nov, owner: yes): FS_TERMS_ONLINE is 9 for csprogs/qwprogs too and the lobbies require it;
+  an answer of 8 reports 0 (tools/p1597terms.py). Arms that write `version 8` (p1081zones, p1116finish,
+  p1414joinwait) are now below the online tier; those that read the define are unaffected.
 - Measured on one PC (Windows 11 24H2, i9-9900K): 0 findings on a clean client over 49 functions and 2,874
   slots; frame-time A/B (tools/p1586perf.py, menu, 400 fps cap) no measurable cost. Unmeasured: Windows 10
   (API-set import redirects), Wine, ARM64, third-party antivirus, a 4-core laptop, a real overlay's hooks

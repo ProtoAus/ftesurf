@@ -1249,15 +1249,10 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 // P823: a new online answer is also the update permission. Still 7: earlier
 // answers keep the update choice they made, so nobody gets more than they read.
 // Public pause-check metadata needs a renewed online answer; offline stays 1.
-// 9, P1586: an uploaded journal also names programs that load into or change the game. The MENU asks
-// for 9 first while the lobbies still require 8 (Rec_TermsReport: 9 reports 8), so no released menu is
-// stranded; the lobbies move to 9 once a release with this menu is out (BACKLOG). The offline text says
-// the same without a re-ask: a local journal never leaves the PC.
-#ifdef MENU
+// 9, P1586: an uploaded journal also names programs that load into or change the game. The offline
+// text says the same without a re-ask: a local journal never leaves the PC. P1597 (17 Nov): the lobbies
+// require 9 too; the menu asked for it first (0.1.48), so an answer of 8 now reports 0.
 #define FS_TERMS_ONLINE 9
-#else
-#define FS_TERMS_ONLINE 8
-#endif
 
 #define TS_IDLE      0   // nothing armed
 #define TS_ARMED     1   // standing in the zone the run will start from
