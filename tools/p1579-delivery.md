@@ -26,7 +26,8 @@ FTESurf 90d1d568 (code, QC only) + 3cf910dd (notes, lextest, BACKLOG, ENGINE.txt
   and active. Live qwprogs ccf0d9a4 / csprogs 97e47c88 (.prev 56f3de88 / 92f9604e). tasrevd codes.txt 146 -> 147 lines
   (97e47c88..., backup codes.txt.pre1579).
 - Both installs: qwprogs ccf0d9a4, csprogs 97e47c88 (.prev 56f3de88 / 92f9604e), menu cfea7114 unchanged; hashed equal to
-  the build. csprogsvers not seeded (clients fetch the new csprogs on first join).
+  the build. ftesurf-06 seeded csprogsvers 8eb8919d.dat in both installs (seed_csprogs.py on 97e47c88), so
+  the first lobby join does not pull csprogs over UDP.
 - The Pi's server engine is unchanged: P1579 is QC only and runs on it; P1572's push following still needs a newer Pi
   engine.
 
