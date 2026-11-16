@@ -7585,7 +7585,7 @@ float(vector pos) ui_also_chips =
 
 float(float width, float y) ui_map_filters =
 {
-	local float group, f, n, x, gw, cw, on, bit, next;
+	local float group, f, n, x, gw, cw, on, bit, next, also;
 	local vector glyph;
 	local string heading, label, id, note;
 	x = 16;
@@ -7600,7 +7600,9 @@ float(float width, float y) ui_map_filters =
 		ui_filter_font(ui_font_ui);
 		for (f = 0; f < n; f = f + 1)
 			gw = gw + ui_filter_chip_w(ui_filter_label(group, f)) + 4;
-		if (group == 1) gw = gw + ui_mode_switch_w() + 4 + ((ms_modes == 2) ? ui_also_w() : 0);
+		// P1583 review: the switch can flip while it draws; the chips follow the state this group was measured in.
+		also = (ms_modes == 2);
+		if (group == 1) gw = gw + ui_mode_switch_w() + 4 + (also ? ui_also_w() : 0);
 		if (group == 4 && note != "") gw = gw + stringwidth(note, TRUE, sui_native_text_size(UI_MAP_FILTER_FONT)) + 6;
 		if (x > 16 && x + gw > width + 16) { x = 16; y = y + UI_MAP_FILTER_PITCH; }
 		// Keep the display headings distinct, at the same native scale as their width.
@@ -7611,7 +7613,7 @@ float(float width, float y) ui_map_filters =
 		x = x + stringwidth(heading, TRUE, glyph) + 12;
 		ui_filter_font(ui_font_ui);
 		if (group == 1) x = x + ui_mode_switch([x, y]);
-		if (group == 1 && ms_modes == 2) x = x + ui_also_chips([x, y]);
+		if (group == 1 && also) x = x + ui_also_chips([x, y]);
 		for (f = 0; f < n; f = f + 1)
 		{
 			label = ui_filter_label(group, f);

@@ -33,4 +33,14 @@ their own category by default, with an option to show other categories.
 
 ## Measured
 
-See "Bootcheck" below (filled from the run).
+ui_bootcheck 2 against the owner's library (`-basedir C:/FTESurf -homedir <owned>`, the homedir's menu.dat
+overriding; exe 4fffcfb1; 2286 rows), control = main's menu 76d94dfd, subject = P1583 menu 69f455c6:
+- both: Surf 1204, Bhop 587 (Show all on), switch 1 -> 2 -> 1 ok. Nothing else moved.
+- P1583: Bhop with Show all off 515 listed, 72 behind it; 504 rows zoned only in curated/ or dl/ (the probe's own
+  count, before the download list's zoned column overrides surf/bhop rows); Bhop + both chips 606 (+19: the
+  installed ahop/climb maps), graded ok. Screenshot ui_menu_mode: both chips drawn lit after the switch, the filter
+  row fits (panel 1248 px at 1920x1111); the control has no chips.
+- Not measured: the old probe's Show-all-off Bhop count (its bootcheck has no such line); the files say 53 bhop
+  maps were zoned only in curated/dl and outside the download list.
+- Review (one round, read): no bugs; the chips could draw one frame unmeasured as the switch flipped (fixed: they
+  follow the state the row was measured in).
