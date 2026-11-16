@@ -3873,7 +3873,12 @@ void(vector scr) Scores_Draw =
 	sz = [w, h];
 	sui_style_panel(p, sz, ceil(pad * 0.75), 0.98);
 	if (flw)
-		Scores_RoomFloat(x0 + w + pad, y0, flw, h, sb_szui);
+	{
+		// On the column headings' line (the tabs, mode row and heading below), clear of the
+		// HUD's map block in the top-right corner, which the panel's top edge ran into at 720p.
+		yc = y0 + pad + rec_sb_sztitle + ceil(pad * 0.75) + chiph + pad * 0.5 + tabh + pad;
+		Scores_RoomFloat(x0 + w + pad, yc, flw, y0 + h - yc, sb_szui);
+	}
 
 	// ---- the header: the map, and its clock on the title's baseline ---------
 	Font_Set(ui_font_ui);
