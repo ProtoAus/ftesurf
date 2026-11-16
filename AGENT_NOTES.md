@@ -17,6 +17,14 @@
 - Groups are a separate request because test_momindex.py requires the ranked board's body to be identical
   across an import, and the ladder is made of imported rows. Arm: tools/p1590groups.py (14 checks).
 
+## P1594 key timing: what it does to test arms (17 Nov 2026)
+
+- Posted keys have no raw report, so every posted release counts in `keytimes`' "releases alone" and no pair is
+  timed; a rig can grade only that path (tools/p1594keys.py). A waiting release is decided by the next key or
+  raw event: post one (a release of an unpressed key is not judged) before closing the journal.
+- With in_keyguard 1 a session that never saw a hardware key stands the guard down after 8 dropped messages
+  (P1576), so on a rig only the first taps are dropped (`kd`); the rest reach the game.
+
 ## P1586 hook scan: what it does to test arms (16 Nov 2026)
 
 - On Windows x64 a worker thread scans the client while a journal is open (0.5-2.5 s in, then every

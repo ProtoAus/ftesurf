@@ -1,4 +1,8 @@
 # The engine build this QuakeC requires.
+# Patch 1594 (engine only, client exe; QC unchanged): the .hid times each key press and release against the
+# keyboard's own raw report (`keytiming 1` header, `keytimes` line: 8+8 gap buckets, releases alone, legacy-first,
+# raw presses alone); the key guard now decides before P1424's observer. Notes only; hidcheck reads it.
+# Record: engine ENGINE_PATCHES.md (patch-1594, 17b8ce3d8); arm tools/p1594keys.py.
 # Patch 1592: a run resumed from a save is "segmented" -- the held close accepts `_segmented.rec` for RT_SHADOW (and
 # the legacy `_shadow` from an older progs); builtin rec_tagword tells QC which word to write. QC writes it only
 # where the engine answers so and never on a lobby until surfd takes the leaf. Record: tools/p1592-delivery.md.

@@ -198,6 +198,21 @@
 - tools/p1581skew.py needs a current lobby run, its map and its lobby zone json (--subject/--map/--zone):
   P349's b88fin.rec no longer matches bhop_eazy.
 
+## Key timing -- what P1594 left (17 Nov, ftesurf-48)
+
+- Engine only (client exe): reaches players with the next release that carries patch-1594. hidcheck and the
+  arm are on main; the Pi's hidcheck learns `keytimes` with the next tools deploy (an older one notes it).
+- NOT CALIBRATED: a rig cannot press a real key, so the pairing and bucketing are first exercised by the owner's
+  journals (lextest). Read them before giving any bucket a meaning: matched presses should be about the legacy
+  presses minus 'y', and the gaps are expected (not shown) to sit in the first bucket or two.
+- Not seen by design: a tool that shapes the raw report and the legacy message together, or stays under 0.5 ms;
+  mouse buttons and the wheel (no second path); a handful of shaped keystrokes among thousands (the histogram
+  has no time or key -- a per-frame dt-0 record like 'y' would place them, worth adding once calibrated).
+- A lone legacy release followed by a real release of the same key within 100 ms is timed against the wrong one
+  (AltGr's fake Ctrl up then a real Ctrl up): rare, a note either way.
+- The journal does not record sys_clocktype, vid_winthread or the frame rate, all of which shape honest gaps;
+  calibration should note them per player.
+
 ## Hooks below the journal -- what P1586 left (16 Nov, ftesurf-31)
 
 - Engine only (client exe): live for players with the next release that carries patch-1586; INSTALLED on both

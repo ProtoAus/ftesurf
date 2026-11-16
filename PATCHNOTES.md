@@ -21,6 +21,9 @@
 
 ## next
 
+### P1594 The game records how closely your key presses follow your keyboard
+- During a recorded run, the game now notes how long after your keyboard reported each key press and release the game received it, and writes the counts into the run's input record. A tool that delays or reshapes key presses inside the game shows up there. Nothing changes on screen.
+
 ### P1595 ahop_coast and 76 more bhop maps are back in Maps
 - ahop_coast, the kz, df, deathrun and hl bhop maps and a few others that Momentum lists as bhop were hidden from the Maps list (even if you had them) because their names do not start with bhop_. They are listed and playable again, and they count toward profile completion, so completion percentages dip a little.
 
