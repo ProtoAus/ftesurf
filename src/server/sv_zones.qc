@@ -544,7 +544,7 @@ float(float track, float seg) SV_ZoneFindLeg =
 #define ZDEST_VOID 2
 #define ZDEST_SOLID 3
 vector(entity who, float n, __out float yaw, __out float haveyaw, __out float fallback)
-	SV_ZoneDestRead =
+	SV_ZoneDestFeet =
 {
 	local vector c, dest, down, snapped;
 	local entity e;
@@ -720,6 +720,13 @@ vector(entity who, float n, __out float yaw, __out float haveyaw, __out float fa
 	}
 
 	return snapped;
+};
+
+// P1596: where the body's origin goes -- the floor point lifted by a GoldSrc hull's -mins_z
+// (SV_FeetToOrigin), so `!r`, stage moves, `!m` and the destination published for prediction agree.
+vector(entity who, float n, __out float yaw, __out float haveyaw, __out float fallback) SV_ZoneDestRead =
+{
+	return SV_ZoneDestFeet(who, n, yaw, haveyaw, fallback) + SV_FeetToOrigin(who);
 };
 
 vector(float n, __out float yaw, __out float haveyaw) SV_ZoneDest =

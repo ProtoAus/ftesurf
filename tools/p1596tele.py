@@ -15,6 +15,9 @@ MAPS = Path(r'C:/Program Files (x86)/Steam/steamapps/common/Momentum Mod Playtes
 MAP = 'bhop_1n5an3'
 DEST = (-256.0, -384.0, 96.0)
 DOOR_TOP = 64.0
+FLOOR = 64.0                     # under t1; also the start zone's bottom
+# The zones players download for this map: the start region's teleDestTargetname is t1, so `!r` lands there.
+ZONES = Path(r'C:/FTESurf/ftesurf/maps/zones/dl/bhop_1n5an3.json')
 POS = re.compile(r'setpos (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) -?[\d.]+ -?[\d.]+ -?[\d.]+\s*$')   # viewpos's reply, not our command
 
 
@@ -28,6 +31,8 @@ def main():
     # A rendered client predicts (a headless one never does): count prediction errors across the
     # direct teleport, where cl_triggers.qc's mirror lands the body.
     ap.add_argument('--rendered', action='store_true')
+    # Momentum resets doors on bhop-mode maps only: `--gamemode surf` must leave the door a floor.
+    ap.add_argument('--gamemode', default='')
     ap.add_argument('--expect-prederr', choices=('none', 'some'), default='none')
     a = ap.parse_args()
     root = a.runtime.resolve()
@@ -46,13 +51,17 @@ def main():
         for c in (game / 'cfg').rglob('*.cfg'):
             c.write_text(re.sub(r'https?://[^\s"]+', 'http://127.0.0.1:1', c.read_text(errors='replace')))
         shutil.copy2(MAPS / (MAP + '.bsp'), game / 'maps' / (MAP + '.bsp'))
+        if side == 'server':
+            (game / 'maps/zones/local').mkdir(parents=True)
+            shutil.copy2(ZONES, game / 'maps/zones/local' / (MAP + '.json'))
         for f in ('qwprogs.dat', 'csprogs.dat'):
             shutil.copy2(a.progs / f, game / f)
         dirs[side] = base
     safe = 'set lobby_enable 0\nset lobby_master "http://127.0.0.1:1"\nset lobby_dir "http://127.0.0.1:1"\nsv_public 0\n'
     (dirs['server'] / 'ftesurf/p1596-server.cfg').write_text(
         'exec cfg/default.cfg\n' + safe + 'log_enable 1\nlog_name p1596sv\ndeveloper 1\nsv_cheats 1\n'
-        'sv_movementprofile ' + ('' if a.profile == 'default' else a.profile) + '\nmap ' + MAP + '\n')
+        'sv_movementprofile ' + ('' if a.profile == 'default' else a.profile) + '\n'
+        + ('sv_gamemode ' + a.gamemode + '\n' if a.gamemode else '') + 'map ' + MAP + '\n')
     (dirs['client'] / 'ftesurf/p1596-client.cfg').write_text(
         'cfg_save_auto 0\n' + safe + 'log_enable 1\nlog_name p1596cl\ncl_download 0\ncl_idlefps 0\ncl_maxfps 100\nset vid_headless_sleep 0\n'
         'connect 127.0.0.1:' + str(a.port) + '\n')
@@ -120,10 +129,23 @@ def main():
             assert time.monotonic() < end, 'client never spawned'
             time.sleep(1)
         time.sleep(1)
+        if a.rendered:
+            out['prederr_start'] = cvar('cl_prederror_count')
         # A: stand on door *1 (feet 1 above its top), still, for 1 s.
         send('cmd setpos -256 -576 %g' % (DOOR_TOP + 1 + lift))
         time.sleep(1.0)
         viewpos('door')
+        # A2: Momentum's memory. Touch the door 0.1 s (under its 0.22 s), step off, come back 0.3 s
+        # later: the same door within ~1.1 s resets at once, where the CS:S door would have sunk.
+        time.sleep(1.3)
+        send('cmd setpos -256 -576 %g' % (DOOR_TOP + 1 + lift))
+        time.sleep(0.15)
+        viewpos('touched')
+        send('cmd setpos -256 -256 %g' % (FLOOR + 1 + lift))
+        time.sleep(0.3)
+        send('cmd setpos -256 -576 %g' % (DOOR_TOP + 1 + lift))
+        time.sleep(0.12)
+        viewpos('reland')
         # B: a fall into trigger *136 beside the doors, from 102 u above its top (~0.5 s), so the
         # setpos snap (never predicted) is counted before the teleport the mirror predicts.
         if a.rendered:
@@ -141,6 +163,10 @@ def main():
         send('-forward')
         time.sleep(0.3)
         viewpos('walked')
+        # C: `!r` -- a zone move to the start region's destination, snapped to its floor.
+        send('say !r')
+        time.sleep(1.5)
+        viewpos('restart')
     finally:
         for p in procs:
             try:
@@ -164,27 +190,42 @@ def main():
     want_z = DEST[2] + 1 + lift
     at_dest = lambda p: abs(p[0] - DEST[0]) < 0.5 and abs(p[1] - DEST[1]) < 0.5
     checks = {}
-    if a.expect == 'new':
+    on_door = lambda p: abs(p[0] + 256) < 2 and abs(p[1] + 576) < 2
+    doors = a.expect == 'new' and a.gamemode in ('', 'bhop')
+    if doors:
+        checks['a 0.1 s touch does not reset (%s)' % out['touched']] = on_door(out['touched'])
+        checks['the same door again within 1.1 s resets at once (%s)' % out['reland']] = at_dest(out['reland'])
+    else:
+        checks['no door reset in this mode (%s %s)' % (out['door'], out['reland'])] = on_door(out['door']) and on_door(out['reland'])
+    if doors:
         checks['door reset printed'] = any('-- reset at' in ln for ln in out['bhopdoor_lines'])
         checks['door reset settled at t1 (%s)' % out['door']] = at_dest(out['door'])
+    if a.expect == 'new':
         checks['every landing feet+1 on t1 (want z %.2f): %s' % (want_z, out['landings'])] = \
-            len(out['landings']) >= 3 and all(at_dest(p) and abs(p[2] - want_z) < 0.05 for p in out['landings'])
-    else:
-        checks['control: still on the door (%s)' % out['door']] = abs(out['door'][0] + 256) < 2 and abs(out['door'][1] + 576) < 2
+            len(out['landings']) >= (3 if doors else 1) and all(at_dest(p) and abs(p[2] - want_z) < 0.05 for p in out['landings'])
     checks['the trigger teleported to t1 (%s)' % out['tele']] = at_dest(out['tele'])
+    if a.expect == 'old' and lift:
+        checks['control: the centre stayed on t1+1, stuck (z %.2f)' % out['tele'][2]] = abs(out['tele'][2] - (DEST[2] + 1)) < 0.6
+    stand = FLOOR + (lift if a.expect == 'new' else 0)
+    checks['`!r` lands at t1 standing (z %.2f, want %.2f)' % (out['restart'][2], stand)] = \
+        at_dest(out['restart']) and abs(out['restart'][2] - stand) < 0.6
     if a.rendered:
         d = out['prederr_after'] - out['prederr_before']
         out['prederr_delta'] = d
         checks['prediction errors across the teleport: %g (want %s)' % (d, a.expect_prederr)] = \
             (d == 0) if a.expect_prederr == 'none' else (d > 0)
+        # Review: a dead counter passes 'none'. The setpos and door-reset snaps are never predicted.
+        checks['the counter is live (%g -> %g before the teleport)' % (out['prederr_start'], out['prederr_before'])] = \
+            out['prederr_before'] > out['prederr_start']
     moved = ((out['walked'][0] - out['tele'][0]) ** 2 + (out['walked'][1] - out['tele'][1]) ** 2) ** 0.5
     out['moved'] = moved
-    checks['walks off the destination (%.1f u)' % moved] = moved > 10 or (a.expect == 'old' and lift > 0)
+    # Stuck is exactly 0.0 (main under ag-100); rendered ag-100 runs walk 9.6-13 u in the 0.5 s.
+    checks['walks off the destination (%.1f u)' % moved] = moved > 2 or (a.expect == 'old' and lift > 0)
     out['checks'] = checks
     (root / 'result.json').write_text(json.dumps(out, indent=2))
     for k, v in checks.items():
         print(('PASS ' if v else 'FAIL ') + k)
-    print('positions', {k: out[k] for k in ('spawn', 'door', 'tele', 'walked')})
+    print('positions', {k: out[k] for k in ('spawn', 'door', 'tele', 'walked', 'restart')})
     for ln in out['bhopdoor_lines']:
         print('  ' + ln)
     return 0 if all(checks.values()) else 1

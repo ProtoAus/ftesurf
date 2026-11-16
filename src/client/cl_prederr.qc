@@ -322,7 +322,8 @@ float(vector srv, vector pred) PE_ServerTele =
 				continue;
 			at = at + (pred - tg_sodlm[i]);
 		}
-		if (vlen(srv - [0, 0, -tg_pmins_z] - at) >= 2)     // P1596: a GoldSrc body lands -mins_z above the point
+		// P1596: a plain teleport lands a GoldSrc body -mins_z above its point; a landmark one keeps its offset.
+		if (vlen(srv - (tg_sodl[i] ? '0 0 0' : [0, 0, -tg_pmins_z]) - at) >= 2)
 			continue;
 		for (j = 0; j < tg_n; j = j + 1)
 			if (tg_kind[j] == TG_TELE)

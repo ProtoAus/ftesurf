@@ -860,9 +860,8 @@ void(entity p) SV_TouchForget =
 .entity vbsp_bhop_on;
 .float  vbsp_bhop_since;
 .float  vbsp_bhop_sincemt;	// P1085: run_movetick at the landing
-.entity vbsp_dbhop_on;		// P1596: the bhop door stood on, timed as the func_bhop dwell
-.float  vbsp_dbhop_since;
-.float  vbsp_dbhop_sincemt;
+.entity vbsp_dbhop_last;	// P1596: the bhop door last met, and its punish time (mom_blockfix.cpp)
+.float  vbsp_dbhop_punish;
 .float  run_movetick;		// the native mover counter, first declared here for the dwell
 // Ground state as it stood BEFORE this command's move, stamped by PlayerPreThink
 // and read by SV_TriggerIOTouch after it -- which is how OnJump can tell a jump
@@ -8260,6 +8259,7 @@ void() func_water_analog = { SV_SpawnWater(); };
 ===========================================================================
 */
 void() trigger_teleport;        // trigger_momentum_teleport is it, see below
+float vbsp_dbhop_firing;        // P1596: a bhop door's reset is running this touch (SV_DoorBhopFrame)
 
 /*
   BUILD 13 -- +jump while noclipping flies straight through a teleport.
@@ -8510,7 +8510,7 @@ void() trigger_teleport_touch =
 		*/
 		if (SV_TeleportBodyChanged(other, bo, bv, bang, bview, bg, bc))
 			SV_BankCauseAffect(other, bp, ba, bb);
-		SV_RecWarp(other, "tele");
+		SV_RecWarp(other, vbsp_dbhop_firing ? "bhop" : "tele");     // P1596: from PlayerPostThink, as func_bhop's
 		SV_TimerMapTeleport(other);
 		return;
 	}
@@ -8544,7 +8544,7 @@ void() trigger_teleport_touch =
 	// behaviour, and evidence may not share a gate with a behaviour flag.
 	if (SV_TeleportBodyChanged(other, bo, bv, bang, bview, bg, bc))
 		SV_BankCauseAffect(other, bp, ba, bb);
-	SV_RecWarp(other, "tele");
+	SV_RecWarp(other, vbsp_dbhop_firing ? "bhop" : "tele");     // P1596: from PlayerPostThink, as func_bhop's
 	SV_TimerMapTeleport(other);     // Patch 775: a reset if it lands you in your start
 };
 
@@ -8891,7 +8891,7 @@ void() trigger_teleport_relative_touch =
 	// and the velocity through.  Readers use the vectors, never the kind.
 	if (SV_TeleportBodyChanged(other, bo, bv, bang, bview, bg, bc))
 		SV_BankCauseAffect(other, bp, ba, bb);
-	SV_RecWarp(other, "telerel");
+	SV_RecWarp(other, vbsp_dbhop_firing ? "bhop" : "telerel");     // P1596
 	SV_TimerMapTeleport(other);     // Patch 775
 };
 
@@ -10163,7 +10163,7 @@ void(entity p, entity t, vector org, vector dang) SV_MomTeleportTo =
 	}
 	if (SV_DevOn())
 		dprint(sprintf("momtrigger %s %s: teleport to %v mode %g\n", t.classname, t.model, org, vm));
-	SV_PlacePlayer(p, org + '0 0 1');
+	SV_PlacePlayer(p, org + '0 0 1' + SV_FeetToOrigin(p));
 	if (SV_KeyTri(t.resetang, "") != 0 || vm == 3)
 	{
 		ang = [0, dang_y, 0];
@@ -14404,10 +14404,10 @@ void(entity b, entity pl) SV_BhopTeleport =
 /*
   P1596: CS:S bhop doors.  A func_door with Touch Opens (a func_button with Touch Activates) moving
   straight down sinks whoever stands on it into the teleport trigger under it -- the map's reset --
-  unless they hop off first.  Doors stay put here (SV_SpawnDoor), so standing on one for
-  sv_bhop_time_limit, the func_bhop dwell, fires that trigger's own touch instead.  The trigger
-  counts only if the door's travel takes the feet into it.  Census of this PC's library, 17 Nov:
-  1,444 such doors on 87 of 597 bhop_/kz_/ahop_ maps (tools/p1596-claim.md).
+  unless they hop off first.  Doors stay put here (SV_SpawnDoor); Momentum's block fix fires that
+  trigger's own touch instead (SV_DoorBhopFrame has its timing).  The trigger
+  counts only if the door's travel takes the feet into it.  This PC's library, 17 Nov: ~1,444
+  such doors and buttons on 9 of 597 bhop_/kz_/ahop_ maps (box census; the brush test drops 3).
 */
 #define SF_DOOR_TOUCH 1024              // doors.h:31 "Touch Opens"
 .entity vbsp_dbhop_reset;               // on the door: its reset trigger, world for none
@@ -14416,14 +14416,36 @@ void(entity b, entity pl) SV_BhopTeleport =
 void(entity d, entity t) SV_DoorBhopTry =
 {
 	local float top, reach;
+	local vector lo, hi, c;
+	local int hm;
+	local entity was;
 	if (t.touch != trigger_teleport_touch && t.touch != trigger_teleport_relative_touch)
 		return;
+	if (t.touch == trigger_teleport_touch && (t.target == "" || !SV_FindByName(t.target, world)))
+		return;                         // nowhere to go: Source would drop you through it (review)
 	if (t.absmin_x >= d.absmax_x || t.absmax_x <= d.absmin_x || t.absmin_y >= d.absmax_y || t.absmax_y <= d.absmin_y)
 		return;
 	// Source's travel is |movedir . (OBBSize - 2)| - lip; FTE's bounds keep the one-unit expansion.
 	top = d.absmax_z - 1;
 	reach = top - max(0, d.size_z - 2 - d.lip);
 	if (t.absmax_z <= reach || t.absmin_z >= top)
+		return;
+	if (reach >= top)
+		return;                         // a door that does not sink
+	// Boxes carry FTE's one-unit expansions and stand in for a multi-brush trigger (review: three
+	// bhop_arcane_v1 buttons met a trigger that only touched an edge): test its brushes against the
+	// space the sinking feet pass, inset 2 u -- SV_MomLimitTouches' idiom (other = the trigger).
+	lo = [d.absmin_x + 2, d.absmin_y + 2, reach];
+	hi = [d.absmax_x - 2, d.absmax_y - 2, top];
+	c = (lo + hi) * 0.5;
+	hm = d.hitcontentsmaski;
+	was = other;
+	d.hitcontentsmaski = -1i;
+	other = t;
+	tracebox(c, lo - c, hi - c, c, MOVE_TRIGGERS | MOVE_OTHERONLY, d);
+	d.hitcontentsmaski = hm;
+	other = was;
+	if (!(trace_startsolid || trace_allsolid || trace_fraction < 1))
 		return;
 	if (d.vbsp_dbhop_reset == world || t.absmax_z > d.vbsp_dbhop_reset.absmax_z)
 		d.vbsp_dbhop_reset = t;
@@ -14438,14 +14460,15 @@ entity(entity d) SV_DoorBhopReset =
 	d.vbsp_dbhop_reset = world;
 	if (d.solid != SOLID_BSP || d.movedir != '90 0 0')
 		return world;
+	// Locking is read live in SV_DoorBhopFrame (Lock/Unlock inputs).
 	if (d.classname == "func_door")
 	{
-		if (!(d.spawnflags & SF_DOOR_TOUCH) || (d.spawnflags & SF_DOOR_LOCKED))
+		if (!(d.spawnflags & SF_DOOR_TOUCH))
 			return world;
 	}
 	else if (d.classname == "func_button")
 	{
-		if (!(d.spawnflags & SF_BUTTON_TOUCH) || (d.spawnflags & (SF_DOOR_LOCKED | SF_BUTTON_DONTMOVE)))
+		if (!(d.spawnflags & SF_BUTTON_TOUCH) || (d.spawnflags & SF_BUTTON_DONTMOVE))
 			return world;
 	}
 	else
@@ -14462,48 +14485,58 @@ entity(entity d) SV_DoorBhopReset =
 	return d.vbsp_dbhop_reset;
 };
 
-// TRUE when the door's reset moved the player.  Its dwell clock is the func_bhop one (P1085).
+// TRUE when the door's reset moved the player.  Momentum's mom_blockfix.cpp PlayerTouch, per grounded
+// command: a new block, or the same one met BLOCK_COOLDOWN (1 s) past its punish time, starts the clock
+// (punish = now + BLOCK_TELEPORT, 0.11 s); the same block past punish + 0.11 resets -- 0.22 s after the
+// first touch standing, and at once on landing on it again within ~1.1 s, where the CS:S door has sunk.
+// Bhop-mode maps only, as Momentum.  The clock is the mover's ticks, as func_bhop's (P1085).
+#define DBHOP_TELEPORT 0.11
+#define DBHOP_COOLDOWN 1.0
 float(entity pl, entity b) SV_DoorBhopFrame =
 {
 	local entity t, os, oo;
-	local float lim, dwell;
+	local float now, diff;
 	local vector o;
+	local string gm;
 
 	t = world;
-	if (b != world && b.solid == SOLID_BSP)
+	if (b != world && b.solid == SOLID_BSP && !b.vbsp_mv_locked)
+	{
+		gm = serverkey("gamemode");
+		if (gm == "bhop" || gm == "bhop-hl1")
+			t = SV_DoorBhopReset(b);
+	}
+	// A Kill'd trigger keeps its fields until the slot is reused (pr_edict.c ED_Free): look again.
+	if (t != world && (wasfreed(t) || !t.touch))
+	{
+		b.vbsp_dbhop_q = FALSE;
 		t = SV_DoorBhopReset(b);
+	}
 	if (t == world)
+		return FALSE;
+	now = (pl.run_movetickrate > 0) ? pl.run_movetick * pl.run_movetickrate : time;
+	diff = now - pl.vbsp_dbhop_punish;
+	if (pl.vbsp_dbhop_last != b || diff > DBHOP_COOLDOWN)
 	{
-		pl.vbsp_dbhop_on = world;
+		pl.vbsp_dbhop_last = b;
+		pl.vbsp_dbhop_punish = now + DBHOP_TELEPORT;
 		return FALSE;
 	}
-	if (pl.vbsp_dbhop_on != b)
-	{
-		pl.vbsp_dbhop_on = b;
-		pl.vbsp_dbhop_since = time;
-		pl.vbsp_dbhop_sincemt = pl.run_movetick;
-	}
-	lim = cvar("sv_bhop_time_limit");
-	if (lim <= 0)
-		lim = 0.1;
-	if (pl.run_movetickrate > 0)
-		dwell = (pl.run_movetick - pl.vbsp_dbhop_sincemt) * pl.run_movetickrate + 0.0001;
-	else
-		dwell = time - pl.vbsp_dbhop_since;
-	if (dwell < lim)
+	if (diff <= DBHOP_TELEPORT)
 		return FALSE;
-	pl.vbsp_dbhop_on = world;
 	o = pl.origin;
 	os = self;
 	oo = other;
 	self = t;
 	other = pl;
+	vbsp_dbhop_firing = TRUE;
 	t.touch();
+	vbsp_dbhop_firing = FALSE;
 	self = os;
 	other = oo;
 	if (cvar("developer"))
-		dprint(sprintf("bhopdoor: %s stood %g s on %s -- %s at %v\n", pl.netname, dwell, b.model,
-		               (pl.origin != o) ? "reset" : "the trigger refused", pl.origin));
+		dprint(sprintf("bhopdoor: %s on %s %g s after its first touch -- %s at %v\n", pl.netname, b.model,
+		               diff + DBHOP_TELEPORT, (pl.origin != o) ? "reset" : "the trigger refused", pl.origin));
 	return pl.origin != o;
 };
 

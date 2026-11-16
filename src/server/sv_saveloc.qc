@@ -6139,8 +6139,8 @@ void(entity e, string why) SV_SpecRelease =
 
 	if (e.vbsp_bhop_since)                          // the func_bhop dwell
 		e.vbsp_bhop_since = e.vbsp_bhop_since + (time - e.run_sp_t0);
-	if (e.vbsp_dbhop_since)                         // P1596: the bhop door's
-		e.vbsp_dbhop_since = e.vbsp_dbhop_since + (time - e.run_sp_t0);
+	if (e.vbsp_dbhop_punish && e.run_movetickrate <= 0)    // P1596: a server-time door clock only
+		e.vbsp_dbhop_punish = e.vbsp_dbhop_punish + (time - e.run_sp_t0);
 	if (e.run_t_state == TS_RUNNING)                // `cmd timer`'s sampled side
 		e.run_t_startwall = e.run_t_startwall + (time - e.run_sp_t0);
 	e.run_t_ckwall = e.run_t_ckwall + (time - e.run_sp_t0);   // Patch 840, the same span

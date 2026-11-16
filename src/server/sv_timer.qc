@@ -3141,6 +3141,12 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             the exact-compare rule before (ahop_coast's teleports,
                             bhop_kirous's state gates and ~43 maps differ), so it
                             says which boards a run is comparable on.
+    bhopdoors 1             P1596.  On a bhop-mode map a CS:S bhop door (Touch Opens
+                            func_door / Touch Activates func_button sinking onto a
+                            teleport) resets as Momentum's block fix: 0.22 s after
+                            the first touch, at once on the same door again within
+                            ~1.1 s; recorded as a `bhop` warp.  Absent: such doors
+                            were solid floors, so it says which boards compare.
     proprule <n>            which prop-geometry rule built this run's collision
                             world.  Absent or 0 = prop scale as the map wrote it;
                             1 = floored to the 1/16 the wire carries, so the
@@ -3574,7 +3580,9 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                               catapult trigger_catapult's launch (Patch 869)
                               reverse  trigger_reversespeed (Patch 869)
                               telerel  trigger_teleport_relative
-                              bhop     func_bhop's teleport
+                              bhop     func_bhop's teleport; since P1596 also a
+                                       CS:S bhop door's reset (both from
+                                       PlayerPostThink, once per packet)
                               speed    trigger_setspeed
                               push     trigger_push, the SF_PUSH_ONCE arm
                               pin      the replay/rewind pin taken on a running
@@ -5914,6 +5922,7 @@ void(entity e) SV_RecOpen =
 	SV_RecPut(e, strcat("endedge ", (vbsp_mp && SV_TouchBit(e)) ? "1" : "0"));     // Patch 1025, additive
 	SV_RecPut(e, strcat("contexts ", (vbsp_ctx_on && vbsp_io_on) ? "1" : "0"));     // Patch 1036, additive
 	SV_RecPut(e, "filtermatch 1");     // Patch 1367, additive
+	SV_RecPut(e, "bhopdoors 1");       // P1596, additive
 	SV_RecPut(e, strcat("startrule ", run_t_bhopjump ? "jump" : "leave"));     // Patch 1371, additive
 	SV_RecPut(e, strcat("gamemode ", serverkey("gamemode") != "" ? serverkey("gamemode") : "-"));     // Patch 1371, additive
 	/*

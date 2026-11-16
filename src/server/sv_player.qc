@@ -192,7 +192,7 @@ void() PutClientInServer =
 	self.bank_speed_bad = FALSE;
 	self.vbsp_bhop_on   = world;
 	self.vbsp_bhop_since = 0;
-	self.vbsp_dbhop_on  = world;      // P1596
+	self.vbsp_dbhop_last = world;     // P1596
 	// Patch 270, Stage 2.  The per-player landing count, cleared with the rest
 	// of the bhop dwell state for the same reason: a count carried into the
 	// next life would teleport the player off a LandingLimit block they have
@@ -1463,7 +1463,7 @@ float(entity e, float slot, float token) SV_TASGo =
 	// P1085: no native checkpoint is taken grounded on an entity (sv_tas_rewind.inc "carriers"),
 	// so a restored tick is never mid func_bhop dwell; the head's latch (run_movetick is never
 	// rewound) must not carry over.
-	e.vbsp_bhop_on = world; e.vbsp_bhop_since = 0; e.vbsp_dbhop_on = world;
+	e.vbsp_bhop_on = world; e.vbsp_bhop_since = 0; e.vbsp_dbhop_last = world;
 	SV_TASProjectTouch(e);  // P1082: ticks after this head are replaced
 	return TRUE;
 };
