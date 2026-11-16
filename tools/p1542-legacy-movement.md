@@ -1,5 +1,8 @@
 # P1542 - experimental legacy movement candidate
 
+> P1589 (16 Nov) adds `ag-1000`, `cs16`, `hl2-pre` and `hl2-post` to the same switch; ag-1000 is no longer
+> refused. Record: engine ENGINE_PATCHES.md Patch 1589.
+
 Status: **P1542 Windows delivery and narrow Native qualification recorded; no
 P1542 fleet or full-platform acceptance**. Engine47998d6e3 / QC9cb29567 are this
 page's tested source pair. Second's actual installed headless map-switch check

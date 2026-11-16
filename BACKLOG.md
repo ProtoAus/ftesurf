@@ -14,6 +14,21 @@
 - On a merged list the line's pill can cover part of the WHY word (cl_scores.qc, Scores_DrawOnlineRows).
 - `scores tab online|local` (console) set the tab alone; the clicks and arrow keys carry the mode.
 
+## Movement profiles -- what P1589 left (16 Nov, ftesurf-64; root C:\FTESurf-worktrees\moveprof-20261116-64)
+
+- TAS projects and revisions made under a profile go to the normal data/tasproj/<map>/ and are bound only by
+  mapcrc/zonecrc/pmpin (sv_tasproject.qc:541-556). hl2-pre and hl2-post publish byte-identical pins (the boost rule
+  is not a movevar), so a project made on one loads on the other and replays under the other boost. Default refuses
+  both (different pin). Fix wants a profile key in the project/revision identity, which tasverify and the engine TAS
+  readers must accept. Falsifier: save a project on hl2-pre, `sv_movementprofile hl2-post` + map, load it.
+- AG prediction shows isolated one-command 0.02 u z transients in the air (ag-100/ag-250, rendered
+  tools/test_ag_profile_runtime.py; also on the pre-P1589 engine, ctl-ag-250). Self-heals next command; cause
+  unknown (P1542's mover). Falsifier: the rendered arm's per-axis airborne max on ag-250.
+- The TAS planner (sv_tas_plan.inc:39,70) sees HL2's +speed sprint but not its fully-ducked refusal
+  (PMSrc_EffectiveMaxSpeed): it plans 320 where the mover runs 190. Yaw choice only.
+- Refusals keyed on any profile still say "AG": sv_saveloc.qc:4171/4281/4480, sv_rewindstate.qc:175, cl_input.c's
+  "Refusing AG commands" (a P1542-era client meeting hl2-*). Wording only; all fail safe.
+
 ## Local games' save ops -- what P1588 left (16 Nov, ftesurf-06; root C:\FTESurf-worktrees\localload-20261116-06)
 
 - With the server paused (`pausable 1` + pause, or a 1-slot game's auto-pause) an op pressed in the first ~0.5 s

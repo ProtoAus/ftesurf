@@ -9,6 +9,16 @@
   was measured on); the footer says "groups from Momentum, N times". Main menu > a map's board shows the same.
 - Needs the surfd update: Stats page, maps finished / totals count surf_borderlands and its CS:S copy once.
 
+## P1589 HL2 / AG 1000 / CS 1.6 movement profiles -- owner feel check PENDING (record: engine ENGINE_PATCHES.md Patch 1589)
+- Console in your own game: `sv_movementprofile hl2-post`, then `map bhop_mom_training_beta` (any bhop map). Bhop
+  forward holding W: speed should stop at about 285. Turn to face backwards and keep hopping with no keys: speed
+  should keep climbing (ABH). Shift sprints (320).
+- `sv_movementprofile hl2-pre` + map: holding W, each jump adds about 95 with no limit.
+- `sv_movementprofile cs16` + map: land from a jump and walk -- you should slow hard for about a second; chained hops
+  get lower; jumping above ~300 u/s drops you to ~240. Eyes sit lower than in AG.
+- `sv_movementprofile ag-1000` + map: AG movement at 1 ms steps (compare with ag-100).
+- Say if any of them feels wrong against the real game. `sv_movementprofile default` and a map to go back.
+
 ## 0.1.48 release -- PUBLISHED 16 Nov 09:02Z; both installs updated; owner check PENDING (record: tools/release-0.1.48.md)
 - The menu should say 0.1.48; water should be see-through and glass translucent unless you set them yourself.
 - Then the P1588 check below (local game, save-load key, with and without sv_minping 300).

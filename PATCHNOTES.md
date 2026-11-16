@@ -28,6 +28,12 @@
 - Holding TAB also lists everyone in your server to the right of the board, with their main time in their own colour.
 - On the Stats page a map and its CS:S/KSF copy count as one map, so beating either one counts it as finished.
 
+### P1589 New practice movement: Half-Life 2, AG 1000 and Counter-Strike 1.6
+- In your own game, type `sv_movementprofile hl2-pre` or `hl2-post` in the console, then load a map: you get Half-Life 2 movement with its jump boost, from before Valve limited it (every forward jump adds speed) or after (forward jumps stop at about 285, but jumping backwards still speeds you up). Shift sprints.
+- `sv_movementprofile ag-1000` runs the Adrenaline Gamer movement at 1000 steps a second, beside the existing `ag-100` and `ag-250`.
+- `sv_movementprofile cs16` gives Counter-Strike 1.6 movement: knife speed, a hard slowdown when you land, lower chained jumps and the bunnyhop speed cap.
+- These are unranked practice modes with their own saves; `sv_movementprofile default` and a new map bring back normal surf movement.
+
 ## 0.1.48 2026-11-16
 
 ### P1588 Save loads are instant in games you host too
