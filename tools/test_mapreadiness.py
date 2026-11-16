@@ -52,7 +52,8 @@ static void Sys_LockMutex(void *m) {(void)m; if(locked++)abort();}
 static void Sys_UnlockMutex(void *m) {(void)m; if(--locked)abort();}
 typedef struct {float value; int ival;} cvar_t;
 static cvar_t r_glsl_warm={1,1};
-typedef struct {int loadstate;} model_t;
+typedef struct {int loadstate,engineflags;} model_t;
+#define MDLF_SOURCEBSP 0x2000
 typedef struct image_s {int regsequence,flags,status;struct image_s *next;} image_t;
 static image_t *imagelist;
 static int r_regsequence=1;
@@ -60,6 +61,7 @@ static struct {
  model_t *model_precache[3],*model_csqcprecache[3],*model_precache_vwep[3];
  char model_name[3][32],model_csqcname[3][32],model_name_vwep[3][32];
  struct {float density;} fog[FOGTYPE_COUNT];
+ model_t *worldmodel;
 } cl;
 typedef struct {const char *name;unsigned supportedpermutations;void *permu[PERMUTATIONS];} program_t;
 typedef struct {int uses,numpasses;program_t *prog;struct {program_t *prog;} passes[2];} shader_t;
@@ -182,25 +184,31 @@ int main(void) {
   GLSLWarm_MapActive();
   CHECK(mapready.overflow && !mapready.eligible && compile_calls==2 && mapready.wholecompiled==2);
   glslwarm_mem=1;r_shaders=shaders;}
- // Patch 1578: on a fogged map a 4-bit program with the fog bit warms the fog variant of each listed permutation and the
- // fog-only one, counted apart; a 2-bit one is the whole pass's, an unfogged map warms none, a missing list the fog-only.
+ // Patch 1578: where fog can be drawn, a 4-bit program with the fog bit warms the other fog variant of each listed
+ // permutation (12 = 4|FOG listed: 4 too) and the fog-only one, counted apart; a 2-bit one is the whole pass's; none on an
+ // unfogged non-Source map; a negative fog density fogs; a Source world always can; a missing list warms the fog-only.
  {program_t f={"known",15,{0}},g={"unlisted",PERMUTATION_FOG|1,{0}};shader_t sf={1,0,&f,{{NULL},{NULL}}};
-  shader_t sg={1,0,&g,{{NULL},{NULL}}};shader_t *fs[]={&sf,&sg};
+  shader_t sg={1,0,&g,{{NULL},{NULL}}};shader_t *fs[]={&sf,&sg};model_t srcworld={MLS_LOADED,MDLF_SOURCEBSP};
   f.permu[0]=(void *)4;g.permu[0]=(void *)5;r_shaders=fs;r_numshaders=2;r_mapready_budget.value=2;compile_calls=0;
+  history.bits[0]|=1u<<12;
   GLSLWarm_MapActive();
-  CHECK(!mapready.fogged && !mapready.fog && !mapready.fogeligible && mapready.compiled==4 && mapready.wholecompiled==3);
-  cl.fog[1].density=.5f;compile_calls=0;
+  CHECK(!mapready.fogged && !mapready.fog && !mapready.fogeligible && mapready.compiled==5 && mapready.wholecompiled==3);
+  CHECK(!f.permu[4] && !f.permu[8]);
+  cl.fog[1].density=-.5f;compile_calls=0;
   GLSLWarm_MapActive();
-  CHECK(mapready.fogged && mapready.fog==1 && mapready.fogeligible==5 && mapready.fogcompiled==5 && compile_calls==5);
-  CHECK(f.permu[8] && f.permu[9] && f.permu[10] && f.permu[13] && f.permu[14] && !f.permu[12]);
-  CHECK(!strcmp(mapready.state,"ready-closure") && mapready.available==4 && mapready.wholeavailable==3);
+  CHECK(mapready.fogged && mapready.fog==1 && mapready.fogeligible==6 && mapready.fogcompiled==6 && compile_calls==6);
+  CHECK(f.permu[8] && f.permu[9] && f.permu[10] && f.permu[13] && f.permu[14] && f.permu[4] && !f.permu[3]);
+  CHECK(!strcmp(mapready.state,"ready-closure") && mapready.available==5 && mapready.wholeavailable==3);
   f.permu[8]=f.permu[9]=NULL;r_mapready_budget.value=0;compile_calls=0;
   GLSLWarm_MapActive();
-  CHECK(mapready.fogpending==2 && mapready.fogavailable==3 && !compile_calls && !mapready.pending);
-  r_mapready_budget.value=2;glslwarm_mem=0;compile_calls=0;
+  CHECK(mapready.fogpending==2 && mapready.fogavailable==4 && !compile_calls && !mapready.pending);
+  cl.fog[1].density=0;cl.worldmodel=&srcworld;r_mapready_budget.value=2;compile_calls=0;
+  GLSLWarm_MapActive();
+  CHECK(mapready.fogged && mapready.fogcompiled==2 && mapready.fogavailable==4 && compile_calls==2);
+  f.permu[8]=f.permu[9]=NULL;glslwarm_mem=0;compile_calls=0;
   GLSLWarm_MapActive();
   CHECK(mapready.fogeligible==1 && mapready.fogcompiled==1 && compile_calls==1 && !f.permu[9]);
-  glslwarm_mem=1;cl.fog[1].density=0;r_shaders=shaders;}
+  glslwarm_mem=1;cl.worldmodel=NULL;history.bits[0]&=~(1u<<12);r_shaders=shaders;}
  puts("PASS readiness acting controls: dedup/masking, completion, timeout, fallback, failed/unrequested resources, renderer modes, late work/reset, whole small programs, fog variants");
  printf("checks %i\n",checks);return 0;
 }
