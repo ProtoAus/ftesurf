@@ -272,7 +272,10 @@
   review F4; correct, slower). Keeping the backstop across the FIFO wait needs it disarmed on every later dispatch.
 - A stringcmd hold released on a command predicts walk afterwards (wop_heldmode NONE); a noclip hold is corrected
   once (round-2 N2). With cl_sl_leadin 0 the 0.15 s wait for the held row can start at key-up, not at the answer,
-  when the D string never arrives (past WOPCHAIN_MAX): bounded extra latency (round-3 R2).
+  when the D string never arrives (past WOPCHAIN_MAX): bounded extra latency (round-3 R2). CLOSED by P1582: the HUD
+  text reads SaveLoc_LeadDone at any lead-in now, so the wait starts at the answer.
+- tools/test_warpop_reset_order.py has not compiled since P1544/P1547 (WOPP_ANY, Trail_RequestOpSave, wop_fifoload,
+  wop_strat, WarpOp_SaveExpired/SaveFrame missing from its doubles): same errors at f5d4450f (16 Nov, before P1582).
 
 - JARGON optional spots / `SV_TASAutoSpots` reference geometry (13 Nov, P1541 investigation): tensor2 stage2's guide-point128u ray missed, so d0=-1 silently rejected every alternative even with all eligibility guards clear. A native-reached-state/player-box prototype yielded4valid points and played3alternatives, but lost the matched seed1 comparison (12.720/298wall seconds versus12.450/217); it was removed, not accepted as a pathing fix. A missed ray does NOT prove a normal mismatch or physical unreachability. Falsifier for a future repair: demonstrate actual alternatives with native-face/body-clearance and existing finish/rewind authority, then improve the actual completed path at matched effort—not merely activate more searches. Source/diagnostic provenance: tools/p1541-jargon-search.md and retained jargon-sol-1113a artifacts.
 

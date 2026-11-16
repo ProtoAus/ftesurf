@@ -61,3 +61,21 @@ A load is predicted when WarpOp_Load queues it with a known row. Otherwise:
   frame"): Lex's 1721 trail files are median ~940 rows, p90 ~5200, p99 ~21700, max ~38000 -- about 1 ms, 3-6 ms,
   13-24 ms at 0.6-1.1 us a row on this i9 (45k rows: 28-40 ms over a 10 ms frame here, 30-53 ms in P1384).
 - The hold itself (frozen at the save while the key is down) is the save-lock design.
+
+## Review
+
+Two rounds, read. Round 1 (9876bac1): no control-flow bug; "Loading save" was hidden at lead-in 0 (a server-waiting
+load froze with no word) and the note mislabelled a press queued behind a save -- fixed in 8b5d560e. Round 2: no
+bug; the note missed two stringcmd paths (now noted where sl_load is sent, SaveLoc_Cmd); at lead-in 0 the held-row
+wait now starts at the answer (BACKLOG round-3 R2 closed).
+
+## Delivery
+
+LIVE 16 Nov 2026 ~03:18Z, one lobby deploy agreed with ftesurf-dc and ftesurf-31: `build.ps1 -Pi` from main
+8b5d560e (P1572 + P1576 + P1582; fteqcc 1f2efd06, 0 warnings). Nobody on; warned, swapped, 12 restarted, active.
+- Lobbies: qwprogs 56f3de88 / csprogs 92f9604e (.prev 52f3c098 / 71f708cf, P1573).
+- Both installs: csprogs 92f9604e (.prev fc726221); qwprogs 56f3de88 and menu 76d94dfd unchanged; csprogsvers
+  a05e0981 seeded in both. tasrevd codes.txt 143 -> 144 (backup .pre1582).
+- tools/pi_lobby_smoke.py against 27510: PASS (served csprogs 92f9604e, board drew, no QC error).
+- The round-2 note move rides the next deploy (diagnostic only).
+

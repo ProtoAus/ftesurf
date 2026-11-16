@@ -1103,7 +1103,7 @@ float() WarpOp_LoadLead =
 
 float() WarpOp_LoadPredicted = { return wop_loadpred; };     // P1544: SaveLoc_FifoLoad
 
-// P1582: a load press whose sl_load/sl_hold go as stringcmds (WarpOp_Load refused); its release waits for the answer.
+// P1582: an sl_load sent as a stringcmd (SaveLoc_Cmd); wop_why is the last WarpOp_Load refusal.
 void() WarpOp_LoadNote = { PE_Note(strcat("load not on a command: ", wop_why)); };
 
 // P1544: SaveLoc_Release of a stringcmd hold the server has answered (SaveLoc_StringHoldDone).

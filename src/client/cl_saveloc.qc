@@ -297,6 +297,7 @@ float() Trail_RequestBusy;
 float() Trail_RequestDispatching;
 float() WarpOp_Charge;
 float(float charged) WarpOp_Save;
+void() WarpOp_LoadNote;
 // P1547: cltime a body-moving stringcmd went (a reset's fallback, zone_goto, ms_resume): WarpOp_Save
 // waits it out, as that reliable could still be run after a save on a later command.
 float wop_strat;
@@ -347,6 +348,9 @@ void(string c) SaveLoc_Cmd =
 		if (rec_sl_pv_on)
 			rec_sl_pv_ack = rec_sl_sent;
 	}
+	// P1582 review 2: every sl_load sent as a stringcmd, whatever queued or refused it, notes why once.
+	if (!strcmp(c, "sl_load"))
+		WarpOp_LoadNote();
 	c = Trail_Command(c);
 	localcmd(strcat("cmd ", c, "\n"));
 };
@@ -440,7 +444,6 @@ float() WarpOp_Release;
 float() WarpOp_LoadRefused;
 float() WarpOp_LoadAnswered;
 float() WarpOp_LoadLead;
-void() WarpOp_LoadNote;
 void() WarpOp_Frame;
 float(float op, float rep) WarpOp_Step;
 
@@ -697,8 +700,6 @@ void(float scan) SaveLoc_LoadKey =
 		rec_sl_pred     = WarpOp_LoadLead();    // after rec_sl_holding: SaveLead_Ready reads it
 		return;
 	}
-	if (!Trail_RequestBusy())
-		WarpOp_LoadNote();          // queued behind a save, SaveLoc_FifoLoad decides (and notes)
 	rec_sl_wophold = FALSE;
 	rec_sl_pred = FALSE;
 	rec_sl_fifoload = Trail_RequestBusy();
@@ -739,7 +740,6 @@ float() SaveLoc_FifoLoad =
 	if (!WarpOp_Able())
 	{
 		rec_sl_fifoload = FALSE;
-		WarpOp_LoadNote();          // P1582
 		return 0;
 	}
 	// WarpOp_Load refuses while any sl_ stringcmd is unanswered: one queued behind another reliable
@@ -757,10 +757,7 @@ float() SaveLoc_FifoLoad =
 	ok = WarpOp_Load();
 	wop_fifoload = FALSE;
 	if (!ok)
-	{
-		WarpOp_LoadNote();          // P1582
 		return 0;
-	}
 	rec_sl_wophold = TRUE;
 	rec_sl_holdack = rec_sl_holdackat = 0;
 	if (rec_sl_upwait && WarpOp_LoadPredicted())
