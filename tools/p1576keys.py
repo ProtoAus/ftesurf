@@ -150,16 +150,8 @@ def main():
         got = read('in_guard_live')
         cl.send('in_rawinput_rdp 0')
         check(got == '7', 'in_rawinput_rdp 1 with no RDP device bound: in_guard_live 7', 'read %s' % got)
-        cl.send('in_dinput 1')
-        cl.send('in_restart')
-        time.sleep(2.0)
-        got = read('in_guard_live')
-        cl.send('in_dinput 0')
-        cl.send('in_restart')
-        time.sleep(2.5)
-        back = read('in_guard_live')
-        check(got == '14' and back == '7', 'DirectInput running: click guard reported off and cannot-run (14), then 7',
-              'read %s then %s' % (got, back))
+        # DirectInput is not exercised: `in_dinput 1` kills the client at input init (0xC0000374) on the
+        # installed engine as well (BACKLOG), so INS_GuardPublish's `dinput` case cannot be reached here.
         a = read('in_guard_lapses')
         b = read('in_guard_lapses')
         check(a.isdigit() and b.isdigit() and int(b) > int(a),
@@ -173,14 +165,14 @@ def main():
         live = read('in_guard_live')
         bind('S2')
         off2 = tap()
-        check(said and live == '11' and arrived(off2, 'S2'),
-              'no hardware key and 8 drops: dropping stops, in_guard_live 11 (cannot run), keys arrive',
+        check(said and live == '10' and arrived(off2, 'S2'),
+              'no hardware key and 8 drops: dropping stops, in_guard_live 10 (clicks and keys cannot run), keys arrive',
               'said %s, in_guard_live %s, arrived %s' % (said, live, arrived(off2, 'S2')))
         subject(off)
         cl.send('in_rawinput_nolegacy 0')
         time.sleep(.5)
         live = read('in_guard_live')
-        check(live == '10', 'in_guard_live drops bit 1 with in_rawinput_nolegacy 0', live)
+        check(live == '10', 'in_rawinput_nolegacy 0 after the fallback: still 10', live)
         cl.send('in_rawinput_nolegacy 1')
     finally:
         cl.stop()

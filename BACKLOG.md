@@ -43,6 +43,9 @@
   observer a gate instead of a count would close it, at the cost of holding each legacy key until the raw
   report arrives.
 - Out of scope by design: an in-process hook, and a device that presents itself as a keyboard or mouse.
+- `in_dinput 1` kills the client at input init (exit 0xC0000374, heap corruption) -- from launch and via
+  in_restart, on the installed engine (27697bbc) as on 1576's. P1576 reports the click guard off while
+  DirectInput runs, but nothing can reach that state until the crash is fixed.
 - Relayed nonce (plan item 12): the sweeper never runs rcptcheck.join_server. Measured 16 Nov over 2,296 real
   receipts: 2,295 sign 180.150.62.57:<svport>, one the Pi's LAN address 192.168.1.102:<svport>. Allow those two
   and fault anything else (admin-only; receipt faults demote nothing). Needs the next surfd generation.
