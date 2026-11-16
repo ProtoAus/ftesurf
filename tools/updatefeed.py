@@ -33,7 +33,7 @@ PREFIXES = ("ftesurf/gfx/", "ftesurf/glsl/", "ftesurf/particles/", "ftesurf/scri
 LEGACY, WORLDOFSURF = "ftesurf", "worldofsurf"
 IDENTITIES = {
     LEGACY: ("ftesurf/", {"win64": "ftesurf64.exe", "linux64": "ftesurf64"}),
-    WORLDOFSURF: ("worldofsurf/", {"win64": "WorldofSurf.exe", "linux64": "worldofsurf"}),
+    WORLDOFSURF: ("worldofsurf/", {"win64": "WorldofSurf.exe", "linux64": "worldofsurf64"}),
 }
 REQUIRED = ("menu.dat", "csprogs.dat", "qwprogs.dat")  # below the identity's gamedir
 

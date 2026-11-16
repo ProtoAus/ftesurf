@@ -283,9 +283,7 @@ def variant(name):
 
 
 class IdentityTests(unittest.TestCase):
-    """P1593: exactly two identities, never mixed within one feed.
-
-    Windows stages only: the worldofsurf Linux exe and gamedir share one name, so no directory can hold that stage."""
+    """P1593: exactly two identities, never mixed within one feed."""
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='identity-', dir=WORK)
@@ -296,8 +294,8 @@ class IdentityTests(unittest.TestCase):
 
     def build(self, f, game, name, version='0.1.25', **kwargs):
         base = self.root / f.__name__ / name
-        f.build({'win64': stage(base / 'win64', 'win64', game)}, base / 'feed', version,
-                ['https://dl.proto.bar/ftesurf/update'], SEED, KEY, game=game, **kwargs)
+        stages = {p: stage(base / p, p, game) for p in ('win64', 'linux64')}
+        f.build(stages, base / 'feed', version, ['https://dl.proto.bar/ftesurf/update'], SEED, KEY, game=game, **kwargs)
         return base / 'feed/update.json'
 
     def refusals(self, f):
@@ -356,9 +354,12 @@ class IdentityTests(unittest.TestCase):
                 self.assertEqual(payload['game'], game)
                 feed.validate(payload, game)
                 self.assertEqual(payload['exec'], {'cmd': exes['win64'], 'args': ['-manifest', 'default.fmf']})
-                self.assertEqual(payload['exec_by_platform']['win64']['cmd'], exes['win64'])
-                self.assertEqual(sorted(f['path'] for f in payload['files']),
-                                 sorted([exes['win64'], 'default.fmf', *(gamedir + leaf for leaf in feed.REQUIRED)]))
+                self.assertEqual(feed.platforms(payload), {'win64', 'linux64'})
+                for platform in ('win64', 'linux64'):
+                    self.assertEqual(payload['exec_by_platform'][platform]['cmd'], exes[platform])
+                    self.assertEqual(sorted(f['path'] for f in payload['files'] if f['platform'] in ('all', platform)),
+                                     sorted([exes[platform], 'default.fmf', *(gamedir + leaf for leaf in feed.REQUIRED)]))
+                self.assertTrue(next(f for f in payload['files'] if f['path'] == exes['linux64'])['exec'])
 
     def test_cross_mixed_and_outside_feeds_are_refused(self):
         for case, refused in self.refusals(feed).items():
@@ -379,10 +380,10 @@ class IdentityTests(unittest.TestCase):
                 self.assertFalse(feed.managed(swapped, 'ftesurf'))
         for p in ('default.fmf', 'LICENSE', 'notices/a.txt', 'ftesurf.sh', 'fteplug_hl2_x64.dll'):
             self.assertTrue(feed.managed(p, 'worldofsurf') and feed.managed(p, 'ftesurf'), p)
-        for legacy, new in (('ftesurf64.exe', 'WorldofSurf.exe'), ('ftesurf64', 'worldofsurf')):
+        for legacy, new in (('ftesurf64.exe', 'WorldofSurf.exe'), ('ftesurf64', 'worldofsurf64')):
             self.assertTrue(feed.managed(legacy, 'ftesurf') and feed.managed(new, 'worldofsurf'))
             self.assertFalse(feed.managed(new, 'ftesurf') or feed.managed(legacy, 'worldofsurf'))
-        for p in ('worldofsurf.exe', 'WORLDOFSURF/menu.dat', 'WorldofSurf/menu.dat', 'quakers/menu.dat'):
+        for p in ('worldofsurf', 'worldofsurf.exe', 'WORLDOFSURF/menu.dat', 'WorldofSurf/menu.dat', 'quakers/menu.dat'):
             self.assertFalse(feed.managed(p, 'worldofsurf'), p)
         # The 240 limit is on the real path: the longer gamedir never buys a longer on-disk path.
         self.assertTrue(feed.managed('worldofsurf/gfx/' + 'a' * 219 + '.png', 'worldofsurf'))
