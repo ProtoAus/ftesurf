@@ -121,16 +121,29 @@ def unique_keys(pairs: list) -> dict:
     return dict(pairs)
 
 
+STRINGS = re.compile(r'"((?:[^"\\]|\\.)*)"(\s*:)?')
+
+
+def escaped_key(text: str) -> bool:
+    """A key holding an escape: the engine compares raw names. Only on text json.loads accepted, where
+    strings are found in order, so a string followed by ':' is a key."""
+    return any(m.group(2) and "\\" in m.group(1) for m in STRINGS.finditer(text))
+
+
 def verify(data: bytes, public_key: str = PUBLIC_KEY) -> dict:
     if len(data) > MAX_FEED:
         raise ValueError("update feed exceeds reader limit")
     signed = json.loads(data, object_pairs_hook=unique_keys)
-    if not isinstance(signed, dict) or set(signed) != {"payload", "signature"}:
+    if not isinstance(signed, dict) or set(signed) != {"payload", "signature"} or escaped_key(data.decode("utf-8")):
         raise ValueError("update envelope must hold exactly payload and signature")
+    if not isinstance(signed["signature"], str) or not re.fullmatch(r"[0-9a-f]{128}", signed["signature"]):
+        raise ValueError("update signature must be 128 lowercase hex digits")
     text = signed["payload"]
     if not isinstance(text, str) or "\0" in text or not ed25519.verify(bytes.fromhex(public_key), text.encode(), bytes.fromhex(signed["signature"])):
         raise ValueError("update manifest signature is invalid")
     payload = json.loads(text, object_pairs_hook=unique_keys)
+    if escaped_key(text):
+        raise ValueError("escaped key in signed update")
     if not isinstance(payload, dict):
         raise ValueError("update payload must be an object")
     return payload
@@ -229,8 +242,19 @@ def check_manifest(data: bytes, game: str) -> None:
         raise ValueError("default.fmf is not UTF-8") from None
     if any((ord(c) < 32 and c not in "\n\t") or c == "\x7f" for c in text) or "/*" in text:
         raise ValueError("default.fmf holds a control character or a block comment")
-    if "\\" in text or '""' in text or any(line.count('"') % 2 for line in text.split("\n")):
-        raise ValueError("default.fmf holds a backslash, an empty quoted string or an unpaired quote")
+    if "\\" in text or '""' in text:
+        raise ValueError("default.fmf holds a backslash or an empty quoted string")
+    for line in text.split("\n"):
+        # A quote opens after whitespace and closes before it, on its own line: the engine keeps a
+        # quote glued to a word inside the word, and an open quote runs on past the newline.
+        quoted = False
+        for i, c in enumerate(line):
+            if c == '"':
+                if line[i - 1:i] not in ("", " ", "\t") if not quoted else line[i + 1:i + 2] not in ("", " ", "\t"):
+                    raise ValueError("default.fmf holds a quote glued to a word")
+                quoted = not quoted
+        if quoted:
+            raise ValueError("default.fmf holds an unpaired quote")
     found = {}
     for line in text.split("\n"):
         tokens = []

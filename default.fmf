@@ -11,7 +11,7 @@ BASEGAME "ftesurf"
 // Everything (configs, screenshots, demos, the map index) writes under
 // the ftesurf/ gamedir rather than My Games.  basedir is the process CWD
 // (sys_win.c:4787-4798), so launch the exe from the install root -- which is
-// what ftesurf.bat's `cd /d "%~dp0"` is for.
+// what ftesurf.bat's `cd /d %~dp0` is for.
 DISABLEHOMEDIR 1
 
 // Saved config is ftesurf.cfg, not the generic fte.cfg.
