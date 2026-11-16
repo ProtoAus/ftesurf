@@ -1641,6 +1641,14 @@ def case_profile_verdict():
                     "a %s finish verdict with the bit clear is a fault" % word)
         ok_clean(head(b, "flags", str(2048)),
                  "...and with the bit set passes clean")
+    # P1581: missing prop models are named, never faulted; a malformed line is a note.
+    ok_clean(insert_before(build(), "begin", "propmiss 0"), "propmiss 0 passes clean")
+    notes_with(insert_before(build(), "begin", "propmiss 2 models/a.mdl models/b.mdl"),
+               "content skew, not tampering", "missing prop models are named as content skew")
+    notes_with(insert_before(build(), "begin", "propmiss 12 m1 m2 m3 m4 m5 m6 m7 m8"), ", ...",
+               "more missing than listed says so")
+    notes_with(insert_before(build(), "begin", "propmiss 1 a b"), "malformed",
+               "more names than the count is malformed (a note)")
     # P1576: the guard values beside the verdict; a malformed line is a note.
     ok_clean(insert_before(insert_before(build(), "begin", "inprof ok 15 1 0 0 1"), "begin", "inguard 1 11 1 0 1"),
              "an inguard header with five numbers passes clean")

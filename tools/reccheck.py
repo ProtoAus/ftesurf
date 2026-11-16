@@ -303,6 +303,7 @@ HEAD_V8 = HEAD_V7
 HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule", "movebnd", "holdclock", "viewclock", "anglecause",
                      "inprof",      # Patch 840, additive
                      "inguard",     # Patch 1576, additive
+                     "propmiss",    # Patch 1581, additive
                      "momtrig",     # Patch 869, additive
                      "entfile",     # Patch 890, additive
                      "tickparts",   # Patch 893, additive
@@ -1186,6 +1187,24 @@ def _check_rec(r, path, verbose=False, *, data=None):
                 r.info["inguard_keys"] = {1: "dropped", 0: "off", 2: "cannot run"}.get(int(vals[4]), "unknown")
             else:
                 r.info["inguard_keys"] = "not measured (engine before 1576)" if vals[0] else "not reported"
+
+    # Patch 1581: `propmiss <n> [<model>...]`, prop models the lobby failed to load. Not a fault in
+    # either direction: it explains a replay mismatch as content skew, it does not excuse one.
+    pm = head.get("propmiss")
+    if pm is not None:
+        f = pm.split()
+        try:
+            n = int(f[0])
+            if n < 0 or len(f) - 1 > min(n, 8):
+                raise ValueError
+        except (ValueError, IndexError):
+            r.note("header 'propmiss' is malformed: %r" % pm.strip())
+        else:
+            r.info["propmiss"] = n
+            if n:
+                r.note("the lobby failed to load %d prop model(s) when it spawned this map (%s%s): a replay "
+                       "mismatch on this run is content skew, not tampering"
+                       % (n, ", ".join(f[1:]), ", ..." if n > len(f) - 1 else ""))
 
     # ---- body --------------------------------------------------------------
     samples = []            # (t, cols)

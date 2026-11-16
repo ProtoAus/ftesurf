@@ -7375,6 +7375,27 @@ float vbsp_prop_bboxphy_n;
 // either that cvar_set stopped working or the model genuinely failed to load,
 // and both look identical on screen (a prop you walk through) without it.
 float vbsp_prop_nobox_n;
+// P1581: their model names (unique, spaces as '_', at most PROPMISS_MAX listed) for the `.rec`'s `propmiss`,
+// so a replay mismatch on a lobby that missed newly installed content names what was missing.
+string vbsp_prop_missing;
+float vbsp_prop_missing_n;
+#define PROPMISS_MAX 8
+void(string m) SV_PropMissing =
+{
+	local string old;
+	if (m == "")
+		return;
+	m = strreplace(" ", "_", m);
+	if (strstrofs(strcat(" ", vbsp_prop_missing, " "), strcat(" ", m, " ")) >= 0)
+		return;
+	vbsp_prop_missing_n = vbsp_prop_missing_n + 1;
+	if (vbsp_prop_missing_n > PROPMISS_MAX)
+		return;             // counted, not listed
+	old = vbsp_prop_missing;
+	vbsp_prop_missing = strzone(old == "" ? m : strcat(old, " ", m));
+	if (old != "")
+		strunzone(old);
+};
 float vbsp_water_n, vbsp_reltele_n;
 float vbsp_need_report;
 
@@ -7405,6 +7426,10 @@ void() SV_EntityReset =
 	vbsp_prop_bbox_n = 0;
 	vbsp_prop_bboxphy_n = 0;
 	vbsp_prop_nobox_n = 0;
+	if (vbsp_prop_missing != "")
+		strunzone(vbsp_prop_missing);
+	vbsp_prop_missing = "";               // P1581
+	vbsp_prop_missing_n = 0;
 	vbsp_water_n = vbsp_reltele_n = 0;
 	vbsp_need_report = TRUE;
 	tpl_built = tpl_count = 0;      // P1425: CheckSpawn captures this map's named entities
@@ -7986,7 +8011,10 @@ void(float defsolid) SV_SpawnProp =
 	// reaches here with no size is one the player will walk straight through,
 	// and it is otherwise completely silent.
 	if (self.size == '0 0 0')
+	{
 		vbsp_prop_nobox_n = vbsp_prop_nobox_n + 1;
+		SV_PropMissing(self.model);         // P1581
+	}
 
 	self.movetype = MOVETYPE_NONE;
 

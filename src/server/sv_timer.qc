@@ -3147,6 +3147,14 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             the `pe` digest check, which downgrades a mismatch to
                             "not comparable" when the file predates the rule
                             rather than reporting it as a difference
+    propmiss <n> [<model>...]
+                            Patch 1581, additive.  Prop models this lobby failed to
+                            load when it spawned the map (bounds came back empty, so a
+                            player walks through them): n distinct, the first 8
+                            listed (spaces as '_').  A replay with the models present
+                            then differs on `state`/`pe`; this says that is content
+                            skew, not tampering.  Static props (built into collision by
+                            the hl2 plugin) are not covered.  Absent: an older build.
     owner <name>            may contain spaces; read to end of line
     runid <str>             unique-ish: local wall clock to the second + slot
     nonce <hex32>           Patch 416.  The 128 bits the server picked when this
@@ -5873,6 +5881,7 @@ void(entity e) SV_RecOpen =
 	    1           prop scale floored to 1/16, matching the wire and the client
 	*/
 	SV_RecPut(e, "proprule 1");
+	SV_RecPut(e, strtrim(sprintf("propmiss %g %s", vbsp_prop_missing_n, vbsp_prop_missing)));   // P1581
 	SV_RecPut(e, sprintf("momtrig %g", e.run_momon));     // Patch 869, additive
 	SV_RecPut(e, strcat("entfile ", ftos(stof(serverkey("*entfile")))));     // Patch 890: "" = 0
 	SV_RecPut(e, strcat("tickparts ", ftos(cvar("sv_tickparts") >= 1)));     // Patch 893: as the engine's ival > 0
