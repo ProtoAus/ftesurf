@@ -1182,6 +1182,7 @@ float rec_retry_armed;
 */
 // run_movetick: native cumulative mover ticks, declared in sv_monolith.qc (P732).
 .float  run_movecarry;           // sub-tick remainder, seconds
+.float  run_movestamina;         // P1589: cs16's fuser2 after the move, ms (engine-written)
 // P924: one atomic stat pairs the native phase with its player and command.
 .float svpm_phase_lo, svpm_phase_hi;
 .string svpm_phase_stat;
