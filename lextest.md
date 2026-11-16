@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1582 save-lock lead-in off by default -- owner check PENDING (record: tools/p1582-savelock.md)
+- On a lobby, press your load key the way you normally do: you should be at the save on the press with no
+  run-up, and off at the saved speed the moment you let go. The console says "saves: a load puts you at the save at
+  once now" the first time if your config still had the old lead-in.
+- Ask a player with high ping (200-300 ms) who sent a video to try again. If they still see a wait, ask them to press
+  F6 right after it: the report now says "load not on a command: <why>" when a load had to wait for the server.
+
 ## P1572 Jargon pushes, Results and Tuning -- owner check PENDING (record: tools/p1572-delivery.md)
 - surf_rookie in your own game: Jargon should go through the push at the end of stage 1 into the teleport instead of stopping in front of it. (The stage 2 start after it is P1579's.)
 - Open Results while it runs: does each waypoint's line (tries, time, "lines ended by") make sense, and is the hint under it useful?

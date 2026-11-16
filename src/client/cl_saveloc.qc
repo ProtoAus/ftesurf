@@ -238,7 +238,7 @@ void() SaveLoc_RegisterCvars =
 	registercommand("-sl_hold");    // the `-` form on release (keys.c:4199-4203)
 
 	registercvar("cl_slpredict", "1", CVAR_ARCHIVE);    // Patch 430: draw the load at once
-	registercvar("cl_sl_leadin", "1", CVAR_ARCHIVE); // visual run-up while held (P1462: never a hold); existing preferences retained
+	registercvar("cl_sl_leadin", "0", CVAR_ARCHIVE); // visual run-up while held (P1462: never a hold); P1582: off by default (HE_MigrateDefaults)
 };
 
 /*
@@ -440,6 +440,7 @@ float() WarpOp_Release;
 float() WarpOp_LoadRefused;
 float() WarpOp_LoadAnswered;
 float() WarpOp_LoadLead;
+void() WarpOp_LoadNote;
 void() WarpOp_Frame;
 float(float op, float rep) WarpOp_Step;
 
@@ -696,6 +697,7 @@ void(float scan) SaveLoc_LoadKey =
 		rec_sl_pred     = WarpOp_LoadLead();    // after rec_sl_holding: SaveLead_Ready reads it
 		return;
 	}
+	WarpOp_LoadNote();
 	rec_sl_wophold = FALSE;
 	rec_sl_pred = FALSE;
 	rec_sl_fifoload = Trail_RequestBusy();

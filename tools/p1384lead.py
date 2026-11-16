@@ -399,6 +399,10 @@ def grade(seg):
             if d > 30:                  # walking at 200 u/s moves the eye ~2 u a frame
                 jumps.append((round(r['t'] - t0, 3), round(d)))
         prev = r['cam']
+    # Every frame, the release's included: a lead-in let go mid-travel snaps there (P1582).
+    all_jumps = [(round(b['t'] - t0, 3), round(sum((x - y) ** 2 for x, y in zip(b['cam'], a['cam'])) ** 0.5))
+                 for a, b in zip(rows, rows[1:])
+                 if sum((x - y) ** 2 for x, y in zip(b['cam'], a['cam'])) ** 0.5 > 30]
     gaps = [(round(b['t'] - t0, 3), round(b['t'] - a['t'], 3)) for a, b in zip(rows, rows[1:])
             if b['t'] - a['t'] > 0.03]
     texts = []
@@ -410,7 +414,8 @@ def grade(seg):
             'press_to_travel': None if travel is None else round(travel['t'] - t0, 4),
             'press_to_release': None if rel is None else round(rel['t'] - t0, 4),
             'max_eye_jump_held': round(jump, 1), 'eye_jumps_held': jumps, 'first_countdown': next((r['txt'] for r in held if 'ms' in r['txt']), None),
-            'texts': texts, 'frame_gaps': gaps, 'prederr': len(re.findall(r'prederr: seq ', seg)), **split}
+            'texts': texts, 'frame_gaps': gaps, 'prederr': len(re.findall(r'prederr: seq ', seg)),
+            'eye_jumps_all': all_jumps, **split}
 
 
 def main():
@@ -421,6 +426,9 @@ def main():
     ap.add_argument('--delays', default='0,150,300')
     ap.add_argument('--lead', default='1')
     ap.add_argument('--hold', action='store_true')
+    ap.add_argument('--holdfor', type=float, default=0, help='hold the load key this long (a real press, P1582)')
+    ap.add_argument('--precfg', action='append', default=[],
+                    help='a client launch-cfg line, run before CSQC starts, e.g. "seta cl_sl_leadin 1" (P1582 migration)')
     ap.add_argument('--step', action='store_true', help='rounds that save twice, hold-load the second '
                     'and step back to the first (sl_prev) 0.4 s into the hold')
     ap.add_argument('--split-stats', type=int, choices=(0, 1, 2, 3, 4, 5, 6, 7), default=0,
@@ -463,11 +471,20 @@ def main():
         sv.send('sv_cheats 1')
         clb = prepare(a.out, 'client', a.progs, cs)
         (clb / 'ftesurf/probe.cfg').write_text('\n'.join(common + [
-            'name "P1384Arm"', f'connect 127.0.0.1:{a.port}']) + '\n')
+            'name "P1384Arm"', *a.precfg, f'connect 127.0.0.1:{a.port}']) + '\n')
         cl = Peer(CONTENT / 'ftesurf64.exe', clb, 'probe.cfg')
         cl.wait('FTESurf CSQC loaded', timeout=120)
         time.sleep(4)
-        for line in ('menu_restart; ui_close', 'cl_prederror 4', f'cl_sl_leadin {a.lead}', 'cl_forwardspeed 200',
+        # P1582: --lead keep reads back what the game left (the migration's result) instead of setting it.
+        if a.lead == 'keep':
+            off = len(cl.text())
+            cl.send('cl_sl_leadin; cl_sl_leadin_rev')
+            time.sleep(1.0)
+            report['lead_kept'] = re.findall(r'"(cl_sl_leadin(?:_rev)?)" is "([^"]*)"', cl.text()[off:])
+            report['lead_moved_msg'] = 'a load puts you at the save at once now' in cl.text()
+            print('lead kept', report['lead_kept'], 'moved message', report['lead_moved_msg'], flush=True)
+        for line in ('menu_restart; ui_close', 'cl_prederror 4',
+                     *([] if a.lead == 'keep' else [f'cl_sl_leadin {a.lead}']), 'cl_forwardspeed 200',
                      'rec_savelock 1', 'p1384_probe 0', f'p1437_split_stats {a.split_stats}', *a.set):
             cl.send(line)
             time.sleep(0.3)
@@ -524,6 +541,10 @@ def main():
             elif hold:
                 cl.send('+sl_hold 50')
                 time.sleep(2.5)
+                cl.send('-sl_hold 50')
+            elif a.holdfor:
+                cl.send('+sl_hold 50')
+                time.sleep(a.holdfor)
                 cl.send('-sl_hold 50')
             else:
                 cl.send('+sl_hold 50;-sl_hold 50')

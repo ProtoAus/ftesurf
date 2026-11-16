@@ -1,4 +1,7 @@
 # The engine build this QuakeC requires.
+# Patch 1582 (QC only): cl_sl_leadin defaults to 0 and a config still on 1 is moved once (cl_sl_leadin_rev);
+# held for a real press it showed the path before the save, then snapped ~200 u (players' "load stutter").
+# A load press not sent on a command notes why in the prederror ring. Record: tools/p1582-savelock.md.
 # Patch 1572: tas_rollout follows trigger_push for a body whose run_tasrollpush is 1 (QC sets it during a Jargon
 # search; tas_jargon_off 4194304 turns it off); Jargon's panel gains Results and Tuning tabs (tas_jargon_w_*). An
 # older engine ignores the fields: pushes end predictions there as before. Record: tools/p1572-delivery.md.

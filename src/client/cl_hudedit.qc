@@ -737,7 +737,7 @@ string(string id, float row) HE_OptDef =
 	if (id == "saves")
 	{
 		if (row == 0) return "cl_sl_leadin|Lead-in|n|1000 0 2000|ms"
-		                     "|Click and type 0..2000 milliseconds, then Enter. A saved path travels into the save while you hold the load key; letting go starts you at once from the save. Starts on the press, at any ping. 0 turns the run-up off.";
+		                     "|Click and type 0..2000 milliseconds, then Enter. A saved path travels into the save while you hold the load key; letting go starts you at once from the save. Starts on the press, at any ping. 0 (the default) turns the run-up off.";
 		return "";
 	}
 	if (id == "ghost")
@@ -2311,7 +2311,7 @@ void() HE_ResetAll =
 	         "seta hud_ghost_offset 0.5\nseta hud_ghost_alpha 0.25\nseta hud_ghost_dither 1\nseta hud_ghost_near 256\n"
 	         "seta hud_ghost_names 1\n");
 	localcmd("seta hud_chat 1\n");          // Patch 798: default.cfg never sets it
-	localcmd("seta cl_sl_leadin 1\n"); // only the game code registers it
+	localcmd("seta cl_sl_leadin 0\n"); // only the game code registers it (P1582: off)
 	// Patch 824: the Chat pane's, literals for the same reason (only the game code registers them).
 	localcmd("seta hud_chat_size 20\nseta hud_chat_w 0.3\nseta hud_chat_rows 12\nseta hud_chat_full 1\n"
 	         "seta hud_chat_lines 6\nseta hud_chat_time 30\nseta hud_chat_bg 0.5\n");
@@ -2485,6 +2485,15 @@ void() HE_MigrateDefaults =
 			print("input: touchpads no longer move the view or click in game, and runs on one do not rank (in_rawinput_touchpad 1 brings it back, unranked)\n");
 		}
 		localcmd("seta in_guard_rev 1573\n");
+	}
+	// Patch 1582 (Lex, 16 Nov): no save lead-in by default. Held for a real key press (0.2 s) it played the path from a
+	// second before the save, then snapped ~200 u to it on key-up: players filmed it as a 200-300 ms load stutter.
+	registercvar("cl_sl_leadin_rev", "0", CVAR_ARCHIVE);
+	if (cvar("cl_sl_leadin_rev") < 1582)
+	{
+		if (HE_MoveOne("cl_sl_leadin", 1, "0"))
+			print("saves: a load puts you at the save at once now (cl_sl_leadin 0; 1 brings the run-up back)\n");
+		localcmd("seta cl_sl_leadin_rev 1582\n");
 	}
 	registercvar("hud_layout_rev", "0", CVAR_ARCHIVE);
 	/*

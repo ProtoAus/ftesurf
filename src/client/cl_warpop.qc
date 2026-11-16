@@ -653,17 +653,23 @@ float() WarpOp_Load =
 	if (!WarpOp_Able())
 		return FALSE;
 	// P1544: SaveLoc_FifoLoad's pair is the queue. P1547: a save on a command is carried before this.
+	// P1582: wop_why names each refusal for the prederror report (WarpOp_LoadNote).
+	wop_why = "a save is waiting for its answer";
 	if (Trail_RequestBusy() && !wop_fifoload && !Trail_RequestOpSave())
 		return FALSE;
 	// A pending reset also releases the old hold, before this load's command.
+	wop_why = "the server still holds a save and no release is in flight";
 	if (getstatf(STAT_FS_HOLD) && !relpending && !WarpOp_Pending(WOPP_RESET))
 		return FALSE;
 	SaveLoc_Resync();
+	wop_why = "a save-list command is unanswered";
 	if (rec_sl_sent != getstatf(STAT_FS_SLACK))
 		return FALSE;                   // a list command is in flight: the row may be stale
+	wop_why = "no saves";
 	if (WarpOp_SaveSlot() < 0)          // P1547: else that save is the cursor
 	if (getstatf(STAT_FS_SAVECOUNT) < 1 || getstatf(STAT_FS_SAVEINDEX) < 1)
 		return FALSE;
+	wop_why = "";
 	// Patch 759: after any load or step still unanswered.  Sent in order either
 	// way; unpredicted (blind) when its row is not published or the server's
 	// bucket would refuse it, and the server's answer corrects it as before.
@@ -676,6 +682,7 @@ float() WarpOp_Load =
 	{
 		if (charged)
 			wop_tok = wop_tok + 1;      // the stringcmd sent instead charges it
+		wop_why = "the op ring is full";
 		return FALSE;
 	}
 	wop_blind[wop_slot] = blind;
@@ -1095,6 +1102,9 @@ float() WarpOp_LoadLead =
 };
 
 float() WarpOp_LoadPredicted = { return wop_loadpred; };     // P1544: SaveLoc_FifoLoad
+
+// P1582: a load key press WarpOp_Load refused -- its release then waits for the server (SaveLoc_LeadDone).
+void() WarpOp_LoadNote = { PE_Note(strcat("load not on a command: ", wop_why)); };
 
 // P1544: SaveLoc_Release of a stringcmd hold the server has answered (SaveLoc_StringHoldDone).
 float() WarpOp_ReleaseString =

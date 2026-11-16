@@ -239,6 +239,11 @@
 
 ## Save-lock at ping -- leftovers of P1544 and P1547 (14 Nov)
 
+- P1582 (16 Nov): the players' "load stutter" was the lead-in (default now 0). Loads that still wait for the server:
+  the stringcmd pair (WarpOp_Able no, a stringcmd save unanswered, a server hold with no release in flight, an sl_
+  stringcmd unanswered) and blind ops; tools/p1582-savelock.md lists them. F6 reports now note "load not on a
+  command: <why>": count those before predicting more of them.
+
 - P1547 (predicted saves) leftovers, review rounds 2-4, all needing a lost packet or a rare order:
   a save whose op was dropped (3+ lost packets in a row) is only reported, not resent, and one whose
   answer was lost three times is reported though it exists (the user may save twice); body-moving
@@ -532,6 +537,10 @@ gave 0:12.825 and 5 backtracks on two builds).
   fenced step is known; any held step makes a release at round trips over 1 s go blind (the server
   corrects it); a travel's visibility eye starts only once the server's answer binds it.
 - Falsifier: tools/p1384lead.py --bigpic 45000 at 150 ms: the held frame gap at the answer.
+- P1582 (16 Nov) measured it at 250 ms with --holdfor 0.2: a 38 ms frame at +0.31 s (cl_maxfps 100). Lex's 1721 trail
+  files: median ~940 rows, p90 ~5200, p99 ~21700, max ~38000 (about 1, 3-6 and 13-24 ms here). A same-save reload
+  could skip the read (Trail_Save's rows are tr_raw's prefix until tr_raw is replaced), but bufstr_free does not
+  shrink a buffer, so truncating is still a per-row QC copy; reading across frames is the general fix.
 
 ## Water captures after P1386 (8 Nov): what is left
 
