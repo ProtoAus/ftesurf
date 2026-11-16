@@ -21,6 +21,9 @@
 
 ## next
 
+### P1595 ahop_coast and 76 more bhop maps are back in Maps
+- ahop_coast, the kz, df, deathrun and hl bhop maps and a few others that Momentum lists as bhop were hidden from the Maps list (even if you had them) because their names do not start with bhop_. They are listed and playable again.
+
 ### P1591 Autohop in every movement mode
 - Holding jump now hops again the moment you land in every practice movement mode (Half-Life 2 pre and post, AG 100, 250 and 1000, Counter-Strike 1.6), as it already did in normal surf.
 - Counter-Strike 1.6 still lowers each chained hop and caps fast jumps at about 240, as on a CS server with autobunnyhopping on. Half-Life 2 keeps its jump boost on every hop.

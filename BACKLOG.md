@@ -367,6 +367,10 @@
 - Downloads offer surf/bhop only: tools/maproster.py PREFIX, tools/mapscan.py, src/menu/m_lobby.qc Mdl_Row's mode
   check, surfd/mapmanifest.py. An ahop or kz map a player lacks cannot be fetched from the menu, so the chips show
   only what is installed. Falsifier: an ahop_ row in data/mapdl.txt and a fresh install fetching it from Maps.
+- P1595 (17 Nov): the directory's list now enables zoned native maps by the catalogue's mode (ahop_coast + 76), but
+  the shipped data/mapdl.txt still drops them (maproster.py PREFIX; 0.1.48 ships 2192 rows, the live list 2269), so a
+  player offline or without online consent sees them only after a poll. The Pi holds only Momentum's surf/bhop-mode
+  maps (P1496): 3 of 33 ahop (mode 9), none of the 241 mode-5 or 79 mode-6 climb maps (mapmeta.net.txt, 17 Nov).
 
 ## Save-lock at ping -- leftovers of P1544 and P1547 (14 Nov)
 
