@@ -1,6 +1,7 @@
 # The engine build this QuakeC requires.
 # Patch 1580 (backend only: surfd/sweep.py, tools/rcptcheck.py): the receipt sweeper faults, admin-only,
-# a signed server address outside SURFD_RCPT_HOSTS/SURFD_RCPT_PORTS (unset: not checked) and a run credited
+# a signed port that is not the writing lobby's svport, a signed address outside SURFD_RCPT_HOSTS/PORTS
+# (unset: host not checked; SURFD_RCPT_LAN a note), after every other join, and a run credited
 # to an account whose receipt key is none of its keylinks/installs/runpins (ROADMAP 14.3 b). `sig`, badges
 # and ranking unchanged; no schema, native pin/tag or QC Build change. Activation: tools/backend-pending.md.
 # Patch 1582 (QC only): cl_sl_leadin defaults to 0 and a config still on 1 is moved once (cl_sl_leadin_rev);

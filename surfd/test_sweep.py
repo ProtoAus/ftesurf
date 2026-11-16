@@ -293,8 +293,10 @@ def rcpt_settings(**values):
                 os.environ[k] = saved[k]
 
 
-def server_arm(servers, label, env_file="", **settings):
-    """One home, one receipt per signed address, one pass -> (n, bad, rows, stderr)."""
+def server_arm(servers, label, env_file="", svports=None, views=None, **settings):
+    """One home, one receipt per signed address, one pass -> (bad, rows, stderr).
+    `svports`/`views`: per receipt, None = honest (svport = signed port, the
+    signed .view on disk); a view given is written over the signed one."""
     surfd, sweep, runs = fresh()
     sweep.TOOLS = TOOLS
     conn = surfd.connect()
@@ -303,7 +305,12 @@ def server_arm(servers, label, env_file="", **settings):
         with open(os.environ["SURFD_ENV"], "a") as fh:
             fh.write(env_file)
     for i, server in enumerate(servers):
-        make_receipt(surfd.EVIDENCE_DIR, "20261116-0001%02d-0" % i, server=server, age=old)
+        rp, _pub = make_receipt(surfd.EVIDENCE_DIR, "20261116-0001%02d-0" % i, server=server,
+                                age=old, svport=(svports or {}).get(i))
+        if (views or {}).get(i) is not None:
+            with open(rp[:-5] + ".view", "wb") as fh:
+                fh.write(views[i])
+            os.utime(rp[:-5] + ".view", (old, old))
     err = io.StringIO()
     with rcpt_settings(**settings), contextlib.redirect_stderr(err):
         n, bad = sweep.receipt_step(conn)
@@ -345,6 +352,29 @@ def case_receipt_server_allowlist():
     check("surfd.env: read from the env file like every SURFD_ setting",
           [g[0] for g in got], ["VALID", "FAULT", "FAULT", "VALID"])
 
+    # The svport rule needs no setting; the host part stays "not configured".
+    bad, got, _err = server_arm(("180.150.62.57:27510", "180.150.62.57:27510", "203.0.113.9:27510"),
+                                "svport unset", svports={1: "27520"})
+    check("svport unset: only the port another lobby wrote FAULTs",
+          ([g[0] for g in got], "lobby that wrote this receipt is on 27520" in got[1][1]),
+          (["VALID", "FAULT", "VALID"], True))
+
+    # DTLS/WebSocket clients sign the address with its scheme (net_wins.c).
+    bad, got, _err = server_arm(("dtls://180.150.62.57:27510", "wss://180.150.62.57:27520",
+                                 "dtls://203.0.113.9:27510"), "scheme",
+                                SURFD_RCPT_HOSTS="180.150.62.57", SURFD_RCPT_PORTS=LOBBY_PORTS)
+    check("scheme: dtls:// and wss:// on ours VALID, a foreign host FAULT",
+          [g[0] for g in got], ["VALID", "VALID", "FAULT"])
+
+    # Ordering: one stored reason, and tamper evidence keeps it.
+    bad, got, _err = server_arm(("203.0.113.9:27510", "203.0.113.9:27510"), "ordering",
+                                views={0: b"FTESURF-VIEW 2\nnot the signed one\n"},
+                                SURFD_RCPT_HOSTS="180.150.62.57")
+    check("ordering: a mismatched .view AND a foreign address store the digest reason",
+          (got[0][0], "hashes to" in got[0][1], "203.0.113.9" in got[0][1]), ("FAULT", True, False))
+    check("ordering: CONTROL the address alone is the reason when nothing else faults",
+          (got[1][0], "203.0.113.9:27510" in got[1][1]), ("FAULT", True))
+
 
 def case_receipt_account_key():
     """ROADMAP 14.3 b: a run credited to an account, signed by a key that is not
@@ -363,7 +393,11 @@ def case_receipt_account_key():
             "20261116-000204-0": (14, A),      # unlinked since: in installs only
             "20261116-000205-0": (15, A),      # in this run's runpins only
             "20261116-000206-0": (13, "p"),    # guest (a guid), the unlinked key
-            "20261116-000207-0": (12, None)}   # no board row
+            "20261116-000207-0": (12, None),   # no board row
+            "20261116-000209-0": (16, A),      # forged: runpins holds A's REAL key
+            "20261116-000210-0": (13, None),   # runs row only (banned:ranked), unlinked key
+            "20261116-000211-0": (13, None),   # runs row only, a guest's
+            "20261116-000212-0": (11, None)}   # runs row only, A's linked key
     pubs = {}
     for i, (rid, (seed, player)) in enumerate(sorted(arms.items())):
         _p, pubs[rid] = make_receipt(surfd.EVIDENCE_DIR, rid, seed=bytes([seed]) * 32, age=old)
@@ -380,12 +414,30 @@ def case_receipt_account_key():
     conn.execute("INSERT INTO runpins (runid, map, track, install, player, why, at, pub)"
                  " VALUES (?, 'bhop_eazy', 0, 'g', ?, '', 1, ?)",
                  ("20261116-000205-0", A, key("20261116-000205-0")))
+    conn.execute("INSERT INTO runpins (runid, map, track, install, player, why, at, pub)"
+                 " VALUES (?, 'bhop_eazy', 0, 'g', ?, '', 1, ?)",
+                 ("20261116-000209-0", A, key("20261116-000201-0")))
+    for leg, (rid, tier, player) in enumerate((("20261116-000210-0", "banned:ranked", A),
+                                               ("20261116-000211-0", "ranked", "p"),
+                                               ("20261116-000212-0", "ranked", A)), start=1):
+        conn.execute("INSERT INTO runs (map, track, leg, tier, style, player, name, ticks,"
+                     " tickrate, millis, flags, node, runid, submitted)"
+                     " VALUES ('bhop_eazy', 0, ?, ?, 'normal', ?, 'n', 662, 100, 6620, 0, '1', ?, 1)",
+                     (leg, tier, player, rid))
     conn.commit()
     n, bad = sweep.receipt_step(conn)
     rows = {r[0]: tuple(r[1:]) for r in
             conn.execute("SELECT runid, verdict, reason, sig FROM receipts")}
     v = lambda rid: rows[rid][0]
-    check("account key: all read, two faults", (n, bad), (7, 2))
+    check("account key: all read, four faults", (n, bad), (11, 4))
+    check("account key: a runpins row with the account's real key does not pass another key",
+          (v("20261116-000209-0"), "linked to no account" in rows["20261116-000209-0"][1]),
+          ("FAULT", True))
+    check("account key: credited by a runs row (banned tier) when no replays row, FAULT",
+          v("20261116-000210-0"), "FAULT")
+    check("account key: CONTROL a guest's runs row VALID", v("20261116-000211-0"), "VALID")
+    check("account key: CONTROL a runs row with the account's linked key VALID",
+          v("20261116-000212-0"), "VALID")
     check("account key: linked to the account VALID", v("20261116-000201-0"), "VALID")
     check("account key: linked to another account FAULT, which one said",
           (v("20261116-000202-0"), "linked to account %s" % B in rows["20261116-000202-0"][1]),

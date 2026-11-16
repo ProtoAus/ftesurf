@@ -438,6 +438,9 @@ def join_server(r, expect):
                 "made on one server is not a receipt on another" % (got, expect))
 
 
+SERVER_SCHEMES = ("dtls://", "tls://", "tcp://", "ws://", "wss://", "udp://")
+
+
 def server_host(text):
     """A host as compared by join_server_allowed: an address object when it is
     one (brackets off, v4-mapped v6 as v4), else the lowered text."""
@@ -456,23 +459,31 @@ def join_server_allowed(r, hosts, ports=None, lan=None):
     ints, or None for any port; `lan`: LAN hosts, reported but never passed or
     faulted -- another server at that address on someone else's network reads
     the same.  The unsigned `svport` the writing lobby recorded must equal the
-    signed port.  No hosts is "not configured": a note, never a fault.
+    signed port, configured or not.  No hosts is "not configured" for the host:
+    a note, never a fault.
     """
     got = signed_get(r, "server")
-    if not hosts:
-        r.note("signed on %r -- no server allowlist configured, so nothing checked it" % got)
-        return
     if got is None:
         r.note("the receipt signs no server address")
         return
-    host, sep, port = got.rpartition(":")
-    if not sep or not host or not re.fullmatch(r"[0-9]{1,5}", port):
-        r.fault("the signed server %r is not host:port" % got[:80])
-        return
+    addr = got
+    for scheme in SERVER_SCHEMES:       # NET_AdrToString's prefixes (net_wins.c)
+        if addr.lower().startswith(scheme):
+            addr = addr[len(scheme):]
+            break
+    host, sep, port = addr.rpartition(":")
+    shaped = bool(sep and host and re.fullmatch(r"[0-9]{1,5}", port))
     sv = (r.head.get("svport") or "").strip()
-    if sv and sv != port:
+    if shaped and sv and sv != port:
         r.fault("signed for port %s, but the lobby that wrote this receipt is on %s -- "
                 "a signature made on another lobby is not a receipt here" % (port, sv[:8]))
+        return
+    if not hosts:
+        r.note("signed on %r -- no server allowlist configured, so nothing checked the host"
+               % got)
+        return
+    if not shaped:
+        r.fault("the signed server %r is not host:port" % got[:80])
         return
     if lan and server_host(host) in {server_host(h) for h in lan}:
         r.note("signed on %r, a LAN address: a server at that address on another network "

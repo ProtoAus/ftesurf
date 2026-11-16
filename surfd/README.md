@@ -716,19 +716,28 @@ no measured cron-path leak.
 
 ### Receipt address and account-key checks (Patch 1580)
 
-A first full read of a receipt also checks two things; either can set
-`receipts.verdict` FAULT with its `reason`, which only admin reads (`sig`
-stays 1, so nothing that credits a run moves):
+A first full read of a receipt also checks two things, after every other join
+(only the first fault is stored, so tamper evidence keeps first place). Either
+can set `receipts.verdict` FAULT with its `reason`, which only admin reads
+(`sig` stays 1, so nothing that credits a run moves):
 
-* **The signed server address** (plan item 12, a relayed nonce):
-  `SURFD_RCPT_HOSTS` (literal addresses, comma-separated) and optionally
-  `SURFD_RCPT_PORTS` (port numbers), read through the normal loader each pass.
-  Hosts unset or empty: not checked. An entry that does not parse turns the
-  check off and prints why to stderr.
+* **The signed server address** (plan item 12, a relayed nonce). A transport
+  scheme (`dtls://`, `tls://`, `tcp://`, `ws://`, `wss://`, `udp://`) is
+  stripped first. Always, with no setting: the signed port must equal the
+  receipt's `svport` (written by the lobby that took the signature), so a
+  nonce relayed between two of our own lobbies faults. With settings, read
+  through the normal loader each pass: `SURFD_RCPT_HOSTS` (public literal
+  addresses, comma-separated) the host must be in; `SURFD_RCPT_PORTS` (port
+  numbers) the port must be in; `SURFD_RCPT_LAN` (LAN addresses) reported as a
+  note, never passed or faulted, since another network's server at that
+  address signs the same string. Hosts unset or empty: the host is not
+  checked. An entry that does not parse turns the setting check off and prints
+  why to stderr.
 * **The key against the account** (ROADMAP 14.3 b): a run credited to an
-  account (`replays.player` in `accounts`) whose receipt key is in none of that
-  account's `keylinks`, `installs` or this run's `runpins`. A run no account is
-  credited with, missing tables or a read error is a note, never a fault.
+  account (`replays.player` in `accounts`, else a non-imported `runs` row with
+  the runid) whose receipt key is in none of that account's `keylinks`,
+  `installs` or this run's `runpins`. A run no account is credited with,
+  missing tables or a read error is a note, never a fault.
 
 ### Similarity runtime support (store-only)
 

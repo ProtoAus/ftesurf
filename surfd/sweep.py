@@ -515,13 +515,24 @@ def join_account_key(r, conn):
     try:
         have = {row[0] for row in conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN"
-            " ('accounts', 'keylinks', 'installs', 'runpins', 'replays')")}
+            " ('accounts', 'keylinks', 'installs', 'runpins', 'replays', 'runs')")}
         if not {"accounts", "keylinks", "replays"} <= have:
             r.note("account key not checked: no account tables here")
             return
         credited = [row[0] for row in conn.execute(
             "SELECT DISTINCT q.player FROM replays q JOIN accounts a ON a.steamid = q.player"
             " WHERE q.runid = ? AND q.kind IN ('run', 'evidence')", (runid,))]
+        if not credited and "runs" in have:
+            # A board row without a recording row.  runs has no runid index; the
+            # tier terms let runs_live (its NOT IN) serve (tier, player): 34 ms a
+            # receipt by runs_player at 50 accounts x 3,000 imported rows, ~0 here.
+            tiers = surfd.TIERS + tuple(surfd.accounts.BAN_TIER + t for t in surfd.TIERS)
+            credited = [row[0] for row in conn.execute(
+                "SELECT a.steamid FROM accounts a WHERE EXISTS (SELECT 1 FROM runs r"
+                " WHERE r.tier IN (%s) AND r.tier NOT IN (%s) AND r.player = a.steamid"
+                " AND r.runid = ?)" % (", ".join("?" * len(tiers)),
+                                        ", ".join("'%s'" % t for t in surfd.TIERS_IMPORTED)),
+                tiers + (runid,))]
         if not credited:
             r.note("account key not checked: no account is credited with this run")
             return
@@ -531,8 +542,7 @@ def join_account_key(r, conn):
                 sql.append("SELECT 1 FROM installs WHERE steamid = ? AND pub = ?")
                 args += [sid, pub]
             if "runpins" in have:
-                sql.append("SELECT 1 FROM runpins WHERE runid = ? AND player = ?"
-                           " AND why = '' AND pub = ?")
+                sql.append("SELECT 1 FROM runpins WHERE runid = ? AND player = ? AND why = '' AND pub = ?")
                 args += [runid, sid, pub]
             if conn.execute(" UNION ALL ".join(sql) + " LIMIT 1", args).fetchone():
                 continue
@@ -605,13 +615,6 @@ def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=
     if not journal_only:
         rcptcheck.join_rec(r)
         rcptcheck.join_ticks(r)
-        # getattr: game/tools can lag a surfd generation, and an AttributeError
-        # here would fail the whole receipt step every pass.
-        allowed = getattr(rcptcheck, "join_server_allowed", None)
-        if allowed is not None:
-            allowed(r, *(server_allow or (None, None, None)))
-        if accounts is not None:
-            join_account_key(r, accounts)
     rcptcheck.join_hid(r)
     observed = list(r.faults)
     # A separately scheduled missing view must not block a ready journal.
@@ -646,6 +649,16 @@ def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=
         # says is about some other journal (review of 70f1ea3).
         r.journal = "FAULT"
         r.journal_detail = "not the journal the receipt signed: %s" % r.digest_bad["hid"]
+    if not journal_only:
+        # LAST: only the first fault is stored, and any fault stops the journal
+        # custody above, so these must not displace or block tamper evidence.
+        # getattr: game/tools can lag a surfd generation, and an AttributeError
+        # here would fail the whole receipt step every pass.
+        allowed = getattr(rcptcheck, "join_server_allowed", None)
+        if allowed is not None:
+            allowed(r, *(server_allow or (None, None, None)))
+        if accounts is not None:
+            join_account_key(r, accounts)
     verdict = "VALID" if (r.ok is True and not r.faults) else "FAULT"
     reason = r.faults[0] if r.faults else ""
     return (verdict, r.head.get("pub", ""), r.head.get("map", ""),

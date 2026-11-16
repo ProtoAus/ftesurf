@@ -841,6 +841,20 @@ def test_server_allowlist():
     check("server: unset hosts fault nothing",
           (r.faults, any("no server allowlist configured" in m for m in r.notes)), ([], True))
     check("server: an empty host set is unset", judged("203.0.113.9:27510", h=set()).faults, [])
+    r = judged("203.0.113.9:27510", h=None, svport="27520")
+    check("server: unset hosts still fault a port the writing lobby is not on",
+          (len(r.faults), "is on 27520" in r.faults[0] if r.faults else None), (1, True))
+    for scheme in rcptcheck.SERVER_SCHEMES:
+        check("server: %s on ours passes" % scheme,
+              judged(scheme + "180.150.62.57:27510").faults, [])
+    check("server: DTLS upper-case scheme passes", judged("DTLS://180.150.62.57:27510").faults, [])
+    r = judged("wss://203.0.113.9:27510")
+    check("server: wss:// foreign host faults, quoting what was signed",
+          (len(r.faults), "wss://203.0.113.9:27510" in r.faults[0] if r.faults else None), (1, True))
+    check("server: dtls:// with another lobby's svport faults",
+          len(judged("dtls://180.150.62.57:27510", svport="27520").faults), 1)
+    check("server: CONTROL an unknown scheme is not stripped (rtc:// faults)",
+          len(judged("rtc://180.150.62.57:27510").faults), 1)
     r = judged("QLoopBack")
     check("server: malformed (no port) faults",
           [m for m in r.faults if "is not host:port" in m] != [], True)

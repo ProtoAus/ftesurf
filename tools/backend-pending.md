@@ -42,13 +42,21 @@ Unset, the address check notes "not configured" and faults nothing. The 16 Nov c
 receipts) has 2,295 on the public address and 1 on the LAN one. A LAN address is reported as a note, never
 passed or faulted (AGENT_NOTES: "a private address is nobody's" -- another network's server at that address
 reads the same). The signed port must also equal the unsigned `svport` the writing lobby recorded, which
-catches a nonce relayed between two of the Pi's own lobbies.
-If the public address changes, update the setting or every new receipt faults.
+catches a nonce relayed between two of the Pi's own lobbies; that rule needs no setting. DTLS/TLS/TCP/
+WebSocket clients sign the address with a scheme (`dtls://` etc., net_wins.c); it is stripped first.
+If the public address changes, ADD the new one and keep the old in `SURFD_RCPT_HOSTS`: without the old
+one, every new receipt faults, and `--reread-receipts` faults every older receipt signed on it.
 Existing rows are judged only after `--reread-receipts` (200 a pass).
 
-Windows only, not run on the Pi: test_rcptcheck 816 checks/0 failed (was 800),
-test_sweep 0 failed (was 388 ok), test_receipt_{identity,initial_partial,
-late_hid,late_rec,late_view,metrics} 68/96/158/227/268/120 ok, 0 failed. 8 of 8
-mutants (each check or join removed, unset made to fault) fail a named arm.
-test_receipt_angle_reasons fails one check ("epoch: reader detail names the
-measurement/abstention") identically at f5d4450f without this patch.
+BEFORE ACTIVATION, run `sweep.join_account_key` over a COPY of the live DB (each receipt's runid and pub;
+never the live file) and record the fault count here. Expected sources of honest-looking faults: the
+owner's ranked rows moved to his account by hand on 11 Oct (signed by his old install's key), and runs
+older than the 90-day `runpins` prune whose key was unlinked when the account already had 64 `installs`.
+
+Windows only, not run on the Pi: test_rcptcheck 827 checks/0 failed (was 800),
+test_sweep 427 ok/0 failed (was 388), test_receipt_{identity,initial_partial,
+late_hid,late_rec,late_view,metrics} 0 failed. Mutants fail a named arm: 8 of 8 in
+the first round, 5 of 5 in the review round (runpins without `pub = ?`, checks
+before the other joins, svport only when configured, no scheme strip, no `runs`
+credit). test_receipt_angle_reasons fails one check ("epoch: reader detail names
+the measurement/abstention") identically at f5d4450f without this patch.
