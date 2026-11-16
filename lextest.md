@@ -17,7 +17,7 @@
 - Your journals now carry the scan; OBS's hook DLL is loaded on this PC, so its lines are the first real overlay
   readings. Nothing to do -- they are read from the journal files.
 
-## P1587 Water and glass defaults -- on main (engine 76823c993, patch-1587), ships in the next release; owner check PENDING
+## P1587 Water and glass defaults -- SHIPPED in 0.1.48 (09:02Z, installs exe af6a445c, csprogs cc032a87); owner check PENDING
 - On a fresh install (or a friend's), water should be a see-through sheet and glass see-through panes, not dotted. Graphics still offers Dithered, Refracting and the reflection modes.
 - Your own settings (water 2, glass 0) are not touched; only configs still on the old dotted defaults (water 3, glass 2) move, once.
 

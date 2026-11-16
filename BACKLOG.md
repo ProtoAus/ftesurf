@@ -42,10 +42,14 @@
 - First sight of water: P1575 (INSTALLED 16 Nov, exe e004597b) makes the capture targets at activation: chateau's
   first-water frame 29.0 -> 19 ms, boreas 53.0 -> 45.6 ms, 0 rebuilds in play. What is left (16-45 ms on four maps)
   is CPU in opaque draws in the first frame that renders the two water views, and boreas' first-uses 68 vertex
-  buffers: the driver's first draw of what the views show. Experiment queued (artifacts/run_firstplay.py FP_PRE: the
-  whole map drawn once at load by screenshot_cubemap with r_novis 1 and captures off, then the census replay): if
-  those frames go, an engine render-everything-once pass at activation is the fix (an internal flag, not r_novis,
-  which P1576 guards). Falsifier: the same census on the diag build (engine branch diag-lows4-p1578).
+  buffers. MEASURED (artifacts fp6 vs fp5, run_firstplay.py FP_PRE: the whole map drawn once at load by
+  screenshot_cubemap with r_novis 1 and captures off): boreas' first-water frame 45.6 -> 22.5 ms and its two other
+  first-sight frames (14.5, 11.4 ms, new areas) gone; chateau 18.6/19.3, nova 17.0/17.1, null 17.8/17.4 unchanged.
+  So a render-everything-once pass at activation (an internal forcevis, NOT r_novis: P1576's journal counts its
+  changes; at the real screen size, or the MSAA scene target is rebuilt in play) fixes first sight of new scenery on
+  boreas-like maps; the ~17 ms first frame that renders the water views (opaque CPU, views 2) on every map is
+  something else -- first-capture work, not driver first use. Next: break that frame down (r_viewstats per kind, or
+  a capture-path timer), then decide.
 - Fog variants: P1578 (INSTALLED 16 Nov) warms the other fog variant of each listed permutation on every Source map
   (surf_null's late compiles 3 -> 0). Left: the Max Fog event's stuffcmd fog on a non-Source map, and wasted fog
   compiles for $nofog materials (bounded by r_mapready_budget).
@@ -59,8 +63,16 @@
   Watch_* are replay-only. Unprofiled (artifacts/abq2.py, r_budget, 3 alternating runs a side): the mouse pad costs
   0.06-0.08 ms a frame (nuclear CSQC 0.69 -> 0.63, null 0.67 -> 0.59; ~5% of a light map's frame), the replay path
   line 0.09-0.10 ms. MPad already draws each segment through the native lines_segment builtin (hud_lines_native 1),
-  so what is left is the trail loop itself: dropped (16 Nov). The glare's own comment names Source's way: GPU occlusion queries instead of traces
-  (cl_sprites.qc ~2262; FTE has corona queries in gl_rlight.c ~623).
+  so what is left is the trail loop itself: dropped (16 Nov).
+- Glare by GPU occlusion queries (P1585, PARKED; engine branch p1585-glarequery, QC branch lows4-p1585): the builtin
+  `occlusionquery` works and is reviewed (3 rounds). Glare rays cost fairy 263 -> 300 avg fps and jumble 344 -> 443
+  when off. Mode 1 (GPU only for off screen and 95%+, rays otherwise) keeps the rays' look but gains nothing
+  measurable; mode 2 (the GPU's fraction, Source's own test) gains 0.1% +14-18% on fairy/jumble but: (a) the
+  depth-hacked viewmodel covers proxies (a lamp behind the knife fades) -- queries before the viewmodel draws, or a
+  stencil mark of its pixels; (b) a stale SKY_CLEAR verdict lets the GPU light a glare through the sky after a
+  teleport -- require a fresh verdict (spr_skyat/spr_skythr); (c) far proxies alternate between too-small (-1, rays)
+  and GPU answers (flicker where lamp models disagree) -- a separate too-small code that mode 2 keeps. Live play
+  with the knife drawn may give back much of the replay-measured gain; measure with a viewmodel on first.
 - Trigger prediction: TG_ChainStart probes every IO-owned trigger with a zero-length tracebox each frame (23-393
   triggers a map); a box-overlap test first would skip the builtin call exactly. ~3-6% of profiled CSQC.
 - Measured, not leads: a multisampled window beside P1260's MSAA scene target costs nothing measurable on the PC

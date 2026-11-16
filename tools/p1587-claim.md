@@ -9,3 +9,4 @@ defaults players get; the plugin's GetNVFDG returns them) and the plugin's text;
 once-per-config move (cl_hudedit.qc, gated on the engine's help text). Verified by artifacts/p1587_arm.py: a config on
 3 / 2 / r_video_rev 1402 prints both moves and reads 0 / 0 / 1587; on an engine without the patch it moves nothing.
 Not installed: for the next release, as Lex asked.
+Shipped in release 0.1.48 (16 Nov 09:02:44Z, ftesurf-06): installs exe af6a445c (patch-1588), csprogs cc032a87.
