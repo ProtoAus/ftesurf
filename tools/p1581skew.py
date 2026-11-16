@@ -32,6 +32,17 @@ def with_propmiss(src, dst):
     dst.write_text("".join(lines), encoding="utf-8")
 
 
+def nudged(src, dst):
+    """One mid-run sample's x moved by +0.01 (P349's N4 shape): a replay must HOLD on state."""
+    lines = src.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+    body = [i for i, l in enumerate(lines) if re.match(r"-?[0-9]+\.[0-9]{4} ", l)]
+    i = body[len(body) // 2]
+    f = lines[i].split(" ")
+    f[2] = "%.2f" % (float(f[2]) + 0.01)
+    lines[i] = " ".join(f)
+    dst.write_text("".join(lines), encoding="utf-8")
+
+
 def section(text, name):
     m = re.search(r"==== P1581 " + name + r" ====([\s\S]*?)(?===== P1581 |\Z)", text)
     return m.group(1) if m else ""
@@ -73,6 +84,9 @@ def main():
     ap.add_argument("--out", type=pathlib.Path, required=True)
     ap.add_argument("--progs", type=pathlib.Path, default=INSTALL / "ftesurf")
     ap.add_argument("--control", action="store_true")
+    ap.add_argument("--subject", type=pathlib.Path, help="a current finished .rec (default: P349's b88fin, now refused)")
+    ap.add_argument("--map", default="bhop_eazy")
+    ap.add_argument("--zone", type=pathlib.Path, help="the lobby's maps/zones/online/<map>.json for --subject")
     a = ap.parse_args()
     a.exe, a.out = a.exe.resolve(), a.out.resolve()
     rig = a.out / time.strftime("p1581-%Y%m%dT%H%M%S")
@@ -81,8 +95,23 @@ def main():
         gd, made = prepare(rig, a.progs, ["p1581skew"], 27561)
         data = gd / "data"
         data.mkdir(exist_ok=True)
-        for name in ("b88fin.rec", "p349_samp.rec"):
-            shutil.copyfile(INSTALL / "ftesurf/data" / name, data / name)
+        if a.zone:
+            # A real maps dir (the shared one is a junction into the install) holding the map and the
+            # lobby's zone file, so pm_verify can state the zone pin the run was timed under.
+            jn = gd / "maps"
+            unjunction([jn])
+            made.remove(jn)
+            (jn / "zones/online").mkdir(parents=True)
+            shutil.copyfile(INSTALL / "ftesurf/maps" / (a.map + ".bsp"), jn / (a.map + ".bsp"))
+            shutil.copyfile(a.zone, jn / "zones/online" / (a.map + ".json"))
+        if a.subject:
+            shutil.copyfile(a.subject, data / "b88fin.rec")
+            nudged(data / "b88fin.rec", data / "p349_samp.rec")
+            cfg = gd / "cfg/test/p1581skew.cfg"
+            cfg.write_text(cfg.read_text().replace("map bhop_eazy", "map " + a.map))
+        else:
+            for name in ("b88fin.rec", "p349_samp.rec"):
+                shutil.copyfile(INSTALL / "ftesurf/data" / name, data / name)
         with_propmiss(data / "b88fin.rec", data / "p1581_s.rec")
         with_propmiss(data / "p349_samp.rec", data / "p1581_n.rec")
         si = subprocess.STARTUPINFO()
