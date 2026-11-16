@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1597 lobbies need the 0.1.48 online terms -- LIVE 17 Nov; owner check PENDING (record: tools/p1597-claim.md)
+- From C:\FTESurf (your answer there is 9, from 00:31 today): finish a run on a lobby -- it uploads and ranks as before.
+- C:\FTEQuake and the Desktop 0.1.32 install still hold an answer of 8: there the lobbies record no online answer
+  (no ranked upload) until you choose Play online in that install's menu (F2 shows the terms). Say if the menu does
+  not offer it.
+
 ## P1596 bhop doors reset you; HL-mode teleports land on your feet -- owner check PENDING (record: tools/p1596-claim.md)
 - `map bhop_1n5an3` (or any CS:S bhop map whose platforms sank in CS:S): walk onto the first platform and stand still --
   about 0.2 s later you are back at the start. Hop across them (hold jump): no reset, unless you land on the same
