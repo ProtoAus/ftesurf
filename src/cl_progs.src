@@ -198,6 +198,8 @@ client/cl_online.qc
 // URI_Get_Callback, so it cannot live in cl_zones.qc (line 103, far above).
 // cl_zones.qc forward-declares the one function it calls back into.
 client/cl_zonedl.qc
+// P1590: groups; after cl_online.qc (Online_NextReq, its callback), before cl_scores.qc.
+client/cl_groups.qc
 // Patch 640: Steam pictures.  After cl_online.qc (Online_NextReq, and its
 // URI_Get_Callback branches here); before cl_players.qc, cl_scores.qc and
 // cl_linegraph.qc, which draw them.

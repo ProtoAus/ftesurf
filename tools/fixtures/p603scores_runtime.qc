@@ -124,7 +124,7 @@ float(string cmd) CSQC_ConsoleCommand =
 		for (i = 0; i < _action_elements_index; i = i + 1)
 		{
 			if (!strcmp(substring(_action_elements[(int)i].id, 0, 5), "sb_ks")) styles = styles + 1;
-			if (!strcmp(_action_elements[(int)i].id, "sb_t1")) segmented = 1;
+			if (!strcmp(_action_elements[(int)i].id, "sb_ks4")) segmented = 1;   // P1590: the Segmented mode chip
 			if (!strcmp(_action_elements[(int)i].id, "sb_fx")) practice = 1;
 		}
 		for (i = 0; i < rec_sb_rown; i = i + 1)

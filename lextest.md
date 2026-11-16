@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1590 Groups, one mode row, your server beside the board -- owner check PENDING (record: tools/p1590-delivery.md)
+- Hold TAB: the row under Online/Local reads Segmented (blue), TAS (purple), Normal, Sideways, Half-Sideways,
+  Backwards. Click each: only that one lights, the rest dim, and the list is that board. Online/Local keep the mode.
+- Right of the board: everyone in the server with their main time, in their colour. Say if it should show more.
+- Needs the surfd update (see the record): coloured lines between rows where the group changes, with a pill naming
+  the group below (G1..G6, No group); your badge on each course you have a time on (hover a course: which board it
+  was measured on); the footer says "groups from Momentum, N times". Main menu > a map's board shows the same.
+- Needs the surfd update: Stats page, maps finished / totals count surf_borderlands and its CS:S copy once.
+
 ## 0.1.48 release -- PUBLISHED 16 Nov 09:02Z; both installs updated; owner check PENDING (record: tools/release-0.1.48.md)
 - The menu should say 0.1.48; water should be see-through and glass translucent unless you set them yourself.
 - Then the P1588 check below (local game, save-load key, with and without sv_minping 300).

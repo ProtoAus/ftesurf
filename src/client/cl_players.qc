@@ -117,13 +117,11 @@ float(string id, vector pos, vector sz, string label, float tsz, float on) Pl_Bl
 	return sui_is_released(id);
 };
 
-void(vector p, vector sz, float tsz) Players_Draw =
+// The room's main PBs (Players_Best), asked once a map and board generation. P1590: the
+// TAB board's floating list asks too, so Players need not have been opened.
+void() Players_Need =
 {
-	local float i, j, n, rowh, hint, x, y, by, best, vmute, blocked, rel, me, on, hot, av, bh, rw;
-	local float wpro, wtp, wadd, wmute, wblk, ax, pbr, pingr, nx, nw;
-	local float slots[PL_MAXSLOT];
-	local vector lp, c;
-	local string who, ahash, nm, s, map, rid;
+	local string map;
 
 	map = serverkey("map");
 	if (strcmp(pl_bmap, map))
@@ -142,6 +140,17 @@ void(vector p, vector sz, float tsz) Players_Draw =
 		             cvar_string("lobby_dir"), uri_escape(map), OB_TIER, OB_PAGE), pl_req))
 			{ pl_req = 0; pl_bgen = -1; pl_wait = cltime + OB_RETRY_SECS; }
 	}
+};
+
+void(vector p, vector sz, float tsz) Players_Draw =
+{
+	local float i, j, n, rowh, hint, x, y, by, best, vmute, blocked, rel, me, on, hot, av, bh, rw;
+	local float wpro, wtp, wadd, wmute, wblk, ax, pbr, pingr, nx, nw;
+	local float slots[PL_MAXSLOT];
+	local vector lp, c;
+	local string who, ahash, nm, s, rid;
+
+	Players_Need();
 	n = 0;
 	for (i = 0; i < PL_MAXSLOT; i = i + 1)
 		if (getplayerkeyvalue(i, "name") != "") { slots[n] = i; n = n + 1; }

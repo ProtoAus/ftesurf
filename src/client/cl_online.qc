@@ -146,6 +146,7 @@ float(float reqid, float code, string bdy) ZoneDL_Reply;
 float(float reqid, float code, string bdy) ZonePub_Reply;
 // Patch 635, cl_players.qc: the room list's own request, answered the same way.
 float(float reqid, float code, string bdy) Players_BoardReply;
+float(float reqid, float code, string bdy) Groups_Reply;      // P1590, cl_groups.qc
 // Patch 640, cl_steampic.qc: and a Steam picture's.
 float(float reqid, float code, string bdy) SteamPic_Reply;
 // Patch 663, cl_profile.qc: a player's breakdown and the player search.
@@ -2080,6 +2081,8 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 		return;
 	// Patch 635: and the room list's own board (cl_players.qc), the same way.
 	if (Players_BoardReply(reqid, responsecode, resourcebody))
+		return;
+	if (Groups_Reply(reqid, responsecode, resourcebody))
 		return;
 	if (SteamPic_Reply(reqid, responsecode, resourcebody))
 		return;

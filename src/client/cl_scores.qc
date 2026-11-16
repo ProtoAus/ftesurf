@@ -224,7 +224,8 @@ float() Scores_IsOnline = { return (rec_sb_tab == SB_T_ONLINE || rec_sb_tab == S
 string() Scores_StyleOf =
 {
 	if (rec_sb_tab == SB_T_TAS) return "tas";
-	return FS_BoardStyle(rec_sb_ksfstyle, rec_sb_tab == SB_T_SEGMENT);
+	if (rec_sb_tab == SB_T_SEGMENT) return "segmented";     // P1590: one mode, no direction
+	return FS_BoardStyle(rec_sb_ksfstyle, FALSE);
 };
 
 /*
@@ -317,6 +318,7 @@ float() Scores_ImpTotal =
 	return ob_cnt_ranked;
 };
 
+float() Scores_Mode;                // P1590, below the follow's globals it reads
 // What the list holds, in the footer's words.
 string() Scores_ImpWord =
 {
@@ -326,7 +328,7 @@ string() Scores_ImpWord =
 	if (f == SB_IMP_MOM)  return "Momentum";
 	if (f == SB_IMP_KSF)  return "KSF";
 	if (f == SB_IMP_ONLY) return "imported";
-	return FS_BoardStyleName(Scores_StyleOf());
+	return FS_ModeName(Scores_Mode());
 };
 
 /*
@@ -344,6 +346,43 @@ float  rec_sb_finrank;           // *wrank's rank once answered, 0 = none
 float  rec_sb_finbest;           // the standing online best (ms) after it
 float  rec_sb_seek;
 float  rec_sb_tabauto;           // the follow moved the tab to Local; the next can undo it
+
+// P1590: the one mode row (FS_MODE_*). Online it is the tab (Segmented, TAS) or the
+// direction; Local the class filter (stitched, TAS) or the direction.
+float sb_modeword;              // `scores mode`'s word, read
+float() Scores_Mode =
+{
+	if (Scores_IsOnline())
+	{
+		if (rec_sb_tab == SB_T_TAS) return FS_MODE_TAS;
+		if (rec_sb_tab == SB_T_SEGMENT) return FS_MODE_SEG;
+	}
+	else
+	{
+		if (rec_sb_filter == SB_F_TAS) return FS_MODE_TAS;
+		if (rec_sb_filter == SB_F_STITCHED) return FS_MODE_SEG;
+	}
+	return rec_sb_ksfstyle;
+};
+
+void(float online, float m) Scores_ModeSet =
+{
+	rec_sb_ksfstyle = (m == FS_MODE_SEG || m == FS_MODE_TAS) ? 0 : m;
+	if (rec_sb_filter == SB_F_TAS || rec_sb_filter == SB_F_STITCHED)
+		rec_sb_filter = SB_F_ALL;
+	if (online)
+		Scores_TabSet((m == FS_MODE_TAS) ? SB_T_TAS : ((m == FS_MODE_SEG) ? SB_T_SEGMENT : SB_T_ONLINE));
+	else
+	{
+		Scores_TabSet(SB_T_LOCAL);
+		if (m == FS_MODE_TAS) rec_sb_filter = SB_F_TAS;
+		else if (m == FS_MODE_SEG) rec_sb_filter = SB_F_STITCHED;
+	}
+	rec_sb_tabauto = FALSE;
+	rec_sb_oscroll = '0 0 0';
+	rec_sb_scroll = '0 0 0';
+	Profile_OnClear();
+};
 
 void() Scores_NoteLocal =
 {
@@ -374,7 +413,10 @@ void(float landed, float rank, float bestms) Scores_NoteAnswer =
 		rec_sb_finbest = bestms;
 	}
 	if (landed)
+	{
 		Online_MarkStale();
+		Groups_Stale();             // P1590: the badge may move
+	}
 };
 
 void() Scores_ForgetFinish =
@@ -457,22 +499,17 @@ void() Scores_ApplyFollow =
 	if (!rec_sb_tabauto)
 		return;                     // the player chose Local: it holds every finish
 	c = FS_RunClass(rec_sb_finflags);
+	// P1590: through Scores_ModeSet, to the run's own mode (Segmented or Normal).
 	if (serverkey("board") != "ranked" || (rec_sb_finflags & TF_UNCERT))
 	{
-		if (rec_sb_tab != SB_T_LOCAL)
-			rec_sb_tabauto = TRUE;
-		Scores_TabSet(SB_T_LOCAL);  // on no online board this player can see
+		i = (rec_sb_tab != SB_T_LOCAL || rec_sb_tabauto);   // the follow's own move stays undoable
+		Scores_ModeSet(FALSE, (c == RC_SEGMENT) ? FS_MODE_SEG : 0);   // on no online board this player can see
+		rec_sb_tabauto = i;
 	}
 	else if (c == RC_SEGMENT)
-	{
-		Scores_TabSet(SB_T_SEGMENT);
-		rec_sb_tabauto = FALSE;
-	}
+		Scores_ModeSet(TRUE, FS_MODE_SEG);
 	else if (c == RC_CLEAN)
-	{
-		Scores_TabSet(SB_T_ONLINE);
-		rec_sb_tabauto = FALSE;
-	}                               // practice/cheated: no board; leave the tab
+		Scores_ModeSet(TRUE, 0);    // practice/cheated: no board; leave the tab
 };
 
 /*
@@ -1539,6 +1576,45 @@ float(string id, vector pos, vector sz, string label, float on) Scores_Chip =
 	return sui_is_released(id);
 };
 
+// P1590: a mode on the mode row. Lit: filled (with its own colour where it has one);
+// the rest dim. `col` x < 0 is the theme's (FS_ModeColour).
+float(string id, vector pos, vector sz, string label, vector col, float on) Scores_ModeChip =
+{
+	local float tsz, tw, hot;
+	local vector tc;
+
+	sui_action_element(pos, sz, id, sui_noop);
+	hot = sui_is_hovered(id);
+	if (on && col_x >= 0)
+		sui_style_box(pos, sz, sz_y * 0.5, col * 0.42, col, 1);
+	else if (on)
+		sui_roundbox(pos, sz, sz_y * 0.5, SBC_SEL, 1);
+	else
+		sui_roundbox(pos, sz, sz_y * 0.5, hot ? SBC_HOT : SBC_PANEL, hot ? 1 : 0.55);
+	tsz = (sz_y < rec_sb_szrow * 1.7) ? rec_sb_szhead : sb_szui;
+	tw  = stringwidth(label, TRUE, [tsz, tsz]);
+	tc = (col_x >= 0) ? col : SBC_TEXT;
+	if (on) tc = (col_x >= 0) ? '1 1 1' : SBC_LINE;
+	Scores_Text([pos_x + (sz_x - tw) * 0.5, pos_y + (sz_y - tsz) * 0.5], tsz, label, tc,
+	            (on || hot) ? 1 : 0.45);
+	return sui_is_released(id);
+};
+
+// P1590: a group as a pill ("G1" on its colour), its right edge at xr, centred on yc.
+float(float g, float tsz) Scores_GroupBadgeW =
+{
+	return ceil(stringwidth(FS_GroupName(g), TRUE, [Font_Px(tsz), Font_Px(tsz)]) + tsz);
+};
+void(float xr, float yc, float g, float tsz) Scores_GroupBadge =
+{
+	local float w, h;
+
+	w = Scores_GroupBadgeW(g, tsz);
+	h = ceil(tsz * 1.4);
+	sui_roundbox([xr - w, yc - h * 0.5], [w, h], h * 0.5, FS_GroupColour(g), 0.95);
+	Scores_Text([xr - w + tsz * 0.5, yc - Font_Px(tsz) * 0.5], tsz, FS_GroupName(g), '0.08 0.08 0.1', 1);
+};
+
 /*
 ===========================================================================
   Patch 433: board lines -- a row's run drawn in the world while you play, from
@@ -2429,7 +2505,7 @@ var float sb_ownerpick = -1;
 float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 {
 	local vector lp, ncol;
-	local float idx, hot, d, ref, i, track, leg, pick, pinned, demo_slot;
+	local float idx, hot, d, ref, i, track, leg, pick, pinned, demo_slot, li, g, gp;
 	local string s, rid, ownerid;
 
 	if (rec_sb_leg < 0 || rec_sb_leg >= rec_sb_legn)
@@ -2437,6 +2513,7 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 
 	track = rec_sb_legtrack[rec_sb_leg];
 	leg   = rec_sb_legnum[rec_sb_leg];
+	li    = Groups_Leg(track, leg, FS_ModeStyle(Scores_Mode()));   // P1590
 
 	/*
 	  Online_Describes and NOT `ob_state == OBS_OK`.  A reply that landed for
@@ -2624,6 +2701,10 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 			Scores_RowFill(lp, rs_x - pad * 0.5, SBC_HOT, 1);
 		if (sui_is_released(rid))
 			pick = idx + 1;     // +1 so row 0 is distinguishable from "none"
+		// P1590: the row's group as a strip at its left edge; its line comes after the row.
+		g = Groups_Of(li, ob_ms[idx]);
+		if (g >= 0)
+			sui_fill([lp_x + 2, lp_y + 3], [3, rec_sb_rowh - 6], FS_GroupColour(g), 0.9, 0);
 
 		Font_Set(ui_font_mono);
 
@@ -2759,6 +2840,17 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 				            s, SBC_WARN, 0.85);
 		}
 		Scores_LineCell(lp, idx);           // Patch 433
+		// P1590: a line in the new group's colour where the group changes, over both rows.
+		gp = (idx > 0) ? Groups_Of(li, ob_ms[idx - 1]) : -1;
+		if (g >= 0)
+		if (gp >= 0)
+		if (gp != g)
+		{
+			sui_fill([lp_x, lp_y - 1], [rs_x - pad * 0.5, 2], FS_GroupColour(g), 0.95, 0);
+			Font_Set(ui_font_ui);
+			Scores_GroupBadge(lp_x + (sb_colon[SBK_LINE] ? sb_colx[SBK_LINE] - rec_sb_cw : rs_x - pad),
+			                  lp_y, g, rec_sb_szhead);
+		}
 	}
 	sui_list_view_end();
 
@@ -3007,6 +3099,7 @@ float() Scores_TpHandOff =
 string() Scores_CountLine =
 {
 	local string s;
+	local float li;
 
 	if (Scores_IsOnline())
 	{
@@ -3036,6 +3129,9 @@ string() Scores_CountLine =
 				s = strcat(s, "   refreshing...");
 			if (rec_sb_finwait && Scores_FinishedOnline())   // P1226: your finish, not yet answered
 				s = strcat(s, "   your run: submitting...");
+			li = Groups_Leg(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg], FS_ModeStyle(Scores_Mode()));
+			if (li >= 0)
+				s = sprintf("%s   groups from %s", s, Groups_Source(li));
 		}
 		else
 			s = sprintf("%s on %s", Scores_ImpWord(), Scores_LegName(rec_sb_leg));
@@ -3542,13 +3638,93 @@ void(float mid, float y, float th) Scores_ViewSwitch =
 		Scores_ShowPlayers();
 };
 
+/*
+  P1590 (Lex, 16 Nov): the server's players float right of the board, each with their
+  main PB (Players_Best, the ranked board) in the colour they wear. Only where the
+  screen has room beside the board; the Players view lists them in full.
+*/
+vector(float slot) Scores_RoomRGB =
+{
+	local vector c;
+
+	c = (slot == player_localnum) ? Av_MyRGB() : Av_WornRGB(slot);
+	if (c_x * 0.3 + c_y * 0.59 + c_z * 0.11 < 0.35)
+		c = c + ('1 1 1' - c) * 0.45;           // a near-black colour stays readable
+	return c;
+};
+
+float(float tsz) Scores_RoomW =
+{
+	local float i, w;
+
+	w = 0;
+	tsz = Font_Px(tsz);
+	for (i = 0; i < PL_MAXSLOT; i = i + 1)
+		if (getplayerkeyvalue(i, "name") != "")
+			w = max(w, stringwidth(strdecolorize(getplayerkeyvalue(i, "name")), TRUE, [tsz, tsz]));
+	if (w <= 0)
+		return 0;
+	return ceil(min(w, tsz * 12) + stringwidth("88:88.888", TRUE, [tsz, tsz]) + tsz * 2.5);
+};
+
+void(float x, float y, float w, float maxh, float tsz) Scores_RoomFloat =
+{
+	local float i, k, n, t, rowh, tw;
+	local float slot[PL_MAXSLOT], best[PL_MAXSLOT];
+	local vector c;
+	local string s;
+
+	Players_Need();
+	n = 0;
+	for (i = 0; i < PL_MAXSLOT; i = i + 1)
+		if (getplayerkeyvalue(i, "name") != "")
+		{
+			slot[n] = i;
+			best[n] = Players_Best(getplayerkeyvalue(i, "*phash"));
+			n = n + 1;
+		}
+	// Fastest first, no time last: an insertion sort over at most PL_MAXSLOT.
+	for (i = 1; i < n; i = i + 1)
+	{
+		t = best[i];
+		tw = slot[i];
+		for (k = i - 1; k >= 0; k = k - 1)
+		{
+			if (t <= 0) break;                  // no time: stays after everything before it
+			if (best[k] > 0)
+			if (best[k] <= t) break;
+			best[k + 1] = best[k];
+			slot[k + 1] = slot[k];
+		}
+		best[k + 1] = t;
+		slot[k + 1] = tw;
+	}
+	Font_Set(ui_font_ui);
+	rowh = ceil(tsz * 1.75);
+	Scores_Text([x + tsz * 0.6, y + 2], rec_sb_szhead, sprintf("IN THIS SERVER  %g", n), SUI_THEME_MUTED, 1);
+	y = y + ceil(rec_sb_szhead * 1.8);
+	tw = stringwidth("88:88.888", TRUE, [Font_Px(tsz), Font_Px(tsz)]);
+	for (i = 0; i < n; i = i + 1)
+	{
+		if ((i + 2) * rowh > maxh)
+			break;
+		c = Scores_RoomRGB(slot[i]);
+		sui_roundbox([x, y], [w, rowh - 3], (rowh - 3) * 0.5, '0 0 0', 0.6);
+		Scores_Text([x + tsz * 0.6, y + (rowh - 3 - Font_Px(tsz)) * 0.5], tsz,
+		            Chat_Fit(strdecolorize(getplayerkeyvalue(slot[i], "name")), w - tw - tsz * 2, Font_Px(tsz)), c, 1);
+		s = (best[i] > 0) ? Time_TickString(best[i], Timer_Tick()) : "--";
+		Scores_TextR([x + w - tsz * 0.6, y + (rowh - 3 - Font_Px(tsz)) * 0.5], tsz, s, c, (best[i] > 0) ? 1 : 0.5);
+		y = y + rowh;
+	}
+};
+
 void(vector scr) Scores_Draw =
 {
 	local vector p, sz, rp, rs, lp;
 	local float scale, bs, pad, w, h, x0, y0, sidew, tabh, chiph, chipw, segw, listh, n, vh;
 	local float ytabs, yhead, ylist, yfoot, yc, x, idx, on, hot, pick, native, online;
-	local float roomw, have, need, floorw, ow, tablew, rows, chrome, step, px, legh, stylew, fetchw;
-	local string s, rid;
+	local float roomw, have, need, floorw, ow, tablew, rows, chrome, step, px, legh, stylew, fetchw, li, flw;
+	local string s, rid, gst;
 
 	if (!rec_sb_open && !sc_held)
 		return;
@@ -3570,8 +3746,8 @@ void(vector scr) Scores_Draw =
 	if (scale > 16) scale = 16;         // an absurd value would make the type, and the loop below, infinite
 	bs = min(scale, scr_y / 432);       // a short window gets smaller type...
 	if (bs < 1) bs = 1;
-	// The tab strip: Online and Local.
-	n = 3; // Online, isolated TAS, Local history
+	// The tab strip: Online and Local. P1590: TAS is a mode on the mode row.
+	n = 2;
 
 	/*
 	  WHAT FITS, tried in the order a player would choose. Steps 0-2: every column
@@ -3619,7 +3795,7 @@ void(vector scr) Scores_Draw =
 			sidew = max(sidew, stringwidth(Scores_LegTier(idx), TRUE, [rec_sb_szhead, rec_sb_szhead]));
 		}
 		rec_sb_sidelabel = sidew;
-		sidew = ceil(max(rec_sb_cw * 15, sidew + rec_sb_cw * 3));
+		sidew = ceil(max(rec_sb_cw * 15, sidew + rec_sb_cw * 3 + Scores_GroupBadgeW(0, rec_sb_szhead)));
 		segw  = ceil(rec_sb_cw * 11.5);
 		roomw = 0;                    // the old room-list sidebar is gone
 		have  = scr_x - pad * 2 - roomw - (pad * 3 + sidew) - pad * 0.5;
@@ -3629,6 +3805,11 @@ void(vector scr) Scores_Draw =
 		floorw = segw * n + pad
 		       + max((chipw + 6) * 4 - 6, Scores_FilterW() + ceil(pad * 0.75) + chipw + fetchw)
 		       - (pad * 1.5 + sidew);
+		// P1590: and the mode row, its six chips and Jump to me.
+		stylew = stringwidth("Mode", TRUE, [rec_sb_szhead, rec_sb_szhead]) + pad + sb_szui * 9 + pad;
+		for (idx = 0; idx < FS_MODES; idx = idx + 1)
+			stylew = stylew + ceil(stringwidth(FS_ModeName(idx), TRUE, [sb_szui, sb_szui]) + pad * 1.4) + 4;
+		floorw = max(floorw, stylew - (pad * 1.5 + sidew));
 
 		sb_colon[SBK_TAG]  = TRUE;
 		sb_colon[SBK_DATE] = TRUE;
@@ -3681,12 +3862,18 @@ void(vector scr) Scores_Draw =
 	h = chrome + listh;
 
 	// Centred as a pair with a whole room list; a narrower one takes what the row has left.
-	x0 = floor((scr_x - w) * 0.5);
+	// P1590: centred with the floating player list beside it, when that fits.
+	flw = (rec_sb_tab == SB_T_PLAYERS) ? 0 : Scores_RoomW(sb_szui);
+	if (w + flw + pad * 3 > scr_x)
+		flw = 0;
+	x0 = floor((scr_x - w - (flw ? flw + pad : 0)) * 0.5);
 	if (x0 < pad) x0 = pad;
 	y0 = floor((scr_y - h - vh) * 0.5) + vh;
 	p  = [x0, y0];
 	sz = [w, h];
 	sui_style_panel(p, sz, ceil(pad * 0.75), 0.98);
+	if (flw)
+		Scores_RoomFloat(x0 + w + pad, y0, flw, h, sb_szui);
 
 	// ---- the header: the map, and its clock on the title's baseline ---------
 	Font_Set(ui_font_ui);
@@ -3752,25 +3939,13 @@ void(vector scr) Scores_Draw =
 	sui_roundbox([x0 + pad, ytabs], [segw * n, tabh], tabh * 0.5, SUI_THEME_WELL, 1);
 	// A source or a leg chosen is the board asked for again: a player's times
 	// (Patch 666) give the table back.
-	if (Scores_Seg("sb_t0", [x0 + pad, ytabs], [segw, tabh], "Online", rec_sb_tab == SB_T_ONLINE || rec_sb_tab == SB_T_SEGMENT))
-	if (!Scores_IsOnline() || rec_sb_tab == SB_T_TAS)
-	{
-		Scores_TabSet(SB_T_ONLINE);
-		rec_sb_tabauto = FALSE;         // the player chose; the follow leaves it
-		Profile_OnClear();
-	}
-	if (Scores_Seg("sb_tas", [x0 + pad + segw, ytabs], [segw, tabh], "TAS", rec_sb_tab == SB_T_TAS))
-	{
-		Scores_TabSet(SB_T_TAS);
-		rec_sb_tabauto = FALSE;
-		Profile_OnClear();
-	}
-	if (Scores_Seg("sb_t2", [x0 + pad + segw * 2, ytabs], [segw, tabh], "Local", rec_sb_tab == SB_T_LOCAL))
-	{
-		Scores_TabSet(SB_T_LOCAL);
-		rec_sb_tabauto = FALSE;
-		Profile_OnClear();
-	}
+	// The player chose; the follow leaves it. The mode carries over (Scores_ModeSet).
+	if (Scores_Seg("sb_t0", [x0 + pad, ytabs], [segw, tabh], "Online", Scores_IsOnline()))
+	if (!Scores_IsOnline())
+		Scores_ModeSet(TRUE, Scores_Mode());
+	if (Scores_Seg("sb_t2", [x0 + pad + segw, ytabs], [segw, tabh], "Local", rec_sb_tab == SB_T_LOCAL))
+	if (rec_sb_tab != SB_T_LOCAL)
+		Scores_ModeSet(FALSE, Scores_Mode());
 	if (zone_count <= 0)
 	{
 		Scores_NativeClose();
@@ -3806,9 +3981,7 @@ void(vector scr) Scores_Draw =
 	yc = ytabs + floor((tabh - chiph) * 0.5);
 	if (!online)
 	{
-		if (Scores_Chip("sb_ftas", [x, yc], [chipw, chiph], "TAS", rec_sb_filter == SB_F_TAS))
-			rec_sb_filter = (rec_sb_filter == SB_F_TAS) ? SB_F_ALL : SB_F_TAS;
-		x = x - chipw - 6;
+		// P1590: Segmented and TAS are on the mode row; a class here is the Normal board's.
 		if (Scores_Chip("sb_fx", [x, yc], [chipw, chiph], "Practice", rec_sb_filter == SB_F_PRACTICE))
 			rec_sb_filter = (rec_sb_filter == SB_F_PRACTICE) ? SB_F_ALL : SB_F_PRACTICE;
 		x = x - chipw - 6;
@@ -3838,50 +4011,31 @@ void(vector scr) Scores_Draw =
 	if (online && rec_sb_tab != SB_T_TAS)
 		Scores_FilterDraw(x - ceil(pad * 0.75), ytabs, tabh);
 
-	// Keep direction and Segmented available on Local too; neither changes game.
+	// P1590: one mode row, exactly one lit (Lex, 16 Nov): Segmented in blue, TAS in
+	// purple, then the directions. Each is its own board on every leg, Online and Local.
 	{
 		x = x0 + pad;
 		yc = ytabs + tabh + pad * 0.5;
-		Scores_Text([x, yc + (chiph - rec_sb_szhead) * 0.5], rec_sb_szhead, "Styles", SBC_DIM, 1);
-		x = x + ceil(stringwidth("Styles", TRUE, [rec_sb_szhead, rec_sb_szhead]) + pad);
-		for (idx = 0; idx < ((rec_sb_tab == SB_T_TAS) ? 0 : 4); idx = idx + 1)
+		Scores_Text([x, yc + (chiph - rec_sb_szhead) * 0.5], rec_sb_szhead, "Mode", SBC_DIM, 1);
+		x = x + ceil(stringwidth("Mode", TRUE, [rec_sb_szhead, rec_sb_szhead]) + pad);
+		on = Scores_Mode();
+		for (idx = 0; idx < FS_MODES; idx = idx + 1)
 		{
-			rid = strcat("sb_ks", ftos(idx));
-			stylew = ceil(stringwidth(Scores_KsfName(idx), TRUE, [sb_szui, sb_szui]) + pad * 1.5);
-			if (Scores_Chip(rid, [x, yc], [stylew, chiph], Scores_KsfName(idx), idx == rec_sb_ksfstyle))
-			{
-				rec_sb_ksfstyle = idx;
-				rec_sb_tabauto = FALSE;
-				rec_sb_oscroll = '0 0 0';
-				rec_sb_scroll = '0 0 0';
-				Profile_OnClear();
-			}
+			hot = FS_ModeAt(idx);
+			s = FS_ModeName(hot);
+			stylew = ceil(stringwidth(s, TRUE, [sb_szui, sb_szui]) + pad * 1.4);
+			if (Scores_ModeChip(strcat("sb_ks", ftos(hot)), [x, yc], [stylew, chiph], s, FS_ModeColour(hot), hot == on))
+			if (hot != on)
+				Scores_ModeSet(online, hot);
 			x = x + stylew + 4;
 		}
-		x = x + pad;
-		if (rec_sb_tab == SB_T_TAS)
-			Scores_Text([x, yc + (chiph - sb_szui) * 0.5], sb_szui, "TAS -- assisted, not verified", SBC_WARN, 1);
-		else
-		{
-		stylew = chiph * 1.6;
-		sui_action_element([x, yc], [stylew + pad + chipw, chiph], "sb_t1", sui_noop);
-		sui_roundbox([x, yc + 2], [stylew, chiph - 4], (chiph - 4) * 0.5, SUI_THEME_WELL, 1);
-		on = online ? (rec_sb_tab == SB_T_SEGMENT) : (rec_sb_filter == SB_F_STITCHED);
-		sui_roundbox([x + (on ? stylew - chiph + 4 : 2), yc + 4], [chiph - 8, chiph - 8],
-		             (chiph - 8) * 0.5, on ? SUI_THEME_ACCENT : SUI_THEME_DIM, 1);
-		Scores_Text([x + stylew + pad * 0.5, yc + (chiph - sb_szui) * 0.5], sb_szui, "Segmented", SBC_TEXT, 1);
-		if (sui_is_released("sb_t1"))
-		{
-			if (online)
-				rec_sb_tab = on ? SB_T_ONLINE : SB_T_SEGMENT;
-			else
-				rec_sb_filter = on ? SB_F_ALL : SB_F_STITCHED;
-			rec_sb_tabauto = FALSE;
-			rec_sb_oscroll = '0 0 0';
-			rec_sb_scroll = '0 0 0';
-			Profile_OnClear();
-		}
-		}
+		if (on == FS_MODE_TAS)
+		if (x + pad + stringwidth("assisted, not verified", TRUE, [rec_sb_szhead, rec_sb_szhead])
+		    < x0 + w - pad * 2 - sb_szui * 9)
+			Scores_Text([x + pad * 0.5, yc + (chiph - rec_sb_szhead) * 0.5], rec_sb_szhead,
+			            "assisted, not verified", SBC_WARN, 1);
+		gst = FS_ModeStyle(on);
+		Groups_Need(gst);
 	}
 	if (online && pf_on_who == "" && rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
 	if (Scores_Chip("sb_jumpme", [x0 + w - pad - sb_szui * 9, yc], [sb_szui * 9, chiph], "Jump to me", FALSE))
@@ -3919,6 +4073,16 @@ void(vector scr) Scores_Draw =
 		s = Scores_LegTier(idx);
 		Scores_Text([lp_x + rec_sb_cw, lp_y + sb_szui + 4], rec_sb_szhead, s,
 		            on ? SUI_THEME_TEXT : SUI_THEME_MUTED, 1);
+		// P1590: your group on this leg, in this mode.
+		li = Groups_Leg(rec_sb_legtrack[idx], rec_sb_legnum[idx], gst);
+		if (li >= 0)
+		if (gr_g[li] >= 0)
+		{
+			if (gr_g[li] <= 6)
+				Scores_GroupBadge(lp_x + rs_x - rec_sb_cw * 0.6, lp_y + rs_y * 0.5, gr_g[li], rec_sb_szhead);
+			sui_tooltip_for(rid, sprintf("Your group: %s (from %s)", FS_GroupName(gr_g[li]), Groups_Source(li)),
+			                ui_cv_scale);
+		}
 		if (sui_is_released(rid))
 		{
 			rec_sb_leg = idx;
@@ -4248,15 +4412,14 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 			  under the keys either.  Clamped, so holding a key settles at an
 			  end rather than cycling.
 			*/
-			// P770: Online, Local, then the Players view; Segmented is a style.
+			// P770: Online, Local, then the Players view. P1590: TAS is a mode, which
+			// a tab change keeps.
 			if (scanx == K_LEFTARROW)
 			{
 				if (rec_sb_tab == SB_T_PLAYERS)
 					Scores_ShowBoard();
 				else if (rec_sb_tab == SB_T_LOCAL)
-					Scores_TabSet(SB_T_TAS);
-				else if (rec_sb_tab == SB_T_TAS)
-					Scores_TabSet(SB_T_ONLINE);
+					Scores_ModeSet(TRUE, Scores_Mode());
 				rec_sb_tabauto = FALSE;
 				return TRUE;
 			}
@@ -4264,10 +4427,8 @@ float(float evtype, float scanx, float chary, float devid) Scores_InputEvent =
 			{
 				if (rec_sb_tab == SB_T_LOCAL)
 					Scores_ShowPlayers();
-				else if (rec_sb_tab == SB_T_TAS)
-					Scores_TabSet(SB_T_LOCAL);
 				else if (rec_sb_tab != SB_T_PLAYERS)
-					Scores_TabSet(SB_T_TAS);
+					Scores_ModeSet(FALSE, Scores_Mode());
 				rec_sb_tabauto = FALSE;
 				return TRUE;
 			}
@@ -4444,6 +4605,8 @@ float(string cmd) Scores_ConsoleCommand =
 			// now shows and a console handle nobody can guess is not one.
 			else if (argv(2) == "segmented") rec_sb_filter = SB_F_STITCHED;
 			else if (argv(2) == "tas") rec_sb_filter = SB_F_TAS;
+			if (rec_sb_filter == SB_F_STITCHED || rec_sb_filter == SB_F_TAS)
+				rec_sb_ksfstyle = 0;        // P1590: the mode row's Segmented / TAS
 			else if (argv(2) == "practice" || argv(2) == "cheated")
 				rec_sb_filter = SB_F_PRACTICE;
 			else                            rec_sb_filter = SB_F_ALL;
@@ -4496,14 +4659,21 @@ float(string cmd) Scores_ConsoleCommand =
 		}
 		else if (argv(1) == "style")
 		{
-			rec_sb_ksfstyle = FS_BoardDirection(argv(2));
+			// P1590: a direction is a mode of its own; it leaves Segmented and TAS.
+			Scores_ModeSet(rec_sb_tab != SB_T_LOCAL, FS_BoardDirection(argv(2)));
+		}
+		// P1590: the mode row, as its chips set it: segmented, tas, or a direction word.
+		else if (argv(1) == "mode")
+		{
+			sb_modeword = FS_BoardDirection(argv(2));
+			if (argv(2) == "segmented") sb_modeword = FS_MODE_SEG;
+			if (argv(2) == "tas") sb_modeword = FS_MODE_TAS;
+			Scores_ModeSet(rec_sb_tab != SB_T_LOCAL, sb_modeword);
+			print(sprintf("scores: mode %s\n", FS_ModeName(Scores_Mode())));
 		}
 		else if (argv(1) == "segmented")
 		{
-			if (Scores_IsOnline())
-				rec_sb_tab = stof(argv(2)) ? SB_T_SEGMENT : SB_T_ONLINE;
-			else
-				rec_sb_filter = stof(argv(2)) ? SB_F_STITCHED : SB_F_ALL;
+			Scores_ModeSet(rec_sb_tab != SB_T_LOCAL, stof(argv(2)) ? FS_MODE_SEG : 0);
 		}
 		else if (argv(1) == "ksfmore")
 		{
@@ -4727,6 +4897,33 @@ void() Scores_Status =
 	              : ((rec_sb_filter == SB_F_TAS) ? "tas" : ((rec_sb_filter == SB_F_PRACTICE) ? "practice" : "all"))),
 	              rec_sb_cols, rec_sb_szrow));
 	print(sprintf("  style %s   ksf %g\n", Scores_StyleOf(), rec_sb_ksfstyle));
+	// P1590: the mode row as drawn, the groups store, and each row's and leg's group.
+	print(sprintf("  mode %s   groups %s, %g legs%s\n", FS_ModeName(Scores_Mode()), gr_key, gr_n,
+	              gr_req ? ", asking" : ""));
+	if (rec_sb_leg >= 0 && rec_sb_leg < rec_sb_legn)
+	{
+		cl = Groups_Leg(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg], FS_ModeStyle(Scores_Mode()));
+		if (cl >= 0)
+		{
+			s = "";
+			for (i = 0; i < 7; i = i + 1)
+				s = strcat(s, " ", ftos(gr_ms[cl * 7 + i]));
+			print(sprintf("  groups leg: %s, cuts%s\n", Groups_Source(cl), s));
+			s = "";
+			for (i = 0; i < min(ob_n, 24); i = i + 1)
+				s = strcat(s, " ", ftos(Groups_Of(cl, ob_ms[i])));
+			print(sprintf("  groups rows:%s\n", s));
+		}
+		s = "";
+		for (i = 0; i < rec_sb_legn; i = i + 1)
+		{
+			cl = Groups_Leg(rec_sb_legtrack[i], rec_sb_legnum[i], FS_ModeStyle(Scores_Mode()));
+			if (cl >= 0)
+			if (gr_g[cl] >= 0)
+				s = sprintf("%s %s=%s", s, strreplace(" ", "_", Scores_LegName(i)), FS_GroupName(gr_g[cl]));
+		}
+		print(sprintf("  groups badges:%s\n", s));
+	}
 	print(sprintf("  local index %s %g/%g files, %g cached, page %g/%g, %g matched\n",
 		rec_sb_idxactive ? "indexing" : "ready", rec_sb_idxat, rec_sb_idxn,
 		rec_sb_idxpath ? buf_getsize(rec_sb_idxpath) : 0,

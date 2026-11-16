@@ -71,6 +71,7 @@ float  mlb_offset;           // first held row's offset, including a profile see
 float mlb_course_req, mlb_time_req, mlb_aux_sent, mlb_course_known;
 // P1199: the legs /board/api/map lists for this style, with each game's count (n, nm, nk).
 float mlb_lgt[MLB_LEGS], mlb_lgl[MLB_LEGS], mlb_lgr[MLB_LEGS], mlb_lgm[MLB_LEGS], mlb_lgk[MLB_LEGS];
+float mlb_lgx[MLB_LEGS];      // P1590: TAS (nt)
 float mlb_lgn;
 vector mlb_legscroll;
 float mlb_play_known, mlb_map_seconds, mlb_map_attempts;
@@ -97,6 +98,13 @@ string(float t) Mlb_Tier =
 	if (t == MLB_T_KSF) return "ksf";
 	if (t == MLB_T_MOM) return "momentum";
 	return "ranked";
+};
+
+// P1590: TAS is its own tier whatever game tab is lit (surfd keeps it in community).
+string() Mlb_ReqTier =
+{
+	if (!strcmp(mlb_style, "tas")) return "community";
+	return Mlb_Tier(mlb_tab);
 };
 
 string(float t) Mlb_TabName =
@@ -145,6 +153,7 @@ float(string s) Mlb_TabOf =
 
 string() Mlb_Source =
 {
+	if (!strcmp(mlb_style, "tas")) return "TAS: tool-assisted runs, every game; assisted, not verified";
 	if (mlb_tab == MLB_T_ALL) return "All games: World of Surf, Momentum Mod, KSF";
 	if (mlb_tab == MLB_T_KSF) return "KSF (ksf.surf): times and available replays";
 	if (mlb_tab == MLB_T_MOM) return "Momentum Mod's own leaderboard, imported";
@@ -153,6 +162,7 @@ string() Mlb_Source =
 
 string() Mlb_EmptyLine =
 {
+	if (!strcmp(mlb_style, "tas")) return sprintf("Nobody has a TAS time on %s yet", mlb_map);
 	if (mlb_tab == MLB_T_ALL) return sprintf("Nobody has a time on %s yet", mlb_map);
 	if (mlb_tab == MLB_T_KSF) return sprintf("KSF has no times on %s", mlb_map);
 	if (mlb_tab == MLB_T_MOM) return sprintf("Momentum Mod has no times on %s", mlb_map);
@@ -205,6 +215,7 @@ string(float track, float leg) Mlb_LegName =
 
 float(float i, float t) Mlb_LegCount =
 {
+	if (!strcmp(mlb_style, "tas")) return mlb_lgx[i];    // P1590: TAS keeps its own count
 	if (t == MLB_T_KSF) return mlb_lgk[i];
 	if (t == MLB_T_MOM) return mlb_lgm[i];
 	if (t == MLB_T_OURS) return mlb_lgr[i];
@@ -435,7 +446,7 @@ float(float append) Mlb_Fetch =
 		off = mlb_offset + mlb_n;
 		lim = MLB_PAGE;
 	}
-	tier = Mlb_Tier(mlb_tab);
+	tier = Mlb_ReqTier();
 	url = strcat(sprintf("%s/api/board?map=%s&track=%g&leg=%g&tier=%s&style=%s",
 	              dir, uri_escape(mlb_map), mlb_track, mlb_leg, tier, uri_escape(mlb_style)),
 	              sprintf("&limit=%g&offset=%g", lim, off));
@@ -517,7 +528,7 @@ float() Mlb_Earlier =
 		return FALSE;
 	}
 	lim = min(MLB_PAGE, mlb_offset);
-	tier = Mlb_Tier(mlb_tab);
+	tier = Mlb_ReqTier();
 	url = strcat(sprintf("%s/api/board?map=%s&track=%g&leg=%g&tier=%s&style=%s",
 	              dir, uri_escape(mlb_map), mlb_track, mlb_leg, tier, uri_escape(mlb_style)),
 	              sprintf("&limit=%g&offset=%g", lim, mlb_offset - lim));
@@ -619,6 +630,7 @@ float(float id, float code, string body) Mlb_AuxReply =
 			mlb_lgr[j] = max(0, json_get_float(json_find_object_child(row, "n")));
 			mlb_lgm[j] = max(0, json_get_float(json_find_object_child(row, "nm")));
 			mlb_lgk[j] = max(0, json_get_float(json_find_object_child(row, "nk")));
+			mlb_lgx[j] = max(0, json_get_float(json_find_object_child(row, "nt")));
 		}
 		mlb_course_known = TRUE;
 		for (i = 0; i < mlb_lgn; i = i + 1)
@@ -675,11 +687,19 @@ void(float t) Mlb_SetTab =
 	Mlb_Fetch(FALSE);
 };
 
-string(float i) Mlb_StyleKey = { return FS_BoardStyle(i, FS_BoardSegmented(mlb_style)); };
+// P1590: the board's mode (FS_MODE_*) from its style; segmented_sw and the like read as Segmented.
+float() Mlb_Mode =
+{
+	if (!strcmp(mlb_style, "tas")) return FS_MODE_TAS;
+	if (FS_BoardSegmented(mlb_style)) return FS_MODE_SEG;
+	return FS_BoardDirection(mlb_style);
+};
 
 void(string style) Mlb_SetStyle =
 {
-	if (strcmp(style, FS_BoardStyle(FS_BoardDirection(style), FS_BoardSegmented(style)))) return;
+	// P1590: the mode row's styles only; a segmented direction is no longer a board shown.
+	if (strcmp(style, "tas") && strcmp(style, "segmented"))
+	if (strcmp(style, FS_BoardStyle(FS_BoardDirection(style), FALSE))) return;
 	if (!strcmp(style, mlb_style)) return;
 	Mlb_ClearRows();
 	mlb_offset = mlb_focusrank = 0;
@@ -897,7 +917,7 @@ void(float id, float code, string body, float append) Mlb_Page =
 	}
 
 	if (strcasecmp(json_get_string(json_find_object_child(root, "map")), mlb_map) ||
-	    strcmp(json_get_string(json_find_object_child(root, "tier")), Mlb_Tier(mlb_tab)) ||
+	    strcmp(json_get_string(json_find_object_child(root, "tier")), Mlb_ReqTier()) ||
 	    strcmp(json_get_string(json_find_object_child(root, "style")), mlb_style) ||
 	    json_get_float(json_find_object_child(root, "track")) != mlb_track ||
 	    json_get_float(json_find_object_child(root, "leg")) != mlb_leg)
@@ -1003,7 +1023,7 @@ void(float id, float code, string body) Mlb_PageEarlier =
 	off = json_get_float(json_find_object_child(root, "offset"));
 	n = json_get_length(rows);
 	if (strcasecmp(json_get_string(json_find_object_child(root, "map")), mlb_map) ||
-	    strcmp(json_get_string(json_find_object_child(root, "tier")), Mlb_Tier(mlb_tab)) ||
+	    strcmp(json_get_string(json_find_object_child(root, "tier")), Mlb_ReqTier()) ||
 	    strcmp(json_get_string(json_find_object_child(root, "style")), mlb_style) ||
 	    json_get_float(json_find_object_child(root, "track")) != mlb_track ||
 	    json_get_float(json_find_object_child(root, "leg")) != mlb_leg ||
@@ -1053,6 +1073,124 @@ void(float id, float code, string body) Mlb_PageEarlier =
   From m_lobby.qc's URI_Get_Callback, after the join's test and before the
   poll's.  TRUE when the id was one of ours, live or abandoned.
 */
+// P1590: groups, as cl_groups.qc keeps them for the TAB board: every leg's seven cut
+// times for this map and mode, and the player's own group per leg (surfd game_groups).
+#define MLB_GMAX 64
+float mlb_gt[MLB_GMAX], mlb_gl[MLB_GMAX], mlb_gg[MLB_GMAX], mlb_gx[MLB_GMAX], mlb_gsrc[MLB_GMAX];
+float mlb_gms[448];                 // 7 a leg
+float mlb_gn, mlb_greq, mlb_gsent, mlb_gat, mlb_gwait;
+string mlb_gkey;
+
+void() Mlb_GroupsNeed =
+{
+	local string key, url;
+
+	key = strcat(strtolower(mlb_map), "|", mlb_style);
+	if (mlb_greq && time - mlb_gsent > MLB_DEADLINE) { mlb_greq = 0; mlb_gwait = time + 30; }
+	if (strcmp(key, mlb_gkey))
+	{
+		if (mlb_gkey != "") strunzone(mlb_gkey);
+		mlb_gkey = strzone(key);
+		mlb_gn = 0;
+		mlb_greq = 0;
+		mlb_gat = -1000;
+		mlb_gwait = 0;
+	}
+	if (mlb_greq || time < mlb_gwait || time - mlb_gat < 120)
+		return;
+	if (cvar("rec_terms") < FS_TERMS_ONLINE || cvar_string("lobby_dir") == "")
+		return;
+	url = sprintf("%s/api/board?groups=%s&style=%s", cvar_string("lobby_dir"), uri_escape(mlb_map), uri_escape(mlb_style));
+	if (MH_Me() != "")
+		url = strcat(url, "&me=", MH_Me());
+	mlb_greq = Lob_NextReq();
+	mlb_gsent = time;
+	if (!uri_get(url, mlb_greq))
+	{
+		mlb_greq = 0;
+		mlb_gwait = time + 30;
+	}
+};
+
+float(float reqid, float code, string body) Mlb_GroupsReply =
+{
+	local int root, legs, leg, ms, g;
+	local float i, k, n, len;
+
+	if (!mlb_greq || reqid != mlb_greq)
+		return FALSE;
+	mlb_greq = 0;
+	root = 0;
+	if (!code)
+		root = json_parse(body);
+	if (!root)
+	{
+		mlb_gwait = time + 30;
+		return TRUE;
+	}
+	if (!strcmp(strcat(strtolower(json_get_string(json_find_object_child(root, "map"))), "|",
+	                   json_get_string(json_find_object_child(root, "style"))), mlb_gkey))
+	{
+		legs = json_find_object_child(root, "legs");
+		len = json_get_length(legs);         // a float first: MENU's min reads an int raw
+		n = 0;
+		for (i = 0; i < min(MLB_GMAX, len); i = i + 1)
+		{
+			leg = json_get_child_at_index(legs, i);
+			ms = json_find_object_child(leg, "ms");
+			k = json_get_length(ms);
+			if (k != 7)
+				continue;
+			mlb_gt[n] = json_get_float(json_find_object_child(leg, "track"));
+			mlb_gl[n] = json_get_float(json_find_object_child(leg, "leg"));
+			mlb_gx[n] = json_get_float(json_find_object_child(leg, "x"));
+			mlb_gsrc[n] = !strcmp(json_get_string(json_find_object_child(leg, "src")), "ksf");
+			g = json_find_object_child(leg, "g");
+			mlb_gg[n] = (g > 0) ? json_get_float(g) : -1;
+			for (k = 0; k < 7; k = k + 1)
+				mlb_gms[n * 7 + k] = json_get_float(json_get_child_at_index(ms, k));
+			n = n + 1;
+		}
+		mlb_gn = n;
+		mlb_gat = time;
+		print(sprintf("^5board:^7 groups %s: %g legs\n", mlb_gkey, mlb_gn));
+	}
+	json_free(root);
+	return TRUE;
+};
+
+float(float track, float leg) Mlb_GroupsLeg =
+{
+	local float i;
+
+	for (i = 0; i < mlb_gn; i = i + 1)
+		if (mlb_gt[i] == track && mlb_gl[i] == leg)
+			return i;
+	return -1;
+};
+
+float(float li, float ms) Mlb_GroupOf =
+{
+	local float k;
+
+	if (li < 0 || ms <= 0)
+		return -1;
+	for (k = 0; k < 7; k = k + 1)
+		if (ms <= mlb_gms[li * 7 + k])
+			return k;
+	return 7;
+};
+
+// A group as a pill ("G1" on its colour), its right edge at xr, centred on yc.
+void(float xr, float yc, float g) Mlb_GroupBadge =
+{
+	local float w;
+
+	w = stringwidth(FS_GroupName(g), TRUE, '12 12 0') + 12;
+	sui_roundbox([xr - w, yc - 9], [w, 18], 9, FS_GroupColour(g), 0.95);
+	sui_text([xr - w + 6, yc - 6], '12 12 0', FS_GroupName(g), '0.08 0.08 0.1', 1, 0);
+};
+
 float(float reqid, float code, string body) Mlb_Reply =
 {
 	local float k;
@@ -1061,6 +1199,7 @@ float(float reqid, float code, string body) Mlb_Reply =
 	if (!reqid)
 		return FALSE;
 	if (Mlb_AuxReply(reqid, code, body)) return TRUE;
+	if (Mlb_GroupsReply(reqid, code, body)) return TRUE;
 	if (mlb_kreq)
 	if (reqid == mlb_kreq)
 	{
@@ -1236,7 +1375,7 @@ vector(float r) Mlb_RankCol =
 
 void(vector rp, float i, float rw, float tr, float dlr, float dr, float nw) Mlb_DrawRow =
 {
-	local float ty;
+	local float ty, li, g, gp;
 	local string s;
 	local int ms;
 
@@ -1245,6 +1384,17 @@ void(vector rp, float i, float rw, float tr, float dlr, float dr, float nw) Mlb_
 	else if (i & 1)
 		sui_fill(rp, [rw, MLB_ROW_H], COL_ROW, 0.6, 0);
 	ty = rp_y + (MLB_ROW_H - SZ_LABEL_H) * 0.5;
+	// P1590: the row's group as a strip; a line in the new group's colour where it changes.
+	li = Mlb_GroupsLeg(mlb_track, mlb_leg);
+	g = Mlb_GroupOf(li, stof(bufstr_get(mlb_bms, i)));
+	if (g >= 0)
+	{
+		sui_fill([rp_x + 2, rp_y + 3], [3, MLB_ROW_H - 6], FS_GroupColour(g), 0.9, 0);
+		gp = (i > 0) ? Mlb_GroupOf(li, stof(bufstr_get(mlb_bms, i - 1))) : -1;
+		if (gp >= 0)
+		if (gp != g)
+			sui_fill([rp_x, rp_y - 1], [rw, 2], FS_GroupColour(g), 0.95, 0);
+	}
 
 	Font_Set(ui_font_mono);
 	s = bufstr_get(mlb_brank, i);
@@ -1356,6 +1506,29 @@ void(vector p, float w) Mlb_DrawBody =
   in a sidebar, and # / player / time / delta / date.  Scrolling is the paging
   (Mlb_More, Mlb_Earlier); there is no earlier/top/refresh.
 */
+// P1590: ui_chip in a mode's own colour (FS_ModeColour; x < 0 the theme's); the unlit dim.
+float(vector pos, string id, string label, vector col, float on) Mlb_ModeChip =
+{
+	local float w, hot;
+	local vector sz, tc;
+
+	w  = ui_chip_w(label);
+	sz = [w, CHIP_H];
+	sui_action_element(pos, sz, id, sui_noop);
+	hot = sui_is_hovered(id);
+	if (on && col_x >= 0)
+		sui_style_box(pos, sz, CHIP_H * 0.5, col * 0.42, col, 1);
+	else if (on)
+		sui_roundbox(pos, sz, CHIP_H * 0.5, COL_ROW_SEL, 1);
+	else
+		sui_roundbox(pos, sz, CHIP_H * 0.5, hot ? COL_ROW_HOVER : COL_ROW, hot ? 1 : 0.55);
+	tc = (col_x >= 0) ? col : COL_TEXT;
+	if (on) tc = (col_x >= 0) ? '1 1 1' : COL_ACCENT;
+	sui_text([pos_x + CHIP_PAD * 0.5, pos_y + (CHIP_H - SZ_LABEL_H) * 0.5], SZ_LABEL, label, tc,
+	         (on || hot) ? 1 : 0.45, 0);
+	return w;
+};
+
 void(vector screensize) Mlb_Draw =
 {
 	local vector p, sz, ls, rp, lp, lsz;
@@ -1365,6 +1538,7 @@ void(vector screensize) Mlb_Draw =
 	if (!mlb_open)
 		return;
 	Mlb_Poll();
+	Mlb_GroupsNeed();
 
 	w  = min(screensize_x - 64, 980);
 	h  = min(screensize_y - 64, 720);
@@ -1377,7 +1551,7 @@ void(vector screensize) Mlb_Draw =
 
 	// Closed at the end: the rows below still read the buffers a close frees.
 	closeit = FALSE;
-	ksffetch = (mlb_tab != MLB_T_OURS && !FS_BoardSegmented(mlb_style));    // P1448: KSF and Momentum
+	ksffetch = (mlb_tab != MLB_T_OURS && !FS_BoardSegmented(mlb_style) && strcmp(mlb_style, "tas"));    // P1448: KSF and Momentum
 	if (ksffetch && w >= 640)
 	if (ui_button("mlb_ksmore", [w - 354, 12], [112, 30], "Fetch")) Mlb_KsfMore();
 	if (ui_button("mlb_jumpme", [w - 234, 12], [126, 30], "Jump to me")) Mlb_JumpToMe();
@@ -1385,7 +1559,8 @@ void(vector screensize) Mlb_Draw =
 		closeit = TRUE;
 
 	sui_text([16, 14], SZ_HEAD, ui_fit_text(mlb_map, w - ((ksffetch && w >= 640) ? 386 : 266), SZ_HEAD), COL_ACCENT, 1, 0);
-	s = sprintf("%s / %s / %s", Mlb_TabName(mlb_tab), Mlb_LegName(mlb_track, mlb_leg), FS_BoardStyleName(mlb_style));
+	s = sprintf("%s / %s / %s", (Mlb_Mode() == FS_MODE_TAS) ? "Community" : Mlb_TabName(mlb_tab),
+	            Mlb_LegName(mlb_track, mlb_leg), FS_ModeName(Mlb_Mode()));
 	sui_text([16, 38], '12 12 0', ui_fit_text(s, w - 32, '12 12 0'), COL_DIM, 1, 0);
 
 	// The games, in the in-game filter's order: every game, then each one.
@@ -1396,6 +1571,10 @@ void(vector screensize) Mlb_Draw =
 		ly = ly + 38;
 	}
 	x = 16;
+	if (Mlb_Mode() == FS_MODE_TAS)
+		sui_text([x, ly + 5], SZ_LABEL, "TAS -- tool-assisted runs: assisted, not verified, every game",
+		         SUI_THEME_WARN, 1, 0);
+	else
 	for (k = 0; k < MLB_NTABS; k = k + 1)
 	{
 		t = Mlb_TabAt(k);
@@ -1405,27 +1584,22 @@ void(vector screensize) Mlb_Draw =
 			Mlb_SetTab(t);
 	}
 
+	// P1590: one mode row, exactly one lit: Segmented (blue), TAS (purple), the directions.
 	x = 16;
 	ly = ly + CHIP_H + 8;
-	for (t = 0; t < 4; t = t + 1)
+	on = Mlb_Mode();
+	for (k = 0; k < FS_MODES; k = k + 1)
 	{
+		t = FS_ModeAt(k);
 		id = strcat("mlb_style", ftos(t));
-		s = FS_BoardDirectionName(t);
+		s = FS_ModeName(t);
 		cw = ui_chip_w(s);
 		if (x + cw > w - 16 && x > 16) { x = 16; ly = ly + CHIP_H + 8; }
-		x = x + ui_chip([x, ly], id, s, !strcmp(mlb_style, Mlb_StyleKey(t))) + CHIP_GAP;
-		if (sui_is_released(id)) Mlb_SetStyle(Mlb_StyleKey(t));
+		x = x + Mlb_ModeChip([x, ly], id, s, FS_ModeColour(t), t == on) + CHIP_GAP;
+		if (sui_is_released(id))
+		if (t != on)
+			Mlb_SetStyle(FS_ModeStyle(t));
 	}
-	x = x + 16;
-	if (x + 150 > w - 16) { x = 16; ly = ly + CHIP_H + 8; }
-	sui_action_element([x, ly], [150, CHIP_H], "mlb_segmented", sui_noop);
-	sui_roundbox([x, ly + 2], [36, CHIP_H - 4], (CHIP_H - 4) * 0.5, SUI_THEME_WELL, 1);
-	sui_roundbox([x + (FS_BoardSegmented(mlb_style) ? 18 : 2), ly + 4], [CHIP_H - 8, CHIP_H - 8],
-	             (CHIP_H - 8) * 0.5, FS_BoardSegmented(mlb_style) ? COL_ACCENT : COL_DIM, 1);
-	sui_text([x + 44, ly + 4], SZ_LABEL, "Segmented", COL_TEXT, 1, 0);
-	if (sui_is_released("mlb_segmented"))
-		Mlb_SetStyle(FS_BoardStyle(FS_BoardDirection(mlb_style), !FS_BoardSegmented(mlb_style)));
-
 	ly = ly + CHIP_H + 12;
 	s = mlb_play_known ? sprintf("Your map time: %gh %gm | %g main/bonus attempts", floor(mlb_map_seconds / 3600), floor(mlb_map_seconds / 60) % 60, mlb_map_attempts) : (mlb_time_req ? "Loading your map time / attempts..." : "Map playtime / attempts: not recorded yet");
 	if (mlb_play_known && mlb_leg == 0)
@@ -1464,6 +1638,11 @@ void(vector screensize) Mlb_Draw =
 			c = Mlb_LegCount(idx, mlb_tab);
 			s = (c > 0) ? sprintf("%g %s", c, (c == 1) ? "time" : "times") : "no times";
 			sui_text(lp + '8 22 0', '12 12 0', s, on ? COL_TEXT : SUI_THEME_MUTED, 1, 0);
+			c = Mlb_GroupsLeg(mlb_lgt[idx], mlb_lgl[idx]);       // P1590: your group here
+			if (c >= 0)
+			if (mlb_gg[c] >= 0)
+			if (mlb_gg[c] <= 6)
+				Mlb_GroupBadge(lp_x + lsz_x - 6, lp_y + 29, mlb_gg[c]);
 			if (sui_is_released(id)) Mlb_SetLeg(mlb_lgt[idx], mlb_lgl[idx]);
 		}
 		sui_list_view_end();
@@ -1667,7 +1846,7 @@ void() Mlb_TestCommand =
 	if (a == "segmented")
 	{
 		if (mlb_open)
-			Mlb_SetStyle(FS_BoardStyle(FS_BoardDirection(mlb_style), stof(argv(2))));
+			Mlb_SetStyle(stof(argv(2)) ? "segmented" : "clean");     // P1590: one mode, no direction
 		return;
 	}
 	if (a == "retry")

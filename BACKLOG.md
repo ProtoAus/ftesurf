@@ -1,5 +1,19 @@
 # BACKLOG.md
 
+## Groups, mode row -- what P1590 left (16 Nov, ftesurf-06; root C:\FTESurf-worktrees\groups-20261116-c7)
+
+- The surfd half (game_groups, completion families) is on main, not live: it needs a guarded backend generation
+  (P1569/P1570's machinery, an owner root step). Until then the client's groups request 400s and it waits 30 s.
+- A KSF board is crawled partly (a viewed map's main to 1,000 rows, others 100-200), so where KSF is the ladder
+  its X is the rows held, a lower bound: the groups run tighter than KSF's own until the crawl ends
+  (ksfimport's doc["done"]). Falsifier: a KSF-only main with done False, x against KSF's site count.
+- `ui_native_scores 1` (off by default) draws no strips or lines: only Scores_DrawOnlineRows draws them.
+- The badge is the ranked (WOS) time's group; an imported Momentum/KSF time of the same player is not used.
+- map_groups has no single-flight: simultaneous misses each compute (bounded by the board's rate bucket); its
+  cache is keyed by base name, so junk map names in the bucket can evict real entries.
+- On a merged list the line's pill can cover part of the WHY word (cl_scores.qc, Scores_DrawOnlineRows).
+- `scores tab online|local` (console) set the tab alone; the clicks and arrow keys carry the mode.
+
 ## Local games' save ops -- what P1588 left (16 Nov, ftesurf-06; root C:\FTESurf-worktrees\localload-20261116-06)
 
 - With the server paused (`pausable 1` + pause, or a 1-slot game's auto-pause) an op pressed in the first ~0.5 s

@@ -3152,6 +3152,160 @@ def board_near(db, player, mapname, track, leg, tier, style, base=None, name="")
     return {"offset": max(0, ahead - 5), "ms": ms, "tier": own_tier}
 
 
+# --------------------------------------------------------------------------
+# Groups (P1590): Momentum's rank ladder -- a fixed Top 10, then G1-G6 log-spaced
+# up to a grouping cutoff -- measured on an IMPORTED board, because ours are too
+# thin to ladder. Defaults reproduce the calculator Lex sent (16 Nov) for 50,
+# 150 and 50,000 completions exactly. A group's line is the time at its last
+# rank, so any run on any of our boards is placed by time alone.
+# --------------------------------------------------------------------------
+GROUP_TOP = 10           # the fixed Top 10
+GROUP_N = 6              # G1..G6
+GROUP_P1 = 0.02          # G1 ends at Top 10 + this share of X...
+GROUP_F1 = 15            # ...and never before this rank
+GROUP_CUT = 0.67         # ranks past this share of X are ungrouped (and the ladder ends here)
+GROUP_ALWAYS = 100       # ...unless within this many ranks
+GROUP_W = 5              # the narrowest group, in ranks
+GROUP_TTL = 600          # s a map's cut times are reused
+GROUP_HELD = 256         # (map, style) entries held
+_groups_lock = threading.Lock()
+_groups = {}             # (map, style) -> (at, {(track, leg): leg dict})
+
+
+def _half_up(v):
+    return int(math.floor(v + 0.5))
+
+
+def group_ranks(x):
+    """[Top 10's last rank, G1's, ..., G6's] on a board of `x` completions, or
+    None when it has no rank past the Top 10. An empty group repeats the rank
+    before it; ranks past the last are ungrouped."""
+    if x <= GROUP_TOP:
+        return None
+    cut = min(x, max(GROUP_ALWAYS, _half_up(GROUP_CUT * x)))
+    ends = [min(cut, max(GROUP_F1, GROUP_TOP + _half_up(GROUP_P1 * x)))]
+    first = ends[0]
+    for i in range(1, GROUP_N):
+        v = cut if i == GROUP_N - 1 else _half_up(first * (cut / first) ** (i / (GROUP_N - 1)))
+        ends.append(min(cut, max(v, ends[-1] + GROUP_W)))
+    return [GROUP_TOP] + ends
+
+
+def group_of(ms, cuts):
+    """0 Top 10, 1..6 G1..G6, 7 ungrouped: the first cut `ms` is within. By time
+    alone: a time equal to the time at a group's last rank is in it, wherever
+    BOARD_ORDER's submitted/player tie-break places that row."""
+    for i, c in enumerate(cuts):
+        if ms <= c:
+            return i
+    return len(cuts)
+
+
+def _group_refs(style):
+    """The imported tiers a style can be laddered against: Momentum imports
+    only Normal, KSF all four directions, and neither has Segmented or TAS."""
+    if style == STYLE_CLEAN:
+        return TIERS_IMPORTED
+    return (TIER_KSF,) if style in STYLES_KSF else ()
+
+
+def map_groups(db, mapname, base, style, now):
+    """{(track, leg): {"src", "x", "ms": [7 cut times]}} for every leg of a map
+    an imported board ladders, the larger of Momentum's and KSF's per leg."""
+    key = (base or mapname, style)      # a second build ladders on its base's imports
+    with _groups_lock:
+        hit = _groups.get(key)
+        if hit is not None and 0 <= now - hit[0] < GROUP_TTL:
+            return hit[1]
+    counts = {}
+    for tier in _group_refs(style):
+        tscope, targs = _board_tier_scope(mapname, base, tier)
+        for row in db.execute("SELECT track, leg, COUNT(*) AS n FROM runs WHERE " + tscope
+                              + " AND tier=? AND style=? AND millis>0 GROUP BY track, leg",
+                              targs + (tier, style)):
+            cur = counts.get((row["track"], row["leg"]))
+            if cur is None or row["n"] > cur[1]:      # TIERS_IMPORTED order: Momentum wins a tie
+                counts[(row["track"], row["leg"])] = (tier, row["n"])
+    legs = {}
+    for (track, leg), (tier, x) in counts.items():
+        ranks = group_ranks(x)
+        if ranks is None:
+            continue
+        tscope, targs = _board_tier_scope(mapname, base, tier)
+        cuts = []
+        for r in ranks:
+            # millis alone, not BOARD_ORDER: the r-th time is the same whichever tied row is
+            # r-th, and this walks runs_board without a sort (50k rows: 0.170 s -> 0.004 s).
+            row = db.execute("SELECT millis FROM runs WHERE " + tscope
+                             + " AND track=? AND leg=? AND tier=? AND style=? AND millis>0"
+                             " ORDER BY millis LIMIT 1 OFFSET ?",
+                             targs + (track, leg, tier, style, r - 1)).fetchone()
+            if row is None:                       # the board shrank between the two reads
+                break
+            cuts.append(row["millis"])
+        if len(cuts) == len(ranks):
+            legs[(track, leg)] = {"src": tier, "x": x, "ms": cuts}
+    with _groups_lock:
+        _groups[key] = (now, legs)
+        while len(_groups) > GROUP_HELD:
+            _groups.pop(min(_groups, key=lambda k: _groups[k][0]))
+    return legs
+
+
+def groups_forget():
+    """Drop every held ladder.  For tests."""
+    with _groups_lock:
+        _groups.clear()
+
+
+def game_groups(raw, style, who, now):
+    """P1590: `/api/board?groups=<map>&style=<s>&me=<who>` -- every leg's cut
+    times, and the asker's own group where they hold a time on our board in
+    that style (ranked; TAS's own tier for tas). One request a map and style:
+    the board's divider lines and the leg list's badges both read it.
+    ON /api/board for game_avatar's reason, and it spends the board's bucket."""
+    mapname = clean_map(raw)
+    if not mapname:
+        return fail(400, "bad map")
+    style = clean_text(style) or STYLE_CLEAN
+    if style not in STYLES_READ:
+        return fail(400, "bad style")
+    who = who or ""
+    if who and not re.fullmatch(r"[0-9a-f]{8}|[0-9a-f]{%d}" % WEB_HANDLE_LEN, who):
+        return fail(400, "bad player")
+    out = []
+    handle, player = who, None
+    try:
+        db = get_db()
+        base = variant_base(mapname)
+        legs = map_groups(db, mapname, base, style, now)
+        mine = {}
+        if who and legs:
+            handle, player = _game_player(db, who, now)
+        if player is not None:
+            tier = TIER_COMMUNITY if style == STYLE_TAS else TIER_RANKED
+            for (track, leg) in legs:           # the primary key: one row a leg at most
+                row = db.execute("SELECT millis FROM runs WHERE map=? AND track=? AND leg=? AND tier=?"
+                                 " AND style=? AND player=? AND millis>0",
+                                 (mapname, track, leg, tier, style, player)).fetchone()
+                if row is not None:
+                    mine[(track, leg)] = row["millis"]
+        for (track, leg) in sorted(legs):
+            g = legs[(track, leg)]
+            row = {"track": track, "leg": leg, "src": g["src"], "x": g["x"], "ms": g["ms"]}
+            if (track, leg) in mine:
+                row["mine"] = mine[(track, leg)]
+                row["g"] = group_of(row["mine"], g["ms"])
+            out.append(row)
+    except sqlite3.Error as exc:
+        log.exception("game groups db error: %s", exc)
+        return fail(500, "storage error")
+    return Response(game_json(
+        {"v": 1, "t": now, "map": mapname, "style": style,
+         "who": handle if player is not None else "", "player_known": player is not None,
+         "legs": out}), status=200, mimetype="application/json")
+
+
 _PREV_SQL = ("SELECT millis, submitted FROM runs WHERE map=? AND track=? AND leg=?"
              " AND tier=? AND style=? AND player=?")
 
@@ -4265,6 +4419,9 @@ def board():
         return game_players(request.args.get("players"), now)
     if request.args.get("cards") is not None:      # P1062: visible map-card batch
         return game_mapcards(request.args.get("cards"), request.args.get("player"), now)
+    if request.args.get("groups") is not None:     # P1590: see game_groups
+        return game_groups(request.args.get("groups"), request.args.get("style"),
+                           request.args.get("me"), now)
     if request.args.get("completed") is not None:  # P1080: the Maps list's completed sort
         return game_completed(request.args.get("completed"), now, request.args.get("source"))
     if request.args.get("player") is not None:      # ...and game_player
@@ -7266,20 +7423,52 @@ def _completion(done, have_main, tiers):
     return out
 
 
+def _variant_of():
+    variant_base("")                    # refresh the catalogue cache
+    with _maps_lock:
+        return dict(_variants["of"])
+
+
+def _families(maps, of=None):
+    """P1590: {family: [maps]} -- a map and its second builds (variant_base's
+    catalogue: the _css copy, a KSF port) are one map to finish (Lex, 16 Nov:
+    "Just count 1 of these maps in Total"). The family is the base's name; a
+    finish on any build credits it, in the pool or not (`of` maps each build)."""
+    of = _variant_of() if of is None else of
+    fam = {}
+    for m in maps:
+        fam.setdefault(of.get(m, m), []).append(m)
+    return fam
+
+
+def _family_tier(key, members, tiers):
+    """The base's tier, else the easiest of its builds', else None (unrated)."""
+    if key in tiers:
+        return tiers[key]
+    have = [tiers[m] for m in members if m in tiers]
+    return min(have) if have else None
+
+
 def _tier_table(done, maps, tiers):
     table = {}
-    for m in maps:
-        t = tiers.get(m)
+    untiered = finished = 0
+    of = _variant_of()
+    fam = _families(maps, of)
+    done_f = {of.get(m, m) for m in done}
+    for key, members in fam.items():
+        t = _family_tier(key, members, tiers)
+        hit = key in done_f
+        finished += 1 if hit else 0
         if t is None:
+            untiered += 1
             continue
         row = table.setdefault(t, {"tier": t, "of": 0, "done": 0})
         row["of"] += 1
-        if m in done:
+        if hit:
             row["done"] += 1
-    untiered = sum(1 for m in maps if m not in tiers)
     return {"tiers": [table[k] for k in sorted(table)],
             "untiered": untiered,
-            "done": len(done & maps), "of": len(maps)}
+            "done": finished, "of": len(fam)}
 
 
 def steam2(sid64):
@@ -7725,15 +7914,34 @@ def _tier_maps(ranked, main_maps, mode="", source="all"):
     have, playable, bsp = _completion_scope(main_maps)
     tiers = map_tiers()
     groups = {}
-    for key in sorted(have, key=lambda k: bsp.get(k, k).lower()):
+    # P1590: one row a family (_families), as _tier_table counts them: the build
+    # finished fastest, else the base, else the first by name.
+    of = _variant_of()
+    fbest = {}                  # family -> (its fastest finish's map, [time, game, {games}, style])
+    for m, cur in best.items():
+        k = of.get(m, m)
+        held = fbest.get(k)
+        if held is None:
+            fbest[k] = (m, [cur[0], cur[1], set(cur[2]), cur[3]])
+            continue
+        held[1][2].update(cur[2])
+        if cur[0] < held[1][0]:
+            held[1][0], held[1][1], held[1][3] = cur[0], cur[1], cur[3]
+            fbest[k] = (m, held[1])
+    picks = []
+    for fkey, members in _families(have, of).items():
+        fin = fbest.get(fkey)
+        key = fin[0] if fin is not None and fin[0] in members else (fkey if fkey in members else min(members))
+        picks.append((key, members, _family_tier(fkey, members, tiers or {}), fin[1] if fin else None))
+    picks.sort(key=lambda p: bsp.get(p[0], p[0]).lower())
+    for key, members, t, mine in picks:
         if mode and mapmanifest.map_mode(key) != mode:
             continue
-        row = {"map": bsp.get(key, key), "have": 1 if key in playable else 0}
-        mine = best.get(key)
+        row = {"map": bsp.get(key, key), "have": 1 if any(m in playable for m in members) else 0}
         if mine is not None:
             row["ms"], row["tr"], row["s"] = mine[0], mine[1], mine[3]
             row["games"] = sorted(mine[2])
-        t = tiers.get(key) if tiers is not None else None
+        t = t if tiers is not None else None
         g = groups.setdefault(t, {"tier": t, "of": 0, "done": 0, "maps": []})
         g["of"] += 1
         g["done"] += 1 if mine is not None else 0

@@ -21,6 +21,13 @@
 
 ## next
 
+### P1590 Groups on the leaderboards, one row of modes, your server beside the board
+- Leaderboards now sort times into Groups like Momentum Mod and KSF: a Top 10, then G1 to G6, measured on Momentum's (or KSF's) full board for that course, since ours are still small. A coloured line marks where the group changes.
+- Your own group shows as a badge (G1 red down to G6 blue) on Main, each stage and each bonus in the board's course list, in the TAB board and the main menu's leaderboard.
+- Segmented, TAS, Normal, Sideways, Half-Sideways and Backwards are one row of modes now: click one and only that board shows, the others dim. Segmented is blue and TAS purple; TAS is no longer a tab.
+- Holding TAB also lists everyone in your server to the right of the board, with their main time in their own colour.
+- On the Stats page a map and its CS:S/KSF copy count as one map, so beating either one counts it as finished.
+
 ## 0.1.48 2026-11-16
 
 ### P1588 Save loads are instant in games you host too

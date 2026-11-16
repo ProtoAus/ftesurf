@@ -1,5 +1,22 @@
 # AGENT_NOTES.md
 
+## P1590 groups and the mode row (16 Nov 2026; ftesurf-06, root C:\FTESurf-worktrees\groups-20261116-c7)
+
+- An arm that opens the ONLINE board needs `set rec_terms 9` after menu_restart: since P1586 the menu's
+  FS_TERMS_ONLINE is 9 (csprogs 8). The older arms' `rec_terms 4` now measure "terms not accepted" and
+  every online check reads empty, which looks like a surfd fault.
+- A listen-server client has no `*phash` (no `me` on surfd requests, no badges) unless the cfg sets
+  `setinfo _smark <8 hex>` before the map: Account_Mark's private-game rule takes it as the mark.
+- A map's board opens on WOS only (P909) whatever the cfg set before `scores open`: `scores source all`
+  after it for every game's list.
+- runlines_smoke.py needs `log_name runlines_smoke` and an `echo RUNLINES COMPLETE`, or it reports
+  "No client log: control did not act" for a run that completed.
+- fteqcc reads `float *a, *b;` as b a float**: one pointer declaration a line.
+- Group cut times are `ORDER BY millis` at an OFFSET, not BOARD_ORDER: its `player` is not in runs_board, so
+  SQLite sorts a temp B-tree (50k rows 0.170 s against 0.004 s); the r-th time is the same either way.
+- Groups are a separate request because test_momindex.py requires the ranked board's body to be identical
+  across an import, and the ladder is made of imported rows. Arm: tools/p1590groups.py (14 checks).
+
 ## P1586 hook scan: what it does to test arms (16 Nov 2026)
 
 - On Windows x64 a worker thread scans the client while a journal is open (0.5-2.5 s in, then every
