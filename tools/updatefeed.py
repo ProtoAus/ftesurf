@@ -113,9 +113,11 @@ def envelope(payload: dict, seed: bytes, public_key: str = PUBLIC_KEY) -> bytes:
 
 
 def unique_keys(pairs: list) -> dict:
-    """The engine's JSON reader takes a repeated key's first value, serde and json.loads the last: refuse both."""
-    if len({k for k, _ in pairs}) != len(pairs):
-        raise ValueError("duplicate key in signed update")
+    """The engine's JSON reader takes a repeated key's first value and lets "name." match "name";
+    serde and json.loads keep the last: refuse repeated and dotted keys."""
+    keys = [k for k, _ in pairs]
+    if len(set(keys)) != len(keys) or any("." in k for k in keys):
+        raise ValueError("repeated or dotted key in signed update")
     return dict(pairs)
 
 
@@ -123,6 +125,8 @@ def verify(data: bytes, public_key: str = PUBLIC_KEY) -> dict:
     if len(data) > MAX_FEED:
         raise ValueError("update feed exceeds reader limit")
     signed = json.loads(data, object_pairs_hook=unique_keys)
+    if not isinstance(signed, dict) or set(signed) != {"payload", "signature"}:
+        raise ValueError("update envelope must hold exactly payload and signature")
     text = signed["payload"]
     if not isinstance(text, str) or "\0" in text or not ed25519.verify(bytes.fromhex(public_key), text.encode(), bytes.fromhex(signed["signature"])):
         raise ValueError("update manifest signature is invalid")
@@ -217,19 +221,26 @@ def object_bytes(root: Path, h: str, size: int) -> bytes:
 
 
 def check_manifest(data: bytes, game: str) -> None:
-    """default.fmf must name this identity: GAME and the last BASEGAME, read as the engine reads them."""
+    """default.fmf must name this identity in one GAME and one BASEGAME line. Anything this line parse
+    could read differently from the engine's tokenizer is refused, so what it accepts it reads exactly."""
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError:
         raise ValueError("default.fmf is not UTF-8") from None
+    if any((ord(c) < 32 and c not in "\n\t") or c == "\x7f" for c in text) or "/*" in text:
+        raise ValueError("default.fmf holds a control character or a block comment")
     found = {}
-    for line in text.splitlines():
+    for line in text.split("\n"):
         tokens = []
-        for t in re.findall(r'"[^"]*"|[^\s"]+', line):
+        for t in re.findall(r'"[^"]*"|[^ \t"]+', line):
             if t.startswith("//"):
                 break
             tokens.append(t[1:-1] if t.startswith('"') else t)
-        if len(tokens) >= 2 and tokens[0].lower() in ("game", "basegame"):
+        if tokens and tokens[0].startswith("*"):
+            raise ValueError("default.fmf holds a *-prefixed keyword")
+        if tokens and tokens[0].lower() in ("game", "basegame"):
+            if tokens[0].lower() in found or "\\" in line or len(tokens) < 2:
+                raise ValueError(f"default.fmf must hold one plain {tokens[0].upper()} line")
             found[tokens[0].lower()] = tokens[1]
     if found.get("game") != MANIFEST_GAME[game] or found.get("basegame") != game:
         raise ValueError(f'default.fmf must say GAME "{MANIFEST_GAME[game]}" and BASEGAME "{game}"')

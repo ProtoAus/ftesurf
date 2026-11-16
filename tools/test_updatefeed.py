@@ -281,9 +281,18 @@ MUTANTS = {
     'fmf-unchecked': ('            check_manifest(object_bytes(root, f["hash"], f["size"]), payload["game"])\n', '            pass\n',
                       {'objects-fmf-legacy-basegame', 'stage-fmf-legacy-basegame', 'stage-fmf-legacy-game'}),
     'duplicate-keys-allowed': ('    payload = json.loads(text, object_pairs_hook=unique_keys)', '    payload = json.loads(text)',
-                               {'duplicate-game-key'}),
+                               {'duplicate-game-key', 'dotted-key'}),
     'del-allowed': ('any(ord(c) >= 0x7f for c in p)', 'not p.isascii()', {'path-with-del'}),
     'removed-unchecked': ('\n            or payload.get("removed") != []):', '):', {'removed-missing', 'removed-nonempty'}),
+    'dots-allowed': (' or any("." in k for k in keys)', '', {'dotted-key'}),
+    'envelope-extra-keys': ('    if not isinstance(signed, dict) or set(signed) != {"payload", "signature"}:\n',
+                            '    if not isinstance(signed, dict):\n', {'envelope-extra-key'}),
+    'fmf-controls-allowed': ('    if any((ord(c) < 32 and c not in "\\n\\t") or c == "\\x7f" for c in text) or "/*" in text:\n',
+                             '    if "/*" in text:\n', {'fmf-cr'}),
+    'fmf-block-comment-allowed': (' or "/*" in text:\n', ':\n', {'fmf-block-comment'}),
+    'fmf-star-allowed': ('        if tokens and tokens[0].startswith("*"):\n', '        if False:\n', {'fmf-star-keyword'}),
+    'fmf-repeat-allowed': ('            if tokens[0].lower() in found or ', '            if ', {'fmf-two-game-lines'}),
+    'fmf-backslash-allowed': (' or "\\\\" in line or ', ' or ', {'fmf-backslash-on-game-line'}),
 }
 
 
@@ -377,6 +386,8 @@ class IdentityTests(unittest.TestCase):
         execs['exec_by_platform']['win64']['cmd'] = 'ftesurf64.exe'
         removed = dict(legacy)
         del removed['removed']
+        envelope = json.loads(legacy_path.read_bytes())
+        good = b'GAME "WorldofSurf"\nBASEGAME "worldofsurf"\n'
         return {
             'new-feed-for-legacy-install': refused(f.validate, new, 'ftesurf'),
             'legacy-feed-for-new-install': refused(f.validate, legacy, 'worldofsurf'),
@@ -407,6 +418,14 @@ class IdentityTests(unittest.TestCase):
             'path-with-del': not f.managed('worldofsurf/gfx/a\x7f.png', 'worldofsurf'),
             'removed-missing': refused(f.validate, removed),
             'removed-nonempty': refused(f.validate, dict(legacy, removed=['ftesurf/gfx/old.png'])),
+            'dotted-key': refused(f.verify, signed_text('{"game.":"worldofsurf",' + text[1:]), KEY),
+            'envelope-extra-key': refused(f.verify, json.dumps(dict(envelope, note='x')).encode(), KEY),
+            'fmf-cr': refused(f.check_manifest, good.replace(b'\n', b'\r\n'), 'worldofsurf'),
+            'fmf-block-comment': refused(f.check_manifest, b'/* note */\n' + good, 'worldofsurf'),
+            'fmf-star-keyword': refused(f.check_manifest, b'*basegame ftesurf\n' + good, 'worldofsurf'),
+            'fmf-two-game-lines': refused(f.check_manifest, b'GAME "FTESurf"\n' + good, 'worldofsurf'),
+            'fmf-backslash-on-game-line': refused(f.check_manifest, good.replace(b'"WorldofSurf"', b'"WorldofSurf" \\x'),
+                                                  'worldofsurf'),
         }
 
     def test_each_identity_accepts_its_own_feed(self):
@@ -435,7 +454,7 @@ class IdentityTests(unittest.TestCase):
 
     def test_manifest_reader_matches_the_shipped_fmf(self):
         feed.check_manifest((Path(feed.__file__).parents[1] / 'default.fmf').read_bytes(), 'ftesurf')
-        feed.check_manifest(b'// x\ngame WorldofSurf // trailing\nBASEGAME ftesurf\nbasegame "worldofsurf"\n', 'worldofsurf')
+        feed.check_manifest(b'// x\ngame WorldofSurf // trailing\n\tbasegame "worldofsurf"\n', 'worldofsurf')
         for bad in (b'GAME "WorldofSurf"\n', b'BASEGAME "worldofsurf"\n', b'// GAME "WorldofSurf"\nBASEGAME "worldofsurf"\n',
                     b'GAME "WorldofSurf"\nBASEGAME "worldofsurf"\nBASEGAME "ftesurf"\n',
                     b'GAME "worldofsurf"\nBASEGAME "worldofsurf"\n', b'GAME "WorldofSurf"\nBASEGAME "*worldofsurf"\n'):

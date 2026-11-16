@@ -17,3 +17,8 @@ Stages (each its own verified delivery):
    the new launcher; download page.
 Not renamed: the dev trees (C:\FTESurf, C:\FTEQuake, repo `ftesurf/`), the Pi's gamedir, PROTOCOLNAME's
 `FTE-Quake` token, `.ftesurf-updater/`, cvars, recording formats.
+
+Version line (review, 17 Nov): the first worldofsurf feed is built over the live legacy feed with a higher
+version (updatefeed.py enforces it), and both identities share `.ftesurf-updater/state.json`'s floor. The legacy
+feed is frozen after the bridge release: no later legacy release, or the two lines would overlap. Stage 3
+enforces the freeze.
