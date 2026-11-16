@@ -24,6 +24,9 @@
 - AG prediction shows isolated one-command 0.02 u z transients in the air (ag-100/ag-250, rendered
   tools/test_ag_profile_runtime.py; also on the pre-P1589 engine, ctl-ag-250). Self-heals next command; cause
   unknown (P1542's mover). Falsifier: the rendered arm's per-axis airborne max on ag-250.
+- Water under AG profiles: the client's held-jump upmove 200 (cl_input.c ~2804; GoldSrc sends none) tilts PMAg_Swim's
+  wish up and trims its horizontal part (320 -> ~292 uncropped, as P1542); ducked it is ~18% stronger than GoldSrc's
+  85.3 because P1589's crop clamp measures forward/side only. Falsifier: ducked 450 forward + jump held, swimming.
 - The TAS planner (sv_tas_plan.inc:39,70) sees HL2's +speed sprint but not its fully-ducked refusal
   (PMSrc_EffectiveMaxSpeed): it plans 320 where the mover runs 190. Yaw choice only.
 - Refusals keyed on any profile still say "AG": sv_saveloc.qc:4171/4281/4480, sv_rewindstate.qc:175, cl_input.c's
