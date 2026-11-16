@@ -211,6 +211,21 @@
 - Activation: run join_account_key over a copy of the live DB first and record the fault count
   (tools/backend-pending.md).
 
+## Angle cross-check falsely faults ~10% of lobby receipts -- P1599 parked (17 Nov, ftesurf-a8)
+
+- 231 of 2,322 lobby receipts carry an angle FAULT that the current reader repeats (229 re-read): lobby sidecars
+  lag by a delay that changes by a tick, no offset holds to 0.05 deg, the join falls back to 0 and convicts.
+  Admin-only verdict; boards unaffected. Record and both rejected designs: tools/p1599-claim.md.
+- A single pair cannot separate "client that aligns exactly + a small lie" from "honest client whose delay
+  wobbles": two review rounds showed each fix gives up a case the fallback caught on aligned clients. Next: a
+  per-player record of whether each client aligns (the per-player baselines leaf), then judge the wobble only
+  for clients that never align.
+- The sweep rules normalise by the RECORDED angle's motion, so an assist inflates its own allowance (a 45 deg
+  jump on scattered ticks passes at the right offset, before any P1599). Normalising by the drawn frames' motion
+  is the cheapest gap to close; needs its own calibration.
+- Stored FAULT rows: `--reread-receipts` overwrites in place with no history, and its summary does not report
+  FAULT -> VALID. Export (runid, reason, angles_reason) before any re-read, P1580's activation included.
+
 ## Content skew vs tampering -- what P1581 left (16 Nov, ftesurf-31)
 
 - Live only when the lobbies' QC carries P1581 (next combined lobby deploy) and the Pi's server engine carries

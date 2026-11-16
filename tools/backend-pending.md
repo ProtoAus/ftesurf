@@ -64,6 +64,10 @@ WebSocket clients sign the address with a scheme (`dtls://` etc., net_wins.c); i
 If the public address changes, ADD the new one and keep the old in `SURFD_RCPT_HOSTS`: without the old
 one, every new receipt faults, and `--reread-receipts` faults every older receipt signed on it.
 Existing rows are judged only after `--reread-receipts` (200 a pass).
+BEFORE `--reread-receipts`: export every receipt's (runid, verdict, reason, angles, angles_reason) to a dated
+file. The re-read overwrites in place with no history and its summary does not count FAULT -> VALID; 231 rows
+hold angle FAULTs the current reader repeats on honest lobby clients (BACKLOG, P1599 parked). Owner: Lex said
+yes to activation on 17 Nov.
 
 BEFORE ACTIVATION, run `sweep.join_account_key` over a COPY of the live DB (each receipt's runid and pub;
 never the live file) and record the fault count here. Expected sources of honest-looking faults: the
