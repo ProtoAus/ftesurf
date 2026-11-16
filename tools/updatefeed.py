@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import urllib.parse
 
 import ed25519
 
@@ -130,23 +131,80 @@ def escaped_key(text: str) -> bool:
     return any(m.group(2) and "\\" in m.group(1) for m in STRINGS.finditer(text))
 
 
+def raw_member(text: str, key: str) -> str | None:
+    """The undecoded string value of `key` in a flat object json.loads accepted."""
+    strings = STRINGS.finditer(text)
+    for m in strings:
+        if m.group(2) and m.group(1) == key:
+            value = next(strings, None)
+            return value.group(1) if value else None
+    return None
+
+
+def feed_text(data: bytes) -> str:
+    """Strict UTF-8 with no BOM, as the launcher and engine read it (json.loads on bytes would sniff
+    UTF-16/32 and skip a BOM)."""
+    if data.startswith(b"\xef\xbb\xbf"):
+        raise ValueError("update JSON starts with a byte order mark")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise ValueError("update JSON is not UTF-8") from None
+
+
+def strict_tree(value, depth: int = 0) -> None:
+    """What the engine's QKU_JSONStrict also refuses: more than 32 levels, NUL or a lone surrogate."""
+    if isinstance(value, str):
+        if "\0" in value or any(0xD800 <= ord(c) <= 0xDFFF for c in value):
+            raise ValueError("NUL or lone surrogate in update JSON")
+    elif isinstance(value, (dict, list)):
+        if depth == 32:
+            raise ValueError("update JSON nests deeper than 32 levels")
+        for k, v in (value.items() if isinstance(value, dict) else enumerate(value)):
+            strict_tree(k)
+            strict_tree(v, depth + 1)
+
+
+def strict_json(text: str):
+    def constant(name):
+        raise ValueError(f"update JSON holds {name}")
+    try:
+        value = json.loads(text, object_pairs_hook=unique_keys, parse_constant=constant)
+    except RecursionError:
+        raise ValueError("update JSON nests deeper than 32 levels") from None
+    strict_tree(value)
+    return value
+
+
 def verify(data: bytes, public_key: str = PUBLIC_KEY) -> dict:
     if len(data) > MAX_FEED:
         raise ValueError("update feed exceeds reader limit")
-    signed = json.loads(data, object_pairs_hook=unique_keys)
-    if not isinstance(signed, dict) or set(signed) != {"payload", "signature"} or escaped_key(data.decode("utf-8")):
+    raw = feed_text(data)
+    signed = strict_json(raw)
+    if not isinstance(signed, dict) or set(signed) != {"payload", "signature"} or escaped_key(raw):
         raise ValueError("update envelope must hold exactly payload and signature")
-    if not isinstance(signed["signature"], str) or not re.fullmatch(r"[0-9a-f]{128}", signed["signature"]):
-        raise ValueError("update signature must be 128 lowercase hex digits")
+    sig = signed["signature"]
+    if not isinstance(sig, str) or not re.fullmatch(r"[0-9a-f]{128}", sig) or raw_member(raw, "signature") != sig:
+        raise ValueError("update signature must be 128 lowercase hex digits, written without escapes")
     text = signed["payload"]
-    if not isinstance(text, str) or "\0" in text or not ed25519.verify(bytes.fromhex(public_key), text.encode(), bytes.fromhex(signed["signature"])):
+    if not isinstance(text, str) or "\0" in text or not ed25519.verify(bytes.fromhex(public_key), text.encode(), bytes.fromhex(sig)):
         raise ValueError("update manifest signature is invalid")
-    payload = json.loads(text, object_pairs_hook=unique_keys)
+    payload = strict_json(text)
     if escaped_key(text):
         raise ValueError("escaped key in signed update")
     if not isinstance(payload, dict):
         raise ValueError("update payload must be an object")
     return payload
+
+
+def mirror_ok(m) -> bool:
+    """An object mirror the readers accept: https, or loopback http (their test flag), no user,
+    query or fragment."""
+    if not isinstance(m, str) or not m.isascii() or any(c <= " " or c in "?#@" for c in m):
+        return False
+    u = urllib.parse.urlsplit(m)
+    loopback = u.scheme == "http" and u.hostname in ("127.0.0.1", "localhost", "::1")
+    return (u.scheme == "https" or loopback) and bool(u.hostname)
 
 
 def validate(payload: dict, game: str | None = None) -> dict[str, int]:
@@ -163,6 +221,9 @@ def validate(payload: dict, game: str | None = None) -> dict[str, int]:
             or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", payload.get("version", ""))
             or payload.get("removed") != []):
         raise ValueError("unsupported update feed")
+    mirrors = payload.get("mirrors")
+    if not isinstance(mirrors, list) or not mirrors or not all(mirror_ok(m) for m in mirrors):
+        raise ValueError("invalid object mirror")
     files = payload.get("files")
     if not isinstance(files, list) or not files or len(files) > 8192:
         raise ValueError("invalid update file set")
@@ -289,7 +350,7 @@ def check_publication(feed: Path, receipt: Path, version: str, previous: Path,
     data = feed.read_bytes()
     payload = verify(data, public_key)
     objects = validate(payload)
-    proof = json.loads(receipt.read_bytes())
+    proof = json.loads(feed_text(receipt.read_bytes()))
     if (payload["version"] != version or proof != {
             "version": version, "feed_sha256": hashlib.sha256(data).hexdigest(),
             "objects": len(objects), "verification": "r2-roundtrip-blake2b-256"}):
