@@ -4960,6 +4960,7 @@ float(string path, string ksfmap, float ksfbonus, string ksfstyle) Watch_OpenIn 
 	rec_wt_tag = RT_LAST;
 	if (strstrofs(path, "_pb.rec") >= 0)     rec_wt_tag = RT_PB;
 	if (strstrofs(path, "_shadow.rec") >= 0) rec_wt_tag = RT_SHADOW;
+	if (strstrofs(path, "_segmented.rec") >= 0) rec_wt_tag = RT_SHADOW;   // P1592
 	if (strstrofs(path, "/cheat.rec") >= 0)  rec_wt_tag = RT_CHEAT;
 
 	Watch_Scan();
@@ -7013,6 +7014,9 @@ float(string cmd) Watch_ConsoleCommand =
 	{
 		p = FS_TagArchived(FS_TagFromName(a)) ? Watch_BestOnLeg(0, 0, a)
 		                                      : Watch_LegPath(0, 0, a);
+		if (p == "")
+		if (FS_TagFromName(a) == RT_SHADOW)     // P1592: a resumed run under either name
+			p = Watch_BestOnLeg(0, 0, (a == "shadow") ? FS_SEGWORD : "shadow");
 	}
 	/*
 	  BUILD 57: `replay stage N` IS LEG N -- stage N as the HUD, `!s N` and the

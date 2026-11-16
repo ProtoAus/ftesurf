@@ -299,7 +299,7 @@
   that knows which leg was run and whether the result was a personal best -- so
   it publishes both halves and the client spells the name out of them:
 
-      data/runs/<map>/<leg>/<ticks>_<pb|shadow>.view       (FS_RunPath below)
+      data/runs/<map>/<leg>/<ticks>_<pb|segmented|shadow>.view       (FS_RunPath below)
       data/runs/<map>/<leg>/<last|cheat>.view              -- the unstamped pair
 
   RUNLEG is track*100+leg+1, and 0 means "no run".  The +1 is not decoration:
@@ -3208,6 +3208,9 @@ string(string map) FS_PBPath = { return sprintf("%s%s%s", FS_RUNS_ROOT, map, FS_
   pruner and the reader -- so it is answered once, here, beside the names it is
   about.
 */
+// P1592 (Lex, 17 Nov): a resumed run's files are written `_segmented` where the engine's
+// recording close accepts it (SV_RecTagName); FS_TagName keeps the old word, readers take both.
+#define FS_SEGWORD "segmented"
 string(float tag) FS_TagName =
 {
 	if (tag == RT_PB)     return "pb";
@@ -3242,6 +3245,7 @@ float(string w) FS_TagFromName =
 {
 	if (w == "pb")     return RT_PB;
 	if (w == "shadow") return RT_SHADOW;
+	if (w == FS_SEGWORD) return RT_SHADOW;   // P1592
 	if (w == "cheat")  return RT_CHEAT;
 	if (w == "last")   return RT_LAST;
 	// Build 48.  Taught to the READER in the same edit that named it, which is

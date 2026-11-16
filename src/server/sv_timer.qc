@@ -4226,6 +4226,30 @@ void(entity e, string leaf) SV_RecSetLeaf =
 	e.rec_rec_leaf = strcmp(leaf, "") ? strzone(leaf) : "";
 };
 
+// RT_* to the word in a run's filename (FS_TagName in sh_defs.qc, the readers' map).
+// P1592: `segmented` only where the engine's held close accepts it (rec_tagword); an older
+// engine rebuilds `_shadow` and would refuse the close. 0 not asked yet, -1 no, 1 yes.
+// Lobbies keep `shadow` until the live surfd's _LEAF_OK takes `segmented` (P1592 part 3).
+string(float tag) rec_tagword = #0;
+float sv_rec_segword;
+string(float tag) SV_RecTagName =
+{
+	if (tag == RT_SHADOW)
+	if (!cvar("lobby_enable"))
+	{
+		if (!sv_rec_segword)
+		{
+			sv_rec_segword = -1;
+			if (checkbuiltin(rec_tagword))
+			if (!strcmp(rec_tagword(RT_SHADOW), FS_SEGWORD))
+				sv_rec_segword = 1;
+		}
+		if (sv_rec_segword > 0)
+			return FS_SEGWORD;
+	}
+	return FS_TagName(tag);
+};
+
 // Every finish gets a fresh name, including ties and restored branches. The
 // existence check preserves old recordings across restarts/counter reuse.
 string(entity e, float ticks, float tag) SV_RecHistoryWho =
@@ -4237,23 +4261,13 @@ string(entity e, float ticks, float tag) SV_RecHistoryWho =
 	for (i = 0; i < 16; i = i + 1)
 	{
 		who = strcat(owner, "-", SV_RandHex(16));
-		dst = SV_RecFinalPath(e, ticks, who, FS_TagName(tag));
+		dst = SV_RecFinalPath(e, ticks, who, SV_RecTagName(tag));
 		fh = fopen(dst, FILE_READ);
 		if (fh < 0) return who;
 		fclose(fh);
 	}
 	return "";
 };
-
-/*
-  RT_* to the word that goes in the filename.  One place, because the client
-  spells the same name for its sidecar (Rec_ViewPath) and the two have to agree
-  character for character or the pair is orphaned.
-*/
-// Kept as a name because this file calls it in several places; the definition
-// moved to FS_TagName in shared/sh_defs.qc in build 23, beside the path it goes
-// into, so the client is no longer spelling the same three words separately.
-string(float tag) SV_RecTagName = { return FS_TagName(tag); };
 
 /*
   One line into the recording.
@@ -7161,7 +7175,7 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 		else
 		{
 			e.rec_rec_saved = TRUE;
-			SV_RecSetLeaf(e, FS_RunLeaf(stamp, who, FS_TagName(tag), "rec"));
+			SV_RecSetLeaf(e, FS_RunLeaf(stamp, who, SV_RecTagName(tag), "rec"));
 			if (FS_TagHistory(tag))
 			{
 				Archive_SealFile(e, dst);
@@ -7210,7 +7224,7 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 		// The buffered recorder writes straight to its final name -- no part
 		// file, no rename -- so reaching here IS the file landing.
 		e.rec_rec_saved = TRUE;
-		SV_RecSetLeaf(e, FS_RunLeaf(stamp, who, FS_TagName(tag), "rec"));
+		SV_RecSetLeaf(e, FS_RunLeaf(stamp, who, SV_RecTagName(tag), "rec"));
 		if (FS_TagHistory(tag))
 		{
 			Archive_SealFile(e, dst);
@@ -9271,7 +9285,7 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 		}
 	}
 	else
-		dst = FS_RunPathWho(mapname, e.run_t_track, leg, dur, who, FS_TagName(tag), "rec");
+		dst = FS_RunPathWho(mapname, e.run_t_track, leg, dur, who, SV_RecTagName(tag), "rec");
 	fh = fopen(dst, FILE_WRITE);
 	if (fh < 0)
 		dprint(sprintf("stage: cannot open %s for writing\n", dst));
@@ -9286,9 +9300,9 @@ void(entity e, float seg, float dur, float tbase, float tickbase,
 
 		// Same pruner and the same rule as a full run: the archive grows one
 		// file per improvement and is capped per leg, per player.  Next tick (P998).
-		SV_StagePruneLater(e, SV_RecPruneGlob(e, leg, FS_TagName(tag),
+		SV_StagePruneLater(e, SV_RecPruneGlob(e, leg, SV_RecTagName(tag),
 		                                      (tag == RT_RUN) ? strcat(owner, "-*") : who),
-		                   FS_RunLeaf(dur, who, FS_TagName(tag), "rec"));
+		                   FS_RunLeaf(dur, who, SV_RecTagName(tag), "rec"));
 	}
 
 	buf_del(buf);

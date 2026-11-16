@@ -484,7 +484,7 @@ TF_NORULESET = 1024
 # TF_SHADOW unless a save was ALSO loaded -- so build 44 wrote it as `last` and
 # it overwrote the most recent ordinary attempt.  Unstamped like `last`, because
 # there is no version of "keep every cheated run on this leg" that anyone wants.
-TAGS = ("pb", "last", "shadow", "cheat", "run", "lobby", "tas")
+TAGS = ("pb", "last", "shadow", "segmented", "cheat", "run", "lobby", "tas")   # P1592: segmented = new shadow
 
 
 def tag_from_name(path):

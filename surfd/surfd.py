@@ -2019,7 +2019,7 @@ _MAPNAME_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}$")
 _LEAF_OK = re.compile(
     r"^[0-9]{7,10}_"
     r"(?:(?:[a-z0-9]{1,12}-)?(?P<digest>[0-9a-f]{8})_|s[0-9]{1,2}_)?"
-    r"(?:run|pb|shadow)\.rec$"
+    r"(?:run|pb|shadow|segmented)\.rec$"   # P1592: segmented is the new name of shadow
 )
 
 # An evidence file's leaf: its runid (sv_timer.qc SV_RecOpen) + ".rec".
