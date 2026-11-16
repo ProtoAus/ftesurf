@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1583 Maps: ahop and kz/climb under Bhop -- owner check PENDING (record: tools/p1583-mapfilter.md)
+- Maps, Bhop: two chips beside the switch, "+ ahop" and "+ kz/climb". Each adds those maps to the list and stays
+  on after a restart; Surf does not show them. Is the wording right, and do you want ahop on by default?
+- Note: ahop_ and kz_ maps still play with the normal (surf) settings until their mode has a ruleset
+  (cfg/lobby/mode_ahop.cfg etc.) -- your HL2/AG modes will decide that.
+
 ## P1582 save-lock lead-in off by default -- owner check PENDING (record: tools/p1582-savelock.md)
 - On a lobby, press your load key the way you normally do: you should be at the save on the press with no
   run-up, and off at the saved speed the moment you let go. The console says "saves: a load puts you at the save at

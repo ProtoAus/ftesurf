@@ -1,4 +1,6 @@
 # The engine build this QuakeC requires.
+# Patch 1583 (QC only, menu): under Bhop the Maps picker can also list ahop and kz/climb maps (ui_maps_also);
+# a map counts as zoned from every folder Zone_Load reads (curated/ and dl/ too). Record: tools/p1583-mapfilter.md.
 # Patch 1580 (backend only: surfd/sweep.py, tools/rcptcheck.py): the receipt sweeper faults, admin-only,
 # a signed port that is not the writing lobby's svport, a signed address outside SURFD_RCPT_HOSTS/PORTS
 # (unset: host not checked; SURFD_RCPT_LAN a note), after every other join, and a run credited

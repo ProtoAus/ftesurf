@@ -264,6 +264,7 @@ float() ui_browser_screen =
 	        || menu_screen == SCREEN_STATS);
 };
 float ui_boot_savedshowall;
+float ui_boot_savedalso, ui_boot_bhop;  // P1583: the saved Bhop chips; the Bhop-only count
 float ui_bootframe;             // ui_bootcheck 2 frame counter
 vector ui_cs_size;              // create-screen layout, mirrored for the bootcheck
 float  ui_cs_lcols, ui_cs_lshow, ui_cs_rows;
@@ -487,6 +488,7 @@ strbuf ms_dltier;
 */
 strbuf ms_var, ms_varof, ms_pick;
 strbuf ms_enabled, ms_zoned;     // per BUILD; network state overrides local file probes
+float ms_zonednew;               // P1583: rows zoned only by curated/ or dl/ (the bootcheck prints it)
 #define MAP_NOZONE_ESC "^xf66"
 float  ms_nvar;                 // rows that carry a second build
 float  ms_bswrow, ms_bswidx;    // the row whose switch was drawn last, and its
@@ -505,6 +507,9 @@ float  ms_applied_tier;
    ui_create_open reads ui_maps_modes; ui_modes_set persists actual clicks. */
 float  ms_modes;
 float  ms_applied_modes;
+// P1583: the bhop family's other categories the Bhop switch also lists (FS_BHOP_ALSO bits); 0 = its own only.
+float  ms_also;
+float  ms_applied_also;
 
 /*
   Which library the list is showing.  Build 89, asked for as "an option to
@@ -1316,6 +1321,11 @@ float(float cat) ui_cat_bit =
 // Both follow from ui_cat_bit and GC_OTHER; change either and change these.
 #define FS_MODES_ALL      3     // selectable categories only
 #define FS_MODES_DEFAULT  1     // two-position switch opens on Surf
+// P1583: what the Bhop switch can add: climb/kz (4) and ahop, HL2 movement (32). Not rj/sj/df/conc (P1160).
+#define FS_BHOP_ALSO      36    // ui_cat_bit(GC_CLIMB) | ui_cat_bit(GC_AHOP)
+
+// P1583: the categories listed -- the switch's own, plus the chips under Bhop.
+float() ui_modes_eff = { return (ms_modes == 2) ? (ms_modes | (ms_also & FS_BHOP_ALSO)) : ms_modes; };
 
 /*
   Which gametype does this NAME say, or 0.  Build 57.
@@ -2397,9 +2407,12 @@ void() ui_pool_load =
 	ms_enabled = buf_create();
 	ms_zoned = buf_create();
 	zones = hash_createtab(4096, EV_FLOAT);
-	for (d = 0; d < 2; d++)
+	// P1583: every folder Zone_Load reads (cl_zones.qc), and data/, where QC writes land (cl_zonedl.qc's dl/):
+	// a map zoned only in curated/ or dl/ was hidden behind Show all (53 bhop maps on the owner's install).
+	for (d = 0; d < 8; d++)
 	{
-		pat = (d == 0) ? "maps/zones/local/*.json" : "maps/zones/online/*.json";
+		pat = strcat((d & 4) ? "data/" : "", "maps/zones/",
+		             (d & 3) == 0 ? "local" : ((d & 3) == 1 ? "online" : ((d & 3) == 2 ? "curated" : "dl")), "/*.json");
 		h = search_begin(pat, 0, TRUE);
 		if (h < 0) continue;
 		for (j = 0; j < search_getsize(h); j++)
@@ -2407,15 +2420,19 @@ void() ui_pool_load =
 			// Search returns paths: remove the known directory and .json suffix.
 			nm = strtolower(search_getfilename(h, j));
 			nm = substring(nm, strlen(pat) - 6, strlen(nm) - strlen(pat) + 1);
-			hash_add(zones, nm, 1, HASH_REPLACE | EV_FLOAT);
+			found = hash_get(zones, nm, 0, EV_FLOAT);
+			hash_add(zones, nm, found | (((d & 3) < 2) ? 1 : 2), HASH_REPLACE | EV_FLOAT);
 		}
 		search_end(h);
 	}
+	ms_zonednew = 0;
 	for (i = 0; i < ms_count; i++)
 	{
 		bufstr_set(ms_enabled, i, "1");
 		found = hash_get(zones, strtolower(bufstr_get(ms_name, i)), 0, EV_FLOAT);
 		bufstr_set(ms_zoned, i, found ? "1" : "0");
+		if (found == 2)
+			ms_zonednew++;
 	}
 	hash_destroytab(zones);
 };
@@ -3198,6 +3215,7 @@ void() ui_refilter =
 	ms_nhidden = 0;
 
 	string q = strtolower(ms_query);
+	float modes = ui_modes_eff();
 
 	for (float i = 0; i < ms_count; i++)
 	{
@@ -3213,7 +3231,7 @@ void() ui_refilter =
 		  "0 answers only any", and with any no longer the default it would have
 		  hidden every CS:S-only surf map.
 		*/
-		if (!(ms_modes & ui_cat_bit(stof(bufstr_get(ms_catv, i)))))
+		if (!(modes & ui_cat_bit(stof(bufstr_get(ms_catv, i)))))
 			continue;
 		// Patch 652: a second build is on its map's row, behind the switch.
 		if (bufstr_get(ms_varof, i) != "")
@@ -3319,6 +3337,7 @@ void() ui_refilter =
 	ms_applied_query = ms_query;
 	ms_applied_tier  = ms_tier;
 	ms_applied_modes = ms_modes;
+	ms_applied_also  = ms_also;
 	ms_applied_srcf  = ms_srcf;
 	ms_applied_showall = ms_showall;
 	ms_applied_compsort = ms_compsort;
@@ -3731,6 +3750,13 @@ void(float mask) ui_modes_set =
 	localcmd(sprintf("seta ui_maps_modes %g\n", ms_modes));
 };
 
+// P1583: the Bhop switch's extra categories, applied and saved the same way.
+void(float mask) ui_also_set =
+{
+	ms_also = mask & FS_BHOP_ALSO;
+	localcmd(sprintf("seta ui_maps_also %g\n", ms_also));
+};
+
 // ROADMAP 10: the "show all" chip, applied and saved the same way.
 void(float on) ui_showall_set =
 {
@@ -3795,6 +3821,8 @@ void() ui_create_open =
 	MF_Open();
 	registercvar("ui_maps_modes", ftos(FS_MODES_DEFAULT), 32);
 	ms_modes = ui_modes_sane(cvar("ui_maps_modes"));
+	registercvar("ui_maps_also", "0", 32);          // P1583, same rules
+	ms_also = rint(cvar("ui_maps_also")) & FS_BHOP_ALSO;
 	// P1130: m_init resets Show all at launch, not on same-session navigation.
 	registercvar("ui_maps_compsort", "0", 32);      // P1080, same rules
 	ms_compsort = bound(0, rint(cvar("ui_maps_compsort")), 2);
@@ -5174,14 +5202,30 @@ void() ui_bootcheck_tick =
 		// The opposite arm must actually filter to Bhop, not an empty old mode.
 		ms_tier = 0;
 		ms_modes = ui_modes_click(ms_modes, 0);
+		ui_boot_savedalso = ms_also;    // P1583: Bhop alone first, the saved chips back at 177
+		ms_also = 0;
 	}
-	else if (ui_bootframe == 175)
+	else if (ui_bootframe == 160)
 	{
-		// Counted here rather than at 145: m_draw runs this driver BEFORE its
-		// change check, so on the frame that changes the set the view is stale.
+		// Counted after 145: m_draw runs this driver BEFORE its change check, so on the
+		// frame that changes the set the view is stale.
 		print(sprintf("bootcheck: Bhop only (modes %g) -- %g of %g maps%s\n",
 		              ms_modes, ms_viewcount, ms_count,
 		              ms_viewcount ? "" : "  ^1EMPTY^7"));
+		ui_boot_bhop = ms_viewcount;
+		// P1583: what a player sees (Show all off), and the zone probe's own count.
+		ms_showall = FALSE;
+		ui_refilter();
+		print(sprintf("bootcheck: Bhop, zones and a picture -- %g listed, %g behind Show all; %g rows zoned only in curated/ or dl/\n",
+		              ms_viewcount, ms_nhidden, ms_zonednew));
+		ms_showall = TRUE;
+		ms_also = FS_BHOP_ALSO;         // both chips, not saved
+	}
+	else if (ui_bootframe == 175)
+	{
+		print(sprintf("bootcheck: Bhop + ahop + kz/climb (also %g) -- %g of %g maps, %g more -- %s\n",
+		              ms_also, ms_viewcount, ms_count, ms_viewcount - ui_boot_bhop,
+		              (ms_viewcount > ui_boot_bhop) ? "^2ok^7" : "^1FAILED^7"));
 		localcmd("screenshot ui_menu_mode\n");
 	}
 	/*
@@ -5209,6 +5253,7 @@ void() ui_bootcheck_tick =
 	{
 		ms_tier  = 0;
 		ms_modes = ui_modes_sane(cvar("ui_maps_modes"));
+		ms_also  = ui_boot_savedalso;
 
 		print(sprintf("bootcheck: lobbies ready %g count %g of LB_MAX %g%s\n",
 		              Lob_Ready(), Lob_Count(), LB_MAX,
@@ -7512,6 +7557,32 @@ float(vector pos) ui_mode_switch =
 	return w + 4;
 };
 
+// P1583: under Bhop, chips adding the bhop family's other categories (a player: "coast in all bhop related modes").
+string(float k) ui_also_label = { return k ? "+ kz/climb" : "+ ahop"; };
+float() ui_also_w = { return ui_filter_chip_w(ui_also_label(0)) + ui_filter_chip_w(ui_also_label(1)) + 8; };
+
+float(vector pos) ui_also_chips =
+{
+	local float k, x, bit;
+	local string id;
+	x = 0;
+	for (k = 0; k < 2; k = k + 1)
+	{
+		id = k ? "cs_also_climb" : "cs_also_ahop";
+		bit = ui_cat_bit(k ? GC_CLIMB : GC_AHOP);
+		x = x + ui_filter_chip(pos + [x, 0], id, ui_also_label(k), (ms_also & bit) != 0) + 4;
+		sui_tooltip_for(id, k ? "Also list climb and KZ maps under Bhop." : "Also list ahop maps (Half-Life 2 movement) under Bhop.", 2);
+		if (sui_is_released(id))
+		{
+			if (ms_also & bit)
+				ui_also_set(ms_also - bit);
+			else
+				ui_also_set(ms_also | bit);
+		}
+	}
+	return x;
+};
+
 float(float width, float y) ui_map_filters =
 {
 	local float group, f, n, x, gw, cw, on, bit, next;
@@ -7529,7 +7600,7 @@ float(float width, float y) ui_map_filters =
 		ui_filter_font(ui_font_ui);
 		for (f = 0; f < n; f = f + 1)
 			gw = gw + ui_filter_chip_w(ui_filter_label(group, f)) + 4;
-		if (group == 1) gw = gw + ui_mode_switch_w() + 4;
+		if (group == 1) gw = gw + ui_mode_switch_w() + 4 + ((ms_modes == 2) ? ui_also_w() : 0);
 		if (group == 4 && note != "") gw = gw + stringwidth(note, TRUE, sui_native_text_size(UI_MAP_FILTER_FONT)) + 6;
 		if (x > 16 && x + gw > width + 16) { x = 16; y = y + UI_MAP_FILTER_PITCH; }
 		// Keep the display headings distinct, at the same native scale as their width.
@@ -7540,6 +7611,7 @@ float(float width, float y) ui_map_filters =
 		x = x + stringwidth(heading, TRUE, glyph) + 12;
 		ui_filter_font(ui_font_ui);
 		if (group == 1) x = x + ui_mode_switch([x, y]);
+		if (group == 1 && ms_modes == 2) x = x + ui_also_chips([x, y]);
 		for (f = 0; f < n; f = f + 1)
 		{
 			label = ui_filter_label(group, f);
@@ -8398,7 +8470,7 @@ void(vector screensize) m_draw =
 	// sui_text_input during the previous frame's draw, so comparing against
 	// the applied copy here is the cheapest place to notice.
 	if (ms_query != ms_applied_query || ms_tier != ms_applied_tier
-	    || ms_modes != ms_applied_modes || ms_srcf != ms_applied_srcf
+	    || ms_modes != ms_applied_modes || ms_also != ms_applied_also || ms_srcf != ms_applied_srcf
 	    || ms_showall != ms_applied_showall || ms_compsort != ms_applied_compsort)
 		ui_refilter();
 	else if (ms_compsort && mcd_ver != ms_applied_donever)
