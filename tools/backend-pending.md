@@ -96,7 +96,7 @@ controller rollback refuse on reader drift. P1600 does NOT carry them. The gener
 successor) says go. 18 Nov: PIN reccheck.py 8ab35f6d63263bdd... (game main 00e2d9a5: P1603's `plat` and P1599's
 angle join, both reviewed) instead of 10a9a469; rcptcheck.py and hidcheck.py are unchanged. P1599 clears the
 false angle FAULTs (lobby evidence 18 Nov: 150 of 240 same-run FAULTs -> BLIND, none newly faulted); stored rows
-change only with P1580's export + `--reread-receipts` below. Until then P1580's address check is skipped (getattr); its account-key check runs from P1600. The 16 Nov corpus (2,296
+change only with P1580's export + `--reread-receipts` below. P1604 (18 Nov) changes reccheck.py again (it knows the new header `propstatic`): gen1603 keeps 8ab35f6d; the generation after it pins reccheck.py 059246f0b7395fba... from game main. Until then the Pi's reccheck notes "header key 'propstatic' is not part of v14" on runs from P1604 lobby QC: a note, never a fault. Until then P1580's address check is skipped (getattr); its account-key check runs from P1600. The 16 Nov corpus (2,296
 receipts) has 2,295 on the public address and 1 on the LAN one. A LAN address is reported as a note, never
 passed or faulted (AGENT_NOTES: "a private address is nobody's" -- another network's server at that address
 reads the same). The signed port must also equal the unsigned `svport` the writing lobby recorded, which
