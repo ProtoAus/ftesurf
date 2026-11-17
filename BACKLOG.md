@@ -292,8 +292,8 @@
   against the real bounds), a `solid 6` one only if the pack ships a .phy, which the lobby cannot see. A PC-side
   check of a `propmiss` list against the local Steam packs would tell them apart.
 - Static props: covered by P1604 (18 Nov) through the plugin's read-only `hl2_sprpmiss` (a cvar, not a serverinfo
-  key: the plugin interface has no serverinfo setter) and the header `propstatic 0 | 1 <k>`. Live only when the
-  Pi's server engine and hl2 plugin carry patch-1604 and the lobbies' QC carries P1604; until then `propstatic 0`.
+  key: the plugin interface has no serverinfo setter) and the header `propstatic 0 | 1 <k>`. LIVE 18 Nov 21:41Z: the
+  lobbies run engine patch-1604 (which also makes P1581's pm_verify hint live) and P1604's QC (tools/p1604-delivery.md).
   Lobby logs (18 Nov): 531 map/model pairs on 55 maps over their life, mostly from before the Pi had HL2 content;
   surf_1969's six TF2 props still current. What P1604 leaves:
   - A model that failed on one map stays failed on the next (gl_model.c:1098 keeps failed models, :1523 never

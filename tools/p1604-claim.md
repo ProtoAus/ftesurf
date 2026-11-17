@@ -16,3 +16,5 @@ the header gains `propstatic 0 | 1 <k>`; reccheck knows it. Record and arms: eng
 `propstatic 0`). Reviews: round 1 (two lenses), round 2 on the fixes; stopped under the integrity rule. Deploy: the Pi's
 server engine + hl2 plugin rebuild (it runs patch-1568), and the lobby QC with lex-90's step-2 progs (main's QC carries
 P1603, whose surfd must go first). What it leaves: BACKLOG "Content skew vs tampering".
+
+## Delivered (18 Nov 2026 21:34-21:41Z): lobby engine patch-1604 + lobby QC 3495dc51 -- tools/p1604-delivery.md
