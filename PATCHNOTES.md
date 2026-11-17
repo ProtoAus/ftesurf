@@ -21,6 +21,10 @@
 
 ## next
 
+### P1603 Linux runs are ranked, marked in sky blue
+- Runs set with the Linux game now go on the ranked boards like any other run. The Linux game cannot yet verify mouse input the way the Windows game does, so these runs are marked.
+- A marked run shows the runner's name in sky blue on the scoreboard's online boards and on the website board; point at it to read "Linux: Not mouse verified".
+
 ### P1598 Pick your movement mode in game
 - In a game you host, the console command hud_gamemode opens a small panel listing the seven movement modes (Default, Half-Life 2 pre and post, AG 100, 250 and 1000, Counter-Strike 1.6). Click one or press its number and the map reloads in that mode. Bind it to a key with bind <key> hud_gamemode.
 - On a lobby the panel shows the modes but cannot switch them: a lobby keeps its own mode. These modes are unranked for now.

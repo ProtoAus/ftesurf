@@ -281,6 +281,8 @@ float  *ob_run;
 // Patch 374: surfd's `ver` (VER_SQL: re-simulated PASS or owner-approved).  A
 // surfd without it reads 0, so no mark.
 float  *ob_ver;
+// P1603: surfd's `plat`, the run's platform mark (PLAT_*); sent only when non-zero.
+float  *ob_plat;
 
 float  ob_bget;            // strbuf: NanoPi Momentum demo handle per row
 float  ob_bmap;            // P925: a KSF row's actual source-map cache folder
@@ -310,6 +312,7 @@ void() Online_Alloc =
 	ob_src = memalloc(sizeof(float) * OB_MAXROW);
 	ob_run = memalloc(sizeof(float) * OB_MAXROW);
 	ob_ver = memalloc(sizeof(float) * OB_MAXROW);
+	ob_plat = memalloc(sizeof(float) * OB_MAXROW);
 };
 
 // Both tiers' totals for the queried (map, track, leg, style), so the UI can
@@ -609,6 +612,7 @@ void(float i, int row) Online_RowSet =
 	ob_rep[i]   = json_get_float(json_find_object_child(row, "rep"));
 	ob_run[i]   = json_get_float(json_find_object_child(row, "run"));
 	ob_ver[i]   = json_get_float(json_find_object_child(row, "ver"));
+	ob_plat[i]  = json_get_float(json_find_object_child(row, "plat"));
 	s           = json_get_string(json_find_object_child(row, "tr"));
 	ob_src[i]   = !strcmp(s, OB_TIER_MOM) ? OB_SRC_MOM :
 	              !strcmp(s, OB_TIER_KSF) ? OB_SRC_KSF : OB_SRC_OURS;
@@ -637,6 +641,7 @@ void(float to, float from) Online_RowCopy =
 	ob_rate[to] = ob_rate[from]; ob_wrow[to] = ob_wrow[from];
 	ob_rep[to] = ob_rep[from]; ob_src[to] = ob_src[from];
 	ob_run[to] = ob_run[from]; ob_ver[to] = ob_ver[from];
+	ob_plat[to] = ob_plat[from];
 	bufstr_set(ob_bmap, to, bufstr_get(ob_bmap, from));
 	bufstr_set(ob_bget, to, bufstr_get(ob_bget, from));
 	bufstr_set(ob_bname, to, bufstr_get(ob_bname, from));
@@ -2584,6 +2589,8 @@ void() Online_Status =
 			word = strcat(word, sprintf(" run %g", ob_run[i]));
 		if (ob_ver[i] > 0)
 			word = strcat(word, " verified");	// Patch 374: the cell's mark
+		if (ob_plat[i] == PLAT_LINUX)
+			word = strcat(word, " linux");		// P1603: the name's sky blue
 
 		print(sprintf("   %3g  %-20s %10s  ticks %g @ %.6g Hz  flags %d  %s\n",
 		              ob_rank[i], UI_NameShow(bufstr_get(ob_bname, i), 0),

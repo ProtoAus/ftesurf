@@ -303,6 +303,7 @@ HEAD_V8 = HEAD_V7
 HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule", "movebnd", "holdclock", "viewclock", "anglecause",
                      "inprof",      # Patch 840, additive
                      "inguard",     # Patch 1576, additive
+                     "plat",        # P1603, additive
                      "propmiss",    # Patch 1581, additive
                      "momtrig",     # Patch 869, additive
                      "entfile",     # Patch 890, additive
@@ -1184,6 +1185,36 @@ def _check_rec(r, path, verbose=False, *, data=None):
             if len(a) != 6:
                 r.note("header 'inprof' has %d fields after its verdict, not 5" % (len(a) - 1))
 
+    # P1603: `plat <n>`, the start's platform mark, written only when non-zero and latched with
+    # `inprof` in the same packet: 1 exactly when the client spoke (have or grant non-zero; all 0
+    # when silent) without in_rawinput (have bit 1).  Before P1603 that client's verdict was
+    # `platform` and no key was written, so such a file is not compared.  Notes, never faults.
+    plat_head = 0
+    pl = head.get("plat")
+    if pl is not None:
+        r.info["plat"] = pl.strip()
+        try:
+            plat_head = int(pl.strip())
+        except ValueError:
+            plat_head = None
+            r.note("header 'plat' is not an integer: %r" % pl.strip())
+        else:
+            if plat_head <= 0:
+                r.note("header 'plat %d': the writer states a mark only when it is non-zero"
+                       % plat_head)
+    if plat_head is not None and inprof_word not in (None, "platform"):
+        ipf = ip.split()
+        try:
+            have, grant = int(file_float(ipf[1])), file_float(ipf[5])
+        except (ValueError, IndexError, OverflowError):
+            pass
+        else:
+            want = 1 if (have != 0 or grant != 0) and not (have & 1) else 0
+            if (plat_head > 0) != (want > 0):
+                r.note("header 'plat %d' but 'inprof' says %s -- one packet wrote both"
+                       % (plat_head, "a client without in_rawinput" if want
+                          else "in_rawinput or no report"))
+
     # Patch 1576: `inguard <said> <have> <nolegacy> <touchpad> <keys>`, the guard values the
     # verdict was judged on. Reported; a malformed one is a note.
     ig = head.get("inguard")
@@ -1225,6 +1256,7 @@ def _check_rec(r, path, verbose=False, *, data=None):
     records = []            # (lineno, kind, args)
     saw_end = None
     profs = []              # (lineno, word) -- Patch 840: the finish's profile verdict
+    plats = []              # (lineno, n) -- P1603: the finish's platform mark
     clks = []               # (lineno, floats) -- Patch 840: the finish's clock record
     splits = []
     resumes = []            # (lineno, args) -- build 17 save states
@@ -1985,6 +2017,19 @@ def _check_rec(r, path, verbose=False, *, data=None):
                        % (lineno + 1, tok[1]))
             else:
                 profs.append((lineno + 1, tok[1]))
+        elif kind == "plat" and ver >= 9:
+            # P1603: the run's platform mark, after `prof`, only when non-zero.
+            try:
+                if len(tok) != 2:
+                    raise ValueError
+                pn = int(tok[1])
+            except ValueError:
+                r.fault("line %d: 'plat' takes one integer, has %r" % (lineno + 1, tok[1:]))
+            else:
+                if pn <= 0:
+                    r.note("line %d: 'plat %d': the finish writes a mark only when it is non-zero"
+                           % (lineno + 1, pn))
+                plats.append((lineno + 1, pn))
         elif kind == "clk" and ver >= 9:
             # Patch 840: <bound> <hyst> <allow> <wall> <stalls> <credited> <debt>
             # <behind>, written once by the finish.  The debt may be negative
@@ -2936,6 +2981,17 @@ def _check_rec(r, path, verbose=False, *, data=None):
             else:
                 r.fault("%d board records but no sample has the ramp-contact bit -- "
                         "flags bit 16 is not being written" % len(boards))
+
+    # P1603: the run's mark never falls below the start's (it only rises, saves carry it).  Judged
+    # only where the finish wrote its `prof`, beside which `plat` goes: kept evidence has neither.
+    if plats:
+        r.info["plat_end"] = "%d" % plats[-1][1]
+        if len(plats) > 1:
+            r.note("%d 'plat' records; the finish writes one" % len(plats))
+    if saw_end is not None and profs and plat_head and plat_head > 0 \
+            and (not plats or plats[-1][1] < plat_head):
+        r.note("header 'plat %d' and the finish's mark is %s -- a mark only rises in a run"
+               % (plat_head, plats[-1][1] if plats else "absent"))
 
     if ver >= 4 and "flags" in head:
         try:
@@ -4635,6 +4691,8 @@ def emit(r, verbose):
                   "movebnd", "moveoor", "moveoor_bit",
                   # Patch 840, same edit as the code that assigns them.
                   "inprof", "clk", "slowclock_bit",
+                  # P1603, same edit as the code that assigns them.
+                  "plat", "plat_end",
                   "ticks", "time", "rate", "view_version", "hid", "frames",
                   "fps", "usercmds", "frames_per_cmd",
                   # Added in the same edit as angle_join, per the rule four

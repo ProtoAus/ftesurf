@@ -2258,6 +2258,11 @@ float(float ver) FS_ProfileFields =
 #define PW_TOUCHPAD  10  // P1573: in_rawinput_touchpad is not 0, so a touchpad can turn the view
 #define PW_KEYS      11  // P1576: the engine is not dropping injected keys (in_keyguard)
 #define PW_KEYGUARD  12  // P1576: the key guard cannot run (engine too old, no API, remote play)
+// P1603 (Lex, 17 Nov): a run's platform mark, its own field beside the flags (TF_ bit 21 is
+// reserved for movement styles). A client without in_rawinput ranks and is marked; the .rec's
+// `plat`, surfd's `plat` and the boards' sky blue carry it. 0 when absent; later values extend it.
+#define PLAT_VERIFIED 0     // Windows raw input: the guard checks applied
+#define PLAT_LINUX    1     // no in_rawinput (in_win.c only): "Linux: Not mouse verified"
 // P1083 (owner, 28 Oct): ranked runs use the standard move size, 450 per axis
 // (cl_forwardspeed/backspeed/sidespeed/upspeed, cl_movespeedkey 1). CSQC caps there.
 #define RUN_MOVE_STD 450
@@ -2341,7 +2346,7 @@ string(float why) FS_ProfileText =
 	if (why == PW_ACCEL)    return "m_accel is on";
 	if (why == PW_NOGRANT)  return "raw input found no mouse (try in_restart)";
 	if (why == PW_SILENT)   return "the game never reported its input settings";
-	if (why == PW_PLATFORM) return "only the Windows game ranks";
+	if (why == PW_PLATFORM) return "only the Windows game ranks";   // before P1603; old files
 	if (why == PW_CHANGED)  return "an input setting changed during the run";
 	if (why == PW_MOVE)     return "a move input went above the standard 450";
 	if (why == PW_CLICKS)   return "injected clicks must be blocked (set in_rawinput_nolegacy 1)";

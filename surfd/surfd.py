@@ -474,6 +474,13 @@ TF_MULTISESSION = 16384
 # Patch 382: the run held a spectate window.  Marker only, like TF_MULTISESSION:
 # a spectated run stays ranked.
 TF_SPEC = 32768
+# P1603 (Lex, 17 Nov): the run's platform mark, its own field (sh_defs.qc PLAT_*; TF_ bit 21 is
+# reserved for movement styles).  1: a client without Windows raw-input verification ("Linux"),
+# which ranks; the boards show it sky blue, "Linux: Not mouse verified".  Display only, like
+# TF_SPEC: style_of and certifiable never read it.  A newer value needs this surfd first.
+PLAT_VERIFIED = 0
+PLAT_LINUX = 1
+PLAT_MAX = PLAT_LINUX
 
 SCHEMA_VERSION = 26
 KSF_UNBOUND_SQL = """
@@ -1053,6 +1060,22 @@ def replays_sha(conn):
     conn.commit()
 
 
+def runs_plat(conn):
+    """P1603, IDEMPOTENT: runs.plat and replays.plat, the run's platform mark (PLAT_*).  0 for
+    every row before it, which is what they were: a Linux run did not rank, and its community
+    row keeps no mark.  Additive like replays_sha: a writer that does not know the column leaves
+    0 on a new row and the old value on an upsert (a rollback can show a stale mark)."""
+    for table in ("runs", "replays"):
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(%s)" % table)}
+        if "plat" not in cols:
+            try:
+                conn.execute("ALTER TABLE %s ADD COLUMN plat INTEGER NOT NULL DEFAULT 0" % table)
+            except sqlite3.OperationalError as exc:
+                if "duplicate column" not in str(exc):
+                    raise
+    conn.commit()
+
+
 # (path, inode, size, mtime_ns) -> sha256.  Every trusted post names a file, and
 # a streamed run's can be hundreds of MB: a re-post of an unchanged file costs a
 # stat, not a read (review round 9).  A lobby rewrite moves mtime or the inode.
@@ -1587,6 +1610,7 @@ def migrate():
         conn.commit()
         replays_bound(conn)
         replays_sha(conn)
+        runs_plat(conn)
         if version < 8:
             conn.execute("PRAGMA user_version=8")
             conn.commit()
@@ -3079,7 +3103,7 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None, n
         where, args = ("r.tier=?", (tier,))
     rank = "ROW_NUMBER() OVER (ORDER BY " + BOARD_ORDER + ") AS board_rank, " if name else ""
     query = ("SELECT " + rank + "r.rowid, r.momdemo, r.player, r.name, r.ticks, r.tickrate, r.millis, r.flags,"
-            "       r.submitted, r.replay_id, r.tier AS rtier, r.map AS rmap, "
+            "       r.submitted, r.replay_id, r.tier AS rtier, r.map AS rmap, r.plat, "
             + _PARENT_SQL + " AS prun, "
             + VER_SQL + " AS ver"
             "  FROM runs r"
@@ -3114,6 +3138,9 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None, n
             "run": row["prun"] or 0,
             "ver": 0 if style == STYLE_TAS else row["ver"],
         })
+        # P1603: likewise only on a marked row (the game and the site colour its name).
+        if row["plat"]:
+            rows[-1]["plat"] = row["plat"]
         # P1569: only on a helped row, so every other board's bytes stay as they were.
         if (row["flags"] & TF_HELPED) and row["replay_id"]:
             names = row_helpers(db, row["replay_id"])
@@ -3351,8 +3378,8 @@ def _runs_full(db, leg):
 _UPSERT_RUN = """
     INSERT INTO runs (map, track, leg, tier, style, player, name,
                       ticks, tickrate, millis, flags, node, runid,
-                      submitted, replay_id)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                      submitted, replay_id, plat)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(map, track, leg, tier, style, player) DO UPDATE SET
         name      = excluded.name,
         ticks     = excluded.ticks,
@@ -3362,7 +3389,8 @@ _UPSERT_RUN = """
         node      = excluded.node,
         runid     = excluded.runid,
         submitted = excluded.submitted,
-        replay_id = excluded.replay_id
+        replay_id = excluded.replay_id,
+        plat      = excluded.plat
 """
 
 
@@ -3409,7 +3437,7 @@ def restand(db, rid):
             best["map"], best["track"], best["leg"], best["tier"], best["style"],
             best["player"], best["name"], best["ticks"], best["tickrate"],
             best["millis"], best["flags"], best["node"], "", best["submitted"],
-            best["id"]))
+            best["id"], best["plat"]))
         return "moved"
     if cur is not None:
         db.execute("DELETE FROM runs WHERE map=? AND track=? AND leg=?"
@@ -3726,6 +3754,15 @@ def submit_run():
     if flags is None:
         return fail(400, "bad flags")
 
+    # P1603: the platform mark, 0 when absent.  Anything else this surfd does not know reads 0
+    # and is logged (the recbytes precedent): a mark is no reason to refuse a time.
+    raw_plat = request.form.get("plat")
+    plat = strict_int(raw_plat, PLAT_VERIFIED, PLAT_MAX)
+    if plat is None:
+        if raw_plat:
+            log.warning("plat %r unknown from %s; filed as 0", raw_plat[:16], src)
+        plat = PLAT_VERIFIED
+
     style = style_of(flags)
     if style is None:
         # Not an error on the submitter's part: a practice or cheated run is a
@@ -3978,7 +4015,7 @@ def submit_run():
             hdr = dict(meta[0])
             if not runid:
                 hdr.pop("runid", None)
-            bad = _rec_disagrees(hdr, mapname, track, leg, runid, flags, tickrate)
+            bad = _rec_disagrees(hdr, mapname, track, leg, runid, flags, tickrate, plat)
             if bad:
                 log.warning("rec leaf %r disagrees with the row it is filed on"
                             " (%s) from %s; dropping the leaf", leaf, bad, src)
@@ -4096,8 +4133,8 @@ def submit_run():
                                              tier, style, player, name, ticks,
                                              tickrate, millis, flags, node,
                                              submitted, bytes, truncated, runid,
-                                             bound, sha, sha_at)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                             bound, sha, sha_at, plat)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                         ON CONFLICT(map, track, leg, leaf) DO UPDATE SET
                             map_dir   = excluded.map_dir,
                             tier      = excluded.tier,
@@ -4115,6 +4152,7 @@ def submit_run():
                             bound     = excluded.bound,
                             sha       = excluded.sha,
                             sha_at    = excluded.sha_at,
+                            plat      = excluded.plat,
                             submitted = excluded.submitted,
                             seen      = -1,
                             checked   = 0
@@ -4156,7 +4194,7 @@ def submit_run():
                         (mapname, map_dir, track, leg, leaf, tier, style,
                          player, name, ticks, tickrate, millis, flags, node,
                          now, recbytes, rectrunc, runid or "-", 0 if fileless else 1,
-                         fsha, now, hdr_runid, hdr_runid),
+                         fsha, now, plat, hdr_runid, hdr_runid),
                     )
                 else:
                     # LOG AND CARRY ON -- never a 429.  See MAX_REPLAYS: an
@@ -4166,7 +4204,7 @@ def submit_run():
                                 MAX_REPLAYS, leaf)
                 rep = db.execute(
                     "SELECT id, name, tier, style, flags, tickrate, millis,"
-                    " runid, submitted, player, kind FROM replays"
+                    " runid, submitted, player, kind, plat FROM replays"
                     " WHERE map=? AND track=? AND leg=? AND leaf=?",
                     (mapname, track, leg, leaf),
                 ).fetchone()
@@ -4186,6 +4224,7 @@ def submit_run():
                     rid = rep["id"]
                     name, tier, style, flags = (rep["name"], rep["tier"],
                                                 rep["style"], rep["flags"])
+                    plat = rep["plat"]
                     tickrate, millis = rep["tickrate"], rep["millis"]
                     runid = "" if rep["runid"] == "-" else rep["runid"]
                     new = have is not None and rep["submitted"] != have["submitted"]
@@ -4263,7 +4302,7 @@ def submit_run():
                     else:
                         db.execute(_UPSERT_RUN, (mapname, track, leg, ptier, style, player,
                                                  name, ticks, tickrate, millis, flags,
-                                                 node, runid, now, 0))
+                                                 node, runid, now, 0, plat))
                 log.info("run from %s is a stage of rejected run %s; hidden",
                          src, runid)
                 best = prev["millis"] if prev is not None else 0
@@ -4316,7 +4355,7 @@ def submit_run():
             db.execute(
                 _UPSERT_RUN,
                 (mapname, track, leg, tier, style, player, name, ticks,
-                 tickrate, millis, flags, node, runid, now, rid),
+                 tickrate, millis, flags, node, runid, now, rid, plat),
             )
     except sqlite3.Error as exc:
         log.exception("run db error from %s: %s", src, exc)
@@ -4699,7 +4738,7 @@ def _rec_tickrate_disagrees(hdr, tickrate):
     return ""
 
 
-def _rec_disagrees(hdr, mapname, track, leg, runid, flags, tickrate=0):
+def _rec_disagrees(hdr, mapname, track, leg, runid, flags, tickrate=0, plat=None):
     """"" when a .rec header can be the run being filed, else why not.
 
     Compares only keys the file actually carries, so a recorder older than a
@@ -4713,6 +4752,9 @@ def _rec_disagrees(hdr, mapname, track, leg, runid, flags, tickrate=0):
     leaf's digest; a re-post cannot rename the replay row (submit_run).  `flags`
     is the board a run stands on, so an unbound one let a re-post move a verified
     replay to another board (the lobby sends the header's value: 42 of 42 live).
+    `plat` (P1603; None: not compared) is the start's mark in the header and the run's in the
+    post, and only rises in between (a later session's client), so only a post BELOW its file's
+    disagrees: a re-post may not strip a marked recording's mark.
     """
     def differs(key, want, fold=str):
         got = fold((hdr.get(key) or "").strip())
@@ -4723,7 +4765,17 @@ def _rec_disagrees(hdr, mapname, track, leg, runid, flags, tickrate=0):
     return (differs("map", mapname, str.lower) or differs("track", track)
             or differs("leg", leg) or differs("runid", runid)
             or differs("flags", flags, lambda v: (v.split() or [""])[0])
-            or _rec_tickrate_disagrees(hdr, tickrate) or "")
+            or _rec_tickrate_disagrees(hdr, tickrate) or _rec_plat_disagrees(hdr, plat) or "")
+
+
+def _rec_plat_disagrees(hdr, plat):
+    """P1603: "" unless the header's `plat` is above the post's (see _rec_disagrees)."""
+    if plat is None:
+        return ""
+    got = strict_int((hdr.get("plat") or "").strip() or None, 0, 1 << 30)
+    if got is not None and got > plat:
+        return "plat %d > %d" % (got, plat)
+    return ""
 
 
 def _keep_file(src, dst):

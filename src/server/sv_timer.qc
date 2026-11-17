@@ -1918,6 +1918,10 @@ float() SV_RecEnabled =
 */
 .float  run_t_pbad;
 .float  run_t_pwhy;              // Patch 840: the PW_* that first set TF_NOPROFILE
+// P1603: PLAT_* (sh_defs.qc), raised by SV_TimerProfile and never lowered inside the run; reset
+// where run_t_pwhy is. Saves carry it as `plat` (raise-only on load), so a resume or a load
+// cannot shed a mark the prefix earned. The header states the start's, the finish's record the run's.
+.float  run_t_plat;
 
 /*
   PATCH 493: THE MOVE-COLUMN RANGE MARKER'S COUNTERS.
@@ -3288,6 +3292,8 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             report as the server held it (all 0 when it never spoke;
                             `silent` with non-zero numbers is P1573's `inguard` never
                             arriving). The guard values follow on `inguard`.
+                            `platform` (no in_rawinput) is written before P1603
+                            only; since then that client is `plat 1` below.
     inguard <said> <have> <nolegacy> <touchpad> <keys>
                             Patch 1576, additive.  CSQC's `inguard` report the verdict
                             was judged on: said 0 = never reported (all 0); have is the
@@ -3295,6 +3301,14 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             without which keys is unmeasured; keys 1 dropped, 0 off,
                             2 the key guard cannot run.
                             Not ok means TF_NOPROFILE was set in the same packet.
+    plat <n>                P1603, additive.  The START's platform mark (PLAT_*,
+                            sh_defs.qc), latched with `inprof` in the same packet:
+                            1 = CSQC reported without in_rawinput (`inprof` <have>
+                            lacks bit 1 and the client spoke), "Linux: Not mouse
+                            verified"; the run ranks and its guard values are not
+                            judged.  Written only when non-zero: absent = 0, and
+                            every file before P1603.  Not a TF_ bit (bit 21 is
+                            reserved).  The run's mark is the finish's `plat`.
     begin                   header ends here; everything after is a record
 
   THE THREE ZONE KEYS ARE ADDITIVE AND ARE ABSENT ON A MAP WITH NO ZONES, which
@@ -4005,6 +4019,11 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
 
     prof <why>              the finish's SV_ProfileWhy word, as `inprof`'s first
                             field.  Not ok means TF_NOPROFILE is set.
+    plat <n>                P1603, after `prof`, only when non-zero: the run's
+                            platform mark as the lobby posts it (`plat` on
+                            /api/run).  Never below the header's: the mark only
+                            rises in a run and saves carry it, but a later
+                            session's client (a resume, a load) can raise it.
     clk <bound> <hyst> <allow> <wall> <stalls> <credited> <debt> <behind>
                             the game clock against server time over the run, saves
                             included (SV_ClockFrame): wall seconds measured, packet
@@ -6188,6 +6207,9 @@ void(entity e) SV_RecOpen =
 	// P1576: the guard values the verdict above was judged on.
 	SV_RecPut(e, sprintf("inguard %g %g %g %g %g", e.run_t_gev, e.run_t_ghave,
 	                     e.run_t_gnoleg, e.run_t_gtouch, e.run_t_gkeys));
+	// P1603: the start's platform mark, latched with the verdict above; absent when 0.
+	if (e.run_t_plat)
+		SV_RecPut(e, sprintf("plat %d", e.run_t_plat));
 
 	SV_RecPut(e, "begin");
 
@@ -11836,6 +11858,23 @@ float(entity e) SV_ProfileKeyBroken =
   between the counts and the angle and still fails.  Each test is written the way
   the cvar it reads actually behaves rather than to a house style.
 */
+// P1603: the client's platform as its CSQC reported it. in_rawinput is registered by in_win.c only
+// and win64/linux64 are the builds shipped, so a report without IPH_RAW is the Linux game.
+float(entity e) SV_ProfilePlat =
+{
+	if (e.run_t_pev != 0)
+	if (!(e.run_t_pevhave & IPH_RAW))
+		return PLAT_LINUX;
+	return PLAT_VERIFIED;
+};
+
+// ...and the run's mark now: the latch, raised by the client playing it. For the writers that read
+// it between latches (Lobby_RunBody's stage posts, SV_RewindWriteState).
+float(entity e) SV_RunPlat =
+{
+	return max(e.run_t_plat, SV_ProfilePlat(e));
+};
+
 // Patch 840: the predicate below returns WHICH test failed (PW_*), so the
 // recording and the finish line can name it; SV_ProfileBroken is "not PW_OK".
 float(entity e) SV_ProfileWhy =
@@ -11866,11 +11905,10 @@ float(entity e) SV_ProfileWhy =
 	if (e.run_t_pev == 0)
 		return PW_SILENT;
 
-	// Linux beta (Lex, 2026-09-19): only Windows clients rank.  in_rawinput exists only in
-	// in_win.c, so no IPH_RAW means Linux/macOS/SDL -- where device-targeted XTEST and
-	// compositor injection cannot be seen (engine Patch 387's ceiling).
-	if (!(e.run_t_pevhave & IPH_RAW))
-		return PW_PLATFORM;
+	// Linux beta (Lex, 2026-09-19) returned PW_PLATFORM here: XTEST and compositor injection
+	// cannot be seen there (engine Patch 387's ceiling). P1603 (Lex, 17 Nov): such a run ranks,
+	// marked PLAT_LINUX by SV_TimerProfile; Linux anti-cheat is deferred. PW_PLATFORM stays for
+	// old files. The guard block below is skipped for it: its cvars exist only in in_win.c.
 
 	// The RULE is FS_ProfileWhy in sh_defs.qc and is not repeated here.
 	w = FS_ProfileWhy(e.run_t_pevhave, e.run_t_pevraw,
@@ -11880,13 +11918,16 @@ float(entity e) SV_ProfileWhy =
 	// P1573: no injected clicks, no touchpads. No `inguard` report is silence, as for inprof.
 	if (!e.run_t_gev)
 		return PW_SILENT;
-	w = FS_GuardWhy(e.run_t_ghave, e.run_t_gnoleg, e.run_t_gtouch, e.run_t_gkeys);
-	if (w != PW_OK)
-		return w;
-	// P1576: an engine before 1576 cannot drop injected keys; 1 once a release with it is out.
-	if (!(e.run_t_ghave & IPG_LIVE))
-	if (cvar("sv_rank_keyguard"))
-		return PW_KEYGUARD;
+	if (SV_ProfilePlat(e) != PLAT_LINUX)
+	{
+		w = FS_GuardWhy(e.run_t_ghave, e.run_t_gnoleg, e.run_t_gtouch, e.run_t_gkeys);
+		if (w != PW_OK)
+			return w;
+		// P1576: an engine before 1576 cannot drop injected keys; 1 once a release with it is out.
+		if (!(e.run_t_ghave & IPG_LIVE))
+		if (cvar("sv_rank_keyguard"))
+			return PW_KEYGUARD;
+	}
 	// P1083: the attempt's largest move axis, read by SV_MoveBoundFrame from the
 	// usercmds themselves -- nothing the client reports. 0 until the run starts.
 	if (e.run_t_movebig > RUN_MOVE_STD)
@@ -11965,6 +12006,7 @@ void(entity e, float atstart) SV_TimerProfile =
 			e.run_t_pbad = e.run_t_pevbad;
 	}
 
+	e.run_t_plat = SV_RunPlat(e);       // P1603: every latch caller, so they all agree
 	w = SV_ProfileWhy(e);
 	if (w == PW_OK)
 		return;
@@ -13385,6 +13427,7 @@ void(entity e, float z) SV_TimerArm =
 	// default.  See run_t_pbad and SV_ProfileBroken.
 	e.run_t_pbad        = -1;
 	e.run_t_pwhy        = PW_OK;
+	e.run_t_plat        = PLAT_VERIFIED;   // P1603
 	// Build 74: -1 for the third time, and the reason is the sharpest of the
 	// three -- run_movetick is reset PER MAP, so 0 is not merely a legitimate
 	// value, it is the value every counter holds for the first seconds of every
@@ -14063,7 +14106,12 @@ void(entity e, float ticks) SV_TimerFinish =
 	// Patch 840: the finish's verdict beside the header's start one, so a file
 	// says which setting demoted it and when.
 	if (SV_RecLive(e))
+	{
 		SV_RecPut(e, strcat("prof ", FS_ProfileWord(SV_ProfileWhy(e))));
+		// P1603: the run's mark as posted; a later session's client can raise the header's.
+		if (e.run_t_plat)
+			SV_RecPut(e, sprintf("plat %d", e.run_t_plat));
+	}
 	SV_TimerSlowClock(e);
 
 	// Patch 406: and the counts channel.  No latch function and no re-read --
@@ -14663,6 +14711,7 @@ void(entity e) SV_TimerStart =
 	e.run_t_startwall = time;       // report only -- see the field
 	SV_ClockReset(e);
 	e.run_t_pwhy = PW_OK;           // Patch 840: a loaded ARMED save is not armed again
+	e.run_t_plat = PLAT_VERIFIED;   // P1603: likewise; the start's latch below sets it
 	e.run_t_movebig = 0;            // P1083: likewise, not the previous attempt's moves
 
 	// Leaving the start zone is the reset you asked for: the stopped time from
@@ -17220,10 +17269,11 @@ void(entity e) SV_TimerReport =
 	  report the truth is not a warning to ship.  Split, each call is well inside
 	  the limit and nothing has to be trusted.
 	*/
+	// P1603: `plat` the run's latched mark, `wouldplat` the live client's (PLAT_*).
 	sprint(e, PRINT_HIGH,
-	       sprintf("        inprof:  said %g  keywould %g\n",
+	       sprintf("        inprof:  said %g  keywould %g  plat %g  wouldplat %g\n",
 	               e.run_t_pev,
-	               SV_ProfileKeyBroken(e)));
+	               SV_ProfileKeyBroken(e), e.run_t_plat, SV_ProfilePlat(e)));
 	sprint(e, PRINT_HIGH,
 	       sprintf("        inprof:  ev \"%g %g %g %g %g %g\"\n",
 	               e.run_t_pevhave, e.run_t_pevraw, e.run_t_pevfilt,

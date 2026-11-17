@@ -1422,6 +1422,7 @@ void() Scores_Refresh =
 #define SBC_GOOD    SUI_THEME_GOOD
 #define SBC_BAD     SUI_THEME_BAD
 #define SBC_WARN    SUI_THEME_WARN
+#define SBC_LINUX   '0.247 0.757 1'     // P1603: #3FC1FF, the web board's .linux; a PLAT_LINUX row's name
 
 // Amber for the two states that explain a MISSING time, dim for the one that
 // explains nothing.  Never red: neither is something the player did, and this
@@ -2461,6 +2462,18 @@ string(float idx) Scores_HelpTip =
 	               UI_NameShow(bufstr_get(ob_bname, idx), 0));
 };
 
+// P1603: the owner cell's hover, the platform mark's line over the runners' ("" neither).
+string(float idx) Scores_OnlineTip =
+{
+	local string t;
+	t = Scores_HelpTip(idx);
+	if (ob_plat[idx] != PLAT_LINUX)
+		return t;
+	if (!strcmp(t, ""))
+		return "Linux: Not mouse verified";
+	return strcat("Linux: Not mouse verified\n", t);
+};
+
 string(float idx) Scores_OnlineName =
 {
 	local string s, tag;
@@ -2755,6 +2768,8 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		if (sui_is_released(ownerid)) { sb_ownerpick = idx; pick = 0; }
 		if (idx == ob_mine && !sui_is_hovered(ownerid))
 			ncol = SBC_GOOD;
+		if (ob_plat[idx] == PLAT_LINUX && !sui_is_hovered(ownerid))
+			ncol = SBC_LINUX;       // P1603: over "mine", whose row fill still says so
 		if (sb_avpad)
 		{
 			SteamPic_Draw([lp_x + sb_colx[SBK_OWNER], lp_y + 2], rec_sb_rowh - 4,
@@ -2764,8 +2779,8 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		}
 		else
 			Scores_Cell(lp, SBK_OWNER, d, Scores_OnlineName(idx), ncol, 0.9);
-		if (bufstr_get(ob_bhelp, idx) != "")
-			sui_tooltip_for(ownerid, Scores_HelpTip(idx), ui_cv_scale);     // P1569
+		if (sui_is_hovered(ownerid))
+			sui_tooltip_for(ownerid, Scores_OnlineTip(idx), ui_cv_scale);   // P1569, P1603
 
 		/*
 		  WHETHER THERE IS ANYTHING BEHIND THIS ROW TO OPEN -- build 68.

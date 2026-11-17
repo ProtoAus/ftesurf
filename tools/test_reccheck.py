@@ -1672,6 +1672,63 @@ def case_profile_verdict():
           "an unclosed file is not judged against its flags word")
 
 
+def case_platform_mark():
+    """P1603: the header's `plat` is the start's platform mark, latched with `inprof` in one packet
+    (1 = spoke without in_rawinput); the finish's `plat` record is the run's, which only rises.
+    Every disagreement is a note; only a record this writer cannot produce is a fault."""
+    win, lin = "inprof ok 15 1 0 0 1", "inprof ok 14 0 0 0 1"
+
+    def plat_notes(lines):
+        f, n = run(lines)
+        return f, [x for x in n if "plat" in x]
+
+    def linux(head_plat=True, end_plat="plat 1"):
+        b = insert_before(build(), "begin", lin)
+        if head_plat:
+            b = insert_before(b, "begin", "plat 1")
+        b = insert_before(b, "inend", "prof ok")
+        if end_plat:
+            b = insert_before(b, "inend", end_plat)
+        return b
+
+    f, n = plat_notes(linux())
+    check(not f and not n, "a Linux run (header plat 1, finish plat 1, verdict ok) passes clean, no plat note")
+    if f or n:
+        print("        faults=%s notes=%s" % (f, n))
+    _f, _n, out = run(linux(), report=True)
+    check("plat_end" in out and "plat " in out, "the report prints the start's and the run's mark")
+    f, n = plat_notes(insert_before(insert_before(build(), "begin", win), "inend", "prof ok"))
+    check(not f and not n, "a Windows run with no plat anywhere passes clean")
+    f, n = plat_notes(head(insert_before(build(), "begin", "inprof platform 14 0 0 0 1"),
+                           "flags", str(2048)))
+    check(not f and not n, "a pre-P1603 Linux file (verdict platform, no plat) is not compared")
+    notes_with(linux(head_plat=False, end_plat=None), "one packet wrote both",
+               "a spoken report without in_rawinput and no header plat is a note")
+    notes_with(insert_before(insert_before(build(), "begin", win), "begin", "plat 1"),
+               "one packet wrote both", "header plat 1 over an in_rawinput report is a note")
+    notes_with(head(insert_before(insert_before(build(), "begin", "inprof silent 0 0 0 0 0"), "begin",
+                                  "plat 1"), "flags", str(2048)),
+               "one packet wrote both", "header plat 1 over a silent client is a note")
+    notes_with(linux(end_plat=None), "a mark only rises",
+               "header plat 1 with a finish that wrote no plat is a note")
+    f, n = plat_notes(insert_before(insert_before(insert_before(build(), "begin", win), "inend", "prof ok"),
+                                    "inend", "plat 1"))
+    check(not f and not n, "a Windows start raised by a later session (finish plat 1 only) passes clean")
+    b = insert_before(build(), "begin", lin)
+    b = insert_before(b, "begin", "plat 1")
+    f, n = plat_notes(b)
+    check(not f and not n, "kept evidence (no finish prof) is not judged for the finish's mark")
+    notes_with(insert_before(build(), "begin", "plat 0"), "only when it is non-zero",
+               "a header plat 0 is a note")
+    notes_with(insert_before(build(), "begin", "plat x"), "not an integer",
+               "a header plat that is not an integer is a note")
+    faults_with(linux(end_plat="plat x"), "'plat' takes one integer", "a finish plat x is a fault")
+    faults_with(linux(end_plat="plat"), "'plat' takes one integer", "a bare finish plat is a fault")
+    notes_with(linux(end_plat="plat 0"), "only when it is non-zero", "a finish plat 0 is a note")
+    _f, n = run(linux())
+    check(not any("not part of v9" in x for x in n), "plat is a v9 header key")
+
+
 def clk(behind, wall=60.0, stalls=0, cred=0.0, debt=None, bound=1):
     """A `clk` line.  `debt` defaults to `behind`."""
     if debt is None:
@@ -3589,7 +3646,7 @@ def main():
                case_spec_next_row_restates, case_spec_where, case_spec_flag_and_finish,
                case_spec_unknown_why_is_a_note, case_spec_below_v9_is_unknown,
                case_nonce_header, case_nonce_record, case_nonce_flag,
-               case_movebnd, case_profile_verdict, case_slow_clock,
+               case_movebnd, case_profile_verdict, case_platform_mark, case_slow_clock,
                case_angle_control, case_angle_blind_is_said_out_loud,
                case_angle_rotated, case_angle_one_frame_rule,
                case_angle_one_frame_rule_reaches_a_still_camera,

@@ -47,7 +47,9 @@ HEAD_KEYS = frozenset((
     # Patch 840: the start's input-profile verdict, for the owner's run page.
     # Not in WEB_HEAD_KEYS, so the /board/ routes leave it out; /api/replay
     # serves the raw file, this line included, as it does mapcrc and nonce.
-    "inprof").split())
+    "inprof "
+    # P1603: the start's platform mark (absent = 0), for the same page and on the same terms.
+    "plat").split())
 TICK_RECS = frozenset(("cp", "stage", "stagestart", "restart", "resume", "ghost"))  # <n> <ticks>
 COUNTED = ("in", "pe", "pm", "seed", "zseed", "board", "inend", "ride", "portal",
            "spec")     # spec: windows, parsed before the counted fallback
@@ -343,6 +345,13 @@ def _parse(fh, max_bytes, max_points):
                 bad_recs += 1
                 continue
             cert["prof"] = _WORD.sub("", a[0])[:24]
+        elif kw == "plat":
+            # P1603: the run's platform mark, after `prof`; the key only when the file has one.
+            v = _int(a[0]) if len(a) == 1 else None
+            if v is None:
+                bad_recs += 1
+                continue
+            cert["plat"] = v
         elif kw == "clk":
             # Patch 840: bound hyst allow wall stalls credited debt behind (the
             # grammar block over SV_RecOpen).

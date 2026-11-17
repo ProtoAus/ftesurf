@@ -3008,6 +3008,8 @@ void(float reqid, float code, string body) Lobby_RunReply =
   and tag would be right in every case except that one, and that one is
   invisible.
 */
+float(entity e) SV_RunPlat;         // P1603, sv_timer.qc
+
 // The gates and the form, shared by a finish and a stage post (Patch 360):
 // "" when this server does not submit.
 string(entity e, float track, float leg, float ticks, float flags,
@@ -3199,6 +3201,9 @@ string(entity e, float track, float leg, float ticks, float flags,
 	// The run's id (the .rec header's runid): joins a stage row to its run.
 	if (e.rec_rec_rid != "")
 		body = sprintf("%s&runid=%s", body, uri_escape(e.rec_rec_rid));
+	// P1603: the platform mark (the finish's `plat` record; a stage reads it live). Absent = 0.
+	if (SV_RunPlat(e))
+		body = sprintf("%s&plat=%d", body, SV_RunPlat(e));
 	// Patch 629: the key this connection proved (64 hex of ours, or nothing),
 	// when it is also the key the run began under (run_pub; a run with no id
 	// has no record of that and is its connection's).  surfd ranks the run

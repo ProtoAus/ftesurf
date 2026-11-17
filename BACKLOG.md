@@ -1,5 +1,14 @@
 # BACKLOG.md
 
+## Linux runs marked -- what P1603 left (17 Nov, lex-90; root linux-20261117-90)
+- The menu board (menu.dat, m_board.qc Mlb_Row) and the player profiles (in game and the site's profile page,
+  game_player / web profile rows) do not show `plat`: they need a client release (menu.dat) and surfd's
+  profile JSON to carry it. Falsifier: a plat 1 row reads sky blue with the tooltip in the menu board.
+- The opt-in native scoreboard (cl_scores_native.qc) and the site's run page (/board/api/run) carry no mark.
+- The site's player-name links are already var(--accent) #59bfff, near #3FC1FF: a Linux row's rank and time
+  turn sky blue, its name barely changes. If that is too quiet, an edge strip or a chip (the .foreign shape).
+- Linux anti-cheat is deferred (Lex): any client without in_rawinput ranks marked, guard values unjudged.
+
 ## 30-minute new maps -- what P1601 left (17 Nov, ftesurf-29; root C:\FTESurf-worktrees\mapnew-20261117-29)
 - surfd/mapnew.py is on main and NOT routed. It ships as guarded route `mapnew` in the surfd generation after P1600:
   cron `28,58 * * * *` under `flock -n /tmp/surfd-mapwatch.lock`, argv `mapnew.py --site-zones

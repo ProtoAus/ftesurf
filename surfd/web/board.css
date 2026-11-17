@@ -163,6 +163,10 @@ table.runs { width: 100%; border-collapse: collapse; margin-top: 6px; font-size:
 .runs td.name { overflow-wrap: anywhere; color: var(--text); }
 /* P1569: a helped run's "+N" (its runners on hover). */
 .runs .helped { color: var(--foreign); font-size: 12.5px; cursor: help; }
+/* P1603: a run from a client without Windows raw-input verification (title says so); the
+   game's SBC_LINUX.  Rank, name and time, so it reads beside the accent-blue name links. */
+.runs tbody tr.linux td.num:not(.gap), .runs tbody tr.linux td.name,
+.runs tbody tr.linux .plink { color: #3FC1FF; }
 .runs td.gap, .runs td.date, .runs td.leg { color: var(--dim); }
 .runs td.date { white-space: nowrap; font-size: 13px; }
 .runs td.leg { font-size: 13px; white-space: nowrap; }

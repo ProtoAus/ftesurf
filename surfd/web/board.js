@@ -388,12 +388,16 @@
     });
   }
 
+  var PLAT_TIP = 'Linux: Not mouse verified';    // P1603: surfd's `plat` 1, the game's tooltip
+
   function appendRows(v, rows) {
     var tbody = $('rows');
     rows.forEach(function (r) {
       var tier = r.tr || v.tier;
       if (tier === 'combined' || tier === 'imported') { tier = 'momentum'; }
-      var tr = el('tr', tier !== 'ranked' ? 'foreign' : '');
+      var tr = el('tr', (tier !== 'ranked' ? 'foreign' : '') + (r.plat === 1 ? ' linux' : ''));
+      // P1603: a run from a client without Windows raw-input verification ranks, marked.
+      if (r.plat === 1) { tr.title = PLAT_TIP; }
       tr.appendChild(el('td', 'num', r.r));
       var who = el('td', 'name');
       if (r.av) { who.appendChild(avatar(r.who)); }
@@ -403,7 +407,7 @@
         var plus = el('span', 'helped', ' +' + r.helpers.length);
         plus.title = 'With help: ' + r.helpers.map(plain).concat([plain(r.name)]).join(', ');
         who.appendChild(plus);
-        who.title = plus.title;
+        who.title = r.plat === 1 ? PLAT_TIP + '\n' + plus.title : plus.title;
       }
       // Which game, where the board holds more than one.
       if (v.tier === 'combined' || v.tier === 'imported') {

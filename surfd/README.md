@@ -174,6 +174,11 @@ POST /api/run         (application/x-www-form-urlencoded)   -- schema 3
               drops the leaf and logs it; it NEVER refuses the run.
     recbytes  the recording's size as the recorder reported at close, or -1
     rectrunc  1 if the run hit FS_RECMAX and the recording is short
+    plat      P1603: the run's platform mark, sent only when non-zero: 1 a client
+              without Windows raw-input verification (the Linux game), which
+              ranks.  Anything but 0/1 is logged and filed as 0.  Bound to the
+              recording like flags: a post below its file's header `plat` drops
+              the leaf.
   -> 200 {"ok":true,"stored":true|false,"best":<ms>,"rank":n,"of":n,"rep":<id>,
           "tier":"ranked"|"community","prevms":<ms>}
         `tier` is the board the run LANDED on (after certifiable() demotion);
@@ -187,6 +192,10 @@ GET /api/board?map=&track=&leg=&tier=&style=&limit=&offset=
           "rows":[{"r":1,"player":..,"name":..,"ticks":..,"rate":..,
                    "ms":..,"flags":..,"when":..,"rep":..,"run":..,"ver":0|1}]}
 ```
+
+`plat` (P1603) is on a row only when it is non-zero: 1 is a run from a client
+without Windows raw-input verification, which the game and the site show in sky
+blue with "Linux: Not mouse verified".  Every other row keeps its bytes.
 
 An optional `&name=<text>` filters this map/track/leg/style board by a literal,
 case-insensitive substring of the player's plain display name (Quake colour

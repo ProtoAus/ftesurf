@@ -1,5 +1,14 @@
 # AGENT_NOTES.md
 
+## P1603 Linux runs rank, marked: what it does to test arms (17 Nov 2026)
+
+- A client whose CSQC reports no IPH_RAW (the Linux game) now reads `would 0  why ok` when its profile
+  passes; its guard values are not judged. The mark is `plat`/`wouldplat` on `cmd timer`'s `inprof:  said`
+  line, `plat 1` in the .rec header (start) and after `prof` (finish), `&plat=1` on the POST, surfd's
+  runs/replays.plat, and `plat` on /api/board rows (board_status prints ` linux`). Never a TF_ bit.
+- A Windows client always has IPH_RAW (in_win.c registers in_rawinput), so every guard arm reads as before.
+- surfd tests need Flask; on the Linux PC use a scratch venv. test_board's import runs its whole suite.
+
 ## P1590 groups and the mode row (16 Nov 2026; ftesurf-06, root C:\FTESurf-worktrees\groups-20261116-c7)
 
 - An arm that opens the ONLINE board needs `set rec_terms 9` after menu_restart: since P1586 the menu's

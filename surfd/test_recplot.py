@@ -286,6 +286,14 @@ def case_cert():
     r = recplot.parse(rec("cert2.rec", 9, [S(0.0), "clk 1 2", "end 1 1 0 0"]))
     check("a short clk is a malformed record", (r["cert"]["clk"], notes_with(r, "1 malformed")),
           (None, ["1 malformed record(s) skipped"]))
+    # P1603: the platform mark, the start's in the header and the run's after `prof`.
+    r = recplot.parse(rec("plat.rec", 9, [S(0.0), "prof ok", "plat 1", "end 1 1 0 0"],
+                          head=HEAD + ["inprof ok 14 0 0 0 1", "plat 1"]))
+    check("plat: a header key and a finish record, not unknown",
+          (r["head"].get("plat"), r["cert"].get("plat"), r["counts"]["unknown"]), ("1", 1, 0))
+    r = recplot.parse(rec("plat2.rec", 9, [S(0.0), "plat x", "end 1 1 0 0"]))
+    check("plat: a bad one is a malformed record", ("plat" in r["cert"], notes_with(r, "1 malformed")),
+          (False, ["1 malformed record(s) skipped"]))
 
 
 def case_resume_rebase():
