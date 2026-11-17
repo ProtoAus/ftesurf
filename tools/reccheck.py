@@ -3734,9 +3734,13 @@ ANG_LAG_MIN = 50         # ...on at least this many joined moves
 # where the sweep convicted it by accident; per-player alignment history is what can see that.
 ANG_LAG_VOTE = 0.5       # share of in-range matched moves (each counted once) within a tick of the winner
 ANG_LAG_VOTE_MIN = 10    # ...of at least this many, and the sweep must join at least this many moves there
-# A JOIN THAT COVERS LITTLE OF THE RUN JUDGES LITTLE OF IT: a named or accepted offset must join this share of what
-# offset 0 joins (review round 3). Real lobby pairs at their named offsets: 98% or more.
+# A JOIN THAT COVERS LITTLE OF THE RUN JUDGES LITTLE OF IT: a named or accepted offset past ANG_LAG_FREE ticks must
+# join this share of what offset 0 joins (review round 3: drawn angles replayed in a run's last moves named an offset
+# near its length). Within ANG_LAG_FREE the shortfall is the delay's own residue -- the client draws until it sees the
+# finish, so offset 0 joins the first S moves and +S cannot -- and the floor convicted honest delayed pairs on short
+# runs and ghost-heavy ones (review round 4). Lobby offsets 17 Nov: +3..+34; real pairs cover 98% or more.
 ANG_LAG_COVER = 0.75
+ANG_LAG_FREE = 50
 # THERE IS NO WINDOW, BECAUSE A WINDOW HAS AN EDGE AND THE EDGE CONVICTS.
 # Measured by a reviewer: at 12 ticks of lag an honest pair is clean and at 13
 # it draws both faults -- and widening 12 to 25 only moved the cliff to 26.
@@ -3795,7 +3799,8 @@ def sweep_offset(lag, bestsc, moveoffs, joinable):
     # The join floor keeps the one-frame rule's verdict (an empty sweep join returns before that rule runs); the
     # cover floor keeps the sweep judging most of the run.
     jv = joinable(vlag)
-    if vlag <= 0 or near < ANG_LAG_VOTE * matched or jv < ANG_LAG_VOTE_MIN or jv < ANG_LAG_COVER * joinable(lag):
+    if vlag <= 0 or near < ANG_LAG_VOTE * matched or jv < ANG_LAG_VOTE_MIN \
+            or (vlag > ANG_LAG_FREE and jv < ANG_LAG_COVER * joinable(lag)):
         return lag, exact, near, matched
     return vlag, exact, near, matched
 
@@ -3904,6 +3909,7 @@ def angle_join(r, rec, frames):
         for o in offs:
             votes[o] = votes.get(o, 0) + 1
     lag, bestsc, runner, top = 0, 100.0, 100.0, 0
+    thin = None             # (offset, joined, offset 0's join) when only ANG_LAG_COVER turned an aligned offset down
     if votes and seen:
         # THE VOTES ONLY NOMINATE; score() DECIDES.  A run that revisits an
         # angle -- any run that turns more than once round -- scatters votes
@@ -3918,10 +3924,11 @@ def angle_join(r, rec, frames):
         (bestsc, j), lag, top = min(scored, key=lambda s: (s[0][0], abs(s[1])))
         runner = min([sc for (sc, _j), oo, _n in scored if oo != lag] or [100.0])
         j0 = [jj for (_sc, jj), oo, _n in scored if oo == 0][0]     # 0 is always a candidate
-        if lag and not (bestsc <= ANG_LAG_FLOOR and j >= ANG_LAG_MIN
-                        and runner - bestsc >= ANG_LAG_SEP
-                        and bestsc * ANG_LAG_EDGE <= runner
-                        and j >= ANG_LAG_COVER * j0):
+        aligned = (bestsc <= ANG_LAG_FLOOR and j >= ANG_LAG_MIN
+                   and runner - bestsc >= ANG_LAG_SEP
+                   and bestsc * ANG_LAG_EDGE <= runner)
+        if lag and not (aligned and (abs(lag) <= ANG_LAG_FREE or j >= ANG_LAG_COVER * j0)):
+            thin = (lag, j, j0) if aligned else None
             lag, bestsc = 0, score(0)[0]
     else:
         bestsc = score(0)[0]
@@ -3936,7 +3943,11 @@ def angle_join(r, rec, frames):
                               100.0 * votes.get(lag, 0) / seen if seen else 0.0,
                               "; the first %d moves have no frame under it" % lag
                               if lag > 0 else ""))
-    if not lag and bestsc > ANG_LAG_FLOOR:
+    if not lag and bestsc > ANG_LAG_FLOOR and thin:
+        r.note("an offset of %+d ticks lines these two files up but joins %d moves against offset 0's %d; past %d "
+               "ticks an offset must join %.0f%% of that (ANG_LAG_COVER), so the join stays at 0"
+               % (thin[0], thin[1], thin[2], ANG_LAG_FREE, 100 * ANG_LAG_COVER))
+    elif not lag and bestsc > ANG_LAG_FLOOR:
         # THE DIAGNOSTIC THAT USED TO BE MISSING.  When nothing lines the two
         # files up, "judged at offset zero" and "no offset exists" printed
         # identically, and the second is the one a reader needs: it is either a

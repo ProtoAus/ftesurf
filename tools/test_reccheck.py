@@ -2483,9 +2483,14 @@ def case_angle_sweep_offset_gate():
           "...a tick either side counts toward the half, and the exact count is reported apart")
     for tie in ([{-3}] * vm + [{3}] * vm, [{3}] * vm + [{-3}] * vm):
         check(rc.sweep_offset(0, fl + 1, tie, hold(vm))[0] == 3, "a tie between -3 and +3 goes to +3, either order")
-    cov = lambda at3: (lambda off: 100 if off == 0 else at3)   # noqa: E731
-    check(rc.sweep_offset(0, fl + 1, m, cov(75))[0] == 3 and rc.sweep_offset(0, fl + 1, m, cov(74))[0] == 0,
-          "...and only where the sweep joins at least ANG_LAG_COVER of what offset 0 joins (75 of 100 yes, 74 no)")
+    cov = lambda at: (lambda off: 100 if off == 0 else at)     # noqa: E731
+    F = rc.ANG_LAG_FREE
+    far = [{F + 1}] * vm
+    check(rc.sweep_offset(0, fl + 1, far, cov(75))[0] == F + 1 and rc.sweep_offset(0, fl + 1, far, cov(74))[0] == 0,
+          "...and past ANG_LAG_FREE only where the sweep joins ANG_LAG_COVER of what offset 0 joins (75 of 100 yes, "
+          "74 no)")
+    check(rc.sweep_offset(0, fl + 1, [{F}] * vm, cov(vm))[0] == F and rc.sweep_offset(0, fl + 1, m, cov(vm))[0] == 3,
+          "...but within ANG_LAG_FREE the shortfall is the delay's residue: +%d and +3 join on 10 of 100" % F)
 
 
 def tail_view(lines, n, pad=0):
@@ -2517,9 +2522,68 @@ def case_angle_join_must_cover_the_run():
           and any("the sidecar does not describe this recording" in x for x in rep2.faults),
           "60 exact moves plus the padding past the end are not an accepted lag either (%s)"
           % rep2.info.get("angle_lag", "")[:40])
+    check(any(x.startswith("an offset of +") and "(ANG_LAG_COVER)" in x for x in rep2.notes)
+          and not any(x.startswith("no tick offset lines") for x in rep2.notes),
+          "...and the report says an offset aligned and was turned down for coverage, not that none aligned")
     check(E > 1000, "fixture: the run is long enough that the stretch is a small part of it (%d ticks)" % E)
     honest = report_inproc(L, view_for(L, dense=3))
     check(not honest.faults, "CONTROL: the same recording with an honest dense sidecar passes")
+
+
+def until_seen_view(packets, S, dense=1, wobble=False, ghost=None, sweep=128):
+    """(rec, view) for an honest client whose tick column lags by S (S/S+1 every 40 ticks with `wobble`) and that
+    draws until it sees the finish, so its labels reach the run's end: offset 0 joins the first S moves and +S
+    cannot.  view_for stops its frames at E - S, which is how round 3's cover floor passed the suite (round 4)."""
+    rec = build(sweep=sweep, packets=packets)
+    full = build(sweep=sweep, packets=packets + 4 * S + 50)
+    M = max(int(l.split()[2]) - HORIZON for l in rec if l.startswith("in "))
+    rec = bump_end(rec, "ticks", M - int([l for l in rec if l.startswith("end ")][0].split()[1]))
+    if ghost:
+        rec = with_ghost(rec, *ghost)
+    byraw = {}
+    for f in (l.split() for l in full if l.startswith("in ")):
+        byraw.setdefault(int(f[2]) - HORIZON, (float(f[7]), float(f[8])))
+    ticks = sorted(byraw)
+
+    def ang(raw):
+        if raw in byraw:
+            return byraw[raw]
+        lo, hi = max(t for t in ticks if t < raw), min(t for t in ticks if t > raw)
+        (p0, y0), (p1, y1), w = byraw[lo], byraw[hi], (raw - lo) / (hi - lo)
+        return p0 + (p1 - p0) * w, y0 + (y1 - y0) * w
+    out, last = ["FTESURF-VIEW 2", "map bhop_eazy", "hid 1", "begin"], -1
+    for raw in range(ticks[-1] + 1):
+        lab = max(last, raw - (S + 1 if wobble and (raw // 40) % 2 else S))   # the column repeats, never steps back
+        if lab < 0:
+            continue
+        if lab > M:
+            break
+        last = lab
+        p, y = ang(raw)
+        out += ["%.4f %d %d %.2f %.2f 0" % (10.0 + (raw + k / dense) * 0.01, 1000 + raw, lab, p, y)
+                for k in range(dense)]
+    return rec, out, M
+
+
+def case_angle_delay_residue_is_not_thin_cover():
+    """REVIEW ROUND 4 (P1599).  ANG_LAG_COVER measured a delay's own residue as thin cover: on a short run, or one
+    mostly in ghost windows, an honest delayed pair fell back to offset 0 and faulted.  Within ANG_LAG_FREE ticks
+    the floor does not apply; the far offsets it exists for are case_angle_join_must_cover_the_run's."""
+    rec, view, M = until_seen_view(108, 34)
+    rep = report_inproc(rec, view)
+    check(not rep.faults and rep.info.get("angle_lag", "").startswith("+34 ticks"),
+          "one frame a tick, 340 ms, a %d-tick run: the lag search accepts +34 and nothing faults (%s)"
+          % (M, [x[:60] for x in rep.faults[:2]]))
+    rec, view, M = until_seen_view(100, 40, dense=3, wobble=True, sweep=600)
+    rep = report_inproc(rec, view)
+    check(not rep.faults and any("the sweep rules judge at +4" in x for x in rep.notes),
+          "dense, delay wobbling 40/41, a %d-tick run: the sweep joins at the named offset and passes (%s)"
+          % (M, [x[:60] for x in rep.faults[:2]]))
+    rec, view, M = until_seen_view(1500, 30, dense=3, wobble=True, ghost=(60, 1780), sweep=600)
+    rep = report_inproc(rec, view)
+    check(not rep.faults and any("the sweep rules judge at +3" in x for x in rep.notes),
+          "dense, wobbling 30/31, ghost window over ticks 60-1780 of %d: the sweep joins and passes (%s)"
+          % (M, [x[:60] for x in rep.faults[:2]]))
 
 
 def case_angle_sweep_join_keeps_the_one_frame_fault():
@@ -3898,6 +3962,7 @@ def main():
                case_angle_sweep_join_keeps_the_one_frame_fault,
                case_angle_sweep_join_is_v9_only,
                case_angle_join_must_cover_the_run,
+               case_angle_delay_residue_is_not_thin_cover,
                case_angle_omission_does_not_read_as_cover,
                case_angle_tight_rule_abstains_where_the_epoch_moves,
                case_angle_tight_rule_is_keyed_on_the_source_not_the_version,
