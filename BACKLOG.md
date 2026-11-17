@@ -211,6 +211,17 @@
 - Activation: run join_account_key over a copy of the live DB first and record the fault count
   (tools/backend-pending.md).
 
+## Receipt sweep after P1580 -- review follow-ups (P1600 sweep lens, 17 Nov, ftesurf-a8)
+
+- A row already FAULT never takes a late .view/.rec's reason (sweep.py late-file and recovery paths), so a later
+  forged sidecar's digest mismatch can be stored nowhere; P1580's config-dependent first-read faults (host,
+  svport) make that likelier. Keep the first fault, but record later independent faults too.
+- test_sweep does not exercise the getattr guard for an rcptcheck without join_server_allowed, nor malformed
+  SURFD_RCPT_PORTS/LAN entries (a mutant calling it directly passes 427/0 and fails every pass on the Pi today).
+- "Not checked" outcomes (no account tables, DB locked, board row not yet written at the first read) are notes
+  and the row stores VALID, indistinguishable from checked-and-passed, and is not read again without a re-read.
+- test_sweep leaks an empty %TEMP%\elsewhere-* directory per run (test_sweep.py ~2008).
+
 ## Angle cross-check falsely faults ~10% of lobby receipts -- P1599 parked (17 Nov, ftesurf-a8)
 
 - 231 of 2,322 lobby receipts carry an angle FAULT that the current reader repeats (229 re-read): lobby sidecars

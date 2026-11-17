@@ -55,7 +55,7 @@ Set at activation, in `surfd.env`:
     SURFD_RCPT_LAN=192.168.1.102
     SURFD_RCPT_PORTS=27510,27520,27530,27540,27550,27560,27570,27580,27590,27600,27610,27620
 
-Unset, the address check notes "not configured" and faults nothing. The 16 Nov corpus (2,296
+Unset, the HOST check notes "not configured" -- but the svport rule below applies as soon as main's rcptcheck is in SURFD_TOOLS, env or no env (P1600 review): run it over a copy of the live receipts before copying rcptcheck. The account-key check lives in sweep.py and starts with the generation (dry run 0 of 2,299). The 16 Nov corpus (2,296
 receipts) has 2,295 on the public address and 1 on the LAN one. A LAN address is reported as a note, never
 passed or faulted (AGENT_NOTES: "a private address is nobody's" -- another network's server at that address
 reads the same). The signed port must also equal the unsigned `svport` the writing lobby recorded, which
