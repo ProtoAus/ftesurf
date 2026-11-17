@@ -17,8 +17,13 @@ KEY = ed25519.publickey(SEED).hex()
 WORK = None
 
 
+# what the launcher's move needs of a worldofsurf default.fmf (feed.WOS_MAINCONFIG)
+WOS_TAIL = 'DISABLEHOMEDIR 1\nMAINCONFIG ftesurf\n'
+
+
 def manifest_text(game):
-    return f'FTEMANIFEST 1\nGAME "{feed.MANIFEST_GAME[game]}"\nBASEGAME "{game}"\n'
+    tail = WOS_TAIL if game == 'worldofsurf' else ''
+    return f'FTEMANIFEST 1\nGAME "{feed.MANIFEST_GAME[game]}"\nBASEGAME "{game}"\n{tail}'
 
 
 def stage(root, platform='win64', game='ftesurf'):
@@ -279,7 +284,8 @@ MUTANTS = {
                                 {'new-win64-over-legacy-carries-nothing'}),
     # build's own verify_objects pass is what refuses a stage's default.fmf
     'fmf-unchecked': ('            check_manifest(object_bytes(root, f["hash"], f["size"]), payload["game"])\n', '            pass\n',
-                      {'objects-fmf-legacy-basegame', 'stage-fmf-legacy-basegame', 'stage-fmf-legacy-game'}),
+                      {'objects-fmf-legacy-basegame', 'stage-fmf-legacy-basegame', 'stage-fmf-legacy-game',
+                       'stage-fmf-without-disablehomedir'}),
     'duplicate-keys-allowed': ('json.loads(text, object_pairs_hook=unique_keys, parse_constant=constant)',
                                'json.loads(text, parse_constant=constant)',
                                {'duplicate-game-key', 'dotted-key'}),
@@ -292,7 +298,14 @@ MUTANTS = {
                              '    if "/*" in text:\n', {'fmf-cr'}),
     'fmf-block-comment-allowed': (' or "/*" in text:\n', ':\n', {'fmf-block-comment'}),
     'fmf-star-allowed': ('        if tokens and tokens[0].startswith("*"):\n', '        if False:\n', {'fmf-star-keyword'}),
-    'fmf-repeat-allowed': ('            if tokens[0].lower() in found or ', '            if ', {'fmf-two-game-lines'}),
+    'fmf-repeat-allowed': ('            if tokens[0].lower() in found or ', '            if ',
+                           {'fmf-two-game-lines', 'fmf-two-mainconfig-lines'}),
+    # P1593 stage 2: what the launcher's move refuses, the feed refuses
+    'fmf-homedir-unchecked': ('found.get("disablehomedir") != "1" or ', '',
+                              {'fmf-no-disablehomedir', 'fmf-disablehomedir-0', 'stage-fmf-without-disablehomedir'}),
+    'fmf-mainconfig-unchecked': (' or found.get("mainconfig") not in WOS_MAINCONFIG', '',
+                                 {'fmf-no-mainconfig', 'fmf-mainconfig-other'}),
+    'fmf-extra-words-allowed': (' or (game == WORLDOFSURF and len(tokens) != 2)', '', {'fmf-mainconfig-extra-word'}),
     'fmf-backslash-allowed': ('    if "\\\\" in text or \'""\' in text:', '    if \'""\' in text:', {'fmf-backslash-on-game-line'}),
     'fmf-empty-quotes-allowed': (' or \'""\' in text:', ':', {'fmf-empty-string'}),
     'fmf-odd-quotes-allowed': ('        if quoted:\n            raise ValueError("default.fmf holds an unpaired quote")\n', '',
@@ -407,7 +420,8 @@ class IdentityTests(unittest.TestCase):
         removed = dict(legacy)
         del removed['removed']
         envelope = json.loads(legacy_path.read_bytes())
-        good = b'GAME "WorldofSurf"\nBASEGAME "worldofsurf"\n'
+        tail = WOS_TAIL.encode()
+        good = b'GAME "WorldofSurf"\nBASEGAME "worldofsurf"\n' + tail
         return {
             'new-feed-for-legacy-install': refused(f.validate, new, 'ftesurf'),
             'legacy-feed-for-new-install': refused(f.validate, legacy, 'worldofsurf'),
@@ -461,7 +475,7 @@ class IdentityTests(unittest.TestCase):
             'fmf-block-comment': refused(f.check_manifest, b'/* note */\n' + good, 'worldofsurf'),
             'fmf-star-keyword': refused(f.check_manifest, b'*basegame ftesurf\n' + good, 'worldofsurf'),
             'fmf-two-game-lines': refused(f.check_manifest, b'GAME "FTESurf"\n' + good, 'worldofsurf'),
-            'fmf-backslash-on-game-line': refused(f.check_manifest, good.replace(b'"WorldofSurf"', b'"WorldofSurf" \\x'),
+            'fmf-backslash-on-game-line': refused(f.check_manifest, good.replace(b'"WorldofSurf"', b'"WorldofSurf" // \\x'),
                                                   'worldofsurf'),
             # the round-3 reviewer's inputs
             'fmf-escaped-quote-line': refused(f.check_manifest, good + b'\\"basegame ftesurf"\n', 'worldofsurf'),
@@ -469,12 +483,30 @@ class IdentityTests(unittest.TestCase):
             'fmf-unclosed-quote-earlier': refused(f.check_manifest, b'set x "abc\n' + good, 'worldofsurf'),
             'fmf-empty-string': refused(f.check_manifest, good + b'set x ""\n', 'worldofsurf'),
             # the round-4 reviewer's inputs (the third is refused by both glued-quote rules)
-            'fmf-glued-game-value': refused(f.check_manifest, b'GAME WorldofSurf"x"\nBASEGAME "worldofsurf"\n', 'worldofsurf'),
-            'fmf-glued-basegame-value': refused(f.check_manifest, b'GAME "WorldofSurf"\nBASEGAME worldofsurf"x"\n', 'worldofsurf'),
-            'fmf-glued-quote-above': refused(f.check_manifest, b'GAME "WorldofSurf"\nx"y "z\nBASEGAME "worldofsurf"\n', 'worldofsurf'),
-            'fmf-glued-closing-quote': refused(f.check_manifest, b'GAME "WorldofSurf"x\nBASEGAME "worldofsurf"\n', 'worldofsurf'),
+            'fmf-glued-game-value': refused(f.check_manifest, b'GAME FTESurf"x"\nBASEGAME "ftesurf"\n', 'ftesurf'),
+            'fmf-glued-basegame-value': refused(f.check_manifest, b'GAME "FTESurf"\nBASEGAME ftesurf"x"\n', 'ftesurf'),
+            'fmf-glued-quote-above': refused(f.check_manifest, b'GAME "WorldofSurf"\nx"y "z\nBASEGAME "worldofsurf"\n' + tail, 'worldofsurf'),
+            'fmf-glued-closing-quote': refused(f.check_manifest, b'GAME "FTESurf"x\nBASEGAME "ftesurf"\n', 'ftesurf'),
+            'fmf-glued-worldofsurf-values': all(refused(f.check_manifest, fmf + tail, 'worldofsurf') for fmf in (
+                b'GAME WorldofSurf"x"\nBASEGAME "worldofsurf"\n', b'GAME "WorldofSurf"\nBASEGAME worldofsurf"x"\n',
+                b'GAME "WorldofSurf"x\nBASEGAME "worldofsurf"\n')),
             'escaped-payload-key': refused(f.verify, signed_text(text.replace('"schema"', '"sch\\u0065ma"', 1)), KEY),
             'upper-case-signature': refused(f.verify, json.dumps(dict(envelope, signature=envelope['signature'].upper())).encode(), KEY),
+            # P1593 stage 2: the launcher's move needs DISABLEHOMEDIR 1 and a known MAINCONFIG, one value each
+            'fmf-no-disablehomedir': refused(f.check_manifest, good.replace(b'DISABLEHOMEDIR 1\n', b''), 'worldofsurf'),
+            'fmf-disablehomedir-0': refused(f.check_manifest, good.replace(b'DISABLEHOMEDIR 1', b'DISABLEHOMEDIR 0'),
+                                            'worldofsurf'),
+            'fmf-no-mainconfig': refused(f.check_manifest, good.replace(b'MAINCONFIG ftesurf\n', b''), 'worldofsurf'),
+            'fmf-mainconfig-other': refused(f.check_manifest, good.replace(b'MAINCONFIG ftesurf', b'MAINCONFIG fte'),
+                                            'worldofsurf'),
+            'fmf-two-mainconfig-lines': refused(f.check_manifest, good + b'MAINCONFIG worldofsurf\n', 'worldofsurf'),
+            'fmf-mainconfig-extra-word': refused(f.check_manifest, good.replace(b'MAINCONFIG ftesurf', b'MAINCONFIG ftesurf x'),
+                                                 'worldofsurf'),
+            'fmf-mainconfig-worldofsurf-accepted': not refused(
+                f.check_manifest, good.replace(b'MAINCONFIG ftesurf', b'MAINCONFIG "worldofsurf"'), 'worldofsurf'),
+            'legacy-fmf-unchanged': not refused(f.check_manifest, b'GAME "FTESurf"\nBASEGAME "ftesurf" x\n', 'ftesurf'),
+            'stage-fmf-without-disablehomedir': refused(stage_with(
+                'fmf-home', 'worldofsurf', fmf=b'FTEMANIFEST 1\nGAME "WorldofSurf"\nBASEGAME "worldofsurf"\nMAINCONFIG ftesurf\n')),
         }
 
     def test_each_identity_accepts_its_own_feed(self):
@@ -503,7 +535,7 @@ class IdentityTests(unittest.TestCase):
 
     def test_manifest_reader_matches_the_shipped_fmf(self):
         feed.check_manifest((Path(feed.__file__).parents[1] / 'default.fmf').read_bytes(), 'ftesurf')
-        feed.check_manifest(b'// x\ngame WorldofSurf // trailing\n\tbasegame "worldofsurf"\n', 'worldofsurf')
+        feed.check_manifest(b'// x\ngame WorldofSurf // trailing\n\tbasegame "worldofsurf"\n' + WOS_TAIL.encode(), 'worldofsurf')
         for bad in (b'GAME "WorldofSurf"\n', b'BASEGAME "worldofsurf"\n', b'// GAME "WorldofSurf"\nBASEGAME "worldofsurf"\n',
                     b'GAME "WorldofSurf"\nBASEGAME "worldofsurf"\nBASEGAME "ftesurf"\n',
                     b'GAME "worldofsurf"\nBASEGAME "worldofsurf"\n', b'GAME "WorldofSurf"\nBASEGAME "*worldofsurf"\n'):

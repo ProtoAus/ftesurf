@@ -39,6 +39,9 @@ IDENTITIES = {
 REQUIRED = ("menu.dat", "csprogs.dat", "qwprogs.dat")  # below the identity's gamedir
 # default.fmf's GAME switches the signed updater and install lock on (qkupdate.c); BASEGAME picks the identity.
 MANIFEST_GAME = {LEGACY: "FTESurf", WORLDOFSURF: "WorldofSurf"}
+# P1593 stage 2: the launcher moves a legacy install only under a worldofsurf default.fmf that keeps the
+# player's cfg where the engine reads it (Quakers-Launcher ftesurf_migrate.rs fmf_cfg); one value per line.
+WOS_MAINCONFIG = {"ftesurf", "ftesurf.cfg", "worldofsurf", "worldofsurf.cfg"}
 
 
 def identity(game) -> tuple[str, dict[str, str]]:
@@ -295,7 +298,8 @@ def object_bytes(root: Path, h: str, size: int) -> bytes:
 
 
 def check_manifest(data: bytes, game: str) -> None:
-    """default.fmf must name this identity in one GAME and one BASEGAME line. Anything this line parse
+    """default.fmf must name this identity in one GAME and one BASEGAME line (a worldofsurf one also holds
+    one DISABLEHOMEDIR 1 and one MAINCONFIG ftesurf|worldofsurf, as the launcher's move needs). Anything this line parse
     could read differently from the engine's tokenizer is refused, so what it accepts it reads exactly."""
     try:
         text = data.decode("utf-8")
@@ -317,6 +321,7 @@ def check_manifest(data: bytes, game: str) -> None:
         if quoted:
             raise ValueError("default.fmf holds an unpaired quote")
     found = {}
+    keys = ("game", "basegame", "mainconfig", "disablehomedir") if game == WORLDOFSURF else ("game", "basegame")
     for line in text.split("\n"):
         tokens = []
         for t in re.findall(r'"[^"]*"|[^ \t"]+', line):
@@ -325,12 +330,14 @@ def check_manifest(data: bytes, game: str) -> None:
             tokens.append(t[1:-1] if t.startswith('"') else t)
         if tokens and tokens[0].startswith("*"):
             raise ValueError("default.fmf holds a *-prefixed keyword")
-        if tokens and tokens[0].lower() in ("game", "basegame"):
-            if tokens[0].lower() in found or len(tokens) < 2:
+        if tokens and tokens[0].lower() in keys:
+            if tokens[0].lower() in found or len(tokens) < 2 or (game == WORLDOFSURF and len(tokens) != 2):
                 raise ValueError(f"default.fmf must hold one plain {tokens[0].upper()} line")
             found[tokens[0].lower()] = tokens[1]
     if found.get("game") != MANIFEST_GAME[game] or found.get("basegame") != game:
         raise ValueError(f'default.fmf must say GAME "{MANIFEST_GAME[game]}" and BASEGAME "{game}"')
+    if game == WORLDOFSURF and (found.get("disablehomedir") != "1" or found.get("mainconfig") not in WOS_MAINCONFIG):
+        raise ValueError("default.fmf must say DISABLEHOMEDIR 1 and MAINCONFIG ftesurf or worldofsurf")
 
 
 def verify_objects(root: Path, payload: dict) -> dict[str, int]:
