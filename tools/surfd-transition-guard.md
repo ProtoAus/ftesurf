@@ -253,6 +253,22 @@ POSIX mode acts the existing hash verifier on copied actual `surfd/fetchq.py`
 bytes and synthetic never-imported closure members; no candidate/lock/receipt
 or live acceptance claim follows from those focused controls.
 
+## Schema26 tascontent runtime closure (P1600)
+
+The explicit `"runtime_profile":"tas86-v1"` requires explicit integer
+`"target_schema":26`. Its exact raw hash set is the `fetch85-v1` set plus
+`tascontent.py`: 86 members. `mapwatch.py` imports `tascontent` (P1172 managed
+content leases), so under `fetch85-v1` the sealed mapwatch route fails at import.
+`fetch85-v1` keeps its exact 85 and cannot admit `tascontent.py`. External
+converter rules, validators, locks, grants, receipts and lifetimes are unchanged.
+
+```
+python3 -B tools/test_surfd_guard_tas_profile.py --out /owned/NEW-tas-profile --preimage /owned/surfd_transition_guard.preimage.py
+```
+
+Same rules as the Fetch suite: the frozen pre-change guard as `--preimage`, an
+OWNER.md ancestor, `--parser-only` on Windows (manifest parsing only).
+
 ## Offline acceptance tests
 
 Run only on local Linux/POSIX, with an exclusively NEW absolute synthetic output
