@@ -2563,6 +2563,82 @@ def snap_in(lines, every, deg):
     return out
 
 
+def snapshot_view(packets, fps, omega, stride, dn=(3, 3, 4, 4, 5, 6), burst=None, seed=1):
+    """(rec, view) for an honest networked client (P1606 review round 1's model): each move's angle comes from the
+    client's last frame two ticks before the move; a snapshot every `stride` ticks arrives `dn` ticks late (jitter);
+    each frame is labelled with the newest snapshot tick that has arrived, so with stride > 1 the label column skips
+    ticks.  omega deg/tick of yaw, `burst` = (period, duty) turning only part of each period."""
+    import bisect
+    import random
+    rnd = random.Random(seed)
+    L = build(sweep=0, packets=packets)
+    rows = [i for i, l in enumerate(L) if l.startswith("in ")]
+    mts = [int(L[i].split()[2]) - HORIZON for i in rows]
+    M = max(mts)
+
+    def ang(t):
+        if burst is None:
+            y = 90.0 + omega * t
+        else:
+            full, rem = divmod(t, burst[0])
+            y = 90.0 + omega * (full * burst[1] * burst[0] + min(rem, burst[1] * burst[0]))
+        return -60.0 + 0.04 * t, y
+    ftimes, t = [], -10.0
+    while t < M + 20:
+        ftimes.append(t)
+        t += 100.0 / fps
+    for j, i in enumerate(rows):
+        pp, yy = ang(ftimes[bisect.bisect_right(ftimes, mts[j] - 2) - 1])
+        f = L[i].split(" ")
+        f[7] = "%.4f" % (round(pp / QUANTUM) * QUANTUM)
+        f[8] = "%.4f" % ((round(yy / QUANTUM) * QUANTUM + 180.0) % 360.0 - 180.0)
+        L[i] = " ".join(f)
+    L = bump_end(L, "ticks", M - int([l for l in L if l.startswith("end ")][0].split()[1]))
+    arr = sorted((k + rnd.choice(dn), k) for k in range(0, M + 1, stride))
+    out, ai, lab = ["FTESURF-VIEW 2", "map bhop_eazy", "hid 1", "begin"], 0, -1
+    for n, t in enumerate(ftimes):
+        while ai < len(arr) and arr[ai][0] <= t:
+            lab = max(lab, arr[ai][1])
+            ai += 1
+        if lab < 0:
+            continue
+        if lab > M:
+            break
+        pp, yy = ang(t)
+        out.append("%.4f %d %d %.2f %.2f 0" % (10.0 + t * 0.01, 1000 + n, lab, pp, (yy + 180.0) % 360.0 - 180.0))
+    return L, out
+
+
+def ghost_edge_pair(step=18, nwin=40):
+    """(rec, view): 40 three-tick ghost windows whose frames show the flying camera (+120 deg), and a 30 deg one-tick snap
+    on the move right after each window (P1606 review round 1, cheater lens)."""
+    L = build(sweep=360, packets=800)
+    ticks = [int(l.split()[2]) - HORIZON for l in L if l.startswith("in ")]
+    G, wins = L, []
+    for k in range(30, 780, step)[:nwin]:
+        G = with_ghost(G, ticks[k], ticks[k] + 3)
+        wins.append((ticks[k], ticks[k] + 3))
+    after = {next(i for i, t in enumerate(ticks) if t > b) for a, b in wins}
+    q = round(30.0 / QUANTUM) * QUANTUM
+    out, k = [], 0
+    for l in G:
+        if l.startswith("in "):
+            f = l.split(" ")
+            if k in after:
+                f[8] = "%.4f" % ((float(f[8]) + q) % 360.0)
+            k += 1
+            l = " ".join(f)
+        out.append(l)
+    vv = []
+    for ln in view_for(L, dense=3):
+        p = ln.split()
+        if len(p) >= 5 and p[0][:1].isdigit() and any(a <= int(p[2]) <= b for a, b in wins):
+            p[4] = "%.2f" % ((float(p[4]) + 120.0 + 180.0) % 360.0 - 180.0)
+            ln = " ".join(p)
+        vv.append(ln)
+    return out, vv
+
+
 def case_angle_sweep_against_the_drawn_step():
     """P1606.  The sweep rules divided a move's residual by the RECORDED step, which an assisted move's own jump makes:
     a one-tick snap widened its own allowance and passed.  Judged against the smaller of the recorded and the drawn
@@ -2583,6 +2659,27 @@ def case_angle_sweep_against_the_drawn_step():
     check(any("the sidecar does not describe this recording" in x for x in mirror.faults),
           "the mirror (drawn snaps the recording lacks) still faults: the recorded step stays in the min (%s)"
           % mirror.info.get("angle_off", "")[:60])
+    # Review round 1: a label column that skips ticks left no frame at the joined tick +- 1, the drawn step read 0 and
+    # the rule became a flat 3 deg cut on honest turning (0.00% -> 13.71% on this client).
+    rec2, v2 = snapshot_view(1500, 240, 4.0, 2, burst=(60, 0.5))
+    h2 = report_inproc(rec2, v2)
+    check(not h2.faults, "honest client, a snapshot every 2nd tick, turning 4 deg/tick: no fault (%s)"
+          % h2.info.get("angle_off", "")[:50])
+    s2 = report_inproc(snap_in(rec2, 15, 30.0), v2)
+    check(any("the sidecar does not describe this recording" in x for x in s2.faults),
+          "...and its 30 deg snaps fault: the drawn step comes from the nearest framed tick, 2 away (%s)"
+          % s2.info.get("angle_off", "")[:50])
+    gr, gv = ghost_edge_pair()
+    ge = report_inproc(gr, gv)
+    check(any("the sidecar does not describe this recording" in x for x in ge.faults),
+          "snaps right after ghost windows fault: a neighbour inside a window (the flying camera) gives no drawn step (%s)"
+          % ge.info.get("angle_off", "")[:40])
+    # No framed tick within ANG_STEP_REACH: the recorded step alone, so the pre-P1606 rule's own figure for this seeded
+    # client, 50.00% (measured with 350abe14's reader; it faults either way, a sweep-rule limit older than P1606, BACKLOG).
+    rec6, v6 = snapshot_view(1500, 240, 4.0, 6, burst=(60, 0.5))
+    got = report_inproc(rec6, v6).info.get("angle_off", "")
+    check(got.startswith("50.00% of joined moves"),
+          "a snapshot every 6th tick: no framed tick within reach, so the recorded-step result 50.00%% (%s)" % got[:7])
 
 
 def until_seen_view(packets, S, dense=1, wobble=False, ghost=None, sweep=128):

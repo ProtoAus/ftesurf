@@ -3761,6 +3761,7 @@ ANG_LAG_VOTE_MIN = 10    # ...of at least this many, and the sweep must join at 
 # runs and ghost-heavy ones (review round 4). Lobby offsets 17 Nov: +3..+34; real pairs cover 98% or more.
 ANG_LAG_COVER = 0.75
 ANG_LAG_FREE = 50
+ANG_STEP_REACH = 4       # P1606: how far each side to look for a framed tick for the drawn step
 # THERE IS NO WINDOW, BECAUSE A WINDOW HAS AN EDGE AND THE EDGE CONVICTS.
 # Measured by a reviewer: at 12 ticks of lag an honest pair is clean and at 13
 # it draws both faults -- and widening 12 to 25 only moved the cliff to 26.
@@ -4056,16 +4057,23 @@ def angle_join(r, rec, frames):
         joined += 1
         dy = min(angdelta(y, f[4]) for f in g)
         dp = min(angdelta(p, f[3]) for f in g)
-        # P1606: against the SMALLER of the recorded step and the drawn one (the last frame of each tick either side
-        # of the joined tick), so an assist's own jump cannot widen its own allowance. Lobby fleet at P1599's join,
-        # 18 Nov: honest worst 2.91% (cut 5%), dense one-tick snaps caught 1 -> 403 of 417, every recorded-step catch
-        # kept. The floor keeps a still camera from dividing 0.003 by 0.0001.
-        dsy = dsp = 0.0
-        for a, b in ((jt - 1, jt), (jt, jt + 1)):
-            fa, fb = byt.get(a), byt.get(b)
-            if fa and fb:
-                dsy = max(dsy, angdelta(fb[-1][4], fa[-1][4]))
-                dsp = max(dsp, angdelta(fb[-1][3], fa[-1][3]))
+        # P1606: against the SMALLER of the recorded step and the drawn one, so an assist's own jump cannot widen its
+        # own allowance. Drawn step: last frame of the joined tick to that of the nearest framed tick each side within
+        # ANG_STEP_REACH, ghost-window ticks skipped; none -> the recorded step (a label column that skips ticks read 0,
+        # a flat 3 deg cut on honest turning: review round 1). Lobby fleet at P1599's join, 18 Nov: honest worst 2.91%
+        # (cut 5%), dense one-tick snaps caught 1 -> 403 of 417. The floor keeps a still camera from dividing 0.003 by 0.0001.
+        dsy = dsp = None
+        for side in (-1, 1):
+            for d in range(1, ANG_STEP_REACH + 1):
+                if gw and any(a <= raw + side * d and (b is None or raw + side * d <= b) for a, b in gw):
+                    continue
+                fn = byt.get(jt + side * d)
+                if fn:
+                    ey, ep = angdelta(fn[-1][4], g[-1][4]), angdelta(fn[-1][3], g[-1][3])
+                    dsy, dsp = (ey, ep) if dsy is None else (max(dsy, ey), max(dsp, ep))
+                    break
+        if dsy is None:
+            dsy, dsp = sy, sp
         n = max(dy / max(min(sy, dsy), 1.0), dp / max(min(sp, dsp), 1.0))
         devs.append(max(dy, dp))
         worst = max(worst, n)
