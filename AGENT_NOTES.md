@@ -8507,8 +8507,12 @@ publicly WITH its fix, not before it.
   (P1599, 17 Nov). Since P1599 only the SWEEP rules then join at the offset the
   frames' exact angle matches name (`sweep_offset`: positive, >= 10 in-range
   matched moves, half within a tick, >= 10 moves joined there); the one-frame
-  rule keeps its join. `angle_joined`/`angle_dev`/`angle_off` then describe the
-  sweep's join and say so; `angle_lag`/`angle_solo` the one-frame rule's. What
+  rule keeps its join. Past ANG_LAG_FREE (50) ticks a named or accepted offset
+  must also join ANG_LAG_COVER (0.75) of offset 0's join; within it the shortfall
+  is the delay's residue (the client draws until it sees the finish), and a
+  floor there faulted honest short runs. `angle_joined`/`angle_dev`/`angle_off`
+  then describe the sweep's join and say so; `angle_lag`/`angle_solo` the
+  one-frame rule's. What
   it gave up, by the owner's choice: see BACKLOG's P1599 section.
 - IT ABSTAINS MORE THAN IT JUDGES, AND EVERY ABSTENTION IS LOAD-BEARING --
   each of these was a false fault on an honest run before it existed:

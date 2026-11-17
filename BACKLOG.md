@@ -266,6 +266,18 @@
 - Stored FAULT rows: `--reread-receipts` overwrites in place with no history, and its summary does not report
   FAULT -> VALID. Export (runid, verdict, reason, angles, angles_reason) before any re-read, P1580's activation
   included; that re-read is what applies P1599 to old rows. No column says which reader version judged a row.
+- (18 Nov, review rounds 4-5) ANG_LAG_COVER binds only past ANG_LAG_FREE (50 ticks). Left:
+  - an honest client delayed MORE than 50 ticks still faults on a run shorter than about 4x its delay (S=51 at
+    125-191 ticks; S=100 at 167-359); main gave BLIND there. A delay wobbling across 50/51 flips with run length.
+    Making that fallback BLIND instead would also pass the replay the floor exists for. Lobby offsets: +3..+34.
+  - within 50 ticks a run's first S ticks are unjudged, as they always were for a delayed client; on a short
+    run that is a large share of it (BLIND, never OK).
+  - one offset per run: a delay that steps mid-run (e.g. 10 -> 40) faults, on main too.
+- (18 Nov, modelled from cl_ghost.qc in fixtures, not yet seen in a game) the reader excludes the SERVER's ghost
+  window, but the client keeps its aim pin until the ghost stat's falling edge arrives (cl_ghost.qc:386-406), so
+  for the delay's length after a window the recording is pinned while the frames turn: 2.6-7.4% of one-frame
+  ticks past 0.05 deg at delay 30 on 479-1319-tick runs (faults; a 4799-tick run passes). Needs the camera turned
+  in ghost. Check the 90 lobby pairs still FAULT for ghost windows before building a fix.
 
 ## Content skew vs tampering -- what P1581 left (16 Nov, ftesurf-31)
 
