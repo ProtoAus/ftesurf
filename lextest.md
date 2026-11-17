@@ -1,5 +1,21 @@
 # lextest.md — things waiting on a human
 
+## P1603 Linux runs rank, marked sky blue -- NOT DEPLOYED; owner check after deploy (record: tools/p1603-claim.md)
+- After the deploy in tools/backend-pending.md (surfd, lobby progs, then sv_rank_linux 1): finish a run on a lobby from
+  the Linux PC. It should rank, and on the TAB board's online rows and the website board your name shows sky blue with
+  "Linux: Not mouse verified" when you point at it. A run from Windows looks as before.
+
+## P1602 Linux native Wayland, sharp on scaled screens -- owner's Linux play copy; owner check PENDING (record: engine ENGINE_PATCHES.md Patch 1602)
+- Start World of Surf from the Start menu on the 1.25-scaled screen (DP-1): text and the world look sharp, not
+  soft; fullscreen fills the screen at its full resolution. `vid_renderer` still says gl; the console's video line
+  says "OpenGL (Wayland)".
+- Windowed: the window has the desktop's title bar; drag it between the two screens and it stays sharp on both.
+- Hold Backspace or an arrow key in the console: it repeats. Copy text in another program, Ctrl+V in the console: it
+  pastes; copy from the console (or r_budget_dump) and paste into another program.
+- The mouse cursor lands where you point in the menus (it is drawn 1.25x larger than game pixels on DP-1: known).
+- With vsync off, `r_frametime 1` shows the frame rate at your cap, not at 300/360; with vsync on it follows the
+  screen's refresh and stays smooth. Say if anything feels worse than before (X11 mode: XDG_SESSION_TYPE=x11).
+
 ## P1598 movement mode picker -- owner check PENDING (record: engine ENGINE_PATCHES.md Patch 1598)
 - In a local game: `hud_gamemode` (or `bind j hud_gamemode`). The panel lists 1-7 with the running mode lit. Click one or
   press its number: the map reloads in that mode. Esc closes. Say if it should get a default key or a menu button.
