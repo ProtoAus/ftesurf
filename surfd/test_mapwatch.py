@@ -71,10 +71,12 @@ W.KSF_LOCK = os.path.join(HOME, "ksfwatch.lock")    # not the live crawl's
 W.MOM_LOCK = os.path.join(HOME, "momwatch.lock")    # not the live momwatch's
 # P1600: the older cases assume every run strikes and lists; case_strike_gap and case_list_cadence
 # set the shipped values (SHIPPED) and put these back.
-SHIPPED = dict(STRIKE_GAP=W.STRIKE_GAP, MOM_LIST_SECONDS=W.MOM_LIST_SECONDS, HOST_HOLD=W.HOST_HOLD)
+SHIPPED = dict(STRIKE_GAP=W.STRIKE_GAP, MOM_LIST_SECONDS=W.MOM_LIST_SECONDS, HOST_HOLD=W.HOST_HOLD,
+               RECHECK_GAP=W.RECHECK_GAP)
 W.STRIKE_GAP = 0
 W.MOM_LIST_SECONDS = 0
 W.HOST_HOLD = 0
+W.RECHECK_GAP = 0
 os.makedirs(os.path.dirname(S.RUNS_DIR))    # the game's data folder: without one, played() cannot tell
 REAL_CONNECT = S.connect
 REAL_TIME = time.time
@@ -174,6 +176,7 @@ class World(object):
         self.lbcode = {}        # name -> an HTTP status for its probe board
         self.rawrows = []       # rows added to the surf list as they are
         self.listcode = None    # an HTTP status every list page answers instead
+        self.listbody = None    # bytes every list page answers instead (a 200 that is no list)
         self.short = False      # the surf list ends on an empty page, early
         self.stuck = False      # the surf list ignores `skip`
         self.hook = None        # f(name), called as a CDN file is asked for
@@ -201,6 +204,8 @@ class World(object):
                 raise http(url, 500)
             if self.listcode:
                 raise http(url, self.listcode)
+            if self.listbody is not None:
+                return Resp(self.listbody)
             q = dict(kv.split("=") for kv in url.split("?", 1)[1].split("&"))
             surf = q["gamemode"] == "1"
             rows = [self.row(n) for n in sorted(self.mom) if n not in self.hidden
@@ -2178,10 +2183,12 @@ def shipped(**values):
 
 
 def rewind(state, seconds):
-    """Every strike `seconds` older, as if that long had passed."""
+    """Every strike and wait `seconds` older, as if that long had passed."""
     st = state_of(state)
     for v in st["later"].values():
         v[1] -= seconds
+    for k in st.get("pause", {}):
+        st["pause"][k] -= seconds
     io.open(os.path.join(state, "state.json"), "w").write(json.dumps(st))
 
 
@@ -2250,6 +2257,36 @@ def case_strike_gap():
     check("runs every 30 min for 12 h fetch it 3 times too, and shelve it at the same strike",
           fetches(6 * 3600, 25, 1800), (3, [("map", "surf_bad", 3, "gone")]))
 
+    def cuts(gap, runs, step):
+        """Downloads of a file whose every transfer is cut short, over `runs` runs `step` s apart."""
+        with shipped(STRIKE_GAP=gap):
+            w, maps, state = setup({"surf_cut": M("cut", zones=False)}, {})
+            w.lie = {"surf_cut": 99999}
+            n = 0
+            for i in range(runs):
+                if i:
+                    rewind(state, step)
+                w.asked = []
+                tick(maps, state, "--go")
+                n += len(w.asked_for("surf_cut"))
+            return n, strikes(state)
+    check("control (the live cadence): a file always cut short is fetched 3 times in 12 h of 6-hourly runs",
+          cuts(0, 3, 6 * 3600), (3, []))
+    check("30-minute runs fetch it 3 times in 12 h too, and strike it never", cuts(6 * 3600, 25, 1800), (3, []))
+    with shipped():
+        w, maps, state = setup({"surf_bad": M("bad", zones=False)}, {})
+        w.cdn = {"surf_bad": 404}
+        tick(maps, state, "--go")
+        st = state_of(state)
+        for v in st["later"].values():
+            v[1] = int(time.time()) + 3600              # stamped an hour ahead: the clock went back
+        io.open(os.path.join(state, "state.json"), "w").write(json.dumps(st))
+        w.asked = []
+        tick(maps, state, "--go")
+        check("a strike stamped in the future is ignored: asked, struck again, stamped now",
+              (len(w.asked_for("surf_bad")), strikes(state), [v[1] <= time.time() for v in state_of(state)["later"].values()]),
+              (1, [("map", "surf_bad", 2, "gone")], [True]))
+
 
 def list_asks(w):
     return [u for u in w.asked if u.startswith(W.MOM_API + "/maps?")]
@@ -2267,10 +2304,9 @@ def case_list_cadence():
     with shipped():
         check("the shipped reuse is 6 h (four reads a day, as the 6-hourly runs made)", W.MOM_LIST_SECONDS, 6 * 3600)
         w, maps, state = setup(mom, {})
-        w.lie = {"surf_b": 99999}           # cut short: nobody's strike, no host hold, tried again next run
-        tick(maps, state, "--go")
+        tick(maps, state, "--go", "--max", "1")    # one download a run: surf_b is left for the next
         first = len(list_asks(w))
-        w.lie, w.asked = {}, []
+        w.asked = []
         tick(maps, state, "--go")
         check("a run inside the window asks no list page, yet still fetches a listed file it lacks",
               (first > 0, list_asks(w), lib(maps)), (True, [], ["surf_a.bsp", "surf_b.bsp"]))
@@ -2373,6 +2409,39 @@ def case_host_hold():
         check("a hold further off than its length (the clock went back) is not one; a success clears it",
               (len(list_asks(w)) > 0, "api" in hosts_of(state), lib(maps)), (True, False, ["surf_a.bsp"]))
 
+        w, maps, state = setup({"surf_a": M("a", zones=False), "surf_b": M("b", zones=False), "surf_c": M("c", zones=False)}, {})
+        w.cdn = {"surf_b": 403}
+        tick(maps, state, "--go")
+        check("a CDN 403 after the CDN served another file is that file's: struck, not held, the next still comes",
+              (strikes(state), hosts_of(state), lib(maps)), ([("map", "surf_b", 1, "HTTP")], {}, ["surf_a.bsp", "surf_c.bsp"]))
+        w, maps, state = setup({"surf_b": M("b", zones=False), "surf_c": M("c", zones=False)}, {})
+        w.cdn = {"surf_b": 403, "surf_c": 403}
+        tick(maps, state, "--go")
+        w.asked = []
+        tick(maps, state, "--go")
+        check("control: a 403 before anything is served (maybe one for all) strikes nothing; that file waits, the next is asked",
+              (strikes(state), sorted(state_of(state)["pause"]), len(w.files())),
+              ([], sorted(["surf_b:" + sha(bsp("b"))[:12], "surf_c:" + sha(bsp("c"))[:12]]), 1))
+        w, maps, state = setup({"surf_b": M("b", zones=False), "surf_c": M("c", zones=False)}, {})
+        w.cdn = {"surf_b": b"<html>blocked</html>" * 200}
+        tick(maps, state, "--go")
+        check("a 200 block page (no status) holds the CDN and strikes nothing",
+              (sorted(hosts_of(state)), strikes(state)), (["cdn"], []))
+        w, maps, state = setup({"surf_a": M("a", zones=False)}, {})
+        w.listbody = b"not a list"
+        tick(maps, state, "--go")
+        first = hosts_of(state).get("api", [0, 0])[1]
+        w.asked = []
+        tick(maps, state, "--go")
+        check("an unparseable list (no status) holds the API; the held run's own refusal does not double it",
+              (first, hosts_of(state)["api"][1], [u for u in w.asked if u.startswith(W.MOM_API)]), (6 * 3600, 6 * 3600, []))
+        w.listbody = None
+        w, maps, state = setup({"surf_z1": M("z1"), "surf_z2": M("z2")}, {})
+        w.zonecode = {"surf_z1": 403}
+        tick(maps, state, "--go")
+        check("an approved map's zone 403 while the API answers is that map's: struck, the API not held",
+              ([s for s in strikes(state) if s[1] == "surf_z1"], "api" in hosts_of(state)),
+              ([("zones", "surf_z1", 1, "HTTP")], False))
         w, maps, state = setup({"surf_b": M("b", zones=False), "surf_c": M("c", zones=False)}, {})
         w.cdn = {"surf_b": 503, "surf_c": 503}
         tick(maps, state, "--go")
@@ -2383,6 +2452,32 @@ def case_host_hold():
         rewind_hosts(state, 6 * 3600 + 1)
         tick(maps, state, "--go")
         check("...after it, both come and the hold is gone", (lib(maps), hosts_of(state)), (["surf_b.bsp", "surf_c.bsp"], {}))
+
+
+def case_recheck_gap():
+    """An unknown/unread approval verdict is re-examined at most every RECHECK_GAP per map."""
+    import types
+    d = tempfile.mkdtemp(prefix="recheck-", dir=HOME)
+    a = types.SimpleNamespace(state=os.path.join(d, "state"), retired=os.path.join(d, "retired"),
+                              boards=os.path.join(d, "boards"))
+    for p in (a.state, a.retired, a.boards):
+        os.makedirs(p)
+    t, now = 1790000000, int(time.time())
+
+    def run(asked):
+        st = {"approvals": {"surf_rc": [t, "unknown", now - 100, now - 100]}}
+        if asked is not None:
+            st["approvalasks"] = {"surf_rc": asked}
+        with contextlib.redirect_stdout(io.StringIO()):
+            W.approvals(a, st, {"surf_rc": (t, 777)}, now, time.time() + 600, None, {}, lambda: None)
+        return st["approvals"]["surf_rc"][1]
+    with shipped(RECHECK_GAP=0):
+        check("control: with no gap an unknown verdict is re-examined (no leftovers: clean)", run(now - 60), "clean")
+    with shipped():
+        check("asked a minute ago: not re-examined this run", run(now - 60), "unknown")
+        check("...asked 6 h ago, it is", run(now - W.RECHECK_GAP), "clean")
+        check("...never asked (an older state), it is", run(None), "clean")
+        check("...asked in the future (the clock went back), it is", run(now + 3600), "clean")
 
 
 def case_native_modes():
@@ -4502,7 +4597,8 @@ def case_mapscan():
 
 def main():
     for case in (case_plan_and_install, case_scoped_admission, case_scoped_input_guards,
-                 case_bad_files, case_strike_gap, case_list_cadence, case_host_hold, case_native_modes,
+                 case_bad_files, case_strike_gap, case_list_cadence, case_host_hold, case_recheck_gap,
+                 case_native_modes,
                  case_native_beta_sidecars,
                  case_page_scan, case_limits_on_a_reply,
                  case_turns_with_the_crawl, case_given_zones, case_map_list, case_kept_build,

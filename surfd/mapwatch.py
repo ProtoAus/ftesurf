@@ -114,15 +114,18 @@ below FLOOR_GB free, nothing started after RUN_SECONDS.  A refusal ends that
 host for the run and nothing is retried in it: cron's cadence is the backoff.
 A complete Momentum list read is replayed for MOM_LIST_SECONDS (<state>/momlist.json)
 instead of asked for again (never under --scope); the files it lists are still checked.
-A 403, 429 or 502-504 from Momentum's API or CDN holds that host back across runs
-(HOST_HOLD, doubling to HOST_HOLD_MAX, cleared by its next success); KSF has its park.
+A 429, a 502-504 or a refusal with no status (no answer, a stall, a block page, an
+oversize or unparseable reply) from Momentum's API or CDN holds that host back across
+runs (HOST_HOLD, doubling to HOST_HOLD_MAX, cleared by its next success); KSF has its park.
 What is counted against a FILE (STRIKES, at most one per STRIKE_GAP, which it then
 waits out unasked, then left for RETRY_DAYS) is what
-only that file can be: a 404/410, its own 500, a BSP with the wrong hash, an
-archive that is one and is wrong, zones that are zones and hash wrong.  A 403,
-429, 502-504, no answer, or a 200 that is not a BSP, an archive or zones at
-all (a block page) is the host's: no strike, and the file goes to the back of
-the next run.  A transfer cut short is nobody's strike either.
+only that file can be: a 404/410, its own 500, a CDN 403 (a file it does not have),
+an approved map's zone 403, a BSP with the wrong hash, an archive that is one and
+is wrong, zones that are zones and hash wrong.  A 429, 502-504, no answer, or a 200
+that is not a BSP, an archive or zones at all (a block page) is the host's: no
+strike, and the file goes to the back of the next run.  A transfer cut short, or a
+zone reply of another version than the list named, is nobody's strike either, but
+that file waits STRIKE_GAP unasked.
 """
 import argparse
 import calendar
@@ -217,9 +220,10 @@ STRIKES = 3
 RETRY_DAYS = 30
 STRIKE_GAP = 6 * 3600   # P1600: cron runs every 30 min; a struck file waits this long, unasked, as at the old 6-hourly pace
 MOM_LIST_SECONDS = 6 * 3600     # P1600: a whole list read is reused this long (0: always asked, nothing kept)
-HOLD_CODES = (403, 429, 502, 503, 504)  # P1600: a host saying these is held back across runs (state "hosts")
+HOLD_CODES = (0, 429, 502, 503, 504)    # P1600: a host saying these (0: no status) is held back across runs (state "hosts")
 HOST_HOLD = 6 * 3600    # ...this long at first (0: no holds), doubling with each further refusal
 HOST_HOLD_MAX = 24 * 3600
+RECHECK_GAP = 6 * 3600  # P1600: an unknown/unread approval verdict is asked again no sooner than this per map
 VARIANT = "_css"        # one of mapmeta.py's ALIAS_SUFFIXES: tier, picture and group follow
 # Suffixes that name ANOTHER COMPILE of a map, not another version of it: the
 # ports among mapmeta.py's ALIAS_SUFFIXES.  `_v2`, `_new` and `_redux` are maps.
@@ -250,6 +254,10 @@ class Refused(Exception):
     def __init__(self, msg, code=0):
         Exception.__init__(self, msg)
         self.code = code
+
+
+class Held(Refused):
+    """P1600: a host held back by an earlier refusal -- never itself a reason to hold it again."""
 
 
 class Stalled(Refused):
@@ -1427,7 +1435,7 @@ def beta_restore(conn, name, approved, retired, held):
 VERDICTS = {"clean": "", "kept": "Momentum keeps them", "unknown": "whether Momentum dropped "
             "them cannot be told: kept", "suspect": "Momentum seems to have dropped them: asked "
             "again next run", "owed": "Momentum dropped them (asked twice)", "wiped": "",
-            "rechecked": "", "unread": "its board could not be read: asked again next run",
+            "rechecked": "", "unread": "its board could not be read: asked again RECHECK_GAP later",
             "abandoned": ""}
 
 
@@ -1472,6 +1480,9 @@ def approvals(a, st, appr, now, deadline, pacer, dead, save):
     done = {k: v for k, v in done.items() if isinstance(v, list) and len(v) == 4
             and type(v[0]) is int and v[1] in VERDICTS and all(type(x) is int for x in v[2:])}
     st["approvals"] = done
+    asks = st.get("approvalasks") if isinstance(st.get("approvalasks"), dict) else {}
+    asks = {k: t for k, t in asks.items() if k in done and type(t) is int}     # P1600: unknown/unread -> when asked
+    st["approvalasks"] = asks
     pp = os.path.join(a.state, "betaplan.json")
     raw = _load(pp)
     raw = raw if isinstance(raw, dict) else {}
@@ -1489,6 +1500,10 @@ def approvals(a, st, appr, now, deadline, pacer, dead, save):
         if verdict in ("unknown", "unread") and same and v[1] == verdict:
             t = v[2]            # its window runs from the first answer of its kind (review 6)
         done[k] = [appr[k][0], verdict, t, v[3] if same else now]
+        if verdict in ("unknown", "unread"):
+            asks[k] = int(time.time())
+        else:
+            asks.pop(k, None)
         if verdict not in ("suspect", "owed", "wiped"):
             plans.pop(k, None)
 
@@ -1503,7 +1518,10 @@ def approvals(a, st, appr, now, deadline, pacer, dead, save):
         if v[1] == "suspect":
             return True         # one past RETRY_CAP is ended before this (review 9)
         retry = {"unknown": UNKNOWN_RETRY, "unread": UNREAD_RETRY}.get(v[1])
-        return bool(retry) and now - v[2] < retry and now - v[3] < RETRY_CAP
+        if not (retry and now - v[2] < retry and now - v[3] < RETRY_CAP):
+            return False
+        last = asks.get(k)
+        return last is None or not 0 <= now - last < RECHECK_GAP   # a future stamp (the clock went back) is none
 
     def lost(conn, k, t):
         """A plan lost after its purge began: one whose rows went -- committed, or every row it
@@ -1878,7 +1896,7 @@ def mom_list_reused(pacer, path, now, reuse=True, ask=True):
         except (KeyError, Refused):
             pass                            # it no longer replays whole: ask
     if not ask:
-        raise Refused("held back after a refusal; no list read to reuse")
+        raise Held("held back after a refusal; no list read to reuse")
     record = ListRecord(pacer, {})
     got = mom_list(record)
     if MOM_LIST_SECONDS > 0:
@@ -2758,6 +2776,10 @@ def run(a):
     for k in [k for k, t in back.items() if selected_state(k) and
               (type(t) not in (int, float) or not math.isfinite(t))]:
         del back[k]
+    pause = table("pause")                  # P1600: key -> when it was cut short or answered off-version
+    for k in [k for k, t in pause.items() if type(t) not in (int, float) or not math.isfinite(t)
+              or not 0 <= now - t < max(STRIKE_GAP, 1)]:
+        del pause[k]
     for k in [k for k, w in later.items() if selected_state(k) and now - w[1] > 2 * RETRY_DAYS * 86400]:
         del later[k]                        # the file left the lists long ago
     for k in [k for k, t in back.items() if selected_state(k) and now - t > RETRY_DAYS * 86400]:
@@ -2788,32 +2810,44 @@ def run(a):
                       and type(w[1]) is int and w[1] > 0 and isinstance(w[2], str)) or now - w[0] > HOST_HOLD_MAX]:
         del hosts[k]                        # malformed, or expired so long ago that the next refusal starts afresh
 
+    served = {"api": False, "cdn": False}   # P1600: a host answered something this run (a 403 is then the file's)
+
     def host_held(host):
         """Held back by a refusal; a hold further off than its own length (the clock went back) is not one."""
         w = hosts.get(host)
-        return bool(w) and 0 < w[0] - now <= w[1]
+        return bool(w) and 0 < w[0] - time.time() <= w[1]
 
     def host_hold(host, e):
-        if HOST_HOLD <= 0 or host not in ("api", "cdn") or getattr(e, "code", 0) not in HOLD_CODES:
+        if (HOST_HOLD <= 0 or host not in ("api", "cdn") or isinstance(e, Held)
+                or getattr(e, "code", 0) not in HOLD_CODES):
             return
         w = hosts.get(host)
         secs = min(HOST_HOLD_MAX, 2 * w[1]) if w else HOST_HOLD
-        hosts[host] = [now + secs, secs, str(e)[:120]]
+        hosts[host] = [int(time.time()) + secs, secs, str(e)[:120]]
         print("  %s held back %d h (%s)" % (host, secs // 3600, e))
 
     def waiting(key):
+        # Stamps are when the thing happened; one in the future (the clock went back) is ignored.
+        t = time.time()
+        p = pause.get(key)
+        if STRIKE_GAP > 0 and p is not None and 0 <= t - p < STRIKE_GAP:
+            return True                     # cut short or off-version within STRIKE_GAP: not asked again yet
         w = later.get(key)
-        if not w:
+        if not w or not 0 <= t - w[1]:
             return False
-        if STRIKE_GAP > 0 and now - w[1] < STRIKE_GAP:
+        if STRIKE_GAP > 0 and t - w[1] < STRIKE_GAP:
             return True                     # struck within STRIKE_GAP: not asked again until it passes
-        return w[0] >= STRIKES and now - w[1] < RETRY_DAYS * 86400
+        return w[0] >= STRIKES and t - w[1] < RETRY_DAYS * 86400
+
+    def wait_out(key):
+        pause[key] = int(time.time())
 
     def again(key, why):
+        t = int(time.time())
         w = later.get(key) or [0, 0, why]
-        if w[0] and now - w[1] < STRIKE_GAP:
+        if w[0] and 0 <= t - w[1] < STRIKE_GAP:
             return                          # struck within STRIKE_GAP: the count and its time stand
-        later[key] = [w[0] + 1, now, why]
+        later[key] = [w[0] + 1, t, why]
 
     def skey(r):
         # With the hash: a new build of a shelved map is a new file.
@@ -2830,8 +2864,11 @@ def run(a):
             said.append("momentum: the list read %d min ago reused" % (age // 60))
         else:
             hosts.pop("api", None)
+            served["api"] = True
     except Refused as e:
         host_hold("api", e)
+        if isinstance(e, Held):
+            e = "%s until %s (%s)" % (e, time.strftime("%H:%M UTC", time.gmtime(hosts["api"][0])), hosts["api"][2])
         said.append("momentum: NOT READ (%s)" % e)
     try:
         if ksf_parked(now):
@@ -2868,6 +2905,9 @@ def run(a):
                 old_dl = fh.read(8 * 1024 * 1024 + 1)
         except OSError:
             raise LocalFault("scope requires an existing download list")
+        if "mom" not in read or "ksf" not in read:
+            for s in said:                  # why a census is missing, before the refusal names it
+                print("  " + s)
         validate_scope(scope, scope_path, a.maps, mom, extra, names, read, previous,
                        os.path.join(a.state, "mapdl.txt"))
     inv, odd = inventory(a.maps)
@@ -2987,13 +3027,21 @@ def run(a):
         try:
             got = fetch()
         except Transient as e:
-            # The link's or the host's, not the file's: no strike, and it goes
-            # to the back so a file that always breaks cannot lead every run.
+            # The link's or the host's, not the file's: no strike, it goes to the back so a file that
+            # always breaks cannot lead every run, and it waits STRIKE_GAP (P1600: not re-fetched every 30 min).
             back[key] = now
+            wait_out(key)
             count("cut short: another run")
             print("  %s: %s" % (key, e))
             return None
         except Refused as e:
+            if host == "cdn" and e.code == 403:
+                if served["cdn"]:               # it served another file this run: this one it lacks (momgrab.py)
+                    again(key, "HTTP 403")
+                    count("not on the CDN (403)")
+                    print("  %s: HTTP 403 from a CDN serving others: struck" % key)
+                    return None
+                wait_out(key)                   # maybe a 403 for everything: no strike, this file waits
             refused(host, key, e)
             return None
         except (LocalFault, OSError):
@@ -3011,6 +3059,7 @@ def run(a):
         later.pop(key, None)
         back.pop(key, None)
         hosts.pop(host, None)
+        served[host] = True
         return got
 
     def ksf_get(url, leaf, member, part):
@@ -3030,6 +3079,7 @@ def run(a):
         unv.pop(k, None)
         try:
             raw, hashed, why = zone_fetch(pacer, r, scoped=scope is not None)
+            served["api"] = True
         except LocalFault:
             if scope is not None:
                 raise
@@ -3041,7 +3091,11 @@ def run(a):
                 back[zkey] = now        # P1093: one Beta map refused, the API answers the rest
                 stale_lines[skey(r)] = now
                 print("  %s: refused (%s): this Beta map waits a day" % (zkey, e))
+            elif e.code == 403 and served["api"]:
+                again(zkey, "HTTP 403")     # P1600: the API answers others: this map's zones, not the API
             else:
+                if e.code == 403:
+                    wait_out(zkey)          # maybe a 403 for everything: no strike, this map waits
                 refused("api", zkey, e)
             return None
         except Exception as e:          # see take()
@@ -3051,9 +3105,10 @@ def run(a):
             stale_lines[skey(r)] = now        # the line is behind the map: a day, until the PC rescans
         if raw is None and why == "zoneversion":
             # The list and this reply name different versions: the host's
-            # moment, not this map's.  No strike; it goes to the back.
+            # moment, not this map's.  No strike; it goes to the back and waits STRIKE_GAP.
             back[zkey] = now
-            print("  %s: the reply is of another version than the list named: another run" % zkey)
+            wait_out(zkey)
+            print("  %s: the reply is of another version than the list named: asked again later" % zkey)
             return None
         if raw is None:
             again(zkey, why)
@@ -3219,7 +3274,7 @@ def run(a):
         part = os.path.join(a.maps, ".mapwatch.%s.part" % name)
         if scope is not None and scope[key]["source_file"] is not None:
             pinned = scope[key]
-            got = take(host, skey(r), lambda: scoped_copy(
+            got = take("local", skey(r), lambda: scoped_copy(       # a local copy: no host hold applies
                 pinned["source_file"], part, r["sha"], pinned["signature"]))
         elif host == "cdn":
             got = take(host, skey(r),
