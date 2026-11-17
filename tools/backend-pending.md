@@ -12,6 +12,12 @@ renewed-fixture admission blockers. The activated
 backend entries have been removed from this queue, not relabelled as pending.
 Do not redeploy a healthy backend merely to refresh this handoff.
 
+## 17 Nov 2026 04:04Z: P1600 LIVE (tools/p1600-delivery.md)
+tascontent.py sealed (mapwatch works again), guard tas86-v1, sweep.py/test_sweep.py at main (P1580; P1469 was
+already live). mapwatch stays at the live bytes and `23 */6`; main's mapwatch.py cadence commits must not ship. Next
+generation: ftesurf-a8's readers in the Root policy (then P1580's address check and the env activation), P1601
+(ftesurf-29's 30-minute new-map route), CURRENT 85->86 constants.
+
 ## 16 Nov 2026 22:43Z: the P1592+P1595 generation shipped surfd.py + mapmanifest.py ONLY
 
 LIVE (tools/p1592-delivery.md): runtime delta surfd.py + mapmanifest.py at main 6d228cb1; `sweep.py`, `test_sweep.py`,
