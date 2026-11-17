@@ -486,6 +486,32 @@ def case_round2_hosts():
           os.path.exists(os.path.join(maps, "surf_e.bsp")), True)
 
 
+def case_round3():
+    """Review round 3 (minor): a clock stepped back keeps the gaps; KSF's missing archives wait a week."""
+    w, maps, state = setup({"surf_a": T.M("a")}, {"surf_ka": T.Z("surf_ka", "ka")})
+    watch(maps, state)
+    w.add("surf_s", T.M("s"))
+    w.ksf["surf_kn"] = T.Z("surf_kn", "kn")
+    w.newest = ["surf_kn"]
+    far = int(T.REAL_TIME()) + 30 * 86400
+    with open(os.path.join(state, "mapnew.json"), "w") as fh:
+        json.dump({"hosts": {"cdn": [far, 2, "HTTP 429"]}, "ksf_at": int(T.REAL_TIME()) + 3600}, fh)
+    w.asked = []
+    new(maps, state)
+    h = mine(state)["hosts"].get("cdn", [0])
+    check("stamps from a clock now behind: KSF not asked, the CDN still held, but no longer than HOST_HOLD_MAX",
+          ([u for u in w.asked if u.startswith(W.KSF_BASE)], w.files(),
+           T.REAL_TIME() < h[0] <= T.REAL_TIME() + N.HOST_HOLD_MAX + 60), ([], [], True))
+
+    w, maps, state = setup({"surf_a": T.M("a")}, {"surf_ka": T.Z("surf_ka", "ka")})
+    watch(maps, state)
+    w.ksf["surf_nz"] = {"tier": 1, "zip": 404}
+    w.newest = ["surf_nz"]
+    new(maps, state)
+    f = mine(state)["files"].get("surf_nz:ksf", [0])
+    check("a KSF archive that is not there waits KSF_GONE", round((f[0] - T.REAL_TIME()) / 86400), N.KSF_GONE // 86400)
+
+
 def case_tier_refusals():
     """Review 4: a tier the API cannot give costs the install nothing else."""
     w, maps, state = setup({"surf_a": T.M("a")}, {})
@@ -644,7 +670,7 @@ def case_lock_and_budget():
 def main():
     for case in (case_installs_as_mapwatch, case_left_alone, case_files_wait, case_hosts_held, case_ksf,
                  case_zones_looks, case_mapwatch_cannot_read, case_port_row, case_owed_rows, case_round2,
-                 case_round2_hosts,
+                 case_round2_hosts, case_round3,
                  case_tier_refusals, case_ksf_rules, case_ksf_archive_refused, case_cdn_refusal_others_go,
                  case_ksf_bytes, case_publish_raises, case_mapwatch_hosts, case_lock_and_budget):
         print("\n%s:" % case.__name__)

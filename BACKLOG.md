@@ -1,5 +1,18 @@
 # BACKLOG.md
 
+## 30-minute new maps -- what P1601 left (17 Nov, ftesurf-29; root C:\FTESurf-worktrees\mapnew-20261117-29)
+- surfd/mapnew.py is on main and NOT routed. It ships as guarded route `mapnew` in the surfd generation after P1600:
+  cron `28,58 * * * *` under `flock -n /tmp/surfd-mapwatch.lock`, argv `mapnew.py --site-zones
+  /srv/nvme/ftesurf-site/zones --go`. Falsifier: surfd/test_mapnew.py (72 checks; it runs the real mapwatch before
+  and after), against the LIVE mapwatch as well as main's.
+- mapwatch's catalogue.json has been frozen since 11 Nov: mapwatch rewrites it only in a run that reads both
+  Momentum and KSF, and ksf.surf refuses the box. Tiers and names in it are 11 Nov's for every map until KSF
+  answers (mapwatch's own merge keeps old entries). mapnew therefore installs no KSF map while the reading is stale.
+- Inherited from mapwatch's Pacer/download: a chunked reply that never sends its last chunk is outside the read
+  clocks (only KILL_SECONDS ends it). mapnew records the request in flight, so such a host is held after one run.
+- mapnew's byte budget counts finished downloads only; cut-off transfers are bounded by FILE_SECONDS and the
+  file's wait.
+
 ## Segmented file names -- what P1592 left (17 Nov, ftesurf-63; root C:\FTESurf-worktrees\groups-20261116-c7)
 - Lobbies write `_shadow` until the surfd generation carrying P1592's `_LEAF_OK` is live; then drop the
   `lobby_enable` gate in sv_timer.qc SV_RecTagName (part 3). Falsifier: a lobby resumed-run finish posts a

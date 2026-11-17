@@ -74,6 +74,7 @@ KSF_AFTER_PARK = 6 * 3600   # after ksfimport's park ends, its own tick retries 
 HOST_HOLD, HOST_HOLD_MAX = 3600, 6 * 3600
 HOST_FORGET = 2 * HOST_HOLD_MAX     # quiet this long after a hold, the next refusal starts over
 FILE_WAIT, FILE_WAIT_MAX = 6 * 3600, 48 * 3600
+KSF_GONE = 7 * 86400    # a KSF archive that is not there (mapwatch reads KSF's links; this list has none)
 RUN_SECONDS = 8 * 60    # cron 28,58: no step starts after :06/:36
 FILE_SECONDS = 420      # one download's body (mapwatch: 1800)
 REPLY_SECONDS = 60      # a reply's headers, and a small reply's body (mapwatch: 120 each)
@@ -267,12 +268,18 @@ def tick(a, me, mp):
         return type(v) in (int, float) and math.isfinite(v) and 0 <= v <= now + ahead
 
     def held_shape(v, most=64):
-        return (isinstance(v, list) and len(v) == 3 and when(v[0]) and type(v[1]) is int
+        return (isinstance(v, list) and len(v) == 3 and when(v[0], math.inf) and type(v[1]) is int
                 and 1 <= v[1] <= most and isinstance(v[2], str))
     hosts = table("hosts", held_shape)      # host -> [until, refusals, why]
     files = table("files", held_shape)      # mapwatch's file key -> [until, failures, why]
-    owed = table("owed", lambda v: isinstance(v, dict) and when(v.get("at"), 60)
+    owed = table("owed", lambda v: isinstance(v, dict) and when(v.get("at"), math.inf)
                  and isinstance(v.get("c"), dict) and isinstance(v["c"].get("name"), str))
+    # A clock stepped back, or a hand edit, holds no longer than the longest hold; nothing is dropped.
+    for t, most in ((hosts, HOST_HOLD_MAX), (files, max(FILE_WAIT_MAX, KSF_GONE))):
+        for v in t.values():
+            v[0] = min(v[0], now + most)
+    for o in owed.values():
+        o["at"] = min(o["at"], now)
     for k in [k for k, v in files.items() if now - v[0] > 2 * FILE_WAIT_MAX]:
         del files[k]            # quiet this long: its next failure starts over
     for k in [k for k, v in hosts.items() if now - v[0] > HOST_FORGET]:
@@ -282,7 +289,7 @@ def tick(a, me, mp):
     mw = mw if isinstance(mw, dict) else {}
     struck = mw.get("later") if isinstance(mw.get("later"), dict) else {}
     seen = mw.get("seen") if isinstance(mw.get("seen"), dict) else None
-    mwhosts = {k: v for k, v in mw.get("hosts").items() if held_shape(v, 10 ** 6)} \
+    mwhosts = {k: [min(v[0], now + 86400), v[1], v[2]] for k, v in mw.get("hosts").items() if held_shape(v, 10 ** 6)} \
         if isinstance(mw.get("hosts"), dict) else {}     # main's mapwatch keeps one; live has none
 
     def holding(host):
@@ -298,9 +305,9 @@ def tick(a, me, mp):
         hosts[host] = [int(time.time()) + secs, n, why[:120]]
         print("  %s refused (%s): held %d min" % (host, why, secs // 60))
 
-    def wait(key, why):
+    def wait(key, why, floor=0):
         n = min((files.get(key) or [0, 0, ""])[1], 63) + 1
-        secs = min(FILE_WAIT << min(n - 1, 16), FILE_WAIT_MAX)
+        secs = max(floor, min(FILE_WAIT << min(n - 1, 16), FILE_WAIT_MAX))
         files[key] = [int(time.time()) + secs, n, why[:120]]
         print("  %s: %s: waits %d h" % (key, why, secs // 3600))
 
@@ -355,7 +362,7 @@ def tick(a, me, mp):
     momnames = {str(n).lower() for n in cat0["momnames"]} | names \
         if isinstance(cat0.get("momnames"), list) else None
     extra, _bad = W.extra_list(os.path.join(a.state, "extra.tsv"), os.path.join(a.state, "betaids.tsv"))
-    last = me.get("ksf_at") if when(me.get("ksf_at"), 60) else 0
+    last = min(me["ksf_at"], now) if when(me.get("ksf_at"), math.inf) else 0    # stepped back: the gap stands
     why = ("Momentum was not read: KSF's names wait" if "mom" not in read else
            "mapwatch's last whole reading of Momentum's names is %s: KSF's names wait"
            % ("missing" if momnames is None else "%d h old" % ((now - cat_at) // 3600))
@@ -486,7 +493,7 @@ def tick(a, me, mp):
             continue
         gets["bytes"] += wire
         if got[0] != "ok":
-            wait(fk, got[0])
+            wait(fk, got[0], KSF_GONE if got[0] == "gone" and host == "ksfdl" else 0)
             continue
         try:
             put = W.publish(part, os.path.join(a.maps, name + ".bsp"), True)
