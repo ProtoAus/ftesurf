@@ -2199,6 +2199,22 @@ def run_inproc(lines, view):
         shutil.rmtree(d, ignore_errors=True)
 
 
+def report_inproc(lines, view):
+    """run_inproc, returning the whole report (faults, notes, info)."""
+    import reccheck as rc
+    d = tempfile.mkdtemp(prefix="reccheck_i")
+    try:
+        p = os.path.join(d, "t.rec")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        v = os.path.splitext(p)[0] + ".view"
+        with open(v, "w", encoding="utf-8") as f:
+            f.write("\n".join(view) + "\n")
+        return rc.check_view(v, rc.check_rec(p))
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def case_angle_lag_is_recovered():
     """THE CHECK DID NOT WORK OVER A NETWORK, AND EVERY LOBBY CLIENT IS REMOTE.
 
@@ -2428,6 +2444,70 @@ def case_angle_sweep_joins_at_the_named_offset():
     # A sidecar ahead of the recording is no delay: no named-offset join.
     f6, n6 = run(L, view=view_for(L, shift=3, dense=3))
     check(not any("the sweep rules judge at" in x for x in n6), "a sidecar AHEAD of the recording gets no named-offset join")
+    # ...and one whose lead WOBBLES (no offset aligns, so only `vlag > 0` keeps the sweep at 0): review round 2.
+    f7, n7 = run(L, view=wobble_view(L, a=3, b=4, dense=3))
+    check(not any("the sweep rules judge at" in x for x in n7)
+          and any("the sidecar does not describe this recording" in x for x in f7),
+          "a dense sidecar whose LEAD wobbles between three and four ticks keeps the sweep fault at offset 0")
+    # The stored detail names both offsets and the vote (rcptcheck stores angle_off and angle_solo, not notes).
+    rep = report_inproc(L, view)
+    off, solo = rep.info.get("angle_off", ""), rep.info.get("angle_solo", "")
+    check(re.search(r"joined at \+[34] ticks, which \d+ of \d+ matched moves name; the one-frame figures are at "
+                    r"\+0 \(P1599\)$", off) is not None and solo.endswith("-- one-frame join at +0 ticks"),
+          "angle_off names the sweep's offset and its vote, angle_solo the one-frame rule's offset")
+    check("the sweep's join, at +" in rep.info.get("angle_joined", "")
+          and "the sweep's join, at +" in rep.info.get("angle_dev", ""),
+          "...and angle_joined and angle_dev say they are the sweep's join")
+    if not off.endswith("(P1599)"):
+        print("        angle_off=%r angle_solo=%r" % (off, solo))
+
+
+def case_angle_sweep_offset_gate():
+    """P1599 REVIEW ROUND 2: three of the sweep join's predicates could be deleted without a test failing.
+    Each one, against sweep_offset directly: moves to +3 in the base case, and each predicate alone keeps it."""
+    import reccheck as rc
+    hold = lambda n: (lambda off: n)                     # noqa: E731
+    fl, vm = rc.ANG_LAG_FLOOR, rc.ANG_LAG_VOTE_MIN
+    m = [{3}] * vm
+    check(rc.sweep_offset(0, fl + 1, m, hold(vm))[0] == 3, "base: ten matched moves name +3 and it joins there")
+    check(rc.sweep_offset(0, fl, m, hold(vm))[0] == 0, "...not when an offset aligns to 0.05 deg (bestsc at the floor)")
+    check(rc.sweep_offset(0, fl + 1, m[1:], hold(vm))[0] == 0, "...not on one matched move fewer than the minimum")
+    check(rc.sweep_offset(0, fl + 1, [{-3}] * vm, hold(vm))[0] == 0, "...not for a sidecar AHEAD (negative offset)")
+    check(rc.sweep_offset(0, fl + 1, [{0}] * vm, hold(vm))[0] == 0, "...not at offset zero")
+    check(rc.sweep_offset(0, fl + 1, m, hold(vm - 1))[0] == 0,
+          "...not where the sweep would join fewer moves than the minimum (an empty join lost the one-frame fault)")
+    few = [{3}] * 4 + [{100 + k} for k in range(vm - 4)]
+    check(rc.sweep_offset(0, fl + 1, few, hold(vm))[0] == 0, "...not when under half the matched moves name it")
+    half = [{2}] * 2 + [{3}] * 3 + [{100 + k} for k in range(vm - 5)]
+    check(rc.sweep_offset(0, fl + 1, half, hold(vm))[:2] == (3, 5), "...a tick either side counts toward the half")
+    for tie in ([{-3}] * vm + [{3}] * vm, [{3}] * vm + [{-3}] * vm):
+        check(rc.sweep_offset(0, fl + 1, tie, hold(vm))[0] == 3, "a tie between -3 and +3 goes to +3, either order")
+
+
+def case_angle_sweep_join_keeps_the_one_frame_fault():
+    """P1599 REVIEW ROUND 2.  Every sampled move voted, including those after the clock stopped, so a sidecar
+    whose frames carry post-end moves' angles named an offset at which no in-range move had a frame: the empty
+    sweep join returned before the one-frame rule, and its fault became missing evidence."""
+    L = build(sweep=600, packets=1400)
+    rows = [l.split() for l in L if l.startswith("in ")]
+    E = int([l for l in L if l.startswith("end ")][0].split()[1])
+    view = ["FTESURF-VIEW 2", "map bhop_eazy", "hid 1", "begin"]
+    k = 0
+    for f in rows:
+        raw = int(f[2]) - HORIZON
+        if E < raw <= E + 200:
+            yaw = float(f[8]) if k % 2 == 0 else ((float(f[8]) + 1.5) + 180.0) % 360.0 - 180.0
+            view.append("%.4f %d %d %.2f %.2f 0" % (10.0 + (raw - 200) * TICK, 1000 + raw - 200, raw - 200,
+                                                     float(f[7]), yaw))
+            k += 1
+    check(k > 100, "fixture: the recording pads past its end (%d moves after it)" % k)
+    rep = report_inproc(L, view)
+    check(any("the sidecar is not this recording's" in x for x in rep.faults),
+          "frames carrying post-end moves' angles are still the one-frame rule's fault")
+    check(not any("the sweep rules judge at" in x for x in rep.notes) and rep.info.get("angle_rule") is not None,
+          "...the sweep does not move to an offset only skipped moves name, and the rule is reported")
+    if not rep.faults:
+        print("        notes=%s" % rep.notes[:3])
 
 
 def retry_clock_pair(retries=2, resets=2):
@@ -3732,6 +3812,8 @@ def main():
                case_angle_head_amnesty_costs_coverage,
                case_angle_lag_is_not_claimed_when_the_winner_is_bad,
                case_angle_sweep_joins_at_the_named_offset,
+               case_angle_sweep_offset_gate,
+               case_angle_sweep_join_keeps_the_one_frame_fault,
                case_angle_omission_does_not_read_as_cover,
                case_angle_tight_rule_abstains_where_the_epoch_moves,
                case_angle_tight_rule_is_keyed_on_the_source_not_the_version,
