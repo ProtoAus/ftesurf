@@ -112,7 +112,10 @@ POLITE: one mapwatch at a time, one request at a time, API_DELAY apart, every
 download GET_DELAY after the last, --max downloads and --max-gb a run, nothing
 below FLOOR_GB free, nothing started after RUN_SECONDS.  A refusal ends that
 host for the run and nothing is retried in it: cron's cadence is the backoff.
-What is counted against a FILE (STRIKES, then left for RETRY_DAYS) is what
+A complete Momentum list read is replayed for MOM_LIST_SECONDS (<state>/momlist.json)
+instead of asked for again; the files it lists are still checked every run.
+What is counted against a FILE (STRIKES, at most one per STRIKE_GAP, then left
+for RETRY_DAYS) is what
 only that file can be: a 404/410, its own 500, a BSP with the wrong hash, an
 archive that is one and is wrong, zones that are zones and hash wrong.  A 403,
 429, 502-504, no answer, or a 200 that is not a BSP, an archive or zones at
@@ -210,6 +213,8 @@ RUN_SECONDS = 3 * 3600  # nothing is started after this; cron runs it again
 FLOOR_GB = 20           # momgrab's floor on the same disk
 STRIKES = 3
 RETRY_DAYS = 30
+STRIKE_GAP = 6 * 3600   # P1600: cron runs every 30 min; strikes still come no faster than the old 6-hourly runs
+MOM_LIST_SECONDS = 3 * 3600     # P1600: a whole list read is reused this long (0: always asked, nothing kept)
 VARIANT = "_css"        # one of mapmeta.py's ALIAS_SUFFIXES: tier, picture and group follow
 # Suffixes that name ANOTHER COMPILE of a map, not another version of it: the
 # ports among mapmeta.py's ALIAS_SUFFIXES.  `_v2`, `_new` and `_redux` are maps.
@@ -1841,6 +1846,41 @@ def mom_list(pacer):
     return rows, names, appr
 
 
+class ListRecord:
+    """mom_list's pacer that keeps each raw reply (pacer given) or serves only kept ones (pacer None)."""
+
+    def __init__(self, pacer, pages):
+        self.pacer, self.pages = pacer, pages
+
+    def text(self, url):
+        if self.pacer is None:
+            return self.pages[url]          # KeyError: not the read that was kept
+        self.pages[url] = self.pacer.text(url)
+        return self.pages[url]
+
+    json = Pacer.json
+
+
+def mom_list_reused(pacer, path, now):
+    """mom_list, replaying a whole read under MOM_LIST_SECONDS old through mom_list itself.
+    -> mom_list's three + the reused read's age in seconds, or None when the list was asked."""
+    held = _load(path) if MOM_LIST_SECONDS > 0 else None
+    if (isinstance(held, dict) and type(held.get("at")) is int and 0 <= now - held["at"] < MOM_LIST_SECONDS
+            and isinstance(held.get("pages"), dict) and all(isinstance(v, str) for v in held["pages"].values())):
+        try:
+            return mom_list(ListRecord(None, held["pages"])) + (now - held["at"],)
+        except (KeyError, Refused):
+            pass                            # it no longer replays whole: ask
+    record = ListRecord(pacer, {})
+    got = mom_list(record)
+    if MOM_LIST_SECONDS > 0:
+        try:
+            _save(path, {"at": now, "pages": record.pages})
+        except OSError as e:
+            print("momentum list not kept for reuse: %s" % e, file=sys.stderr)
+    return got + (None,)
+
+
 def next_chunks(html):
     """The string literals of a page's self.__next_f.push([1,"..."]) calls,
     decoded.  A scan: the regex for an escaped string cost ~280 MB of working
@@ -2740,6 +2780,8 @@ def run(a):
 
     def again(key, why):
         w = later.get(key) or [0, 0, why]
+        if w[0] and now - w[1] < STRIKE_GAP:
+            return                          # struck within STRIKE_GAP: the count and its time stand
         later[key] = [w[0] + 1, now, why]
 
     def skey(r):
@@ -2750,8 +2792,10 @@ def run(a):
     # Each source is read on its own: one refusing must not hide the others.
     mom, names, appr, ksf, said, read = {}, set(), {}, {}, [], set()
     try:
-        mom, names, appr = mom_list(pacer)
+        mom, names, appr, age = mom_list_reused(pacer, os.path.join(a.state, "momlist.json"), now)
         read.add("mom")
+        if age is not None:
+            said.append("momentum: the list read %d min ago reused" % (age // 60))
     except Refused as e:
         said.append("momentum: NOT READ (%s)" % e)
     try:

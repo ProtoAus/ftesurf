@@ -69,6 +69,11 @@ W.GET_DELAY = 0.0
 W.FLOOR_GB = 0           # this box's free space is not under test (the Pi's /tmp has 4 GB)
 W.KSF_LOCK = os.path.join(HOME, "ksfwatch.lock")    # not the live crawl's
 W.MOM_LOCK = os.path.join(HOME, "momwatch.lock")    # not the live momwatch's
+# P1600: the older cases assume every run strikes and lists; case_strike_gap and case_list_cadence
+# set the shipped values (SHIPPED) and put these back.
+SHIPPED = dict(STRIKE_GAP=W.STRIKE_GAP, MOM_LIST_SECONDS=W.MOM_LIST_SECONDS)
+W.STRIKE_GAP = 0
+W.MOM_LIST_SECONDS = 0
 os.makedirs(os.path.dirname(S.RUNS_DIR))    # the game's data folder: without one, played() cannot tell
 REAL_CONNECT = S.connect
 REAL_TIME = time.time
@@ -2151,6 +2156,136 @@ def case_bad_files():
            ("surf_z64", "badzip")])
     check("control: zipfile itself reads the bzip2 archive whole",
           zipfile.ZipFile(io.BytesIO(ksf["surf_bz"]["zip"])).read("surf_bz.bsp") == bsp("bz"), True)
+
+
+def shipped(**values):
+    """Run with the shipped STRIKE_GAP/MOM_LIST_SECONDS (or the given ones), then restore the cases' zeros."""
+    @contextlib.contextmanager
+    def scope():
+        saved = {k: getattr(W, k) for k in SHIPPED}
+        for k, v in dict(SHIPPED, **values).items():
+            setattr(W, k, v)
+        try:
+            yield
+        finally:
+            for k, v in saved.items():
+                setattr(W, k, v)
+    return scope()
+
+
+def rewind(state, seconds):
+    """Every strike `seconds` older, as if that long had passed."""
+    st = state_of(state)
+    for v in st["later"].values():
+        v[1] -= seconds
+    io.open(os.path.join(state, "state.json"), "w").write(json.dumps(st))
+
+
+def case_strike_gap():
+    mom = {"surf_bad": M("bad", zones=False), "surf_ok": M("ok", zones=False)}
+    with shipped(STRIKE_GAP=0):
+        w, maps, state = setup(mom, {})
+        w.cdn = {"surf_bad": 404}
+        asked = []
+        for _ in range(W.STRIKES + 1):
+            w.asked = []
+            tick(maps, state, "--go")
+            asked.append(len(w.asked_for("surf_bad")))
+        check("control: with no gap, back-to-back runs strike STRIKES times and then shelve",
+              (asked, strikes(state)), ([1, 1, 1, 0], [("map", "surf_bad", 3, "gone")]))
+    with shipped():
+        check("the shipped gap is 6 h", W.STRIKE_GAP, 6 * 3600)
+        w, maps, state = setup(mom, {})
+        w.cdn = {"surf_bad": 404}
+        asked = []
+        for _ in range(W.STRIKES + 1):
+            w.asked = []
+            tick(maps, state, "--go")
+            asked.append(len(w.asked_for("surf_bad")))
+        when = lambda: [v[1] for v in state_of(state)["later"].values()]
+        first = when()[0]
+        check("runs inside STRIKE_GAP strike once and keep asking (cron every 30 min)",
+              (asked, strikes(state)), ([1, 1, 1, 1], [("map", "surf_bad", 1, "gone")]))
+        rewind(state, W.STRIKE_GAP - 60)
+        tick(maps, state, "--go")
+        check("...a minute short of the gap, still one", strikes(state), [("map", "surf_bad", 1, "gone")])
+        rewind(state, 61)
+        before = when()[0]
+        tick(maps, state, "--go")
+        check("...past it, the second", strikes(state), [("map", "surf_bad", 2, "gone")])
+        second = when()[0]
+        tick(maps, state, "--go")
+        check("...and a run right after neither counts nor moves its time",
+              (strikes(state), when()), ([("map", "surf_bad", 2, "gone")], [second]))
+        check("...whose time is the second strike's, not the first's", (second > before, before < first), (True, True))
+        rewind(state, W.STRIKE_GAP + 1)
+        tick(maps, state, "--go")
+        w.asked = []
+        tick(maps, state, "--go")
+        check("...the third, after another gap, shelves it for RETRY_DAYS as before",
+              (strikes(state), w.asked_for("surf_bad"), lib(maps)),
+              ([("map", "surf_bad", 3, "gone")], [], ["surf_ok.bsp"]))
+
+
+def list_asks(w):
+    return [u for u in w.asked if u.startswith(W.MOM_API + "/maps?")]
+
+
+def case_list_cadence():
+    mom = {"surf_a": M("a", zones=False), "surf_b": M("b", zones=False)}
+    with shipped(MOM_LIST_SECONDS=0):
+        w, maps, state = setup(mom, {})
+        tick(maps, state, "--go")
+        w.asked = []
+        tick(maps, state, "--go")
+        check("control: with no reuse every run asks for the list, and keeps nothing",
+              (len(list_asks(w)) > 0, os.path.exists(os.path.join(state, "momlist.json"))), (True, False))
+    with shipped():
+        check("the shipped reuse is 3 h", W.MOM_LIST_SECONDS, 3 * 3600)
+        w, maps, state = setup(mom, {})
+        w.cdn = {"surf_b": 503}             # the host's, not the file's: tried again next run
+        tick(maps, state, "--go")
+        first = len(list_asks(w))
+        w.cdn, w.asked = {}, []
+        tick(maps, state, "--go")
+        check("a run inside the window asks no list page, yet still fetches a listed file it lacks",
+              (first > 0, list_asks(w), lib(maps)), (True, [], ["surf_a.bsp", "surf_b.bsp"]))
+        w.mom["surf_c"] = M("c", zones=False)
+        w.ids["surf_c"] = 200
+        w.asked = []
+        tick(maps, state, "--go")
+        check("...a map listed since is not seen until the window ends (the trade)",
+              (list_asks(w), lib(maps)), ([], ["surf_a.bsp", "surf_b.bsp"]))
+        p = os.path.join(state, "momlist.json")
+        held = json.load(io.open(p, encoding="utf-8"))
+        held["at"] -= W.MOM_LIST_SECONDS
+        io.open(p, "w").write(json.dumps(held))
+        w.asked = []
+        tick(maps, state, "--go")
+        check("...then the list is asked again and the new map comes in",
+              (len(list_asks(w)) > 0, lib(maps)), (True, ["surf_a.bsp", "surf_b.bsp", "surf_c.bsp"]))
+        held = json.load(io.open(p, encoding="utf-8"))
+        held["pages"] = dict(list(held["pages"].items())[1:])
+        io.open(p, "w").write(json.dumps(held))
+        w.asked = []
+        tick(maps, state, "--go")
+        check("a kept read that no longer replays whole is asked for again", len(list_asks(w)) > 0, True)
+        io.open(p, "w").write("not json")
+        w.asked = []
+        tick(maps, state, "--go")
+        check("...and so is an unreadable one", len(list_asks(w)) > 0, True)
+        w.down.add("mom")
+        w.asked = []
+        tick(maps, state, "--go")
+        check("Momentum down inside the window: no ask, the kept read stands", list_asks(w), [])
+        held = json.load(io.open(p, encoding="utf-8"))
+        held["at"] -= W.MOM_LIST_SECONDS
+        io.open(p, "w").write(json.dumps(held))
+        w.asked = []
+        tick(maps, state, "--go")
+        check("...past it, the list is asked and refused, as before the reuse",
+              (len(list_asks(w)), held["at"] == json.load(io.open(p, encoding="utf-8"))["at"]), (1, True))
+        w.down.discard("mom")
 
 
 def case_native_modes():
@@ -4270,7 +4405,7 @@ def case_mapscan():
 
 def main():
     for case in (case_plan_and_install, case_scoped_admission, case_scoped_input_guards,
-                 case_bad_files, case_native_modes, case_native_beta_sidecars,
+                 case_bad_files, case_strike_gap, case_list_cadence, case_native_modes, case_native_beta_sidecars,
                  case_page_scan, case_limits_on_a_reply,
                  case_turns_with_the_crawl, case_given_zones, case_map_list, case_kept_build,
                  case_unhashed_zones,
