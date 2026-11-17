@@ -198,6 +198,7 @@ void() StartFrame =
 		SV_TrkResolve();            // P1378: before OnMapSpawn's inputs; P1390: after the sky marks
 		SV_EntityIOBuild();
 
+		SV_PropStaticMissing();     // P1604: into propmiss before the report prints it
 		SV_EntityReport();
 
 		/*

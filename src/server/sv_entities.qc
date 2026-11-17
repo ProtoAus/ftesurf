@@ -7402,6 +7402,27 @@ void(string m) SV_PropMissing =
 	if (vbsp_prop_missing_n <= PROPMISS_MAX)
 		vbsp_prop_missing = strzone(vbsp_prop_missing == "" ? m : strcat(vbsp_prop_missing, " ", m));
 };
+// P1604: solid STATIC props, whose collision the hl2 plugin builds, missing their model file here: the plugin's
+// hl2_sprpmiss "<world model> <n> <first 64 names>". Only a Source map sets it, so a value naming another map is
+// stale. vbsp_prop_static_n: how many SV_PropMissing added (-1: not reported for this map; "" = engine before P1604).
+float vbsp_prop_static_n;
+string vbsp_prop_static_seen;
+void() SV_PropStaticMissing =
+{
+	local float c, n, i, was;
+	vbsp_prop_static_n = -1;
+	c = tokenize_console(cvar_string("hl2_sprpmiss"));
+	vbsp_prop_static_seen = c ? strzone(argv(0)) : "";
+	if (c < 2 || argv(0) != strcat("maps/", mapname, ".bsp"))
+		return;
+	n = stof(argv(1));
+	was = vbsp_prop_missing_n;
+	for (i = 2; i < c; i++)
+		SV_PropMissing(argv(i));
+	if (n > c - 2)
+		vbsp_prop_missing_n = vbsp_prop_missing_n + n - (c - 2);        // unnamed past the plugin's 64
+	vbsp_prop_static_n = vbsp_prop_missing_n - was;
+};
 float vbsp_water_n, vbsp_reltele_n;
 float vbsp_need_report;
 
@@ -7435,6 +7456,8 @@ void() SV_EntityReset =
 	vbsp_prop_missing = vbsp_prop_missing_all = " ";     // P1581 (QCGC: no strunzone needed)
 	vbsp_prop_missing = "";
 	vbsp_prop_missing_n = 0;
+	vbsp_prop_static_n = -1;                        // P1604
+	vbsp_prop_static_seen = "";
 	vbsp_water_n = vbsp_reltele_n = 0;
 	vbsp_need_report = TRUE;
 	tpl_built = tpl_count = 0;      // P1425: CheckSpawn captures this map's named entities
@@ -7590,6 +7613,10 @@ void() SV_EntityReport =
 		print(sprintf(", ^1%g with NO BOUNDS^7", vbsp_prop_nobox_n));
 	if (vbsp_prop_missing_n)        // P1581
 		print(sprintf(", ^1%g solid with a missing model file^7 (%s)", vbsp_prop_missing_n, vbsp_prop_missing));
+	if (vbsp_prop_static_n > 0)     // P1604
+		print(sprintf(" (%g static)", vbsp_prop_static_n));
+	else if (vbsp_prop_static_n < 0 && vbsp_prop_static_seen != "")
+		print(sprintf(", ^3static props not reported for this map^7 (hl2_sprpmiss names %s)", vbsp_prop_static_seen));
 	// The population whose collision SIZE the client and the server disagreed about
 	// before SV_SpawnProp floored the scale.  Printed only when non-zero, and it is
 	// the falsifier for that floor: tools/census/propsolid.py asks the same question

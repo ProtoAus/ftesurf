@@ -3167,9 +3167,12 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             the first 8 listed, 120 characters each, space/tab/CR/LF/
                             quote as '_'.  A replay with the files present
                             may then differ on `state`/`pe`: a hint at content skew,
-                            never proof.  Static props (hl2 plugin collision) are not
-                            covered; a resumed run keeps its first session's line.
-                            Absent: an older build.
+                            never proof.  P1604: also solid STATIC props (hl2 plugin
+                            collision) whose model file the server lacked, when its
+                            engine publishes `hl2_sprpmiss` (an older server engine
+                            leaves them out, and the line cannot say which); unnamed
+                            ones past the plugin's 64 count without a name.  A resumed
+                            run keeps its first session's line.  Absent: an older build.
     owner <name>            may contain spaces; read to end of line
     runid <str>             unique-ish: local wall clock to the second + slot
     nonce <hex32>           Patch 416.  The 128 bits the server picked when this
