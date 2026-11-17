@@ -19,3 +19,16 @@ Next: stage 2 (launcher moves `ftesurf/` -> `worldofsurf/` with the marker, jour
 the legacy feed's last release points at the new launcher; INSTALL text in tools/p1593-claim.md).
 - cl_zones.qc reached the lobbies and both installs in P1598's deploy (17 Nov, cs 83467981); both installs' engine is
   now patch-1598 (client 424548fb), which carries patch-1593.
+
+## Stage 2 -- the launcher moves the folder (pushed 17 Nov; ships with the stage-3 release)
+- Launcher (Quakers-Launcher) main 200af7f..e1f731d: src/ftesurf_migrate.rs -- when a signed worldofsurf feed exists
+  (`ftesurf/worldofsurf.json`, not older than the ledger), ask, stage and verify first, then a journalled move
+  (`.ftesurf-updater/migrate.json`: intent + barrier -> legacy exe parked + `ftesurf/`->`worldofsurf/` -> ledger keys
+  respelled and the legacy update_manifest_url line dropped -> marker ftesurf->worldofsurf, the only rewrite allowed),
+  then the ordinary verified update; finish() deletes parked exes only on a ledger-hash match. Approved envelope staged
+  as move-feed.json (sha256 + version in the journal). Never on --wait-for-game; clean-up can finish offline.
+- Game main adffcbc4..709f6e61: tools/updatefeed.py refuses a worldofsurf feed whose default.fmf the move refuses (one
+  DISABLEHOMEDIR 1, MAINCONFIG ftesurf|worldofsurf); stage-3 notes in tools/p1593-claim.md.
+- Verified: 65 lib + 7 bin + 37 integration tests (Windows), 66 + 7 + 32 (Linux); real-binary smoke 15/15; mutants per
+  round (26, 34, 55, 61, 17, 12, 6, all killed). Reviews: seven rounds (no High; the last Mediums fixed and re-checked).
+  Not done: a production-key run, a real engine against a moved install (stage 3's acceptance).
