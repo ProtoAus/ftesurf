@@ -2508,6 +2508,20 @@ def case_angle_sweep_join_keeps_the_one_frame_fault():
           "...the sweep does not move to an offset only skipped moves name, and the rule is reported")
     if not rep.faults:
         print("        notes=%s" % rep.notes[:3])
+    # Skipped moves must not OUTVOTE the in-range ones either: a dense, delayed sidecar whose in-range frames are
+    # 0.5 deg off on 90% of moves (inside the sweep's tolerance, so few exact matches), plus frames carrying the
+    # post-end moves' angles 200 ticks early. The in-range moves name +3/+4 and the sweep passes there; counting
+    # the post-end moves would name +200, where nothing in range matches.
+    w = wobble_view(L, dense=3, rot=0.5, lo=0.0, hi=0.9)
+    merged = sorted((ln.split() for ln in w[4:] + view[4:]), key=lambda f: (int(f[2]), float(f[0])))
+    # All three clocks must run forward in file order: renumber cltime and the command frame in run-clock order.
+    w2 = w[:4] + ["%.4f %d %s" % (10.0 + i * 0.002, 1000 + i, " ".join(f[2:])) for i, f in enumerate(merged)]
+    rep2 = report_inproc(L, w2)
+    check(not rep2.faults and any("the sweep rules judge at +3 ticks" in x or "the sweep rules judge at +4 ticks" in x
+                                  for x in rep2.notes),
+          "post-end moves do not outvote the in-range moves: the sweep joins at the in-range delay and passes")
+    if rep2.faults:
+        print("        faults=%s notes=%s" % (rep2.faults[:2], [x[:120] for x in rep2.notes[:3]]))
 
 
 def retry_clock_pair(retries=2, resets=2):
