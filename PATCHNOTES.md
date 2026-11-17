@@ -21,6 +21,9 @@
 
 ## next
 
+### P1605 Linux: smaller hitches from the game's string cleanup
+- On Linux the game's regular clean-up of temporary text now copies only what changed, so those frames cost about 0.2 ms instead of 1 to 2.5 ms. Needs Linux 6.7 or newer; older systems work as before.
+
 ### P1603 Linux runs are ranked, marked in sky blue
 - Runs set with the Linux game now go on the ranked boards like any other run. The Linux game cannot yet verify mouse input the way the Windows game does, so these runs are marked.
 - A marked run shows the runner's name in sky blue on the scoreboard's online boards and on the website board; point at it to read "Linux: Not mouse verified".

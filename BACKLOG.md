@@ -153,6 +153,28 @@
   guide's row after the teleport, else the walk-only search, which never boarded surf_rookie's stage 2 (rig g3); a
   takeover from a pause right after a stage teleport starts at stretch 0 and gets none of it.
 
+## Linux 0.1% lows (lows5, 18 Nov, worldofsurf-ed; task root ~/Projects/WorldofSurf/FTESurf-worktrees/lows5-20261118-ed)
+
+- Rig: artifacts/rig.py drives a dedicated server + client over the client's stdin (-plugin, sys_linux.c ~1587; replaces
+  conbridge), run_survey.py = Survey 5's settings and replays at 1920x1200 pixels (1536x960 logical on the 1.25-scaled
+  DP-1; vid_dpi_x 120 is read back per run), probe_static.py, sample_stalls.py (gdb stack sampling: needs a diag build
+  with prctl(PR_SET_PTRACER_ANY), yama ptrace_scope is 1). The windows go on Lex's desktop: record the desktop's own load
+  (run_survey's env column) -- a Firefox video (RDD process ~35%) turned 4-10 stutters into 140-530 on surf_beginner.
+- DONE P1605: the collector's incremental copy on Linux (userfaultfd + PAGEMAP_SCAN).
+- Refracting glass (hl2_refract 1, off by default since P1587) costs far more on Linux: every refracting batch takes a
+  full-screen $currentrender copy, and with MSAA each is a full scene resolve (MSAA_Blit) first -- surf_andromeda averages
+  5.05 copies (11.6 Mpx) a frame, warm 0.1% 99 fps with it vs 324 without (Windows Survey 5: 293 with it). Stack samples
+  put the time in libnvidia-eglcore under T_Gen_CurrentRender (CPU busy, likely the driver waiting on the copies); some
+  frames take 120-170 ms. Lever: copy only the batch's screen rectangle plus the distortion margin, or skip the copy when
+  nothing drawn since the last one overlaps the batch (round 4's idea for bossfight's 458 panes).
+- Windowed present stalls: GPU-heavy frames wait in WL_SwapBuffers (drmSyncobjTimelineWait, explicit sync) -- surf_pantheon
+  5-7 ms swaps where Windows' frames are CPU-bound at ~5.9 ms; labwc composites at 300/360 Hz beside the game. Fullscreen
+  (direct scanout) is not measured: it would take over Lex's screen.
+- CSQC makes ~123 temp strings a frame on surf_beginner (diag census, per 100000: Line_LabelText 15-18% (replay path
+  labels), Timer_DrawSplits 12%, Milk_Supported 8%, Time_MsString 7%, HUD_DrawMapInfo 4%, MapTier_Field 3.4%, HUD_SK,
+  HUD_DrawBoard, HUD_SeqAbsTight, Watch_Chrome ~2.7%, Rec_InputCvarWin, Profile_Face, Fog_Frame, Trig_Frame ~2%). Fewer
+  temps = fewer collections on every platform (CSQC's table grows to 260,096 slots at load, so it collects every 65,536).
+
 ## 0.1%-low round 4 (16 Nov, ftesurf-46; task root C:\FTESurf-worktrees\lows4-20261116-46)
 
 - First sight of water: P1575 (INSTALLED 16 Nov, exe e004597b) makes the capture targets at activation: chateau's
