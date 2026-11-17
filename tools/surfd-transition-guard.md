@@ -269,6 +269,21 @@ python3 -B tools/test_surfd_guard_tas_profile.py --out /owned/NEW-tas-profile --
 Same rules as the Fetch suite: the frozen pre-change guard as `--preimage`, an
 OWNER.md ancestor, `--parser-only` on Windows (manifest parsing only).
 
+## Schema26 new-map route closure (P1601)
+
+The explicit `"runtime_profile":"mapnew87-v1"` requires explicit integer
+`"target_schema":26`. Its exact raw hash set is the `tas86-v1` set plus
+`mapnew.py`: 87 members. `mapnew.py` (the guarded `mapnew` route) imports only
+the stdlib and `mapwatch`, which `tas86-v1` already seals. `tas86-v1` keeps its
+exact 86 and cannot admit `mapnew.py`. External converter rules, validators,
+locks, grants, receipts and lifetimes are unchanged.
+
+```
+python3 -B tools/test_surfd_guard_mapnew_profile.py --out /owned/NEW-mapnew-profile --preimage /owned/surfd_transition_guard.preimage.py
+```
+
+`--preimage` is the frozen tas86-v1 guard (d25deebb); same rules as the tas suite.
+
 ## Offline acceptance tests
 
 Run only on local Linux/POSIX, with an exclusively NEW absolute synthetic output
