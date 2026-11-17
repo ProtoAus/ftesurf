@@ -2547,6 +2547,44 @@ def case_angle_join_must_cover_the_run():
     check(not honest.faults, "CONTROL: the same recording with an honest dense sidecar passes")
 
 
+def snap_in(lines, every, deg):
+    """The server-side yaw of every `every`-th move turned by `deg` (on the wire grid) for that move only: a one-tick
+    assist the client sent and did not draw."""
+    q = round(deg / QUANTUM) * QUANTUM
+    out, k = [], 0
+    for l in lines:
+        if l.startswith("in "):
+            f = l.split(" ")
+            if k % every == every // 2:
+                f[8] = "%.4f" % ((float(f[8]) + q) % 360.0)
+            k += 1
+            l = " ".join(f)
+        out.append(l)
+    return out
+
+
+def case_angle_sweep_against_the_drawn_step():
+    """P1606.  The sweep rules divided a move's residual by the RECORDED step, which an assisted move's own jump makes:
+    a one-tick snap widened its own allowance and passed.  Judged against the smaller of the recorded and the drawn
+    step, the same snaps fault, and the honest twin still passes."""
+    L = build(sweep=360, packets=800)           # ~2 deg a move
+    view = view_for(L, dense=3)
+    honest = report_inproc(L, view)
+    check(not honest.faults, "CONTROL: the honest dense pair passes (%s)" % [x[:60] for x in honest.faults[:2]])
+    rep = report_inproc(snap_in(L, 15, 10.0), view)
+    check(any("the sidecar does not describe this recording" in x for x in rep.faults),
+          "one-tick 10 deg snaps on 1 move in 15 fault the sweep rule (%s)" % rep.info.get("angle_off", "")[:70])
+    check(not any("is not on the" in x or "grid" in x for x in rep.faults + rep.notes),
+          "fixture: the snapped angles sit on the wire grid, so only the cross-check can see them")
+    sparse = report_inproc(snap_in(L, 50, 10.0), view)
+    check(not any("the sidecar does not describe this recording" in x for x in sparse.faults),
+          "1 move in 50 stays under ANG_HOLD: P1606 changes which moves are past the cut, not the 5% line")
+    mirror = report_inproc(L, view_for(snap_in(L, 15, 10.0), dense=3))
+    check(any("the sidecar does not describe this recording" in x for x in mirror.faults),
+          "the mirror (drawn snaps the recording lacks) still faults: the recorded step stays in the min (%s)"
+          % mirror.info.get("angle_off", "")[:60])
+
+
 def until_seen_view(packets, S, dense=1, wobble=False, ghost=None, sweep=128):
     """(rec, view) for an honest client whose tick column lags by S (S/S+1 every 40 ticks with `wobble`) and that
     draws until it sees the finish, so its labels reach the run's end: offset 0 joins the first S moves and +S
@@ -3980,6 +4018,7 @@ def main():
                case_angle_sweep_join_is_v9_only,
                case_angle_join_must_cover_the_run,
                case_angle_delay_residue_is_not_thin_cover,
+               case_angle_sweep_against_the_drawn_step,
                case_angle_omission_does_not_read_as_cover,
                case_angle_tight_rule_abstains_where_the_epoch_moves,
                case_angle_tight_rule_is_keyed_on_the_source_not_the_version,

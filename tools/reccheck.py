@@ -4043,8 +4043,10 @@ def angle_join(r, rec, frames):
         g = byt.get(tk)
         if g and len(g) == 1:   # the one-frame rule keeps this join; P1599 moves only the sweep's
             solo.append(max(angdelta(y, g[0][4]), angdelta(p, g[0][3])))
+        jt = tk
         if slag != lag:
-            g = byt.get(raw - slag)
+            jt = raw - slag
+            g = byt.get(jt)
         if not g:
             # NORMAL, NOT A FINDING: the sidecar is one line per RENDERED frame,
             # so a client drawing below the tick rate leaves ticks with no frame
@@ -4054,8 +4056,17 @@ def angle_join(r, rec, frames):
         joined += 1
         dy = min(angdelta(y, f[4]) for f in g)
         dp = min(angdelta(p, f[3]) for f in g)
-        # The floor keeps a still camera from dividing 0.003 by 0.0001.
-        n = max(dy / max(sy, 1.0), dp / max(sp, 1.0))
+        # P1606: against the SMALLER of the recorded step and the drawn one (the last frame of each tick either side
+        # of the joined tick), so an assist's own jump cannot widen its own allowance. Lobby fleet at P1599's join,
+        # 18 Nov: honest worst 2.91% (cut 5%), dense one-tick snaps caught 1 -> 403 of 417, every recorded-step catch
+        # kept. The floor keeps a still camera from dividing 0.003 by 0.0001.
+        dsy = dsp = 0.0
+        for a, b in ((jt - 1, jt), (jt, jt + 1)):
+            fa, fb = byt.get(a), byt.get(b)
+            if fa and fb:
+                dsy = max(dsy, angdelta(fb[-1][4], fa[-1][4]))
+                dsp = max(dsp, angdelta(fb[-1][3], fa[-1][3]))
+        n = max(dy / max(min(sy, dsy), 1.0), dp / max(min(sp, dsp), 1.0))
         devs.append(max(dy, dp))
         worst = max(worst, n)
         if n > ANG_CUT:
@@ -4175,7 +4186,7 @@ def angle_join(r, rec, frames):
         # the rule "could not discriminate" in reports where that same rule
         # raised the fault; measured floor on a still pair, +3 deg missed and
         # +5 deg caught, which is a 3 degree rule exactly.
-        r.info["angle_off"] = ("%.2f%% of joined moves past %gx the tick's sweep, "
+        r.info["angle_off"] = ("%.2f%% of joined moves past %gx the tick's sweep (the smaller of recorded and drawn), "
                                "longest run %d (worst %.1fx, %.0f deg swept -- "
                                "so the statistic takes its 1.0 floor and this is "
                                "a flat %g deg cut, BLIND to anything smaller)"
@@ -4189,7 +4200,7 @@ def angle_join(r, rec, frames):
                    "deg of total sweep, under the %g the sweep rule needs to "
                    "scale against" % (ANG_CUT, travel, ANG_BLIND))
     else:
-        r.info["angle_off"] = ("%.2f%% of joined moves past %gx the tick's sweep, "
+        r.info["angle_off"] = ("%.2f%% of joined moves past %gx the tick's sweep (the smaller of recorded and drawn), "
                                "longest run %d (worst %.1fx, %.0f deg swept)"
                                % (frac, ANG_CUT, longest, worst, travel))
     if slag != lag:
