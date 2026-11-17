@@ -32,7 +32,9 @@ and its upserts leave `plat` stale (a Windows best over a Linux row keeps 1; a L
 or a new replay row, gets 0). Repair once the runs_plat generation is back: (a) replays, raise-only, from each
 file the window filed (`max(header plat, finish plat)`, as surfd's `_rec_plat` / `_rec_finish_plat` read
 it); (b) runs with `replay_id > 0` take their replay's `plat`; (c) stage rows (`replay_id 0`) take the plat of
-the leg-0 replay with their `runid`. A run a new progs posted to an older surfd is repaired the same way.
+the leg-0 replay with their `runid`. A run a new progs posted to an older surfd is repaired the same way. Raise-only
+cannot clear the stale 1 an older surfd leaves when a Windows run re-files a Linux run's leaf (an exact tie):
+recompute those replays from their file (`max(header, finish)`) and lower them by hand.
 
 ## 17 Nov 2026 04:04Z: P1600 LIVE (tools/p1600-delivery.md)
 tascontent.py sealed (mapwatch works again), guard tas86-v1, sweep.py/test_sweep.py at main (P1580; P1469 was

@@ -14,6 +14,8 @@
   stopped by sys_platform, which no config saves. `set`/`seta` on the engine's own cvar clears
   TYPEFLAG_ENGINE but keeps the description, so Windows arms read as before. Known residual: a deliberate
   `set sys_platform Win` on Linux only gets that player judged by Windows rules (no IPG_LIVE: unranked).
+  The reverse (Windows `set sys_platform X`, or a server stuffcmd: the cvar is not CVAR_NOTFROMSERVER) drops
+  IPH_RAW, so the run skips the guards and ranks MARKED -- Linux's treatment, not an unmarked bypass.
 - A Windows client always has IPH_RAW (in_win.c registers in_rawinput), so every guard arm reads as before.
 - surfd tests need Flask; on the Linux PC use a scratch venv. test_board's import runs its whole suite.
 

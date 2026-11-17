@@ -4236,7 +4236,8 @@ def submit_run():
                     if not fileless and plat > rep["plat"]:
                         db.execute("UPDATE replays SET plat = ? WHERE id = ? AND plat < ?",
                                    (plat, rid, plat))
-                    plat = max(plat, rep["plat"])
+                    # A fileless post adopts the replay as filed: its own mark proves nothing about that file.
+                    plat = rep["plat"] if fileless else max(plat, rep["plat"])
                     tickrate, millis = rep["tickrate"], rep["millis"]
                     runid = "" if rep["runid"] == "-" else rep["runid"]
                     new = have is not None and rep["submitted"] != have["submitted"]
@@ -4799,8 +4800,11 @@ def _rec_finish_plat(path):
     _rec_meta reads `end`; 0 when there is none or the file cannot be read."""
     try:
         with open(path, "rb") as fh:
-            fh.seek(max(0, os.fstat(fh.fileno()).st_size - _REC_TAIL))
+            size = os.fstat(fh.fileno()).st_size
+            fh.seek(max(0, size - _REC_TAIL))
             tail = fh.read().decode("utf-8", "replace").split("\n")[:-1]
+            if size > _REC_TAIL:
+                tail = tail[1:]     # the cut's partial first line, as _rec_meta drops it
     except (OSError, TypeError, ValueError):
         return PLAT_VERIFIED
     return max([_plat_of(line[5:]) for line in tail if line.startswith("plat ")] or [PLAT_VERIFIED])
