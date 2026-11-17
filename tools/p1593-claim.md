@@ -32,8 +32,9 @@ Stage 2 as built (Quakers-Launcher branch p1593-stage2, src/ftesurf_migrate.rs):
 ledger -> marked (the marker last, as the commit point); the approved feed is staged and pinned by sha256 and
 version; the legacy exes are parked until the new install verifies. What stage 3 owes it:
 - The worldofsurf default.fmf holds exactly one GAME "WorldofSurf", BASEGAME "worldofsurf", DISABLEHOMEDIR 1 and
-  MAINCONFIG `ftesurf` or `worldofsurf`, under updatefeed.py's line rules; anything else and the launcher moves
-  nothing. `worldofsurf` renames the player's ftesurf.cfg to worldofsurf.cfg; `ftesurf` keeps it.
+  MAINCONFIG `ftesurf` or `worldofsurf`, one value per line; anything else and the launcher moves nothing, so
+  updatefeed.py refuses to build such a worldofsurf feed. `worldofsurf` renames the player's ftesurf.cfg to
+  worldofsurf.cfg; `ftesurf` keeps it.
 - That feed ships rewritten ftesurf.sh, ftesurf.bat and ftesurf_debug.bat: no `ftesurf/` path and no
   ftesurf64(.exe), which the move deletes. Root-file names cannot change under the disk policy, only contents.
 - The launcher is in no feed (managed() refuses it; the feed never updates it). Players get the stage-2 launcher
