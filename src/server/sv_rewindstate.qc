@@ -290,11 +290,9 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 	}
 	fputs(f, sprintf("flags %d\npb %d\ndirty %d\ncheat %d\nhopped %d\nfromsave %d\nhandcarry %d\n",
 	                 flags, m[b+19], m[b+20], m[b+21], m[b+22], m[b+23], m[b+50]));
-	// P1603: the ring keeps no mark: the live run's, and a kept attempt's own (SV_RecFailKeep; a resume
-	// or a sent save can have given it one no client here reported), raised by this client's.
-	plat = SV_RunPlat(e);
-	if (fa)
-		plat = max(plat, e.rec_fa_plat);
+	// P1603: the ring keeps no mark: a kept attempt's own (SV_RecFailKeep; a resume or a sent save can
+	// have given it one no client here reported), else the live run's; either raised by this client's.
+	plat = fa ? max(SV_ProfilePlat(e), e.rec_fa_plat) : SV_RunPlat(e);
 	if (plat)
 		fputs(f, sprintf("plat %d\n", plat));
 	fputs(f, sprintf("tasnative %d\n", e.run_tas_used ? 1 : 0));

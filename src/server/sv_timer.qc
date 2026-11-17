@@ -3295,7 +3295,8 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             arriving). The guard values follow on `inguard`.
                             `platform` is a report without in_rawinput: before
                             P1603 always (no `plat`), since then only while the
-                            server's sv_rank_linux is 0, and then beside `plat 1`.
+                            server does not rank it (SV_RankLinux: sv_rank_linux
+                            0, or unset on a lobby), and then beside `plat 1`.
     inguard <said> <have> <nolegacy> <touchpad> <keys>
                             Patch 1576, additive.  CSQC's `inguard` report the verdict
                             was judged on: said 0 = never reported (all 0); have is the
@@ -3313,8 +3314,8 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             lacks bit 1), "Linux: Not mouse verified".  An all-0
                             `silent` is no report, as far as a reader can tell
                             (CSQC's grant is -1 when <have> lacks bit 8, so a real
-                            report is never all 0).  With sv_rank_linux 1 the
-                            run ranks and its guard values are not judged; with 0
+                            report is never all 0).  Where SV_RankLinux says so the
+                            run ranks and its guard values are not judged; else
                             the verdict is `platform`, as before.  Written only when
                             non-zero: absent = 0, and every file before P1603.  Not a
                             TF_ bit (bit 21 is reserved).  The run's mark is the
@@ -11887,6 +11888,16 @@ float(entity e) SV_RunPlat =
 	return max(e.run_t_plat, SV_ProfilePlat(e));
 };
 
+// P1603: sv_rank_linux 1 ranks a PLAT_LINUX report (marked), 0 keeps PW_PLATFORM. Unset is 0 on a lobby, so
+// progs that start before lobby.cfg's line cannot rank them unmarked on an older surfd, and 1 elsewhere.
+float() SV_RankLinux =
+{
+	registercvar("sv_rank_linux", "");      // at the read: a miss would create it anyway (sv_main.qc, vbsp_mp)
+	if (!strcmp(cvar_string("sv_rank_linux"), ""))
+		return Lobby_Active() ? FALSE : TRUE;
+	return cvar("sv_rank_linux") != 0;
+};
+
 // Patch 840: the predicate below returns WHICH test failed (PW_*), so the
 // recording and the finish line can name it; SV_ProfileBroken is "not PW_OK".
 float(entity e) SV_ProfileWhy =
@@ -11918,15 +11929,12 @@ float(entity e) SV_ProfileWhy =
 		return PW_SILENT;
 
 	// Linux beta (Lex, 2026-09-19): PW_PLATFORM, as XTEST and compositor injection cannot be seen
-	// there (engine Patch 387's ceiling). P1603 (Lex, 17 Nov): with sv_rank_linux 1 such a run ranks,
-	// marked PLAT_LINUX by SV_TimerProfile (Linux anti-cheat deferred), and the guard block below is
-	// skipped: its cvars exist only in in_win.c. Lobbies hold 0 until surfd stores the mark (lobby.cfg).
+	// there (engine Patch 387's ceiling). P1603 (Lex, 17 Nov): where SV_RankLinux says so such a run
+	// ranks, marked PLAT_LINUX by SV_TimerProfile (Linux anti-cheat deferred), and the guard block
+	// below is skipped: its cvars exist only in in_win.c. Lobbies hold 0 until surfd stores the mark.
 	if (SV_ProfilePlat(e) == PLAT_LINUX)
-	{
-		registercvar("sv_rank_linux", "1");     // at the read: a miss would create "" (sv_main.qc, vbsp_mp)
-		if (!cvar("sv_rank_linux"))
-			return PW_PLATFORM;
-	}
+	if (!SV_RankLinux())
+		return PW_PLATFORM;
 
 	// The RULE is FS_ProfileWhy in sh_defs.qc and is not repeated here.
 	w = FS_ProfileWhy(e.run_t_pevhave, e.run_t_pevraw,

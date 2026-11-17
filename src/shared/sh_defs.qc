@@ -2346,7 +2346,7 @@ string(float why) FS_ProfileText =
 	if (why == PW_ACCEL)    return "m_accel is on";
 	if (why == PW_NOGRANT)  return "raw input found no mouse (try in_restart)";
 	if (why == PW_SILENT)   return "the game never reported its input settings";
-	if (why == PW_PLATFORM) return "only the Windows game ranks";   // before P1603; old files
+	if (why == PW_PLATFORM) return "only the Windows game ranks";   // P1603: while sv_rank_linux is 0
 	if (why == PW_CHANGED)  return "an input setting changed during the run";
 	if (why == PW_MOVE)     return "a move input went above the standard 450";
 	if (why == PW_CLICKS)   return "injected clicks must be blocked (set in_rawinput_nolegacy 1)";

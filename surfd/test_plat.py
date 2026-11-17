@@ -28,8 +28,9 @@ def leaf(ticks, player):
                               hashlib.sha256(player.encode("utf-8")).hexdigest()[:8])
 
 
-def put_rec(mod, ticks, player, runid, plat=None):
-    """A recording where a lobby on this box would have left it; `plat` in its header if given."""
+def put_rec(mod, ticks, player, runid, plat=None, finish=None):
+    """A recording where a lobby on this box would have left it; `plat` in its header if given, and
+    a finish `plat` record if `finish` is."""
     d = os.path.join(os.environ["SURFD_RUNS"], "surf_test", mod.leg_dir(0, 0))
     os.makedirs(d, exist_ok=True)
     name = leaf(ticks, player)
@@ -38,8 +39,9 @@ def put_rec(mod, ticks, player, runid, plat=None):
     if plat is not None:
         head.append("plat %d" % plat)
     with open(os.path.join(d, name), "w", encoding="utf-8", newline="") as fh:
-        fh.write("\n".join(head + ["begin", "0.0000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0",
-                                   "end %d 1 0 0" % ticks]) + "\n")
+        fh.write("\n".join(head + ["begin", "0.0000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"]
+                           + (["prof ok", "plat %d" % finish] if finish is not None else [])
+                           + ["end %d 1 0 0" % ticks]) + "\n")
     return name
 
 
@@ -114,7 +116,8 @@ def case_post_and_board():
     check("/api/board: an unmarked row has no plat key (its bytes unchanged)",
           board_row(b, "win") is not None and "plat" not in board_row(b, "win"), board_row(b, "win"))
     # An unknown positive mark is filed as the highest known (unverified is the safe side); garbage 0.
-    for raw, want in (("2", 1), ("7", 1), ("x", 0), ("-1", 0), ("1.5", 0), ("", 0)):
+    for raw, want in (("2", 1), ("7", 1), ("99999999999999999999", 1), ("x", 0), ("-1", 0),
+                      ("1.5", 0), ("1e3", 0), ("", 0)):
         body = test_board.submit(mod, player="p" + hashlib.md5(raw.encode()).hexdigest()[:6],
                                  name="P", ticks="4200", runid="r-" + raw, plat=raw)
         who = [r for r in test_board.board(mod)["rows"] if r["ticks"] == 4200]
@@ -175,6 +178,35 @@ def case_recording():
     check("a re-post adopting a marked replay stands the row marked",
           isinstance(body, dict) and body.get("stored") and (row(mod, "res") or {}).get("plat") == 1
           and (row(mod, "res", "replays") or {}).get("plat") == 1, (body, row(mod, "res")))
+    # The mark only rises: a replay an older surfd filed at 0, re-posted with the same evidence and a
+    # bound mark of 1, is raised, and its board row stands marked (max at adoption).
+    name3 = put_rec(mod, 4300, "aged", "r-aged", plat=1)
+    test_board.submit(mod, player="aged", name="Aged", ticks="4300", runid="r-aged", plat="1", rec=name3)
+    conn = sqlite3.connect(mod._test_db)
+    conn.execute("UPDATE replays SET plat = 0 WHERE player='aged'")
+    conn.execute("DELETE FROM runs WHERE player='aged'")
+    conn.commit()
+    conn.close()
+    body = test_board.submit(mod, player="aged", name="Aged", ticks="4300", runid="r-aged", plat="1", rec=name3)
+    check("a same-evidence re-post stands the row at the higher mark",
+          isinstance(body, dict) and (row(mod, "aged") or {}).get("plat") == 1, (body, row(mod, "aged")))
+    check("...and raises the replay filed at 0", (row(mod, "aged", "replays") or {}).get("plat") == 1,
+          row(mod, "aged", "replays"))
+    # New evidence under the same leaf (an exact tie re-filed by another run) takes ITS mark: the
+    # replays upsert's plat = excluded.plat.
+    name4 = put_rec(mod, 4400, "tie", "r-tie1", plat=1)
+    test_board.submit(mod, player="tie", name="Tie", ticks="4400", runid="r-tie1", plat="1", rec=name4)
+    put_rec(mod, 4400, "tie", "r-tie2")
+    body = test_board.submit(mod, player="tie", name="Tie", ticks="4400", runid="r-tie2", rec=name4)
+    rep = row(mod, "tie", "replays")
+    check("a leaf re-filed with new evidence and no mark carries the new evidence's 0",
+          isinstance(body, dict) and rep and rep["runid"] == "r-tie2" and rep["plat"] == 0, (body, rep))
+    # The finish's `plat` record binds too (a later session's client raised the run's mark).
+    name5 = put_rec(mod, 4500, "fin", "r-fin", finish=1)
+    body = test_board.submit(mod, player="fin", name="Fin", ticks="4500", runid="r-fin", rec=name5)
+    check("a post below its file's finish `plat` is filed at it, leaf kept",
+          isinstance(body, dict) and body.get("rep") and (row(mod, "fin") or {}).get("plat") == 1
+          and (row(mod, "fin", "replays") or {}).get("plat") == 1, (body, row(mod, "fin")))
     # restand rebuilds a board row from its replay: the mark comes with it.
     rid = row(mod, "lin", "replays")["id"]
     conn = sqlite3.connect(mod._test_db)
@@ -214,7 +246,8 @@ def case_header(mod):
     check("_rec_plat: absent, unreadable or negative is 0",
           (hp({}), hp({"plat": "x"}), hp({"plat": "-1"}), hp({"plat": " "})) == (0, 0, 0, 0))
     check("_rec_plat: 1 is 1, an unknown higher mark the highest known",
-          (hp({"plat": "1"}), hp({"plat": "5 "})) == (1, mod.PLAT_MAX))
+          (hp({"plat": "1"}), hp({"plat": "5 "}), hp({"plat": "9" * 30}), hp({"plat": "9" * 5000}))
+          == (1, mod.PLAT_MAX, mod.PLAT_MAX, mod.PLAT_MAX))
     base = dict(map="surf_test", track="0", leg="0", plat="1")
     check("_rec_disagrees never drops a leaf over plat", mod._rec_disagrees(base, "surf_test", 0, 0, "", 0) == "")
 

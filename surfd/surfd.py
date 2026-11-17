@@ -3754,18 +3754,12 @@ def submit_run():
     if flags is None:
         return fail(400, "bad flags")
 
-    # P1603: the platform mark, 0 when absent; a mark is no reason to refuse a time.  A positive
-    # value this surfd does not know is filed as the highest it does (unverified is the safe side);
-    # garbage or a negative reads 0.  Both are logged (the recbytes precedent).
+    # P1603: the platform mark (_plat_of); a mark is no reason to refuse a time.  Logged when it
+    # was not a known value (the recbytes precedent).
     raw_plat = request.form.get("plat")
-    plat = strict_int(raw_plat, PLAT_VERIFIED, 1 << 62)
-    if plat is None:
-        if raw_plat:
-            log.warning("plat %r unknown from %s; filed as 0", raw_plat[:16], src)
-        plat = PLAT_VERIFIED
-    elif plat > PLAT_MAX:
-        log.warning("plat %d unknown from %s; filed as %d", plat, src, PLAT_MAX)
-        plat = PLAT_MAX
+    plat = _plat_of(raw_plat)
+    if raw_plat and str(plat) != str(raw_plat).strip():
+        log.warning("plat %r from %s; filed as %d", raw_plat[:16], src, plat)
 
     style = style_of(flags)
     if style is None:
@@ -4025,12 +4019,15 @@ def submit_run():
                             " (%s) from %s; dropping the leaf", leaf, bad, src)
                 leaf = ""
                 story_rec = None
-            elif _rec_plat(hdr) > plat:
-                # P1603: the mark only rises in a run (the header is its start), so a post below
-                # its own file's is the wrong number: filed at the file's, leaf kept.
-                log.warning("rec leaf %r says plat %d and the post %d, from %s; filing %d",
-                            leaf, _rec_plat(hdr), plat, src, _rec_plat(hdr))
-                plat = _rec_plat(hdr)
+            else:
+                # P1603: the mark only rises in a run (the header is its start, the finish record
+                # the run's), so a post below its own file's is the wrong number: filed at the
+                # file's, leaf kept.
+                fplat = max(_rec_plat(hdr), _rec_finish_plat(path))
+                if fplat > plat:
+                    log.warning("rec leaf %r says plat %d and the post %d, from %s; filing %d",
+                                leaf, fplat, plat, src, fplat)
+                    plat = fplat
 
     # A REFUSED recbytes IS LOGGED, because the silent fallback hid a real bug
     # for a whole deploy.  The sender spelled 1128886 as `1.12889e+06` (QC's %g
@@ -4234,7 +4231,12 @@ def submit_run():
                     rid = rep["id"]
                     name, tier, style, flags = (rep["name"], rep["tier"],
                                                 rep["style"], rep["flags"])
-                    plat = rep["plat"]
+                    # P1603: the mark only rises.  A same-evidence re-post leaves the row as it
+                    # was (an older surfd filed 0), so a higher bound mark raises the replay too.
+                    if not fileless and plat > rep["plat"]:
+                        db.execute("UPDATE replays SET plat = ? WHERE id = ? AND plat < ?",
+                                   (plat, rid, plat))
+                    plat = max(plat, rep["plat"])
                     tickrate, millis = rep["tickrate"], rep["millis"]
                     runid = "" if rep["runid"] == "-" else rep["runid"]
                     new = have is not None and rep["submitted"] != have["submitted"]
@@ -4776,11 +4778,32 @@ def _rec_disagrees(hdr, mapname, track, leg, runid, flags, tickrate=0):
             or _rec_tickrate_disagrees(hdr, tickrate) or "")
 
 
+def _plat_of(raw):
+    """P1603: a platform mark as filed: any positive integer above PLAT_MAX is PLAT_MAX (a value
+    this surfd does not know is unverified, the safe side); absent, negative or not an integer, 0.
+    Matched, not int()ed: Python refuses a 4301-digit int, which would read 0."""
+    m = re.fullmatch(r"\s*\+?([0-9]+)\s*", raw) if isinstance(raw, str) else None
+    digits = m.group(1).lstrip("0") if m else ""
+    if not digits:
+        return PLAT_VERIFIED
+    return PLAT_MAX if len(digits) > 3 else min(int(digits), PLAT_MAX)
+
+
 def _rec_plat(hdr):
-    """P1603: the header's `plat` (the run's start mark): 0 absent or unreadable, an unknown
-    positive one the highest this surfd knows, as submit_run files a post's."""
-    got = strict_int((hdr.get("plat") or "").strip() or None, PLAT_VERIFIED, 1 << 62)
-    return min(got, PLAT_MAX) if got is not None else PLAT_VERIFIED
+    """P1603: the header's `plat` (the run's start mark), read as _plat_of reads a post's."""
+    return _plat_of(hdr.get("plat"))
+
+
+def _rec_finish_plat(path):
+    """P1603: the finish's `plat` record (the run's mark), from the file's last _REC_TAIL bytes as
+    _rec_meta reads `end`; 0 when there is none or the file cannot be read."""
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(max(0, os.fstat(fh.fileno()).st_size - _REC_TAIL))
+            tail = fh.read().decode("utf-8", "replace").split("\n")[:-1]
+    except (OSError, TypeError, ValueError):
+        return PLAT_VERIFIED
+    return max([_plat_of(line[5:]) for line in tail if line.startswith("plat ")] or [PLAT_VERIFIED])
 
 
 def _keep_file(src, dst):

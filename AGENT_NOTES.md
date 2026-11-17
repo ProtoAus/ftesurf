@@ -3,14 +3,17 @@
 ## P1603 Linux runs rank, marked: what it does to test arms (17 Nov 2026)
 
 - A client whose CSQC reports no IPH_RAW (the Linux game) now reads `would 0  why ok` when its profile
-  passes and `sv_rank_linux` is 1 (the default; lobby.cfg holds 0 until surfd stores the mark, and 0 is the
-  old `would 1  why platform`); its guard values are not judged. The mark is `plat`/`wouldplat` on
+  passes and SV_RankLinux says so (`sv_rank_linux` 1; unset is 1 off a lobby and 0 on one, and lobby.cfg
+  holds 0 until surfd stores the mark; 0 is the old `would 1  why platform`); its guard values are not judged. The mark is `plat`/`wouldplat` on
   `cmd timer`'s `inprof:  said` line, `plat 1` in the .rec header (start) and after `prof` (finish),
   `&plat=1` on the POST, surfd's runs/replays.plat, and `plat` on /api/board rows (board_status prints
   ` plat 1`). Never a TF_ bit.
-- IPH_RAW and the two guard cvars count only with the engine's description (CVAR_TYPEFLAG_HASDESCRIPTION):
-  a test that `set`s in_rawinput on Linux makes a user cvar and still reads as Linux. `set`/`seta` on the
-  engine's own cvar clears TYPEFLAG_ENGINE but keeps the description, so Windows arms read as before.
+- IPH_RAW and the two guard cvars count only when `sys_platform` is "Win" AND the cvar has the engine's
+  description (CVAR_TYPEFLAG_HASDESCRIPTION). On Linux a `set` makes an undescribed user cvar, and a copied
+  Windows config (`seta in_rawinput "1" //...`: the comment becomes a description, cmd.c Cmd_set_f) is
+  stopped by sys_platform, which no config saves. `set`/`seta` on the engine's own cvar clears
+  TYPEFLAG_ENGINE but keeps the description, so Windows arms read as before. Known residual: a deliberate
+  `set sys_platform Win` on Linux only gets that player judged by Windows rules (no IPG_LIVE: unranked).
 - A Windows client always has IPH_RAW (in_win.c registers in_rawinput), so every guard arm reads as before.
 - surfd tests need Flask; on the Linux PC use a scratch venv. test_board's import runs its whole suite.
 

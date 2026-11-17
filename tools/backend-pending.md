@@ -13,16 +13,26 @@ backend entries have been removed from this queue, not relabelled as pending.
 Do not redeploy a healthy backend merely to refresh this handoff.
 
 ## P1603 Linux runs rank, marked `plat` -- pending, in this order
+RULE: never run a surfd without `runs_plat` while any lobby has `sv_rank_linux 1` -- it drops `plat`, so
+Linux runs rank unmarked, and its upserts leave stale marks.
 1. surfd generation carrying `runs_plat()` (surfd.py; recplot.py, web/board.js, web/board.css,
    templates/admin_run.html beside it). Additive: `ALTER TABLE runs|replays ADD COLUMN plat INTEGER NOT NULL
    DEFAULT 0`, no schema bump; older progs post no `plat` and an older generation ignores the column.
-   Falsifier: surfd/test_plat.py; live, a `&plat=1` POST stands a row whose /api/board entry says `"plat":1`.
-2. Lobby qwprogs + csprogs, with `ftesurf/cfg/lobby/lobby.cfg` (`set sv_rank_linux 0`): Linux runs still do
-   not rank (PW_PLATFORM) but are recorded and posted with `plat 1`; the boards colour rows that have it.
-3. `rcon set sv_rank_linux 1` on every lobby and `1` in lobby.cfg: Linux runs rank, marked.
-Rollback in reverse: `sv_rank_linux 0` (no restart), then the progs' .prev, then the previous generation (the
-column stays; an older surfd leaves it 0 on new rows and stale on upserts). A run a new progs posted to an
-older surfd has `plat` 0 in the database; backfill from its .rec (`plat` header key / finish record).
+   Check: surfd/test_plat.py before; live, `PRAGMA table_info(runs)` and `(replays)` list `plat`. No test
+   POST onto a real board: the live posting check is step 2's real Linux run.
+2. Lobby qwprogs + csprogs, with `ftesurf/cfg/lobby/lobby.cfg` (`set sv_rank_linux 0`; unset also reads 0
+   on a lobby): Linux runs still do not rank (PW_PLATFORM) but are recorded and posted with `plat 1`.
+   Check: a real Linux run lands on the COMMUNITY board, its /api/board row says `"plat":1`, its .rec has
+   `plat 1` in the header and after `prof`, and the scoreboard's community tab draws it sky blue.
+3. `rcon set sv_rank_linux 1` on every lobby and `set sv_rank_linux 1` in lobby.cfg: Linux runs rank, marked.
+Rollback, in reverse and in this order: FIRST `rcon set sv_rank_linux 0` on every lobby AND lobby.cfg back to
+`0` (no restart; a restart with lobby.cfg at 1 would rank them again); then the progs' .prev; then the previous
+surfd generation. Already-ranked Linux runs show unmarked under an older surfd (it does not read the column),
+and its upserts leave `plat` stale (a Windows best over a Linux row keeps 1; a Linux best over a Windows row,
+or a new replay row, gets 0). Repair once the runs_plat generation is back: (a) replays, raise-only, from each
+file the window filed (`max(header plat, finish plat)`, as surfd's `_rec_plat` / `_rec_finish_plat` read
+it); (b) runs with `replay_id > 0` take their replay's `plat`; (c) stage rows (`replay_id 0`) take the plat of
+the leg-0 replay with their `runid`. A run a new progs posted to an older surfd is repaired the same way.
 
 ## 17 Nov 2026 04:04Z: P1600 LIVE (tools/p1600-delivery.md)
 tascontent.py sealed (mapwatch works again), guard tas86-v1, sweep.py/test_sweep.py at main (P1580; P1469 was

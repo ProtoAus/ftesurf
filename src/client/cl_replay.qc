@@ -585,10 +585,12 @@ float(string name, float bit, __inout float have) Rec_InputCvar =
 	return cvar(name);
 };
 
-// P1603: in_rawinput and the guard cvars count only with the engine's description: `set` on Linux makes a
-// user cvar with none; `set`/`seta` on the engine's own clears TYPEFLAG_ENGINE (cmd.c:4462) but keeps it.
-float(string name, float bit, __inout float have) Rec_InputCvarDesc =
+// P1603: in_rawinput and the guard cvars (in_win.c only) count only on sys_platform "Win", which no config
+// saves (a copied Windows cfg can describe them on Linux), and with the engine's description (cmd.c:4462).
+float(string name, float bit, __inout float have) Rec_InputCvarWin =
 {
+	if (strcmp(cvar_string("sys_platform"), "Win"))
+		return 0;
 	if (!(cvar_type(name) & CVAR_TYPEFLAG_HASDESCRIPTION))
 		return 0;
 	return Rec_InputCvar(name, bit, have);
@@ -622,7 +624,7 @@ void() Rec_ProfileReport =
 	local float ghave, noleg, touch, gbad, keys, live, lapses;
 
 	have = 0;
-	raw  = Rec_InputCvarDesc("in_rawinput", IPH_RAW, have);
+	raw  = Rec_InputCvarWin("in_rawinput", IPH_RAW, have);
 	filt = Rec_InputCvar("m_filter",    IPH_FILTER, have);
 	acc  = Rec_InputCvar("m_accel",     IPH_ACCEL,  have);
 
@@ -647,7 +649,7 @@ void() Rec_ProfileReport =
 
 	// P1573: injected clicks and touchpads; FS_GuardWhy has the rule.
 	ghave = 0;
-	noleg = Rec_InputCvarDesc("in_rawinput_nolegacy", IPG_NOLEGACY, ghave);
+	noleg = Rec_InputCvarWin("in_rawinput_nolegacy", IPG_NOLEGACY, ghave);
 	// The engine applies the block from .ival (Q_atoi), cvar() is Q_atof: " 1" or 0.99999999 read 1 here
 	// and 0 there. Only the exact string "1" is reported as on. After the exists test: cvar_string creates.
 	if (ghave & IPG_NOLEGACY)
@@ -655,7 +657,7 @@ void() Rec_ProfileReport =
 		noleg = 0;
 	if (!rec_rp_guardscan || rec_rp_guardmap)
 		noleg = 0;                  // world not scanned yet, or the map set what the engine applies
-	touch = Rec_InputCvarDesc("in_rawinput_touchpad", IPG_TOUCHPAD, ghave);
+	touch = Rec_InputCvarWin("in_rawinput_touchpad", IPG_TOUCHPAD, ghave);
 	// P1576: engine 1576+ refuses map locks on the guard cvars and publishes what it applies; there that
 	// replaces the reads and the scan above. Engine-made and read-only only: on an older engine a
 	// player's `set in_guard_live 7` makes a user cvar, which has neither flag.

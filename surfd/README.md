@@ -176,10 +176,11 @@ POST /api/run         (application/x-www-form-urlencoded)   -- schema 3
     rectrunc  1 if the run hit FS_RECMAX and the recording is short
     plat      P1603: the run's platform mark, sent only when non-zero: 1 a client
               without Windows raw-input verification (the Linux game), which
-              ranks.  An unknown positive value is filed as the highest known
-              (1); garbage or a negative as 0; both logged.  A post below its
-              recording's header `plat` is filed at the header's (logged) and
-              keeps the leaf: the mark only rises in a run.
+              ranks.  Any positive integer above the highest known (1) is filed
+              as 1; a negative or non-integer as 0; both logged.  A post below
+              its recording's header or finish `plat` is filed at the file's
+              (logged) and keeps the leaf, and a same-evidence re-post raises a
+              replay filed lower: the mark only rises in a run.
   -> 200 {"ok":true,"stored":true|false,"best":<ms>,"rank":n,"of":n,"rep":<id>,
           "tier":"ranked"|"community","prevms":<ms>}
         `tier` is the board the run LANDED on (after certifiable() demotion);
@@ -199,13 +200,16 @@ without Windows raw-input verification, which the game and the site show in sky
 blue with "Linux: Not mouse verified".  Every other row keeps its bytes.
 /board/api/maps carries it on a map's `wr` the same way.
 
-P1603 DEPLOY ORDER (tools/backend-pending.md has the steps): the surfd
-generation with `runs_plat` first (an additive ALTER; older progs never send
-`plat`, older surfd generations ignore the column), then the lobby progs (they
-post `plat` but keep Linux runs unranked while lobby.cfg's `sv_rank_linux 0`
-holds), then `sv_rank_linux 1` on the lobbies.  Roll back in reverse.  A run a
-new progs posted to an older surfd lost its mark; its .rec header and finish
-`plat` lines are what a backfill would read.
+P1603 DEPLOY ORDER (tools/backend-pending.md has the steps and the repair):
+the surfd generation with `runs_plat` first (an additive ALTER; older progs
+never send `plat`, older surfd generations ignore the column), then the lobby
+progs (they post `plat` but keep Linux runs unranked while lobby.cfg's
+`sv_rank_linux 0` holds), then `sv_rank_linux 1` on the lobbies (rcon and
+lobby.cfg).  Never run a surfd without `runs_plat` while any lobby has
+`sv_rank_linux 1`.  Roll back in reverse, `sv_rank_linux 0` (rcon AND
+lobby.cfg) FIRST: under an older surfd ranked Linux runs show unmarked and its
+upserts leave `plat` stale.  The repair reads each file's header and finish
+`plat` (raise-only on replays), then runs follow their replay.
 
 An optional `&name=<text>` filters this map/track/leg/style board by a literal,
 case-insensitive substring of the player's plain display name (Quake colour
