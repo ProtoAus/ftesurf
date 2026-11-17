@@ -2452,8 +2452,8 @@ def case_angle_sweep_joins_at_the_named_offset():
     # The stored detail names both offsets and the vote (rcptcheck stores angle_off and angle_solo, not notes).
     rep = report_inproc(L, view)
     off, solo = rep.info.get("angle_off", ""), rep.info.get("angle_solo", "")
-    check(re.search(r"joined at \+[34] ticks, which \d+ of \d+ matched moves name; the one-frame figures are at "
-                    r"\+0 \(P1599\)$", off) is not None and solo.endswith("-- one-frame join at +0 ticks"),
+    check(re.search(r"joined at \+[34] ticks: of \d+ sampled matched moves, \d+ name it exactly and \d+ lie within "
+                    r"a tick of it; the one-frame figures are at \+0 \(P1599\)$", off) is not None and solo.endswith("-- one-frame join at +0 ticks"),
           "angle_off names the sweep's offset and its vote, angle_solo the one-frame rule's offset")
     check("the sweep's join, at +" in rep.info.get("angle_joined", "")
           and "the sweep's join, at +" in rep.info.get("angle_dev", ""),
@@ -2479,9 +2479,47 @@ def case_angle_sweep_offset_gate():
     few = [{3}] * 4 + [{100 + k} for k in range(vm - 4)]
     check(rc.sweep_offset(0, fl + 1, few, hold(vm))[0] == 0, "...not when under half the matched moves name it")
     half = [{2}] * 2 + [{3}] * 3 + [{100 + k} for k in range(vm - 5)]
-    check(rc.sweep_offset(0, fl + 1, half, hold(vm))[:2] == (3, 5), "...a tick either side counts toward the half")
+    check(rc.sweep_offset(0, fl + 1, half, hold(vm))[:3] == (3, 3, 5),
+          "...a tick either side counts toward the half, and the exact count is reported apart")
     for tie in ([{-3}] * vm + [{3}] * vm, [{3}] * vm + [{-3}] * vm):
         check(rc.sweep_offset(0, fl + 1, tie, hold(vm))[0] == 3, "a tie between -3 and +3 goes to +3, either order")
+    cov = lambda at3: (lambda off: 100 if off == 0 else at3)   # noqa: E731
+    check(rc.sweep_offset(0, fl + 1, m, cov(75))[0] == 3 and rc.sweep_offset(0, fl + 1, m, cov(74))[0] == 0,
+          "...and only where the sweep joins at least ANG_LAG_COVER of what offset 0 joins (75 of 100 yes, 74 no)")
+
+
+def tail_view(lines, n, pad=0):
+    """A dense sidecar 90 deg off everywhere, plus exact frames at run ticks 0.. for the last `n` in-range moves
+    (and `pad` moves past the end): every exact match sits in one short stretch, at one far offset."""
+    base = view_for(lines, rot=90.0, dense=3)
+    rows = [l.split() for l in lines if l.startswith("in ")]
+    E = int([l for l in lines if l.startswith("end ")][0].split()[1])
+    tail = [f for f in rows if E - n < int(f[2]) - HORIZON <= E + pad]
+    first = int(tail[0][2]) - HORIZON           # one offset for all of them: a move's tick minus this
+    extra = ["0 0 %d %.2f %.2f 0" % (int(f[2]) - HORIZON - first, float(f[7]), float(f[8])) for f in tail]
+    merged = sorted((ln.split() for ln in base[4:] + extra), key=lambda f: (int(f[2]), float(f[0])))
+    return base[:4] + ["%.4f %d %s" % (10.0 + i * 0.002, 1000 + i, " ".join(f[2:])) for i, f in enumerate(merged)]
+
+
+def case_angle_join_must_cover_the_run():
+    """REVIEW ROUND 3 (P1599).  An offset at which few moves join judges few moves.  Exact matches confined to a
+    short stretch named a far offset; the sweep then joined only that stretch.  P1599's named-offset join took 10
+    such moves, and the lag search already accepted one on 50.  Both now need ANG_LAG_COVER of offset 0's join."""
+    L = build(sweep=600, packets=1400)
+    rep = report_inproc(L, tail_view(L, 20))
+    check(not any("the sweep rules judge at" in x for x in rep.notes)
+          and any("the sidecar does not describe this recording" in x for x in rep.faults),
+          "20 exact moves in one stretch do not move the sweep; it judges the run at 0 and faults")
+    rows = sum(1 for l in L if l.startswith("in "))
+    E = int([l for l in L if l.startswith("end ")][0].split()[1])
+    rep2 = report_inproc(L, tail_view(L, 60, pad=rows))
+    check(rep2.info.get("angle_lag", "").startswith("+0 ticks")
+          and any("the sidecar does not describe this recording" in x for x in rep2.faults),
+          "60 exact moves plus the padding past the end are not an accepted lag either (%s)"
+          % rep2.info.get("angle_lag", "")[:40])
+    check(E > 1000, "fixture: the run is long enough that the stretch is a small part of it (%d ticks)" % E)
+    honest = report_inproc(L, view_for(L, dense=3))
+    check(not honest.faults, "CONTROL: the same recording with an honest dense sidecar passes")
 
 
 def case_angle_sweep_join_keeps_the_one_frame_fault():
@@ -2522,6 +2560,36 @@ def case_angle_sweep_join_keeps_the_one_frame_fault():
           "post-end moves do not outvote the in-range moves: the sweep joins at the in-range delay and passes")
     if rep2.faults:
         print("        faults=%s notes=%s" % (rep2.faults[:2], [x[:120] for x in rep2.notes[:3]]))
+    # The same with GHOST-WINDOW moves in place of post-end ones (review round 3: only post-end was tested).
+    G = with_ghost(L, 300, 900)
+    wg = wobble_view(G, dense=3, rot=0.5, lo=0.0, hi=0.9)
+    planted = ["0 0 %d %s %s 0" % (int(f[2]) - HORIZON - 200, "%.2f" % float(f[7]), "%.2f" % float(f[8]))
+               for f in (l.split() for l in G if l.startswith("in "))
+               if 300 <= int(f[2]) - HORIZON <= 900 and int(f[2]) - HORIZON - 200 >= 0]
+    merged = sorted((ln.split() for ln in wg[4:] + planted), key=lambda f: (int(f[2]), float(f[0])))
+    wg2 = wg[:4] + ["%.4f %d %s" % (10.0 + i * 0.002, 1000 + i, " ".join(f[2:])) for i, f in enumerate(merged)]
+    rep3 = report_inproc(G, wg2)
+    check(len(planted) > 300 and not rep3.faults
+          and any("the sweep rules judge at +3 ticks" in x or "the sweep rules judge at +4 ticks" in x
+                  for x in rep3.notes),
+          "ghost-window moves do not outvote the in-range ones either (%d planted)" % len(planted))
+    if rep3.faults:
+        print("        faults=%s" % [x[:120] for x in rep3.faults[:2]])
+
+
+def case_angle_sweep_join_is_v9_only():
+    """P1599 REVIEW ROUND 3.  A `.v_angle` (pre-v9) source has no one-frame rule, so "the one-frame figures are at
+    +0" would describe nothing, and the named-offset join was calibrated on v9 pairs: such a source keeps main's
+    join.  And angle_lag's share is the share of the offset it names, not of the winner a fallback rejected."""
+    L8 = build(ver=8, sweep=600, packets=400)
+    rep = report_inproc(L8, wobble_view(L8, dense=3))
+    check(not any("the sweep rules judge at" in x for x in rep.notes) and "P1599" not in rep.info.get("angle_off", ""),
+          "a pre-v9 recording's sweep keeps its join (%s)" % rep.info.get("angle_source"))
+    L = build(sweep=600, packets=400)
+    rep9 = report_inproc(L, wobble_view(L, dense=3))
+    m = re.match(r"\+0 ticks.*named by (\d+)% of sampled moves", rep9.info.get("angle_lag", ""))
+    check(m is not None and int(m.group(1)) < 10 and any("the sweep rules judge at" in x for x in rep9.notes),
+          "angle_lag at +0 gives +0's own share, not the delay's (%s)" % rep9.info.get("angle_lag"))
 
 
 def retry_clock_pair(retries=2, resets=2):
@@ -3828,6 +3896,8 @@ def main():
                case_angle_sweep_joins_at_the_named_offset,
                case_angle_sweep_offset_gate,
                case_angle_sweep_join_keeps_the_one_frame_fault,
+               case_angle_sweep_join_is_v9_only,
+               case_angle_join_must_cover_the_run,
                case_angle_omission_does_not_read_as_cover,
                case_angle_tight_rule_abstains_where_the_epoch_moves,
                case_angle_tight_rule_is_keyed_on_the_source_not_the_version,

@@ -3734,6 +3734,9 @@ ANG_LAG_MIN = 50         # ...on at least this many joined moves
 # where the sweep convicted it by accident; per-player alignment history is what can see that.
 ANG_LAG_VOTE = 0.5       # share of in-range matched moves (each counted once) within a tick of the winner
 ANG_LAG_VOTE_MIN = 10    # ...of at least this many, and the sweep must join at least this many moves there
+# A JOIN THAT COVERS LITTLE OF THE RUN JUDGES LITTLE OF IT: a named or accepted offset must join this share of what
+# offset 0 joins (review round 3). Real lobby pairs at their named offsets: 98% or more.
+ANG_LAG_COVER = 0.75
 # THERE IS NO WINDOW, BECAUSE A WINDOW HAS AN EDGE AND THE EDGE CONVICTS.
 # Measured by a reviewer: at 12 ticks of lag an honest pair is clean and at 13
 # it draws both faults -- and widening 12 to 25 only moved the cliff to 26.
@@ -3772,25 +3775,29 @@ def angdelta(a, b):
 
 
 def sweep_offset(lag, bestsc, moveoffs, joinable):
-    """P1599: the offset the SWEEP rules join at -> (offset, near, matched).
+    """P1599: the offset the SWEEP rules join at -> (offset, exact, near, matched).
 
-    `moveoffs` holds one set of candidate offsets per matched move the join can cover; `joinable(off)` counts the
+    `moveoffs` holds one set of candidate offsets per sampled matched move the join can cover (`exact` of them
+    name the winner, `near` lie within a tick of it); `joinable(off)` counts the
     moves the sweep would join at `off`. Moves only when nothing aligns to 0.05 deg (which leaves `lag` at 0).
     """
     matched = len(moveoffs)
     if bestsc <= ANG_LAG_FLOOR or matched < ANG_LAG_VOTE_MIN:
-        return lag, 0, matched
+        return lag, 0, 0, matched
     tally = {}
     for offs in moveoffs:
         for o in offs:
             tally[o] = tally.get(o, 0) + 1
     # A delay only lags the sidecar: a tie between +k and -k goes to +k.
     vlag = max(tally.items(), key=lambda kv: (kv[1], -abs(kv[0]), kv[0] > 0))[0]
+    exact = tally[vlag]
     near = sum(1 for offs in moveoffs if offs & {vlag - 1, vlag, vlag + 1})
-    # The join floor keeps the one-frame rule's verdict: an empty sweep join returns before that rule runs.
-    if vlag <= 0 or near < ANG_LAG_VOTE * matched or joinable(vlag) < ANG_LAG_VOTE_MIN:
-        return lag, near, matched
-    return vlag, near, matched
+    # The join floor keeps the one-frame rule's verdict (an empty sweep join returns before that rule runs); the
+    # cover floor keeps the sweep judging most of the run.
+    jv = joinable(vlag)
+    if vlag <= 0 or near < ANG_LAG_VOTE * matched or jv < ANG_LAG_VOTE_MIN or jv < ANG_LAG_COVER * joinable(lag):
+        return lag, exact, near, matched
+    return vlag, exact, near, matched
 
 
 def angle_join(r, rec, frames):
@@ -3910,9 +3917,11 @@ def angle_join(r, rec, frames):
         scored = [(score(o), o, n) for o, n in cands]
         (bestsc, j), lag, top = min(scored, key=lambda s: (s[0][0], abs(s[1])))
         runner = min([sc for (sc, _j), oo, _n in scored if oo != lag] or [100.0])
+        j0 = [jj for (_sc, jj), oo, _n in scored if oo == 0][0]     # 0 is always a candidate
         if lag and not (bestsc <= ANG_LAG_FLOOR and j >= ANG_LAG_MIN
                         and runner - bestsc >= ANG_LAG_SEP
-                        and bestsc * ANG_LAG_EDGE <= runner):
+                        and bestsc * ANG_LAG_EDGE <= runner
+                        and j >= ANG_LAG_COVER * j0):
             lag, bestsc = 0, score(0)[0]
     else:
         bestsc = score(0)[0]
@@ -3923,7 +3932,8 @@ def angle_join(r, rec, frames):
     r.info["angle_lag"] = ("%+d ticks%s, %.2f%% past %g deg there, named by "
                            "%.0f%% of sampled moves%s"
                            % (lag, ms, bestsc, ANG_SOLO,
-                              100.0 * top / seen if seen else 0.0,
+                              # the offset's own share: `top` is the winner's, which a fallback to 0 rejected
+                              100.0 * votes.get(lag, 0) / seen if seen else 0.0,
                               "; the first %d moves have no frame under it" % lag
                               if lag > 0 else ""))
     if not lag and bestsc > ANG_LAG_FLOOR:
@@ -3939,12 +3949,15 @@ def angle_join(r, rec, frames):
                                   100.0 * top / seen if seen else 0.0))
     # P1599 (see ANG_LAG_VOTE): the sweep rules' join. joinable() is the join loop's own test, so a moved join
     # holds at least ANG_LAG_VOTE_MIN moves and `if not joined` below cannot drop the one-frame rule's verdict.
-    slag, snear, smatched = sweep_offset(
-        lag, bestsc, moveoffs,
-        lambda off: sum(1 for t in mts if coverable(t - instart) and (t - instart - off) in byt))
+    slag, sexact, snear, smatched = lag, 0, 0, 0
+    if tight:   # calibrated on v9 lobby pairs; a .v_angle source has no one-frame rule to stay behind
+        slag, sexact, snear, smatched = sweep_offset(
+            lag, bestsc, moveoffs,
+            lambda off: sum(1 for t in mts if coverable(t - instart) and (t - instart - off) in byt))
     if slag != lag:
-        r.note("the sweep rules judge at %+d ticks, the offset the frames' own angles name (%d of %d "
-               "matched moves within a tick of it); the one-frame rule stays at %+d" % (slag, snear, smatched, lag))
+        r.note("the sweep rules judge at %+d ticks, the offset the frames' own angles name (of %d sampled "
+               "matched moves, %d name it exactly and %d lie within a tick of it); the one-frame rule stays at %+d"
+               % (slag, smatched, sexact, snear, lag))
 
     # THE RESIDUE OF A LAG IS INTRINSIC AND NOT A BUG.  A sidecar that lags by N
     # ticks has nothing to say about the run's first N, and no arithmetic
@@ -4150,8 +4163,9 @@ def angle_join(r, rec, frames):
                                % (frac, ANG_CUT, longest, worst, travel))
     if slag != lag:
         # rcptcheck stores angle_off and angle_solo, not the note: the offsets and the vote ride here.
-        r.info["angle_off"] += (" -- joined at %+d ticks, which %d of %d matched moves name; the one-frame "
-                                "figures are at %+d (P1599)" % (slag, snear, smatched, lag))
+        r.info["angle_off"] += (" -- joined at %+d ticks: of %d sampled matched moves, %d name it exactly and %d "
+                                "lie within a tick of it; the one-frame figures are at %+d (P1599)"
+                                % (slag, smatched, sexact, snear, lag))
     # BOTH RULES MAY FIRE ON ONE PAIR AND THAT IS KEPT DELIBERATELY.  A
     # reviewer read the two faults as one finding said twice; suppressing the
     # sweep one lost the thing it alone says -- that the disagreement is a
