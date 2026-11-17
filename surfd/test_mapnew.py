@@ -241,8 +241,9 @@ def case_hosts_held():
     age(state, "hosts", "cdn", 10 * N.HOST_HOLD)
     age(state, "files", bkey, 10 * N.FILE_WAIT)
     new(maps, state)
-    check("its next good answer installs and clears the hold",
-          (os.path.exists(os.path.join(maps, "surf_b.bsp")), "cdn" in mine(state)["hosts"]), (True, False))
+    check("its next good answer installs; the hold is over but remembered until HOST_FORGET",
+          (os.path.exists(os.path.join(maps, "surf_b.bsp")), mine(state)["hosts"]["cdn"][0] <= T.REAL_TIME()),
+          (True, True))
     w.down.add("mom")
     w.asked = []
     new(maps, state)
@@ -343,12 +344,13 @@ def case_port_row():
     w.ksf["surf_x_ksf"] = T.Z("surf_x_ksf", "xk")
     w.ksf["surf_x_ksf"]["tier"] = 5
     w.newest = ["surf_x_ksf"]
+    base0 = row_of(state, "surf_x")
     new(maps, state)
-    port, base = row_of(state, "surf_x_ksf"), row_of(state, "surf_x")
-    check("the port's row ends with its base map", [r.split()[-1] for r in port], ["surf_x"])
+    port = row_of(state, "surf_x_ksf")
+    check("the port's row ends with its base map; the base's row is left as mapwatch wrote it",
+          ([r.split()[-1] for r in port], row_of(state, "surf_x")), (["surf_x"], base0))
     watch(maps, state)
-    check("...and mapwatch's next run writes both rows the same",
-          (row_of(state, "surf_x_ksf"), row_of(state, "surf_x")), (port, base))
+    check("...and mapwatch's next run writes the port's row the same", row_of(state, "surf_x_ksf"), port)
 
 
 def case_owed_rows():
@@ -369,6 +371,119 @@ def case_owed_rows():
     check("the next run, with a nameless dl line in the list, runs", new(maps, state), 0)
     check("...writes the owed row and keeps the odd line",
           (len(row_of(state, "surf_new")), "dl " in dl_rows(state), mine(state)["owed"]), (1, True, {}))
+
+
+def case_round2():
+    """Review round 2: KSF's names need a fresh whole reading; tier-less entries stay out of
+    the catalogue; an owed row yields to mapwatch's newer whole reading."""
+    w, maps, state = setup({"surf_a": T.M("a")}, {"surf_ka": T.Z("surf_ka", "ka")})
+    watch(maps, state)
+    cp = os.path.join(state, "catalogue.json")
+    doc = json.load(io.open(cp))
+    doc["at"] -= N.CATALOGUE_FRESH + 60
+    with open(cp, "w") as fh:
+        json.dump(doc, fh)
+    w.ksf["surf_kn"] = T.Z("surf_kn", "kn")
+    w.newest = ["surf_kn"]
+    new(maps, state)
+    check("mapwatch's whole reading is old: KSF's new map waits",
+          os.path.exists(os.path.join(maps, "surf_kn.bsp")), False)
+
+    w, maps, state = setup({"surf_a": T.M("a")}, {"surf_ka": T.Z("surf_ka", "ka")})
+    watch(maps, state)
+    w.add("surf_t", T.M("t", tier=3))
+    w.tiercode["surf_t"] = 404
+    new(maps, state)
+    cp = os.path.join(state, "catalogue.json")
+    check("its tier unknown: the map is listed, its entry kept out of the catalogue",
+          (len(row_of(state, "surf_t")), "surf_t" in json.load(io.open(cp))["maps"]), (1, False))
+    w.down.add("ksf")
+    watch(maps, state)
+    check("...so mapwatch's next run (Momentum read, KSF not) gives its tier",
+          [r.split()[4] for r in row_of(state, "surf_t")], ["3"])
+
+    w, maps, state = setup({"surf_a": T.M("a")}, {"surf_ka": T.Z("surf_ka", "ka")})
+    watch(maps, state)
+    dl = os.path.join(state, "mapdl.txt")
+    os.rename(dl, dl + ".away")
+    w.add("surf_o", T.M("o", tier=3))
+    try:
+        new(maps, state)
+    finally:
+        os.rename(dl + ".away", dl)
+    d = mine(state)
+    d["owed"]["surf_o"]["at"] -= 10
+    with open(os.path.join(state, "mapnew.json"), "w") as fh:
+        json.dump(d, fh)
+    w.mom["surf_o"]["tier"] = 6
+    watch(maps, state)
+    row = row_of(state, "surf_o")
+    new(maps, state)
+    check("owed, then mapwatch read both lists: its row (the new tier) stands and nothing is owed",
+          (row_of(state, "surf_o"), [r.split()[4] for r in row], mine(state)["owed"]), (row, ["6"], {}))
+
+
+def case_round2_hosts():
+    """Review round 2, host safety."""
+    w, maps, state = setup({"surf_a": T.M("a")}, {"surf_ka": T.Z("surf_ka", "ka")})
+    watch(maps, state)
+    w.add("surf_f", T.M("f"))
+    fk = "surf_f:%s" % T.sha(w.mom["surf_f"]["bsp"])[:12]
+    seen_then = []
+    w.hook = lambda n: seen_then.append(mine(state).get("asking"))
+    new(maps, state)
+    w.hook = None
+    check("the request in flight is saved before it is made", seen_then, [["cdn", fk]])
+    d = mine(state)
+    d["asking"] = ["cdn", "surf_g:abc"]
+    with open(os.path.join(state, "mapnew.json"), "w") as fh:
+        json.dump(d, fh)
+    new(maps, state)
+    m = mine(state)
+    check("a run ended inside a request: that host held, that file waits, the record gone",
+          ("cdn" in m["hosts"] and m["hosts"]["cdn"][0] > T.REAL_TIME(), m["files"].get("surf_g:abc", [0, 0])[1],
+           "asking" in m), (True, 1, False))
+
+    w, maps, state = setup({"surf_a": T.M("a")}, {"surf_ka": T.Z("surf_ka", "ka")})
+    w.ksf["surf_kn"] = T.Z("surf_kn", "kn")
+    w.newest = ["surf_kn"]
+    os.makedirs(state)
+    w.asked = []
+    new(maps, state)
+    check("no catalogue at all: KSF is not asked", [u for u in w.asked if u.startswith(W.KSF_BASE)], [])
+
+    w, maps, state = setup({"surf_a": T.M("a")}, {"surf_ka": T.Z("surf_ka", "ka")})
+    watch(maps, state)
+    w.ksf["surf_kn"] = T.Z("surf_kn", "kn")
+    w.newest = ["surf_kn"]
+    w.kcode = 403
+    N.main(["--maps", maps, "--state", state, "--delay", "0"])          # a dry run
+    w.asked = []
+    new(maps, state)
+    check("a dry run's refusal is kept as it was: the run after it does not ask KSF",
+          (mine(state)["hosts"].get("ksf", [0, 0, ""])[2], [u for u in w.asked if u.startswith(W.KSF_BASE)]),
+          ("HTTP 403", []))
+
+    w, maps, state = setup({"surf_a": T.M("a")}, {})
+    watch(maps, state)
+    got = []
+    for n in ("surf_q1", "surf_q2"):
+        w.add(n, T.M(n))
+        w.tiercode[n] = 429
+        new(maps, state)
+        got.append(mine(state)["hosts"]["api"][1])
+        age(state, "hosts", "api", N.HOST_HOLD_MAX)
+    check("per-map refusals under good list reads: the API's hold still doubles", got, [1, 2])
+
+    w, maps, state = setup({"surf_a": T.M("a")}, {})
+    watch(maps, state)
+    w.add("surf_e", T.M("e"))
+    with open(os.path.join(state, "mapnew.json"), "w") as fh:
+        fh.write('{"hosts": {"cdn": [Infinity, 1, "x"], "api": [%d, -5, "x"]}, "ksf_at": NaN}'
+                 % (T.REAL_TIME() + 3600))
+    check("hand-edited holds (infinite, negative): the run goes on", new(maps, state), 0)
+    check("...and those entries are dropped, so the map comes in",
+          os.path.exists(os.path.join(maps, "surf_e.bsp")), True)
 
 
 def case_tier_refusals():
@@ -528,7 +643,8 @@ def case_lock_and_budget():
 
 def main():
     for case in (case_installs_as_mapwatch, case_left_alone, case_files_wait, case_hosts_held, case_ksf,
-                 case_zones_looks, case_mapwatch_cannot_read, case_port_row, case_owed_rows,
+                 case_zones_looks, case_mapwatch_cannot_read, case_port_row, case_owed_rows, case_round2,
+                 case_round2_hosts,
                  case_tier_refusals, case_ksf_rules, case_ksf_archive_refused, case_cdn_refusal_others_go,
                  case_ksf_bytes, case_publish_raises, case_mapwatch_hosts, case_lock_and_budget):
         print("\n%s:" % case.__name__)
