@@ -250,20 +250,22 @@
   and the row stores VALID, indistinguishable from checked-and-passed, and is not read again without a re-read.
 - test_sweep leaks an empty %TEMP%\elsewhere-* directory per run (test_sweep.py ~2008).
 
-## Angle cross-check falsely faults ~10% of lobby receipts -- P1599 parked (17 Nov, ftesurf-a8)
+## Angle cross-check after P1599 -- what is left (17 Nov, ftesurf-a8)
 
-- 231 of 2,322 lobby receipts carry an angle FAULT that the current reader repeats (229 re-read): lobby sidecars
-  lag by a delay that changes by a tick, no offset holds to 0.05 deg, the join falls back to 0 and convicts.
-  Admin-only verdict; boards unaffected. Record and both rejected designs: tools/p1599-claim.md.
-- A single pair cannot separate "client that aligns exactly + a small lie" from "honest client whose delay
-  wobbles": two review rounds showed each fix gives up a case the fallback caught on aligned clients. Next: a
-  per-player record of whether each client aligns (the per-player baselines leaf), then judge the wobble only
-  for clients that never align.
-- The sweep rules normalise by the RECORDED angle's motion, so an assist inflates its own allowance (a 45 deg
-  jump on scattered ticks passes at the right offset, before any P1599). Normalising by the drawn frames' motion
-  is the cheapest gap to close; needs its own calibration.
+- P1599 (Lex: ship, 17 Nov) moves only the sweep rules to the offset the frames name when nothing aligns, which
+  clears the false angle FAULTs on lobby receipts (231 of 2,322 before). Record: tools/p1599-claim.md.
+- GIVEN UP BY CHOICE: a single pair cannot separate "client that aligns exactly + a small lie" from "honest
+  client whose delay wobbles". On a client that aligns exactly but draws several frames a tick, the offset-0
+  fallback used to catch, by accident, an assist dense enough to break the alignment; P1599 does not. Recovering
+  it needs a per-player record of whether each client aligns (the per-player baselines leaf).
+- The sweep rules normalise by the RECORDED angle's motion, so an assist inflates its own allowance. Fleet
+  measurement (17 Nov, 499 pairs): normalising by the DRAWN frames' step catches dense one-tick snaps the
+  current rule misses and keeps held-lie and splice detection, but at the pre-P1599 join it newly faults 2
+  honest misaligned pairs; a 3-tick drawn or recorded span loses about half the held-lie catches. Next: the
+  step form measured on P1599's join, as its own patch.
 - Stored FAULT rows: `--reread-receipts` overwrites in place with no history, and its summary does not report
-  FAULT -> VALID. Export (runid, reason, angles_reason) before any re-read, P1580's activation included.
+  FAULT -> VALID. Export (runid, verdict, reason, angles, angles_reason) before any re-read, P1580's activation
+  included; that re-read is what applies P1599 to old rows. No column says which reader version judged a row.
 
 ## Content skew vs tampering -- what P1581 left (16 Nov, ftesurf-31)
 

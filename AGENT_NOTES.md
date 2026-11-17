@@ -8502,6 +8502,14 @@ publicly WITH its fix, not before it.
   (frames indexed by their printed angles, moves vote on the tick difference),
   never searched inside a window: a window has an edge and the edge convicts.
   Reported as `angle_lag`.
+- A LOBBY CLIENT'S DELAY WOBBLES BY A TICK, SO NO OFFSET ALIGNS TO 0.05 DEG and
+  the join falls back to 0 -- where the sweep faulted ~10% of live receipts
+  (P1599, 17 Nov). Since P1599 only the SWEEP rules then join at the offset the
+  frames' exact angle matches name (`sweep_offset`: positive, >= 10 in-range
+  matched moves, half within a tick, >= 10 moves joined there); the one-frame
+  rule keeps its join. `angle_joined`/`angle_dev`/`angle_off` then describe the
+  sweep's join and say so; `angle_lag`/`angle_solo` the one-frame rule's. What
+  it gave up, by the owner's choice: see BACKLOG's P1599 section.
 - IT ABSTAINS MORE THAN IT JUDGES, AND EVERY ABSTENTION IS LOAD-BEARING --
   each of these was a false fault on an honest run before it existed:
   - a GHOST window is a legitimate disagreement between exactly these two files
