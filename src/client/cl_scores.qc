@@ -1422,7 +1422,7 @@ void() Scores_Refresh =
 #define SBC_GOOD    SUI_THEME_GOOD
 #define SBC_BAD     SUI_THEME_BAD
 #define SBC_WARN    SUI_THEME_WARN
-#define SBC_LINUX   '0.247 0.757 1'     // P1603: #3FC1FF, the web board's .linux; a PLAT_LINUX row's name
+#define SBC_LINUX   '0.247 0.757 1'     // P1603: #3FC1FF, the web board's .linux; a marked (plat > 0) row's name
 
 // Amber for the two states that explain a MISSING time, dim for the one that
 // explains nothing.  Never red: neither is something the player did, and this
@@ -2462,12 +2462,13 @@ string(float idx) Scores_HelpTip =
 	               UI_NameShow(bufstr_get(ob_bname, idx), 0));
 };
 
-// P1603: the owner cell's hover, the platform mark's line over the runners' ("" neither).
+// P1603: the owner cell's hover, the platform mark's line over the runners' ("" neither). Any mark
+// above 0 reads as Linux's until a later value has its own words: unverified is the safe side.
 string(float idx) Scores_OnlineTip =
 {
 	local string t;
 	t = Scores_HelpTip(idx);
-	if (ob_plat[idx] != PLAT_LINUX)
+	if (ob_plat[idx] <= PLAT_VERIFIED)
 		return t;
 	if (!strcmp(t, ""))
 		return "Linux: Not mouse verified";
@@ -2768,7 +2769,7 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 		if (sui_is_released(ownerid)) { sb_ownerpick = idx; pick = 0; }
 		if (idx == ob_mine && !sui_is_hovered(ownerid))
 			ncol = SBC_GOOD;
-		if (ob_plat[idx] == PLAT_LINUX && !sui_is_hovered(ownerid))
+		if (ob_plat[idx] > PLAT_VERIFIED && !sui_is_hovered(ownerid))
 			ncol = SBC_LINUX;       // P1603: over "mine", whose row fill still says so
 		if (sb_avpad)
 		{

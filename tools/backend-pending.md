@@ -12,6 +12,18 @@ renewed-fixture admission blockers. The activated
 backend entries have been removed from this queue, not relabelled as pending.
 Do not redeploy a healthy backend merely to refresh this handoff.
 
+## P1603 Linux runs rank, marked `plat` -- pending, in this order
+1. surfd generation carrying `runs_plat()` (surfd.py; recplot.py, web/board.js, web/board.css,
+   templates/admin_run.html beside it). Additive: `ALTER TABLE runs|replays ADD COLUMN plat INTEGER NOT NULL
+   DEFAULT 0`, no schema bump; older progs post no `plat` and an older generation ignores the column.
+   Falsifier: surfd/test_plat.py; live, a `&plat=1` POST stands a row whose /api/board entry says `"plat":1`.
+2. Lobby qwprogs + csprogs, with `ftesurf/cfg/lobby/lobby.cfg` (`set sv_rank_linux 0`): Linux runs still do
+   not rank (PW_PLATFORM) but are recorded and posted with `plat 1`; the boards colour rows that have it.
+3. `rcon set sv_rank_linux 1` on every lobby and `1` in lobby.cfg: Linux runs rank, marked.
+Rollback in reverse: `sv_rank_linux 0` (no restart), then the progs' .prev, then the previous generation (the
+column stays; an older surfd leaves it 0 on new rows and stale on upserts). A run a new progs posted to an
+older surfd has `plat` 0 in the database; backfill from its .rec (`plat` header key / finish record).
+
 ## 17 Nov 2026 04:04Z: P1600 LIVE (tools/p1600-delivery.md)
 tascontent.py sealed (mapwatch works again), guard tas86-v1, sweep.py/test_sweep.py at main (P1580; P1469 was
 already live). mapwatch stays at the live bytes and `23 */6`; main's mapwatch.py cadence commits must not ship. Next

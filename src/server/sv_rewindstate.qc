@@ -169,7 +169,7 @@ float(entity e) SV_RewindWarmReady =
 float(entity e, float id, float seq, float go) SV_RewindWriteState =
 {
 	local float *m;
-	local float b, f, fh, i, mark, fa, stream, buf, flags;
+	local float b, f, fh, i, mark, fa, stream, buf, flags, plat;
 	local int bytes;
 	local string path, src, branch, rid;
 	if (strlen(serverkey("*movementprofile"))) return FALSE; // no historic AG tuple export
@@ -290,9 +290,13 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 	}
 	fputs(f, sprintf("flags %d\npb %d\ndirty %d\ncheat %d\nhopped %d\nfromsave %d\nhandcarry %d\n",
 	                 flags, m[b+19], m[b+20], m[b+21], m[b+22], m[b+23], m[b+50]));
-	// P1603: the ring keeps no mark; a kept attempt was played by this connection, so its client's.
-	if (SV_RunPlat(e))
-		fputs(f, sprintf("plat %d\n", SV_RunPlat(e)));
+	// P1603: the ring keeps no mark: the live run's, and a kept attempt's own (SV_RecFailKeep; a resume
+	// or a sent save can have given it one no client here reported), raised by this client's.
+	plat = SV_RunPlat(e);
+	if (fa)
+		plat = max(plat, e.rec_fa_plat);
+	if (plat)
+		fputs(f, sprintf("plat %d\n", plat));
 	fputs(f, sprintf("tasnative %d\n", e.run_tas_used ? 1 : 0));
 	// Patch 840: as SV_SaveWriteState spells it.
 	fputs(f, sprintf("slowclk %.4f %d %d %.4f %.4f ", m[b+55], m[b+56], m[b+57], m[b+58], m[b+59]));

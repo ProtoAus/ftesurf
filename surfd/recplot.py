@@ -348,7 +348,7 @@ def _parse(fh, max_bytes, max_points):
         elif kw == "plat":
             # P1603: the run's platform mark, after `prof`; the key only when the file has one.
             v = _int(a[0]) if len(a) == 1 else None
-            if v is None:
+            if v is None or v <= 0:             # the finish writes it only when it is above 0
                 bad_recs += 1
                 continue
             cert["plat"] = v

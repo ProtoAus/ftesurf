@@ -3139,7 +3139,7 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None, n
             "ver": 0 if style == STYLE_TAS else row["ver"],
         })
         # P1603: likewise only on a marked row (the game and the site colour its name).
-        if row["plat"]:
+        if row["plat"] > PLAT_VERIFIED:
             rows[-1]["plat"] = row["plat"]
         # P1569: only on a helped row, so every other board's bytes stay as they were.
         if (row["flags"] & TF_HELPED) and row["replay_id"]:
@@ -3754,14 +3754,18 @@ def submit_run():
     if flags is None:
         return fail(400, "bad flags")
 
-    # P1603: the platform mark, 0 when absent.  Anything else this surfd does not know reads 0
-    # and is logged (the recbytes precedent): a mark is no reason to refuse a time.
+    # P1603: the platform mark, 0 when absent; a mark is no reason to refuse a time.  A positive
+    # value this surfd does not know is filed as the highest it does (unverified is the safe side);
+    # garbage or a negative reads 0.  Both are logged (the recbytes precedent).
     raw_plat = request.form.get("plat")
-    plat = strict_int(raw_plat, PLAT_VERIFIED, PLAT_MAX)
+    plat = strict_int(raw_plat, PLAT_VERIFIED, 1 << 62)
     if plat is None:
         if raw_plat:
             log.warning("plat %r unknown from %s; filed as 0", raw_plat[:16], src)
         plat = PLAT_VERIFIED
+    elif plat > PLAT_MAX:
+        log.warning("plat %d unknown from %s; filed as %d", plat, src, PLAT_MAX)
+        plat = PLAT_MAX
 
     style = style_of(flags)
     if style is None:
@@ -4015,12 +4019,18 @@ def submit_run():
             hdr = dict(meta[0])
             if not runid:
                 hdr.pop("runid", None)
-            bad = _rec_disagrees(hdr, mapname, track, leg, runid, flags, tickrate, plat)
+            bad = _rec_disagrees(hdr, mapname, track, leg, runid, flags, tickrate)
             if bad:
                 log.warning("rec leaf %r disagrees with the row it is filed on"
                             " (%s) from %s; dropping the leaf", leaf, bad, src)
                 leaf = ""
                 story_rec = None
+            elif _rec_plat(hdr) > plat:
+                # P1603: the mark only rises in a run (the header is its start), so a post below
+                # its own file's is the wrong number: filed at the file's, leaf kept.
+                log.warning("rec leaf %r says plat %d and the post %d, from %s; filing %d",
+                            leaf, _rec_plat(hdr), plat, src, _rec_plat(hdr))
+                plat = _rec_plat(hdr)
 
     # A REFUSED recbytes IS LOGGED, because the silent fallback hid a real bug
     # for a whole deploy.  The sender spelled 1128886 as `1.12889e+06` (QC's %g
@@ -4738,7 +4748,7 @@ def _rec_tickrate_disagrees(hdr, tickrate):
     return ""
 
 
-def _rec_disagrees(hdr, mapname, track, leg, runid, flags, tickrate=0, plat=None):
+def _rec_disagrees(hdr, mapname, track, leg, runid, flags, tickrate=0):
     """"" when a .rec header can be the run being filed, else why not.
 
     Compares only keys the file actually carries, so a recorder older than a
@@ -4752,9 +4762,7 @@ def _rec_disagrees(hdr, mapname, track, leg, runid, flags, tickrate=0, plat=None
     leaf's digest; a re-post cannot rename the replay row (submit_run).  `flags`
     is the board a run stands on, so an unbound one let a re-post move a verified
     replay to another board (the lobby sends the header's value: 42 of 42 live).
-    `plat` (P1603; None: not compared) is the start's mark in the header and the run's in the
-    post, and only rises in between (a later session's client), so only a post BELOW its file's
-    disagrees: a re-post may not strip a marked recording's mark.
+    Not `plat` (P1603): a post below its file's is raised to it instead (submit_run, _rec_plat).
     """
     def differs(key, want, fold=str):
         got = fold((hdr.get(key) or "").strip())
@@ -4765,17 +4773,14 @@ def _rec_disagrees(hdr, mapname, track, leg, runid, flags, tickrate=0, plat=None
     return (differs("map", mapname, str.lower) or differs("track", track)
             or differs("leg", leg) or differs("runid", runid)
             or differs("flags", flags, lambda v: (v.split() or [""])[0])
-            or _rec_tickrate_disagrees(hdr, tickrate) or _rec_plat_disagrees(hdr, plat) or "")
+            or _rec_tickrate_disagrees(hdr, tickrate) or "")
 
 
-def _rec_plat_disagrees(hdr, plat):
-    """P1603: "" unless the header's `plat` is above the post's (see _rec_disagrees)."""
-    if plat is None:
-        return ""
-    got = strict_int((hdr.get("plat") or "").strip() or None, 0, 1 << 30)
-    if got is not None and got > plat:
-        return "plat %d > %d" % (got, plat)
-    return ""
+def _rec_plat(hdr):
+    """P1603: the header's `plat` (the run's start mark): 0 absent or unreadable, an unknown
+    positive one the highest this surfd knows, as submit_run files a post's."""
+    got = strict_int((hdr.get("plat") or "").strip() or None, PLAT_VERIFIED, 1 << 62)
+    return min(got, PLAT_MAX) if got is not None else PLAT_VERIFIED
 
 
 def _keep_file(src, dst):
@@ -6648,8 +6653,8 @@ def _web_maps_body(now):
         (TIER_COMMUNITY, STYLE_TAS))}
     tiers = map_tiers()
     wrs = {r["map"]: r for r in db.execute(
-        "SELECT r.map, r.name, r.millis, " + VER_SQL + " AS ver FROM ("
-        "  SELECT map, name, millis, replay_id, ROW_NUMBER() OVER"
+        "SELECT r.map, r.name, r.millis, r.plat, " + VER_SQL + " AS ver FROM ("
+        "  SELECT map, name, millis, replay_id, plat, ROW_NUMBER() OVER"
         "         (PARTITION BY map ORDER BY " + BOARD_ORDER + ") AS k"
         "    FROM runs WHERE track=0 AND leg=0 AND tier=? AND style=?) r"
         " WHERE r.k = 1", (TIER_RANKED, STYLE_CLEAN)).fetchall()}
@@ -6664,7 +6669,9 @@ def _web_maps_body(now):
             "imp": im["n"] if im else 0,
             "reps": im["reps"] if im else 0,
             "have": 1 if key in playable else 0,
-            "wr": ({"name": wr["name"], "ms": wr["millis"], "ver": wr["ver"]}
+            # P1603: the WR's platform mark, only when it has one (board.js marks the holder).
+            "wr": ({"name": wr["name"], "ms": wr["millis"], "ver": wr["ver"],
+                    **({"plat": wr["plat"]} if wr["plat"] > PLAT_VERIFIED else {})}
                    if wr else None),
         }
         if tiers is not None and key in tiers:

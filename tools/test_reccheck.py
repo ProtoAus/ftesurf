@@ -1706,9 +1706,24 @@ def case_platform_mark():
                "a spoken report without in_rawinput and no header plat is a note")
     notes_with(insert_before(insert_before(build(), "begin", win), "begin", "plat 1"),
                "one packet wrote both", "header plat 1 over an in_rawinput report is a note")
-    notes_with(head(insert_before(insert_before(build(), "begin", "inprof silent 0 0 0 0 0"), "begin",
-                                  "plat 1"), "flags", str(2048)),
-               "one packet wrote both", "header plat 1 over a silent client is a note")
+    f, n = plat_notes(head(insert_before(insert_before(build(), "begin", "inprof silent 0 0 0 0 0"),
+                                         "begin", "plat 1"), "flags", str(2048)))
+    check(not f and not n, "an all-0 silent report is not compared (the file cannot say it arrived)")
+    f, n = plat_notes(head(insert_before(insert_before(build(), "begin", "inprof silent 14 0 0 0 1"),
+                                         "begin", "plat 1"), "flags", str(2048)))
+    check(not f and not n, "silent with numbers (no inguard) and plat 1 passes clean: the report arrived")
+    notes_with(head(insert_before(build(), "begin", "inprof silent 14 0 0 0 1"), "flags", str(2048)),
+               "one packet wrote both", "silent with numbers, no in_rawinput, no plat is a note")
+    f, n = plat_notes(insert_before(insert_before(build(), "begin", "inprof ok 0 0 0 0 0"), "begin", "plat 1"))
+    check(not f and not n, "a non-silent verdict with an all-0 report and plat 1 passes clean (writer's rule)")
+    f, n = plat_notes(head(insert_before(insert_before(build(), "begin", "inprof platform 14 0 0 0 1"),
+                                         "begin", "plat 1"), "flags", str(2048)))
+    check(not f and not n, "sv_rank_linux 0: verdict platform beside plat 1 passes clean")
+    notes_with(head(insert_before(insert_before(build(), "begin", "inprof platform 15 1 0 0 1"),
+                                  "begin", "plat 1"), "flags", str(2048)),
+               "one packet wrote both", "platform beside plat 1 over an in_rawinput report is a note")
+    notes_with(insert_before(build(), "begin", "inprof ok 14 0 0 nan 1"), "one packet wrote both",
+               "a NaN in the report does not stop the comparison")
     notes_with(linux(end_plat=None), "a mark only rises",
                "header plat 1 with a finish that wrote no plat is a note")
     f, n = plat_notes(insert_before(insert_before(insert_before(build(), "begin", win), "inend", "prof ok"),

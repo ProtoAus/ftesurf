@@ -1,13 +1,19 @@
 # BACKLOG.md
 
 ## Linux runs marked -- what P1603 left (17 Nov, lex-90; root linux-20261117-90)
-- The menu board (menu.dat, m_board.qc Mlb_Row) and the player profiles (in game and the site's profile page,
-  game_player / web profile rows) do not show `plat`: they need a client release (menu.dat) and surfd's
-  profile JSON to carry it. Falsifier: a plat 1 row reads sky blue with the tooltip in the menu board.
-- The opt-in native scoreboard (cl_scores_native.qc) and the site's run page (/board/api/run) carry no mark.
+- Marked so far: the scoreboard's online rows (csprogs), the site's map board rows and its map list's WR holder,
+  the owner's run page. Still WITHOUT the mark (each needs `plat` in its JSON and a display):
+  - the menu board (menu.dat, m_board.qc Mlb_Row; needs a client release);
+  - player profiles, in game (/api/board?player=, game_player) and on the site (/board/api/player, profileRows);
+  - the run and 3D watch pages (/board/api/run and /track: WEB_HEAD_KEYS, run.js/watch.js);
+  - Story/Event ladders and medals, and the WR/top-10 counts (profiles, map cards);
+  - the opt-in native scoreboard (cl_scores_native.qc): its labels are decolorized plain text, so neither the
+    colour nor the tooltip exists there; a word in the name cell would be a new design.
+  Falsifier for each: a plat 1 row reads sky blue with "Linux: Not mouse verified" there.
 - The site's player-name links are already var(--accent) #59bfff, near #3FC1FF: a Linux row's rank and time
   turn sky blue, its name barely changes. If that is too quiet, an edge strip or a chip (the .foreign shape).
 - Linux anti-cheat is deferred (Lex): any client without in_rawinput ranks marked, guard values unjudged.
+  The lobbies hold `sv_rank_linux 0` until the surfd with runs_plat is live (tools/backend-pending.md).
 
 ## 30-minute new maps -- what P1601 left (17 Nov, ftesurf-29; root C:\FTESurf-worktrees\mapnew-20261117-29)
 - surfd/mapnew.py is on main and NOT routed. It ships as guarded route `mapnew` in the surfd generation after P1600:

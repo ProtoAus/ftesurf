@@ -146,8 +146,11 @@ const MARK_COLOUR = {cp: "#7fe0a0", stage: "#ffd79a", stagestart: "#ffd79a",
   ghost: "#c59dff", warp: "#ffae57", portal: "#d38cff", spec: "#5fd3e0"};
 const SPEED_LINES = ["cp", "stage", "stagestart", "split", "resume", "retry", "restart", "ghost", "spec"];
 // P1603: surfd.py PLAT_* (replays.plat), the run's platform mark; ranks either way. 0 is also
-// every row before P1603, so it claims nothing.
+// every row before P1603, so it claims nothing; any mark above 0 is unverified.
 const PLAT_WORDS = {0: "none", 1: "Linux: not mouse verified"};
+function platWord(p) {
+  return Number(p) > 0 ? (PLAT_WORDS[p] || "not mouse verified (mark " + p + ")") : PLAT_WORDS[0];
+}
 // surfd.py TF_MULTISESSION / TF_SPEC: markers on a run that still ranks.
 // sh_defs.qc FS_CertWhy, worst first (Patch 840): why a run is not ranked.
 const CERT_WORDS = [[524288, "slow clock"], [512, "no journal"], [1024, "no ruleset"],
@@ -293,7 +296,7 @@ function renderRun(j) {
   const words = FLAG_WORDS.filter(([bit]) => Number(r.flags) & bit).map(([, w]) => w);
   dlRow(dl, "flags", frag(r.flags + " (0x" + Number(r.flags).toString(16) + ")",
         ...words.map(w => frag(" ", pill(w, "info")))));
-  if (r.plat !== undefined) dlRow(dl, "platform", PLAT_WORDS[r.plat] || ("unknown (" + r.plat + ")"));
+  if (r.plat !== undefined) dlRow(dl, "platform", platWord(r.plat));
   dlRow(dl, "node", r.node);
   dlRow(dl, "submitted", fmtDate(r.submitted));
   dlRow(dl, "file", frag(span("mono", r.leaf), r.file ? "" : " \u2014 not on this node"));
@@ -954,7 +957,7 @@ function renderHead(P) {
   // Patch 840: the finish's verdicts (absent on files written before it).
   const cert = P.cert || {};
   if (cert.prof) dlRow(dl, "prof", cert.prof);
-  if (cert.plat) dlRow(dl, "plat", cert.plat);     // P1603: the run's mark (the header's is the start's)
+  if (Number(cert.plat) > 0) dlRow(dl, "plat", platWord(cert.plat));   // P1603: the run's (the header's is the start's)
   if (cert.clk) {
     const [bound, hyst, allow, wall, stalls, cred, debt, behind] = cert.clk;
     dlRow(dl, "clock", "behind " + behind.toFixed(3) + " s over " + wall.toFixed(3) +

@@ -113,13 +113,14 @@ def case_post_and_board():
           board_row(b, "lin"))
     check("/api/board: an unmarked row has no plat key (its bytes unchanged)",
           board_row(b, "win") is not None and "plat" not in board_row(b, "win"), board_row(b, "win"))
-    for bad in ("2", "x", "-1", "1.5", ""):
-        p = "bad%s" % len(FAILS)
-        body = test_board.submit(mod, player="p" + hashlib.md5(bad.encode()).hexdigest()[:6],
-                                 name="P", ticks="4200", runid="r-" + p, plat=bad)
+    # An unknown positive mark is filed as the highest known (unverified is the safe side); garbage 0.
+    for raw, want in (("2", 1), ("7", 1), ("x", 0), ("-1", 0), ("1.5", 0), ("", 0)):
+        body = test_board.submit(mod, player="p" + hashlib.md5(raw.encode()).hexdigest()[:6],
+                                 name="P", ticks="4200", runid="r-" + raw, plat=raw)
         who = [r for r in test_board.board(mod)["rows"] if r["ticks"] == 4200]
-        check("plat %r: the run is accepted and filed unmarked" % bad,
-              isinstance(body, dict) and body.get("stored") and who and "plat" not in who[-1], (body, who))
+        check("plat %r: the run is accepted and filed plat %d" % (raw, want),
+              isinstance(body, dict) and body.get("stored") and who and who[-1].get("plat", 0) == want,
+              (body, who))
         conn = sqlite3.connect(mod._test_db)
         conn.execute("DELETE FROM runs WHERE ticks=4200")
         conn.commit()
@@ -132,6 +133,12 @@ def case_post_and_board():
     win = [r for r in rows if r.get("name") == "Win"]
     check("/board/api/map: the marked row says plat 1", lin and lin[0].get("plat") == 1, (resp.status_code, rows))
     check("/board/api/map: an unmarked row has no plat key", win and "plat" not in win[0], win)
+    # The site's map list marks the WR holder (the main ranked clean row 1: Lin's 4000).
+    resp = mod.app.test_client().get("/board/api/maps", environ_base={"REMOTE_ADDR": "127.0.0.1"})
+    maps = json.loads(resp.get_data(as_text=True)).get("maps", []) if resp.status_code == 200 else []
+    st = [m for m in maps if m.get("map") == "surf_test"]
+    check("/board/api/maps: a marked WR says plat 1", st and (st[0].get("wr") or {}).get("plat") == 1,
+          (resp.status_code, st))
     # A stage post carries it the same way (Lobby_RunBody is shared).
     test_board.submit(mod, player="lin", name="Lin", ticks="900", leg="2", runid="r-lin", plat="1")
     b = test_board.board(mod, leg=2)
@@ -145,17 +152,29 @@ def case_recording():
     rep = row(mod, "lin", "replays")
     check("a marked run's recording is filed, plat 1, bound", isinstance(body, dict) and body.get("rep")
           and rep and rep["plat"] == 1 and rep["bound"] == 1, (body, rep))
-    # A re-post of the same file that drops the mark: the header binds it (_rec_disagrees).
-    body = test_board.submit(mod, player="lin", name="Lin", ticks="4000", runid="r-lin", rec=name)
-    check("a re-post below its file's plat drops the leaf and leaves the row marked",
-          isinstance(body, dict) and body.get("rep") == 0 and (row(mod, "lin") or {}).get("plat") == 1
-          and (row(mod, "lin", "replays") or {}).get("plat") == 1, (body, row(mod, "lin")))
+    # A post below its own file's mark is filed at the file's and keeps the leaf (submit_run, _rec_plat).
+    name2 = put_rec(mod, 3990, "low", "r-low", plat=1)
+    body = test_board.submit(mod, player="low", name="Low", ticks="3990", runid="r-low", rec=name2)
+    rep = row(mod, "low", "replays")
+    check("a post below its file's plat keeps the leaf and is filed at the file's mark",
+          isinstance(body, dict) and body.get("rep") and rep and rep["bound"] == 1 and rep["plat"] == 1
+          and (row(mod, "low") or {}).get("plat") == 1, (body, rep, row(mod, "low")))
     # Windows start, Linux resume: the header has no plat and the run's post does.
     name = put_rec(mod, 4100, "res", "r-res")
     body = test_board.submit(mod, player="res", name="Res", ticks="4100", runid="r-res", plat="1", rec=name)
     check("a post above its header's mark (a later session's client) binds, plat 1",
           isinstance(body, dict) and body.get("rep") and (row(mod, "res", "replays") or {}).get("bound") == 1
           and (row(mod, "res") or {}).get("plat") == 1, (body, row(mod, "res", "replays")))
+    # The board row takes the replay's mark when it adopts it (plat = rep["plat"]): Res's replay is
+    # plat 1 (above); its board row goes, and a re-post of the same file with no mark stands it again.
+    conn = sqlite3.connect(mod._test_db)
+    conn.execute("DELETE FROM runs WHERE player='res'")
+    conn.commit()
+    conn.close()
+    body = test_board.submit(mod, player="res", name="Res", ticks="4100", runid="r-res", rec=name)
+    check("a re-post adopting a marked replay stands the row marked",
+          isinstance(body, dict) and body.get("stored") and (row(mod, "res") or {}).get("plat") == 1
+          and (row(mod, "res", "replays") or {}).get("plat") == 1, (body, row(mod, "res")))
     # restand rebuilds a board row from its replay: the mark comes with it.
     rid = row(mod, "lin", "replays")["id"]
     conn = sqlite3.connect(mod._test_db)
@@ -170,24 +189,42 @@ def case_recording():
     check("restand stands the row with its replay's mark", got == "moved" and back and back[0] == 1, (got, back))
 
 
-def case_disagrees(mod):
-    d = mod._rec_disagrees
-    base = dict(map="surf_test", track="0", leg="0")
-    check("_rec_disagrees: header plat 1, post 0 disagrees",
-          "plat" in d(dict(base, plat="1"), "surf_test", 0, 0, "", 0, 0, 0))
-    check("_rec_disagrees: header plat 1, post 1 agrees", d(dict(base, plat="1"), "surf_test", 0, 0, "", 0, 0, 1) == "")
-    check("_rec_disagrees: no header plat, post 1 agrees", d(dict(base), "surf_test", 0, 0, "", 0, 0, 1) == "")
-    check("_rec_disagrees: plat not compared (None) never disagrees",
-          d(dict(base, plat="1"), "surf_test", 0, 0, "", 0) == "")
-    check("_rec_disagrees: an unreadable header plat is not the row's fault",
-          d(dict(base, plat="x"), "surf_test", 0, 0, "", 0, 0, 0) == "")
+def case_upsert():
+    mod = test_board.fresh()
+    # A board row is the player's best: an improvement replaces its mark (plat = excluded.plat).
+    test_board.submit(mod, player="flip", name="Flip", ticks="5000", runid="r-f1", plat="1")
+    test_board.submit(mod, player="flip", name="Flip", ticks="4900", runid="r-f2")
+    check("a Linux best beaten by a Windows run loses the mark", (row(mod, "flip") or {}).get("plat") == 0,
+          row(mod, "flip"))
+    resp = mod.app.test_client().get("/board/api/maps", environ_base={"REMOTE_ADDR": "127.0.0.1"})
+    st = [m for m in json.loads(resp.get_data(as_text=True)).get("maps", []) if m.get("map") == "surf_test"]
+    check("/board/api/maps: an unmarked WR has no plat key", st and st[0].get("wr")
+          and "plat" not in st[0]["wr"], st)
+    test_board.submit(mod, player="flop", name="Flop", ticks="5000", runid="r-g1")
+    test_board.submit(mod, player="flop", name="Flop", ticks="4900", runid="r-g2", plat="1")
+    check("a Windows best beaten by a Linux run gains the mark", (row(mod, "flop") or {}).get("plat") == 1,
+          row(mod, "flop"))
+    test_board.submit(mod, player="flop", name="Flop", ticks="4950", runid="r-g3")
+    check("a slower Windows run leaves the Linux best marked", (row(mod, "flop") or {}).get("plat") == 1,
+          row(mod, "flop"))
+
+
+def case_header(mod):
+    hp = mod._rec_plat
+    check("_rec_plat: absent, unreadable or negative is 0",
+          (hp({}), hp({"plat": "x"}), hp({"plat": "-1"}), hp({"plat": " "})) == (0, 0, 0, 0))
+    check("_rec_plat: 1 is 1, an unknown higher mark the highest known",
+          (hp({"plat": "1"}), hp({"plat": "5 "})) == (1, mod.PLAT_MAX))
+    base = dict(map="surf_test", track="0", leg="0", plat="1")
+    check("_rec_disagrees never drops a leaf over plat", mod._rec_disagrees(base, "surf_test", 0, 0, "", 0) == "")
 
 
 def main():
     case_schema()
     case_post_and_board()
     case_recording()
-    case_disagrees(test_board.fresh())
+    case_upsert()
+    case_header(test_board.fresh())
     print("%d failed" % len(FAILS))
     sys.exit(1 if FAILS else 0)
 

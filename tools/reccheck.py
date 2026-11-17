@@ -1186,9 +1186,11 @@ def _check_rec(r, path, verbose=False, *, data=None):
                 r.note("header 'inprof' has %d fields after its verdict, not 5" % (len(a) - 1))
 
     # P1603: `plat <n>`, the start's platform mark, written only when non-zero and latched with
-    # `inprof` in the same packet: 1 exactly when the client spoke (have or grant non-zero; all 0
-    # when silent) without in_rawinput (have bit 1).  Before P1603 that client's verdict was
-    # `platform` and no key was written, so such a file is not compared.  Notes, never faults.
+    # `inprof` in the same packet: 1 exactly when CSQC's report arrived without in_rawinput (have bit
+    # 1).  Arrived: any verdict but `silent`, or `silent` with a non-zero number (no `inguard`); an
+    # all-0 `silent` is no report as far as the file says, so it is not compared.  Before P1603 that
+    # client's verdict was `platform` with no key (since, `platform` comes with `plat 1` while
+    # sv_rank_linux is 0), so `platform` without the key is not compared.  Notes, never faults.
     plat_head = 0
     pl = head.get("plat")
     if pl is not None:
@@ -1202,18 +1204,22 @@ def _check_rec(r, path, verbose=False, *, data=None):
             if plat_head <= 0:
                 r.note("header 'plat %d': the writer states a mark only when it is non-zero"
                        % plat_head)
-    if plat_head is not None and inprof_word not in (None, "platform"):
+    if plat_head is not None and inprof_word is not None \
+            and not (inprof_word == "platform" and pl is None):
         ipf = ip.split()
         try:
-            have, grant = int(file_float(ipf[1])), file_float(ipf[5])
+            if len(ipf) != 6:
+                raise ValueError        # noted above; nothing to compare
+            have = int(file_float(ipf[1]))
+            # A typed `m_accel nan` is honest and non-zero: float(), not file_float, for the rest.
+            nonzero = any(float(x) != 0 for x in ipf[1:6])
         except (ValueError, IndexError, OverflowError):
             pass
         else:
-            want = 1 if (have != 0 or grant != 0) and not (have & 1) else 0
-            if (plat_head > 0) != (want > 0):
+            want = 0 if have & 1 else 1
+            if (inprof_word != "silent" or nonzero) and (plat_head > 0) != (want > 0):
                 r.note("header 'plat %d' but 'inprof' says %s -- one packet wrote both"
-                       % (plat_head, "a client without in_rawinput" if want
-                          else "in_rawinput or no report"))
+                       % (plat_head, "a client without in_rawinput" if want else "in_rawinput"))
 
     # Patch 1576: `inguard <said> <have> <nolegacy> <touchpad> <keys>`, the guard values the
     # verdict was judged on. Reported; a malformed one is a note.

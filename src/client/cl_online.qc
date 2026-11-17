@@ -2589,8 +2589,8 @@ void() Online_Status =
 			word = strcat(word, sprintf(" run %g", ob_run[i]));
 		if (ob_ver[i] > 0)
 			word = strcat(word, " verified");	// Patch 374: the cell's mark
-		if (ob_plat[i] == PLAT_LINUX)
-			word = strcat(word, " linux");		// P1603: the name's sky blue
+		if (ob_plat[i] > PLAT_VERIFIED)
+			word = strcat(word, sprintf(" plat %g", ob_plat[i]));	// P1603: the name's sky blue
 
 		print(sprintf("   %3g  %-20s %10s  ticks %g @ %.6g Hz  flags %d  %s\n",
 		              ob_rank[i], UI_NameShow(bufstr_get(ob_bname, i), 0),

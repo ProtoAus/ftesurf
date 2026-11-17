@@ -2310,6 +2310,7 @@ void(entity e) SV_TimerMapTeleport =
 .float  rec_fa_serial, rec_fa_lines, rec_fa_gen, rec_fa_genbuf, rec_fa_buf, rec_fa_stream, rec_fa_own;
 .int    rec_fa_bytes;            // 0: the file did not survive (a failed rename)
 .float  rec_fa_pbad, rec_fa_rbreach;    // the attempt's start latches (SV_TimerArm resets them)
+.float  rec_fa_plat;             // P1603: its run_t_plat (SV_TimerArm resets that too)
 .string rec_fa_path, rec_fa_branch, rec_fa_rid;    // zoned
 // Patch 376: the client's mouse counts, in-band (engine cl_input.c CL_SendCounts),
 // read for the command being run.  See the `mc` record.
@@ -3292,8 +3293,9 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             report as the server held it (all 0 when it never spoke;
                             `silent` with non-zero numbers is P1573's `inguard` never
                             arriving). The guard values follow on `inguard`.
-                            `platform` (no in_rawinput) is written before P1603
-                            only; since then that client is `plat 1` below.
+                            `platform` is a report without in_rawinput: before
+                            P1603 always (no `plat`), since then only while the
+                            server's sv_rank_linux is 0, and then beside `plat 1`.
     inguard <said> <have> <nolegacy> <touchpad> <keys>
                             Patch 1576, additive.  CSQC's `inguard` report the verdict
                             was judged on: said 0 = never reported (all 0); have is the
@@ -3301,14 +3303,22 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             without which keys is unmeasured; keys 1 dropped, 0 off,
                             2 the key guard cannot run.
                             Not ok means TF_NOPROFILE was set in the same packet.
+                            Under `plat 1` (no in_rawinput) these are recorded and
+                            NOT judged: values that would fail on Windows can sit
+                            beside an `ok` verdict.
     plat <n>                P1603, additive.  The START's platform mark (PLAT_*,
                             sh_defs.qc), latched with `inprof` in the same packet:
-                            1 = CSQC reported without in_rawinput (`inprof` <have>
-                            lacks bit 1 and the client spoke), "Linux: Not mouse
-                            verified"; the run ranks and its guard values are not
-                            judged.  Written only when non-zero: absent = 0, and
-                            every file before P1603.  Not a TF_ bit (bit 21 is
-                            reserved).  The run's mark is the finish's `plat`.
+                            1 = CSQC's inprof report arrived (an `inprof` that is
+                            not the all-0 `silent`) without in_rawinput (<have>
+                            lacks bit 1), "Linux: Not mouse verified".  An all-0
+                            `silent` is no report, as far as a reader can tell
+                            (CSQC's grant is -1 when <have> lacks bit 8, so a real
+                            report is never all 0).  With sv_rank_linux 1 the
+                            run ranks and its guard values are not judged; with 0
+                            the verdict is `platform`, as before.  Written only when
+                            non-zero: absent = 0, and every file before P1603.  Not a
+                            TF_ bit (bit 21 is reserved).  The run's mark is the
+                            finish's `plat`.
     begin                   header ends here; everything after is a record
 
   THE THREE ZONE KEYS ARE ADDITIVE AND ARE ABSENT ON A MAP WITH NO ZONES, which
@@ -5445,6 +5455,7 @@ void(entity e) SV_RecFailDrop =
 	e.rec_fa_lines = 0;
 	e.rec_fa_gen = 0;
 	e.rec_fa_bytes = 0i;
+	e.rec_fa_plat = PLAT_VERIFIED;
 };
 
 // Patch 817: before SV_TimerArm's discard of a run that was on the clock.  What
@@ -5468,6 +5479,7 @@ void(entity e) SV_RecFailKeep =
 	e.rec_fa_gen = e.rec_rec_gen;
 	e.rec_fa_pbad = e.run_t_pbad;
 	e.rec_fa_rbreach = e.run_t_rbreach;
+	e.rec_fa_plat = e.run_t_plat;       // P1603: a mark a file gave it is in no live client
 	e.rec_fa_genbuf = e.rec_rec_genbuf;
 	e.rec_rec_genbuf = 0;               // SV_RecGenReset would delete it
 	if (e.rec_rec_branch != "")
@@ -11905,10 +11917,16 @@ float(entity e) SV_ProfileWhy =
 	if (e.run_t_pev == 0)
 		return PW_SILENT;
 
-	// Linux beta (Lex, 2026-09-19) returned PW_PLATFORM here: XTEST and compositor injection
-	// cannot be seen there (engine Patch 387's ceiling). P1603 (Lex, 17 Nov): such a run ranks,
-	// marked PLAT_LINUX by SV_TimerProfile; Linux anti-cheat is deferred. PW_PLATFORM stays for
-	// old files. The guard block below is skipped for it: its cvars exist only in in_win.c.
+	// Linux beta (Lex, 2026-09-19): PW_PLATFORM, as XTEST and compositor injection cannot be seen
+	// there (engine Patch 387's ceiling). P1603 (Lex, 17 Nov): with sv_rank_linux 1 such a run ranks,
+	// marked PLAT_LINUX by SV_TimerProfile (Linux anti-cheat deferred), and the guard block below is
+	// skipped: its cvars exist only in in_win.c. Lobbies hold 0 until surfd stores the mark (lobby.cfg).
+	if (SV_ProfilePlat(e) == PLAT_LINUX)
+	{
+		registercvar("sv_rank_linux", "1");     // at the read: a miss would create "" (sv_main.qc, vbsp_mp)
+		if (!cvar("sv_rank_linux"))
+			return PW_PLATFORM;
+	}
 
 	// The RULE is FS_ProfileWhy in sh_defs.qc and is not repeated here.
 	w = FS_ProfileWhy(e.run_t_pevhave, e.run_t_pevraw,

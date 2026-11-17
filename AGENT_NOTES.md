@@ -3,9 +3,14 @@
 ## P1603 Linux runs rank, marked: what it does to test arms (17 Nov 2026)
 
 - A client whose CSQC reports no IPH_RAW (the Linux game) now reads `would 0  why ok` when its profile
-  passes; its guard values are not judged. The mark is `plat`/`wouldplat` on `cmd timer`'s `inprof:  said`
-  line, `plat 1` in the .rec header (start) and after `prof` (finish), `&plat=1` on the POST, surfd's
-  runs/replays.plat, and `plat` on /api/board rows (board_status prints ` linux`). Never a TF_ bit.
+  passes and `sv_rank_linux` is 1 (the default; lobby.cfg holds 0 until surfd stores the mark, and 0 is the
+  old `would 1  why platform`); its guard values are not judged. The mark is `plat`/`wouldplat` on
+  `cmd timer`'s `inprof:  said` line, `plat 1` in the .rec header (start) and after `prof` (finish),
+  `&plat=1` on the POST, surfd's runs/replays.plat, and `plat` on /api/board rows (board_status prints
+  ` plat 1`). Never a TF_ bit.
+- IPH_RAW and the two guard cvars count only with the engine's description (CVAR_TYPEFLAG_HASDESCRIPTION):
+  a test that `set`s in_rawinput on Linux makes a user cvar and still reads as Linux. `set`/`seta` on the
+  engine's own cvar clears TYPEFLAG_ENGINE but keeps the description, so Windows arms read as before.
 - A Windows client always has IPH_RAW (in_win.c registers in_rawinput), so every guard arm reads as before.
 - surfd tests need Flask; on the Linux PC use a scratch venv. test_board's import runs its whole suite.
 

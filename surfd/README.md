@@ -176,9 +176,10 @@ POST /api/run         (application/x-www-form-urlencoded)   -- schema 3
     rectrunc  1 if the run hit FS_RECMAX and the recording is short
     plat      P1603: the run's platform mark, sent only when non-zero: 1 a client
               without Windows raw-input verification (the Linux game), which
-              ranks.  Anything but 0/1 is logged and filed as 0.  Bound to the
-              recording like flags: a post below its file's header `plat` drops
-              the leaf.
+              ranks.  An unknown positive value is filed as the highest known
+              (1); garbage or a negative as 0; both logged.  A post below its
+              recording's header `plat` is filed at the header's (logged) and
+              keeps the leaf: the mark only rises in a run.
   -> 200 {"ok":true,"stored":true|false,"best":<ms>,"rank":n,"of":n,"rep":<id>,
           "tier":"ranked"|"community","prevms":<ms>}
         `tier` is the board the run LANDED on (after certifiable() demotion);
@@ -196,6 +197,15 @@ GET /api/board?map=&track=&leg=&tier=&style=&limit=&offset=
 `plat` (P1603) is on a row only when it is non-zero: 1 is a run from a client
 without Windows raw-input verification, which the game and the site show in sky
 blue with "Linux: Not mouse verified".  Every other row keeps its bytes.
+/board/api/maps carries it on a map's `wr` the same way.
+
+P1603 DEPLOY ORDER (tools/backend-pending.md has the steps): the surfd
+generation with `runs_plat` first (an additive ALTER; older progs never send
+`plat`, older surfd generations ignore the column), then the lobby progs (they
+post `plat` but keep Linux runs unranked while lobby.cfg's `sv_rank_linux 0`
+holds), then `sv_rank_linux 1` on the lobbies.  Roll back in reverse.  A run a
+new progs posted to an older surfd lost its mark; its .rec header and finish
+`plat` lines are what a backfill would read.
 
 An optional `&name=<text>` filters this map/track/leg/style board by a literal,
 case-insensitive substring of the player's plain display name (Quake colour
