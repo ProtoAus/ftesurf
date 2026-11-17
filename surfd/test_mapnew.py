@@ -32,6 +32,7 @@ class World(T.World):
         T.World.__init__(self, mom, ksf)
         self.newest = None
         self.kcode = None       # an HTTP status for the newest-maps list
+        self.tiercode = {}      # name -> an HTTP status for its tier request
 
     def add(self, name, m):
         self.mom[name] = m
@@ -44,6 +45,12 @@ class World(T.World):
             for m in d["data"]:
                 m.pop("leaderboards", None)
             return T.Resp(json.dumps(d).encode())
+        if url.endswith("?expand=leaderboards") and url.startswith(W.MOM_API + "/maps/"):
+            mid = int(url[len(W.MOM_API + "/maps/"):].split("?")[0])
+            n = [k for k, v in self.ids.items() if v == mid][0]
+            if n in self.tiercode:
+                self.asked.append(url)
+                raise T.http(url, self.tiercode[n])
         if url == W.KSF_BASE + N.KSF_HEAD:
             self.asked.append(url)
             if self.kcode:
@@ -84,10 +91,13 @@ def mine(state):
 
 
 def age(state, table, key, by):
-    """Move one of mapnew's holds or waits `by` seconds into the past."""
+    """Move one of mapnew's holds or waits (or, table None, its last KSF ask) `by` s into the past."""
     p = os.path.join(state, "mapnew.json")
     d = mine(state)
-    d[table][key][0] -= by
+    if table is None:
+        d[key] -= by
+    elif key in d.get(table, {}):       # absent: nothing to age, and the checks say what is wrong
+        d[table][key][0] -= by
     with open(p, "w") as fh:
         json.dump(d, fh)
 
@@ -123,8 +133,13 @@ def case_installs_as_mapwatch():
           (sum("/maps?" in u for u in w.asked), sum(N.KSF_HEAD in u for u in w.asked),
            sum(u.endswith("?expand=leaderboards") for u in w.asked), len(w.files()), len(w.zone_asks())),
           (3, 1, 1, 2, 1))
-    check("mapwatch's state, catalogue and hash cache are byte for byte as they were",
-          snap(state, "state.json", "catalogue.json", "hash.json") == before, True)
+    check("mapwatch's state and hash cache are byte for byte as they were",
+          snap(state, "state.json", "hash.json") == {k: before[k] for k in ("state.json", "hash.json")}, True)
+    c0, c1 = json.loads(before["catalogue.json"]), json.load(io.open(os.path.join(state, "catalogue.json")))
+    check("catalogue.json gains the two maps' entries and nothing else changes",
+          (sorted(set(c1["maps"]) - set(c0["maps"])), {k: c1["maps"][k] for k in c0["maps"]} == c0["maps"],
+           c1["at"] == c0["at"], set(c0["momnames"]) <= set(c1["momnames"])),
+          (["surf_knew", "surf_new"], True, True, True))
     rows1 = dl_rows(state)
     check("mapdl.txt: every line mapwatch wrote is kept, and two rows are added",
           ([ln for ln in rows1 if ln in rows0] == rows0, len(rows1) - len(rows0)), (True, 2))
@@ -209,18 +224,22 @@ def case_hosts_held():
     w.asked = []
     new(maps, state)
     h = mine(state)["hosts"]
-    check("a 403 holds the CDN HOST_HOLD and puts no wait on the file",
-          (round((h["cdn"][0] - T.REAL_TIME()) / 60), mine(state)["files"]), (N.HOST_HOLD // 60, {}))
+    bkey = "surf_b:%s" % T.sha(w.mom["surf_b"]["bsp"])[:12]
+    check("a 403 holds the CDN HOST_HOLD, and the file waits FILE_WAIT",
+          (round((h["cdn"][0] - T.REAL_TIME()) / 60), mine(state)["files"].get(bkey, [0, 0])[1]),
+          (N.HOST_HOLD // 60, 1))
     w.asked = []
     new(maps, state)
     check("held: the lists are read, the CDN is not asked", (len(w.files()), sum("/maps?" in u for u in w.asked)),
           (0, 3))
     age(state, "hosts", "cdn", N.HOST_HOLD + 1)
+    age(state, "files", bkey, N.FILE_WAIT + 1)
     new(maps, state)
     check("a second refusal holds it twice as long", round((mine(state)["hosts"]["cdn"][0] - T.REAL_TIME()) / 60),
           2 * N.HOST_HOLD // 60)
     w.cdn.pop("surf_b")
     age(state, "hosts", "cdn", 10 * N.HOST_HOLD)
+    age(state, "files", bkey, 10 * N.FILE_WAIT)
     new(maps, state)
     check("its next good answer installs and clears the hold",
           (os.path.exists(os.path.join(maps, "surf_b.bsp")), "cdn" in mine(state)["hosts"]), (True, False))
@@ -260,8 +279,21 @@ def case_ksf():
     check("a 403 on the newest list holds KSF", "ksf" in mine(state)["hosts"], True)
     w.kcode = None
     age(state, "hosts", "ksf", 10 * N.HOST_HOLD)
+    w.asked = []
     new(maps, state)
-    check("after the hold KSF's new map comes in", os.path.exists(os.path.join(maps, "surf_kq.bsp")), True)
+    check("its hold over, KSF still waits KSF_EVERY from the last ask",
+          ([u for u in w.asked if u.startswith(W.KSF_BASE)], os.path.exists(os.path.join(maps, "surf_kq.bsp"))),
+          ([], False))
+    age(state, None, "ksf_at", N.KSF_EVERY + 1)
+    new(maps, state)
+    check("after both, KSF's new map comes in", os.path.exists(os.path.join(maps, "surf_kq.bsp")), True)
+    w.ksf["surf_kz"] = T.Z("surf_kz", "kz")
+    w.newest = ["surf_kz"]
+    age(state, None, "ksf_at", N.KSF_EVERY - 600)
+    w.asked = []
+    new(maps, state)
+    check("a good read too: KSF is not asked again within KSF_EVERY",
+          [u for u in w.asked if u.startswith(W.KSF_BASE)], [])
 
 
 def case_zones_looks():
@@ -283,6 +315,189 @@ def case_zones_looks():
     check("...they wait as mapnew's (mapwatch's to judge), never struck",
           (mine(state)["files"].get(zk, [0, 0, ""])[2], T.strikes(state)),
           ("zones without their hash: mapwatch's", []))
+
+
+def case_mapwatch_cannot_read():
+    """Review 1: mapwatch's run without a list rebuilds rows from catalogue.json."""
+    for down in ("mom", "ksf"):
+        w, maps, state = setup({"surf_a": T.M("a")}, {"surf_ka": T.Z("surf_ka", "ka")})
+        watch(maps, state)
+        w.add("surf_new", T.M("new", tier=3))
+        nat = T.M("nat", tier=2)
+        nat["gamemode"] = 2
+        w.add("ahop_nat", nat)
+        w.ksf["surf_knew"] = T.Z("surf_knew", "kn")
+        w.newest = ["surf_knew"]
+        new(maps, state)
+        rows = {n: row_of(state, n) for n in ("surf_new", "ahop_nat", "surf_knew")}
+        w.down.add(down)
+        watch(maps, state)
+        check("%s unread at mapwatch's next run: mapnew's three rows stand as written" % down,
+              ({n: row_of(state, n) for n in rows} == rows, all(len(v) == 1 for v in rows.values())), (True, True))
+
+
+def case_port_row():
+    """Review 2: a KSF port's row names the map it is a build of, as mapwatch's does."""
+    w, maps, state = setup({"surf_x": T.M("x")}, {"surf_ka": T.Z("surf_ka", "ka")})
+    watch(maps, state)
+    w.ksf["surf_x_ksf"] = T.Z("surf_x_ksf", "xk")
+    w.ksf["surf_x_ksf"]["tier"] = 5
+    w.newest = ["surf_x_ksf"]
+    new(maps, state)
+    port, base = row_of(state, "surf_x_ksf"), row_of(state, "surf_x")
+    check("the port's row ends with its base map", [r.split()[-1] for r in port], ["surf_x"])
+    watch(maps, state)
+    check("...and mapwatch's next run writes both rows the same",
+          (row_of(state, "surf_x_ksf"), row_of(state, "surf_x")), (port, base))
+
+
+def case_owed_rows():
+    """Review 3: a row not written in the installing run is written by a later one."""
+    w, maps, state = setup({"surf_a": T.M("a")}, {})
+    watch(maps, state)
+    dl = os.path.join(state, "mapdl.txt")
+    os.rename(dl, dl + ".away")
+    w.add("surf_new", T.M("new"))
+    try:
+        new(maps, state)
+    finally:
+        os.rename(dl + ".away", dl)
+    check("mapdl.txt unreadable: the map is installed and its row owed",
+          (os.path.exists(os.path.join(maps, "surf_new.bsp")), sorted(mine(state)["owed"])), (True, ["surf_new"]))
+    with open(dl, "a") as fh:
+        fh.write("dl \n")
+    check("the next run, with a nameless dl line in the list, runs", new(maps, state), 0)
+    check("...writes the owed row and keeps the odd line",
+          (len(row_of(state, "surf_new")), "dl " in dl_rows(state), mine(state)["owed"]), (1, True, {}))
+
+
+def case_tier_refusals():
+    """Review 4: a tier the API cannot give costs the install nothing else."""
+    w, maps, state = setup({"surf_a": T.M("a")}, {})
+    watch(maps, state)
+    w.add("surf_t", T.M("t"))
+    w.tiercode["surf_t"] = 404
+    new(maps, state)
+    check("a 404 for its tier: installed, zones written, the API not held",
+          (os.path.exists(os.path.join(maps, "surf_t.bsp")),
+           os.path.exists(os.path.join(T.zdir_of(maps), "surf_t.json")), "api" in mine(state)["hosts"]),
+          (True, True, False))
+    w.add("surf_u", T.M("u"))
+    w.tiercode["surf_u"] = 503
+    new(maps, state)
+    check("a 503 for its tier: installed, the API held, so no zone request",
+          (os.path.exists(os.path.join(maps, "surf_u.bsp")),
+           os.path.exists(os.path.join(T.zdir_of(maps), "surf_u.json")), "api" in mine(state)["hosts"]),
+          (True, False, True))
+
+
+def case_ksf_rules():
+    w, maps, state = setup({"surf_a": T.M("a")}, {"surf_ka": T.Z("surf_ka", "ka")})
+    watch(maps, state)
+    w.ksf["surf_kn"] = T.Z("surf_kn", "kn")
+    w.newest = ["surf_kn"]
+    w.down.add("mom")
+    w.asked = []
+    new(maps, state)
+    check("review 5: Momentum unread, KSF is not asked", [u for u in w.asked if u.startswith(W.KSF_BASE)], [])
+    w.down.discard("mom")
+    age(state, "hosts", "api", 10 * N.HOST_HOLD)
+    park = os.path.join(S.DATA_DIR, "ksf", ".refused")
+    os.makedirs(os.path.dirname(park), exist_ok=True)
+    for ago, want in ((3600, 0), (N.KSF_AFTER_PARK + 3600, 1)):
+        with open(park, "w") as fh:
+            json.dump({"until": T.REAL_TIME() - ago, "why": "HTTP 403"}, fh)
+        w.asked = []
+        try:
+            new(maps, state)
+        finally:
+            os.remove(park)
+        check("ksfimport's park over %d h ago: KSF's list asked %d time(s)" % (ago // 3600, want),
+              sum(u.endswith(N.KSF_HEAD) for u in w.asked), want)
+    check("...and its new map comes in", os.path.exists(os.path.join(maps, "surf_kn.bsp")), True)
+
+
+def case_ksf_archive_refused():
+    """Review B1: an archive refusal holds KSF's archives; a good list does not lift it."""
+    w, maps, state = setup({"surf_a": T.M("a")}, {"surf_ka": T.Z("surf_ka", "ka")})
+    watch(maps, state)
+    w.ksf["surf_kb"] = {"tier": 1, "zip": 403}
+    w.newest = ["surf_kb"]
+    key = "surf_kb:ksf"
+    held = []
+    for _ in range(2):
+        new(maps, state)
+        h = mine(state)["hosts"]
+        held.append((h.get("ksfdl", [0, 0])[1], "ksf" in h))
+        age(state, "hosts", "ksfdl", 10 * N.HOST_HOLD)
+        age(state, "files", key, 10 * N.FILE_WAIT)
+        age(state, None, "ksf_at", N.KSF_EVERY + 1)
+    check("two archive 403s under good lists: the archive hold doubles, the list is not held",
+          held, [(1, False), (2, False)])
+
+
+def case_cdn_refusal_others_go():
+    """Review B2: one file the CDN refuses does not block the maps after it."""
+    w, maps, state = setup({"surf_a": T.M("a")}, {})
+    watch(maps, state)
+    w.add("surf_b", T.M("b"))
+    w.cdn["surf_b"] = 403
+    w.add("surf_c", T.M("c"))
+    new(maps, state)
+    age(state, "hosts", "cdn", N.HOST_HOLD + 1)
+    w.asked = []
+    new(maps, state)
+    check("past the CDN's hold the next map is taken; the refused one waits",
+          (os.path.exists(os.path.join(maps, "surf_c.bsp")), len(w.asked_for("surf_b"))), (True, 0))
+
+
+def case_ksf_bytes():
+    """Review B3: a KSF archive that fails its checks still counts its bytes."""
+    w, maps, state = setup({"surf_a": T.M("a")}, {"surf_ka": T.Z("surf_ka", "ka")})
+    watch(maps, state)
+    for n in ("surf_w1", "surf_w2", "surf_w3"):
+        w.ksf[n] = T.Z("surf_other", n)          # one .bsp, named for another map
+    w.newest = ["surf_w1", "surf_w2", "surf_w3"]
+    w.asked = []
+    new(maps, state, "--max-gb", "0.000000001")
+    check("archives with the wrong member, a tiny byte budget: one fetched", len(w.files()), 1)
+
+
+def case_publish_raises():
+    """Review B4: a failure after the download puts the file on a wait, and is saved."""
+    w, maps, state = setup({"surf_a": T.M("a")}, {})
+    watch(maps, state)
+    w.add("surf_p", T.M("p"))
+    real = W.publish
+
+    def busy(*_a, **_k):
+        raise ValueError("content lease busy")
+    W.publish = busy
+    try:
+        new(maps, state)
+    finally:
+        W.publish = real
+    key = "surf_p:%s" % T.sha(w.mom["surf_p"]["bsp"])[:12]
+    check("it waits, nothing is left behind, and mapnew.json says so",
+          (mine(state)["files"].get(key, [0, 0])[1], [f for f in os.listdir(maps) if "surf_p" in f]), (1, []))
+    w.asked = []
+    new(maps, state)
+    check("...and is not downloaded again next run", w.asked_for("surf_p"), [])
+
+
+def case_mapwatch_hosts():
+    """Main's mapwatch keeps host holds in state.json: honoured where they exist."""
+    w, maps, state = setup({"surf_a": T.M("a")}, {})
+    watch(maps, state)
+    st = T.state_of(state)
+    st["hosts"] = {"cdn": [int(T.REAL_TIME()) + 3600, 21600, "HTTP 429"]}
+    with open(os.path.join(state, "state.json"), "w") as fh:
+        json.dump(st, fh)
+    w.add("surf_h", T.M("h"))
+    w.asked = []
+    new(maps, state)
+    check("mapwatch holds the CDN: the lists are read, no file is asked",
+          (sum("/maps?" in u for u in w.asked), w.files()), (3, []))
 
 
 def case_lock_and_budget():
@@ -313,7 +528,9 @@ def case_lock_and_budget():
 
 def main():
     for case in (case_installs_as_mapwatch, case_left_alone, case_files_wait, case_hosts_held, case_ksf,
-                 case_zones_looks, case_lock_and_budget):
+                 case_zones_looks, case_mapwatch_cannot_read, case_port_row, case_owed_rows,
+                 case_tier_refusals, case_ksf_rules, case_ksf_archive_refused, case_cdn_refusal_others_go,
+                 case_ksf_bytes, case_publish_raises, case_mapwatch_hosts, case_lock_and_budget):
         print("\n%s:" % case.__name__)
         case()
     print()

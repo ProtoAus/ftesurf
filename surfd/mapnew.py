@@ -12,27 +12,35 @@ of each list:
             submission can sit past the head (4 of the 80 surf/bhop maps
             approved in the 90 days to 17 Nov); mapwatch's full read takes it.
   KSF       /api/maps/new?offset=0 -- their newest (ksfimport's catalogue
-            source).  The archive is /files/<name>.zip; none there is a 404.
+            source), only in a run that read Momentum, at most every KSF_EVERY,
+            and never within KSF_AFTER_PARK of ksfimport's park: ksf.surf has
+            refused our crawl since 11 Nov and Lex asked for less.  The archive
+            is /files/<name>.zip; none there is a 404.
 A KSF name Momentum lists (catalogue.json's names plus this read) or a Beta
-line holds is Momentum's, as in mapwatch; with no catalogue, KSF waits.
+line holds is Momentum's, as in mapwatch.
 
 It installs with mapwatch's own functions, as mapwatch installs a new name:
 Momentum's file at its published SHA1, KSF's archive as one VBSP named for the
 map, a .part made world-readable and linked in only while the name is free;
 Momentum zones only when they hash to zoneHash, under mapwatch's looks (no
-lobby on the map, no run of it); and the map's mapdl.txt row from list_rows,
-every other line left as mapwatch wrote it.  Everything else -- builds held,
-zones without their hash, _css variants, ports, Beta, approvals, momtracks --
-is mapwatch's next run.
+lobby on the map, no run of it).  The map's mapdl.txt row comes from
+list_rows over mapwatch's catalogue plus this read (a port's base row too),
+every other line left as mapwatch wrote it; the same entries are added to
+catalogue.json, so a mapwatch run that cannot read a list still lists them.  A
+row not yet written (a run cut short, an unreadable list) is owed in
+mapnew.json and written by a later run.  Everything else -- builds held, zones
+without their hash, _css variants, Beta, approvals, momtracks -- is mapwatch's.
 
-It never writes mapwatch's state.json or catalogue.json, never strikes, and
-leaves a name mapwatch has struck to mapwatch.  Its own back-off (mapnew.json):
-a host that refuses with a status, or whose list does not parse, is held
-HOST_HOLD, doubling to HOST_HOLD_MAX, until its next good answer; a file that
-fails (404, wrong hash, too big, cut short, not the file, a status-less
-refusal) waits FILE_WAIT, doubling to FILE_WAIT_MAX, and is never shelved.
-mapwatch's lock is held for the run, and nothing is started after RUN_SECONDS,
-so mapwatch's :23 tick finds it free.
+It never writes mapwatch's state.json, never strikes, and leaves a name
+mapwatch has struck to mapwatch.  Its own back-off (mapnew.json), timed from
+the refusal: a host that refuses with a status, or whose list does not parse,
+is held HOST_HOLD, doubling to HOST_HOLD_MAX, until its next good answer
+(Momentum's API, its CDN, KSF's list and KSF's archives are four hosts); a
+holds table mapwatch keeps is honoured too.  A file whose fetch fails in any
+way waits FILE_WAIT, doubling to FILE_WAIT_MAX, so the next run tries the
+others first; it is never shelved.  mapwatch's lock is held for the run,
+nothing is started after RUN_SECONDS, and the process ends at KILL_SECONDS, so
+mapwatch's :23 tick finds the lock free.
 """
 import argparse
 import faulthandler
@@ -51,27 +59,46 @@ S = W.S
 MOM_HEAD = 100          # newest maps read per Momentum mode, a run: the API's cap
 KSF_HEAD = "/api/maps/new?offset=0"
 KSF_HEAD_MAX = 100      # their page is 10; more is not that list
+KSF_EVERY = 2 * 3600    # between asks of KSF's head, refused or not
+KSF_AFTER_PARK = 6 * 3600   # after ksfimport's park ends, its own tick retries first
 HOST_HOLD, HOST_HOLD_MAX = 3600, 6 * 3600
 FILE_WAIT, FILE_WAIT_MAX = 6 * 3600, 48 * 3600
-RUN_SECONDS = 10 * 60   # cron 28,58: the last start by :08/:38, so mapwatch's :23 finds the lock free
-FILE_SECONDS = 600      # one download; mapwatch's 1800 would reach its tick
+RUN_SECONDS = 8 * 60    # cron 28,58: no step starts after :06/:36
+FILE_SECONDS = 420      # one download's body (mapwatch: 1800)
+REPLY_SECONDS = 60      # a reply's headers, and a small reply's body (mapwatch: 120 each)
+KILL_SECONDS = RUN_SECONDS + FILE_SECONDS + 6 * REPLY_SECONDS   # the last step: tier, file, zones -> :19/:49
 KSF_WAIT = 60           # for ksfimport's tick; mapwatch waits 300
 NEW_MAX, NEW_GB = 5, 2.0
-FILE_STATUS = (404, 410, 500)   # the object's own answer: that file waits, the host is not held
+FILE_STATUS = (404, 410, 500)   # the object's own answer: the host is not held
 
 
 class Busy(Exception):
-    """ksfimport holds ksf.surf: not asked beside it, nobody's fault."""
+    """ksf.surf is not to be asked now (ksfimport's tick or park): nobody's fault."""
+
+
+def ksf_park(now):
+    why = W.ksf_parked(now - KSF_AFTER_PARK)
+    return why and why + ", and %d h for its own retry" % (KSF_AFTER_PARK // 3600)
 
 
 def ksf_asked(fn):
-    """fn() inside ksfimport's lock (W.ksf_turn); Busy when the crawl keeps it."""
+    """fn() inside ksfimport's lock (W.ksf_turn), the park read again once it is held."""
+    try:
+        import fcntl            # noqa: F401  (W.ksf_turn runs unlocked where its lock cannot open)
+        open(W.KSF_LOCK, "a").close()
+    except ImportError:
+        pass
+    except OSError as e:
+        raise Busy("its lock cannot be opened (%s)" % e)
     turn = W.ksf_turn()
     try:
         turn.__enter__()
     except W.Refused as e:
         raise Busy(str(e))
     try:
+        why = ksf_park(int(time.time()))
+        if why:
+            raise Busy(why)
         return fn()
     finally:
         turn.__exit__(None, None, None)
@@ -121,10 +148,13 @@ def ksf_head(pacer):
 
 
 def ksf_get(state, url, name, part):
+    """-> (zip_bsp's answer, the archive's bytes on the wire)."""
     zp = os.path.join(state, "tmp", name + ".zip")
     try:
         got = W.download(url, zp, magic=b"PK")
-        return W.zip_bsp(zp, name, part) if got[0] == "ok" else got
+        if got[0] != "ok":
+            return got, got[-1]
+        return W.zip_bsp(zp, name, part), got[2]
     finally:
         W._rm(zp)
 
@@ -135,46 +165,96 @@ def skey(r):
     return "%s:ksf" % k if r["src"] == "ksf" else "%s:%s" % (k, r["sha"][:12])
 
 
-def add_rows(path, maps, inv_new, cat_new, seen, now):
-    """mapdl.txt with the new maps' rows; every other line as it was.  -> rows added."""
+def entry(r, had):
+    """The catalogue entry mapwatch builds for list row `r`, over the one it had."""
+    c = dict(had if isinstance(had, dict) else {}, name=r["name"], mode=r["mode"])
+    src = c.get("src") if isinstance(c.get("src"), str) else ""
+    if r["src"] == "ksf":
+        c["src"], c["ktier"] = src + ("k" if "k" not in src else ""), r["tier"]
+    else:
+        c["src"], c["mtier"] = src + ("m" if "m" not in src else ""), r["tier"]
+        c["sha"], c["ranked"] = r["sha"], r["ranked"]
+    return c
+
+
+def dl_key(ln):
+    f = ln.split()
+    return f[1].lower() if len(f) > 1 else ""
+
+
+def add_rows(path, maps, inv, cat, keys, seen, now):
+    """mapdl.txt with the rows of `keys` (and of the maps they are builds of) written
+    from `cat`; every other line as it was.  -> the keys written, or None."""
     try:
         with open(path, "rb") as fh:
             raw = fh.read(8 * 1024 * 1024 + 1)
         lines = raw.decode("utf-8").splitlines()
     except (OSError, UnicodeDecodeError) as e:
-        print("  mapdl.txt unreadable (%s): mapwatch's next run lists them" % e)
-        return 0
+        print("  mapdl.txt unreadable (%s): its rows are owed" % e)
+        return None
     if len(raw) > 8 * 1024 * 1024 or not lines or not lines[0].startswith("FTESURF-MAPDL 1"):
-        print("  mapdl.txt is not mapwatch's list: mapwatch's next run lists them")
-        return 0
-    rows = W.list_rows(maps, inv_new, cat_new, dict(seen), time.strftime("%Y-%m-%d", time.gmtime(now)),
+        print("  mapdl.txt is not mapwatch's list: its rows are owed")
+        return None
+    keys = set(keys)
+    keys |= {cat[k]["of"].lower() for k in list(keys)
+             if isinstance(cat.get(k), dict) and isinstance(cat[k].get("of"), str)}
+    rows = W.list_rows(maps, {k: inv[k] for k in keys if k in inv}, cat, dict(seen),
+                       time.strftime("%Y-%m-%d", time.gmtime(now)),
                        time.strftime("%Y-%m-%d", time.gmtime(now - W.NEW_DAYS * 86400)))
-    new = {r.split()[1].lower() for r in rows}
+    done = {dl_key(r) for r in rows}
     head = [ln for ln in lines if not ln.startswith("dl ")]
-    body = [ln for ln in lines if ln.startswith("dl ") and ln.split()[1].lower() not in new]
-    body = sorted(body + rows, key=lambda ln: ln.split()[1].lower())    # list_rows' order
+    body = [ln for ln in lines if ln.startswith("dl ") and dl_key(ln) not in done]
+    body = sorted(body + rows, key=dl_key)          # list_rows' order
     tmp = path + ".mapnew.tmp"
     with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("".join(ln + "\n" for ln in head + body))
     os.replace(tmp, path)
-    return len(rows)
+    return keys
+
+
+def note_catalogue(path, cat, keys, names):
+    """catalogue.json with `keys`' entries and Momentum's `names` added; mapwatch's next
+    whole reading replaces it."""
+    doc = W._load(path)
+    if not isinstance(doc, dict) or not isinstance(doc.get("maps"), dict) or not isinstance(doc.get("momnames"), list):
+        return
+    for k in keys:
+        if isinstance(cat.get(k), dict):
+            doc["maps"][k] = cat[k]
+    doc["momnames"] = sorted({str(n) for n in doc["momnames"]} | names)
+    W._save(path, doc)
 
 
 def run(a):
-    now = int(time.time())
-    deadline = now + RUN_SECONDS
     mp = os.path.join(a.state, "mapnew.json")
     me = W._load(mp)
     me = me if isinstance(me, dict) else {}
+    try:
+        return tick(a, me, mp)
+    finally:
+        if a.go:
+            try:
+                W._save(mp, me)
+            except OSError as e:
+                print("  mapnew.json could not be saved (%s)" % e)
 
-    def table(key):
+
+def tick(a, me, mp):
+    now = int(time.time())
+    deadline = now + RUN_SECONDS
+
+    def table(key, ok):
         t = me.get(key)
-        t = {k: v for k, v in t.items() if isinstance(v, list) and len(v) == 3
-             and type(v[0]) in (int, float) and type(v[1]) is int} if isinstance(t, dict) else {}
+        t = {k: v for k, v in t.items() if ok(v)} if isinstance(t, dict) else {}
         me[key] = t
         return t
-    hosts = table("hosts")      # host -> [until, refusals, why]
-    files = table("files")      # mapwatch's file key -> [until, failures, why]
+
+    def held_shape(v):
+        return (isinstance(v, list) and len(v) == 3 and type(v[0]) in (int, float)
+                and type(v[1]) is int and isinstance(v[2], str))
+    hosts = table("hosts", held_shape)      # host -> [until, refusals, why]
+    files = table("files", held_shape)      # mapwatch's file key -> [until, failures, why]
+    owed = table("owed", lambda v: isinstance(v, dict) and isinstance(v.get("name"), str))
     for k in [k for k, v in files.items() if now - v[0] > 2 * FILE_WAIT_MAX]:
         del files[k]            # quiet this long: its next failure starts over
     for k in [k for k, v in hosts.items() if now - v[0] > 7 * 86400]:
@@ -184,21 +264,27 @@ def run(a):
     mw = mw if isinstance(mw, dict) else {}
     struck = mw.get("later") if isinstance(mw.get("later"), dict) else {}
     seen = mw.get("seen") if isinstance(mw.get("seen"), dict) else None
+    mwhosts = {k: v for k, v in mw.get("hosts").items() if held_shape(v)} \
+        if isinstance(mw.get("hosts"), dict) else {}     # main's mapwatch keeps one; live has none
 
     def holding(host):
-        h = hosts.get(host)
-        return "held until %s (%s)" % (time.strftime("%H:%M UTC", time.gmtime(h[0])), h[2]) \
-            if h and now < h[0] else ""
+        for t in (hosts, mwhosts):
+            h = t.get(host)
+            if h and time.time() < h[0]:
+                return "held until %s (%s)" % (time.strftime("%H:%M UTC", time.gmtime(h[0])), h[2])
+        return ""
 
     def hold(host, why):
         n = (hosts.get(host) or [0, 0, ""])[1] + 1
-        hosts[host] = [now + min(HOST_HOLD << (n - 1), HOST_HOLD_MAX), n, why[:120]]
-        print("  %s refused (%s): held %d min" % (host, why, (hosts[host][0] - now) // 60))
+        secs = min(HOST_HOLD << (n - 1), HOST_HOLD_MAX)
+        hosts[host] = [int(time.time()) + secs, n, why[:120]]
+        print("  %s refused (%s): held %d min" % (host, why, secs // 60))
 
     def wait(key, why):
         n = (files.get(key) or [0, 0, ""])[1] + 1
-        files[key] = [now + min(FILE_WAIT << (n - 1), FILE_WAIT_MAX), n, why[:120]]
-        print("  %s: %s: waits %d h" % (key, why, (files[key][0] - now) // 3600))
+        secs = min(FILE_WAIT << (n - 1), FILE_WAIT_MAX)
+        files[key] = [int(time.time()) + secs, n, why[:120]]
+        print("  %s: %s: waits %d h" % (key, why, secs // 3600))
 
     def waits(key):
         return key in files and now < files[key][0]
@@ -206,11 +292,12 @@ def run(a):
     dead = {}                   # host -> why it is done for this run
 
     def refused(host, e, key=None):
+        """The host is done for the run; held when the refusal is its; the file waits."""
         code = getattr(e, "code", 0) or 0
-        if key is not None and (code in FILE_STATUS or not code):
-            wait(key, str(e))
-        else:
+        if key is None or (code and code not in FILE_STATUS):
             hold(host, str(e))
+        if key is not None:
+            wait(key, str(e))
         dead[host] = str(e)
 
     pacer = W.Pacer(a.delay)
@@ -225,27 +312,32 @@ def run(a):
         except W.Refused as e:
             refused("api", e)
             said.append("momentum: NOT READ (%s)" % e)
-    why = holding("ksf") or W.ksf_parked(now)
+    last = me.get("ksf_at") if type(me.get("ksf_at")) in (int, float) else 0
+    why = ("Momentum was not read: KSF's names wait" if "mom" not in read else
+           holding("ksf") or ksf_park(now) or
+           ("asked %d min ago" % ((now - last) // 60) if now - last < KSF_EVERY else ""))
     if why:
         said.append("ksf: not asked, " + why)
     else:
         try:
             ksf = ksf_asked(lambda: ksf_head(pacer))
+            me["ksf_at"] = now
             read.add("ksf")
             hosts.pop("ksf", None)
         except Busy as e:
             said.append("ksf: not asked (%s)" % e)
         except W.Refused as e:
+            me["ksf_at"] = now
             refused("ksf", e)
             said.append("ksf: NOT READ (%s)" % e)
-    cat0 = W._load(os.path.join(a.state, "catalogue.json"))
+    cp = os.path.join(a.state, "catalogue.json")
+    cat0 = W._load(cp)
     cat0 = cat0 if isinstance(cat0, dict) else {}
     catmaps = cat0.get("maps") if isinstance(cat0.get("maps"), dict) else {}
-    momnames = cat0.get("momnames")
+    momnames = {str(n).lower() for n in cat0["momnames"]} | names \
+        if isinstance(cat0.get("momnames"), list) else None
     extra, _bad = W.extra_list(os.path.join(a.state, "extra.tsv"), os.path.join(a.state, "betaids.tsv"))
-    if isinstance(momnames, list):
-        momnames = {str(n).lower() for n in momnames} | names
-    elif ksf:
+    if momnames is None and ksf:
         said.append("no reading of Momentum's names (catalogue.json): KSF's new maps wait")
         ksf = {}
     inv, odd = W.inventory(a.maps)
@@ -311,8 +403,9 @@ def run(a):
 
     for r in todo:
         key, name, fk = r["name"].lower(), r["name"], skey(r)
-        host = "ksf" if r["src"] == "ksf" else "cdn"
-        if host in dead or holding(host):
+        hostset = ("ksf", "ksfdl") if r["src"] == "ksf" else ("cdn",)
+        host = hostset[-1]
+        if any(h in dead or holding(h) for h in hostset):
             count("%s held or refused: next run" % host)
             continue
         if gets["n"] >= a.max or gets["bytes"] >= a.max_gb * 1e9 or time.time() > deadline:
@@ -321,15 +414,15 @@ def run(a):
         if shutil.disk_usage(a.maps).free / 1e9 < W.FLOOR_GB:
             print("under %d GB free: taking nothing" % W.FLOOR_GB)
             break
-        if host == "ksf" and W.ksf_parked(int(time.time())):
-            dead["ksf"] = "parked"
-            continue
         if r["src"] == "mom" and "api" not in dead:
             try:
                 tier_of(pacer, r)
                 hosts.pop("api", None)
             except W.Refused as e:
-                refused("api", e)       # installed all the same; mapwatch's run lists its tier
+                if e.code and e.code not in FILE_STATUS:
+                    refused("api", e)       # installed all the same; mapwatch's run lists its tier
+                else:
+                    print("  %s: its tier (%s): none until mapwatch's run" % (name, e))
         if gets["n"]:
             time.sleep(W.GET_DELAY)
         gets["n"] += 1
@@ -337,13 +430,14 @@ def run(a):
         try:
             if host == "cdn":
                 got = W.download(r["url"], part, r["sha"], magic=b"VBSP")
+                wire = got[-1]
             else:
-                got = ksf_asked(lambda: ksf_get(a.state, r["url"], name, part))
+                got, wire = ksf_asked(lambda: ksf_get(a.state, r["url"], name, part))
         except W.Transient as e:
             wait(fk, str(e))
             continue
         except Busy as e:
-            dead["ksf"] = str(e)
+            dead["ksfdl"] = str(e)
             continue
         except W.Refused as e:
             refused(host, e, fk)
@@ -353,42 +447,45 @@ def run(a):
         except Exception as e:
             wait(fk, "%s: %s" % (type(e).__name__, e))
             continue
-        gets["bytes"] += got[-1]
+        gets["bytes"] += wire
         if got[0] != "ok":
             wait(fk, got[0])
             continue
         hosts.pop(host, None)
-        if not W.publish(part, os.path.join(a.maps, name + ".bsp"), True):
+        try:
+            put = W.publish(part, os.path.join(a.maps, name + ".bsp"), True)
+        except Exception as e:      # tascontent's lease, a disk: not every run's download again
+            W._rm(part)
+            wait(fk, "publish: %s: %s" % (type(e).__name__, e))
+            if isinstance(e, (W.LocalFault, OSError)):
+                raise
+            continue
+        if not put:
             count("the name was taken meanwhile: left")
             continue
         inv[key] = name
         files.pop(fk, None)
+        owed[key] = entry(r, catmaps.get(key))
         took.append(r)
         print("  installed %s %s %d bytes sha1 %s" % (r["src"], name, got[2], got[1]))
+        W._save(mp, me)
         if r["src"] == "mom" and r["zh"] and r["id"] and "api" not in dead and not holding("api"):
             first_zones(r, key, name)
-        W._save(mp, me)
 
     listed = 0
-    if took and seen is not None:
-        cat_new = {}
-        for r in took:
-            k = r["name"].lower()
-            c = dict(catmaps.get(k) or {}, name=r["name"], mode=r["mode"])
-            src = c.get("src") if isinstance(c.get("src"), str) else ""
-            if r["src"] == "ksf":
-                c["src"], c["ktier"] = src + ("k" if "k" not in src else ""), r["tier"]
-            else:
-                c["src"], c["mtier"] = src + ("m" if "m" not in src else ""), r["tier"]
-                c["sha"], c["ranked"] = r["sha"], r["ranked"]
-            cat_new[k] = c
-        W.link_ports(cat_new, inv, momnames if isinstance(momnames, set) else set())
-        listed = add_rows(os.path.join(a.state, "mapdl.txt"), a.maps,
-                          {r["name"].lower(): r["name"] for r in took}, cat_new, seen, now)
-    elif took:
-        print("  mapwatch has not listed the library yet: its next run lists them")
+    for k in [k for k in owed if k not in inv]:
+        del owed[k]                 # gone from the library since
+    if owed and seen is None:
+        print("  mapwatch has not listed the library yet: its next run lists %d map(s)" % len(owed))
+    elif owed:
+        cat = dict(catmaps, **{k: dict(c) for k, c in owed.items()})
+        W.link_ports(cat, inv, (momnames or set()) | set(extra))
+        keys = add_rows(os.path.join(a.state, "mapdl.txt"), a.maps, inv, cat, set(owed), seen, now)
+        if keys is not None:
+            note_catalogue(cp, cat, keys, names)
+            listed = len(owed)
+            owed.clear()
     me["last"] = {"at": now, "read": sorted(read), "new": len(new), "took": [r["name"] for r in took]}
-    W._save(mp, me)
     print("mapnew: %d request(s), %d download(s); installed %d, zones %d, listed %d%s"
           % (pacer.made, gets["n"], len(took), len(zones), listed,
              "; " + ", ".join("%s %d" % kv for kv in sorted(tally.items())) if tally else ""))
@@ -408,12 +505,13 @@ def main(argv=None):
     ap.add_argument("--go", action="store_true", help="fetch; else a plan")
     a = ap.parse_args(argv)
     W.FILE_SECONDS, W.KSF_WAIT = FILE_SECONDS, KSF_WAIT
+    W.OPEN_SECONDS = W.API_SECONDS = REPLY_SECONDS
     W.UA = W.UA.replace(" mapwatch ", " mapnew ")
     lock = W.take_lock(a.state)
     if lock is None:
         print("mapwatch holds %s -- not running beside it" % a.state)
         return 0
-    faulthandler.dump_traceback_later(RUN_SECONDS + FILE_SECONDS + 240, exit=True)
+    faulthandler.dump_traceback_later(KILL_SECONDS, exit=True)
     W.be_small()
     try:
         return run(a)
