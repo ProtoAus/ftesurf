@@ -305,6 +305,7 @@ HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule", "movebnd", "holdclock", "view
                      "inguard",     # Patch 1576, additive
                      "plat",        # P1603, additive
                      "propmiss",    # Patch 1581, additive
+                     "propstatic",  # P1604, additive
                      "momtrig",     # Patch 869, additive
                      "entfile",     # Patch 890, additive
                      "tickparts",   # Patch 893, additive
@@ -1255,6 +1256,20 @@ def _check_rec(r, path, verbose=False, *, data=None):
                 r.note("the lobby lacked %d solid prop model file(s) when it spawned this map (%s%s): a replay "
                        "mismatch on this run may be content skew"
                        % (n, ", ".join(f[1:]), ", ..." if n > len(f) - 1 else ""))
+
+    # P1604: `propstatic 0` (static props not checked) or `propstatic 1 <k>` (checked; k of propmiss's n are static).
+    ps = head.get("propstatic")
+    if ps is not None:
+        f = ps.split()
+        try:
+            if f == ["0"]:
+                r.info["propstatic"] = "not checked"
+            elif len(f) == 2 and f[0] == "1" and 0 <= int(f[1]) <= r.info.get("propmiss", int(f[1])):
+                r.info["propstatic"] = int(f[1])
+            else:
+                raise ValueError
+        except ValueError:
+            r.note("header 'propstatic' is malformed: %r" % ps.strip())
 
     # ---- body --------------------------------------------------------------
     samples = []            # (t, cols)

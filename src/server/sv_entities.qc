@@ -7385,43 +7385,70 @@ float vbsp_prop_bboxphy_n;
 float vbsp_prop_nobox_n;
 // P1581: props the map asks to be solid whose model FILE is missing (a missing model loads as a 32-unit
 // placeholder box, so no bounds test sees it): distinct names, space/tab/CR/LF/quote as '_', 120 characters
-// each, the first PROPMISS_MAX listed, for the `.rec`'s `propmiss`.
+// each, the first PROPMISS_MAX listed, for the `.rec`'s `propmiss`. P1604: deduplicated case-insensitively (a
+// Source path is), so vbsp_prop_missing_all holds lower-case keys.
 string vbsp_prop_missing, vbsp_prop_missing_all;
-float vbsp_prop_missing_n;
+float vbsp_prop_missing_n, vbsp_prop_missing_listed;
 #define PROPMISS_MAX 8
+string(string m) SV_PropMissName =
+{
+	return substring(strreplace(" ", "_", strreplace("\t", "_", strreplace("\n", "_", strreplace("\r", "_", strreplace("\"", "_", m))))), 0, 120);
+};
+void(string m) SV_PropMissList =
+{
+	if (vbsp_prop_missing_listed >= PROPMISS_MAX)
+		return;
+	vbsp_prop_missing = strzone(vbsp_prop_missing == "" ? m : strcat(vbsp_prop_missing, " ", m));
+	vbsp_prop_missing_listed = vbsp_prop_missing_listed + 1;
+};
 void(string m) SV_PropMissing =
 {
 	local string k;
-	m = substring(strreplace(" ", "_", strreplace("\t", "_", strreplace("\n", "_", strreplace("\r", "_", strreplace("\"", "_", m))))), 0, 120);
-	k = strcat(" ", m, " ");
-	if (strstrofs(vbsp_prop_missing_all, k) >= 0)
+	m = SV_PropMissName(m);
+	k = strtolower(m);
+	if (strstrofs(vbsp_prop_missing_all, strcat(" ", k, " ")) >= 0)
 		return;
 	vbsp_prop_missing_n = vbsp_prop_missing_n + 1;
 	if (strlen(vbsp_prop_missing_all) < 3000)        // past this a repeat may count again (n an upper bound)
-		vbsp_prop_missing_all = strzone(strcat(vbsp_prop_missing_all, m, " "));
-	if (vbsp_prop_missing_n <= PROPMISS_MAX)
-		vbsp_prop_missing = strzone(vbsp_prop_missing == "" ? m : strcat(vbsp_prop_missing, " ", m));
+		vbsp_prop_missing_all = strzone(strcat(vbsp_prop_missing_all, k, " "));
+	SV_PropMissList(m);
 };
-// P1604: solid STATIC props, whose collision the hl2 plugin builds, missing their model file here: the plugin's
-// hl2_sprpmiss "<world model> <n> <first 64 names>". Only a Source map sets it, so a value naming another map is
-// stale. vbsp_prop_static_n: how many SV_PropMissing added (-1: not reported for this map; "" = engine before P1604).
+// P1604: solid STATIC props (the hl2 plugin builds their collision) missing their model file here, from the plugin's
+// hl2_sprpmiss "<world model> <n> <names>". Trusted only when read-only: a console `set` cannot make a NOSET cvar,
+// and one made before the plugin registered stays settable. Only a Source map sets it, so a value naming another map
+// is stale. Checked against the entity names without joining that list, so props spawned later (point_template)
+// still find their own. vbsp_prop_static_n: how many it added; -1 = not checked.
+#define SPRP_TYPEFLAG_READONLY 32	// CVAR_TYPEFLAG_READONLY (pr_bgcmd.c PF_cvar_type): CVAR_NOSET
 float vbsp_prop_static_n;
-string vbsp_prop_static_seen;
 void() SV_PropStaticMissing =
 {
-	local float c, n, i, was;
+	local float c, n, i;
+	local string w, m;
 	vbsp_prop_static_n = -1;
+	if (!(cvar_type("hl2_sprpmiss") & SPRP_TYPEFLAG_READONLY))
+		return;
 	c = tokenize_console(cvar_string("hl2_sprpmiss"));
-	vbsp_prop_static_seen = c ? strzone(argv(0)) : "";
-	if (c < 2 || argv(0) != strcat("maps/", mapname, ".bsp"))
+	if (c < 2)
+		return;
+	w = strcat("maps/", strreplace(" ", "_", mapname), ".bsp");     // the plugin's token for the world (sv_init.c)
+	if (argv(0) != w)
+	if (argv(0) != strcat(w, ".gz"))
+	if (argv(0) != strcat(w, ".xz"))
 		return;
 	n = stof(argv(1));
-	was = vbsp_prop_missing_n;
+	vbsp_prop_static_n = 0;
 	for (i = 2; i < c; i++)
-		SV_PropMissing(argv(i));
+	{
+		m = SV_PropMissName(argv(i));
+		if (strstrofs(vbsp_prop_missing_all, strcat(" ", strtolower(m), " ")) < 0)
+		{
+			vbsp_prop_static_n = vbsp_prop_static_n + 1;
+			SV_PropMissList(m);
+		}
+	}
 	if (n > c - 2)
-		vbsp_prop_missing_n = vbsp_prop_missing_n + n - (c - 2);        // unnamed past the plugin's 64
-	vbsp_prop_static_n = vbsp_prop_missing_n - was;
+		vbsp_prop_static_n = vbsp_prop_static_n + n - (c - 2);  // past the plugin's 512 names: unchecked against entities
+	vbsp_prop_missing_n = vbsp_prop_missing_n + vbsp_prop_static_n;
 };
 float vbsp_water_n, vbsp_reltele_n;
 float vbsp_need_report;
@@ -7456,8 +7483,8 @@ void() SV_EntityReset =
 	vbsp_prop_missing = vbsp_prop_missing_all = " ";     // P1581 (QCGC: no strunzone needed)
 	vbsp_prop_missing = "";
 	vbsp_prop_missing_n = 0;
-	vbsp_prop_static_n = -1;                        // P1604
-	vbsp_prop_static_seen = "";
+	vbsp_prop_missing_listed = 0;                   // P1604
+	vbsp_prop_static_n = -1;
 	vbsp_water_n = vbsp_reltele_n = 0;
 	vbsp_need_report = TRUE;
 	tpl_built = tpl_count = 0;      // P1425: CheckSpawn captures this map's named entities
@@ -7613,10 +7640,12 @@ void() SV_EntityReport =
 		print(sprintf(", ^1%g with NO BOUNDS^7", vbsp_prop_nobox_n));
 	if (vbsp_prop_missing_n)        // P1581
 		print(sprintf(", ^1%g solid with a missing model file^7 (%s)", vbsp_prop_missing_n, vbsp_prop_missing));
-	if (vbsp_prop_static_n > 0)     // P1604
-		print(sprintf(" (%g static)", vbsp_prop_static_n));
-	else if (vbsp_prop_static_n < 0 && vbsp_prop_static_seen != "")
-		print(sprintf(", ^3static props not reported for this map^7 (hl2_sprpmiss names %s)", vbsp_prop_static_seen));
+	// P1604: always said, as the line's other counts are: "not checked" is an older engine, a non-Source world, prop
+	// collision off, or a value that does not name this map.
+	if (vbsp_prop_static_n >= 0)
+		print(sprintf(", static props checked (%g missing)", vbsp_prop_static_n));
+	else
+		print(", static props not checked");
 	// The population whose collision SIZE the client and the server disagreed about
 	// before SV_SpawnProp floored the scale.  Printed only when non-zero, and it is
 	// the falsifier for that floor: tools/census/propsolid.py asks the same question

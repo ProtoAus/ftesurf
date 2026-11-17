@@ -1649,6 +1649,14 @@ def case_profile_verdict():
                "more missing than listed says so")
     notes_with(insert_before(build(), "begin", "propmiss 1 a b"), "malformed",
                "more names than the count is malformed (a note)")
+    # P1604: whether static props were checked, and how many of n are static; a malformed line is a note.
+    for line in ("propstatic 0", "propstatic 1 0", "propstatic 1 2"):
+        f, n = run(insert_before(insert_before(build(), "begin", "propmiss 2 models/a.mdl models/b.mdl"), "begin", line))
+        check(not f and not any("propstatic" in x for x in n),
+              "%r beside propmiss 2 is a known key with a known shape (no fault, no note about it)" % line)
+    for line in ("propstatic 1", "propstatic 2 0", "propstatic 1 3", "propstatic 1 -1", "propstatic 0 1"):
+        notes_with(insert_before(insert_before(build(), "begin", "propmiss 2 models/a.mdl models/b.mdl"), "begin", line),
+                   "'propstatic' is malformed", "%r beside propmiss 2 is malformed (a note)" % line)
     # P1576: the guard values beside the verdict; a malformed line is a note.
     ok_clean(insert_before(insert_before(build(), "begin", "inprof ok 15 1 0 0 1"), "begin", "inguard 1 11 1 0 1"),
              "an inguard header with five numbers passes clean")
