@@ -1657,6 +1657,15 @@ def case_profile_verdict():
     for line in ("propstatic 1", "propstatic 2 0", "propstatic 1 3", "propstatic 1 -1", "propstatic 0 1"):
         notes_with(insert_before(insert_before(build(), "begin", "propmiss 2 models/a.mdl models/b.mdl"), "begin", line),
                    "'propstatic' is malformed", "%r beside propmiss 2 is malformed (a note)" % line)
+    # Review round 2: a propstatic beside an unreadable or absent propmiss crashed (int vs str) or passed unchecked.
+    for pm in ("propmiss 215x", "propmiss 1 a b", None):
+        b = insert_before(build(), "begin", "propstatic 1 1")
+        if pm:
+            b = insert_before(b, "begin", pm)
+        notes_with(b, "no readable 'propmiss'", "propstatic 1 1 beside %s is a note, not a crash" % (pm or "no propmiss"))
+    f, n = run(insert_before(insert_before(build(), "begin", "propmiss 1 models/rail x.mdl"), "begin", "propstatic 1 1"))
+    check(not f and not any("malformed" in x for x in n) and any("rail x.mdl" in x for x in n),
+          "a name with a no-break space is one name, as the writer joined it (split on space/tab only)")
     # P1576: the guard values beside the verdict; a malformed line is a note.
     ok_clean(insert_before(insert_before(build(), "begin", "inprof ok 15 1 0 0 1"), "begin", "inguard 1 11 1 0 1"),
              "an inguard header with five numbers passes clean")

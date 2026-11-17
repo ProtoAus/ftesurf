@@ -1243,7 +1243,8 @@ def _check_rec(r, path, verbose=False, *, data=None):
     # either direction: it explains a replay mismatch as content skew, it does not excuse one.
     pm = head.get("propmiss")
     if pm is not None:
-        f = pm.split()
+        # The writer joins with single spaces; str.split() would also split a name at a no-break space or \x0c (P1604).
+        f = [x for x in re.split(r"[ \t]+", pm) if x]
         try:
             n = int(f[0])
             if n < 0 or len(f) - 1 > min(n, 8):
@@ -1257,19 +1258,23 @@ def _check_rec(r, path, verbose=False, *, data=None):
                        "mismatch on this run may be content skew"
                        % (n, ", ".join(f[1:]), ", ..." if n > len(f) - 1 else ""))
 
-    # P1604: `propstatic 0` (static props not checked) or `propstatic 1 <k>` (checked; k of propmiss's n are static).
+    # P1604: `propstatic 0` (static props not checked) or `propstatic 1 <k>` (checked: k static files missing, each also
+    # counted in propmiss's n, so k <= n). A propstatic beside no readable propmiss has nothing to be part of.
     ps = head.get("propstatic")
     if ps is not None:
         f = ps.split()
+        pmn = r.info.get("propmiss") if isinstance(r.info.get("propmiss"), int) else None
         try:
+            if pmn is None:
+                raise ValueError
             if f == ["0"]:
                 r.info["propstatic"] = "not checked"
-            elif len(f) == 2 and f[0] == "1" and 0 <= int(f[1]) <= r.info.get("propmiss", int(f[1])):
+            elif len(f) == 2 and f[0] == "1" and 0 <= int(f[1]) <= pmn:
                 r.info["propstatic"] = int(f[1])
             else:
                 raise ValueError
         except ValueError:
-            r.note("header 'propstatic' is malformed: %r" % ps.strip())
+            r.note("header 'propstatic' is malformed or has no readable 'propmiss': %r" % ps.strip())
 
     # ---- body --------------------------------------------------------------
     samples = []            # (t, cols)
@@ -4799,6 +4804,8 @@ def emit(r, verbose):
                   "inprof", "clk", "slowclock_bit",
                   # P1603, same edit as the code that assigns them.
                   "plat", "plat_end",
+                  # Patch 1581 / P1604: were never printed, so -v could not say whether n covers static props.
+                  "propmiss", "propstatic",
                   "ticks", "time", "rate", "view_version", "hid", "frames",
                   "fps", "usercmds", "frames_per_cmd",
                   # Added in the same edit as angle_join, per the rule four

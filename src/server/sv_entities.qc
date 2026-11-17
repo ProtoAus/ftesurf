@@ -7417,12 +7417,13 @@ void(string m) SV_PropMissing =
 // hl2_sprpmiss "<world model> <n> <names>". Trusted only when read-only: a console `set` cannot make a NOSET cvar,
 // and one made before the plugin registered stays settable. Only a Source map sets it, so a value naming another map
 // is stale. Checked against the entity names without joining that list, so props spawned later (point_template)
-// still find their own. vbsp_prop_static_n: how many it added; -1 = not checked.
+// still find their own. vbsp_prop_static_n: the plugin's count of missing static files (some may also be entity
+// props, so only the rest are added to n); -1 = not checked.
 #define SPRP_TYPEFLAG_READONLY 32	// CVAR_TYPEFLAG_READONLY (pr_bgcmd.c PF_cvar_type): CVAR_NOSET
 float vbsp_prop_static_n;
 void() SV_PropStaticMissing =
 {
-	local float c, n, i;
+	local float c, n, i, added;
 	local string w, m;
 	vbsp_prop_static_n = -1;
 	if (!(cvar_type("hl2_sprpmiss") & SPRP_TYPEFLAG_READONLY))
@@ -7436,19 +7437,20 @@ void() SV_PropStaticMissing =
 	if (argv(0) != strcat(w, ".xz"))
 		return;
 	n = stof(argv(1));
-	vbsp_prop_static_n = 0;
+	added = 0;
 	for (i = 2; i < c; i++)
 	{
 		m = SV_PropMissName(argv(i));
 		if (strstrofs(vbsp_prop_missing_all, strcat(" ", strtolower(m), " ")) < 0)
 		{
-			vbsp_prop_static_n = vbsp_prop_static_n + 1;
+			added = added + 1;
 			SV_PropMissList(m);
 		}
 	}
 	if (n > c - 2)
-		vbsp_prop_static_n = vbsp_prop_static_n + n - (c - 2);  // past the plugin's 512 names: unchecked against entities
-	vbsp_prop_missing_n = vbsp_prop_missing_n + vbsp_prop_static_n;
+		added = added + n - (c - 2);                    // past the plugin's 512 names: unchecked against entities
+	vbsp_prop_missing_n = vbsp_prop_missing_n + added;
+	vbsp_prop_static_n = max(n, c - 2);
 };
 float vbsp_water_n, vbsp_reltele_n;
 float vbsp_need_report;

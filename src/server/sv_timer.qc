@@ -3162,26 +3162,27 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             rather than reporting it as a difference
     propmiss <n> [<model>...]
                             Patch 1581, additive.  Props the map asks to be solid whose
-                            model file this lobby did not have: n distinct files, case-
-                            insensitive (an upper bound past ~3000 characters of names,
-                            past the plugin's 512 static names, or when a prop spawned
-                            mid-map is also a static one), the first 8 listed (entity
-                            props first), 120 characters each, space/tab/CR/LF/quote as
-                            '_'.  Entity props are counted as they spawn; with
-                            `propstatic 1`, n also holds the solid STATIC props (hl2
-                            plugin collision) whose file was missing when the world's
-                            collision was built.  A file that exists but would not
-                            load is not counted.  A replay with the files present may
-                            then differ on `state` (static props are world collision)
-                            or `pe`: a hint at content skew, never proof -- the lobby
-                            cannot tell a file nobody ships from one only it lacks.
-                            A resumed run keeps its first session's lines.  Absent: an
-                            older build.
-    propstatic 0 | 1 <k>    P1604, additive.  1: static props were checked and k of
-                            n are static.  0: not checked (a server engine without
-                            P1604, a non-Source world, hl2_propcollision 0, or the
-                            engine's read-only `hl2_sprpmiss` naming another map), so
-                            n covers entity props only.  Absent: an older build.
+                            model file this lobby did not have: n distinct files,
+                            case-insensitive (an upper bound past ~3000 characters of
+                            names, past the plugin's 512 static names, or when a prop
+                            spawned mid-map is also a static one), the first 8 listed
+                            (entity props spawned with the map first), 120 characters
+                            each, space/tab/CR/LF/quote as '_'.  Entity props are
+                            counted as they spawn; with `propstatic 1`, n also holds the
+                            solid STATIC props (hl2 plugin collision) whose file was
+                            missing when the world's collision was built.  A file that
+                            exists but would not load is not counted.  A replay with the
+                            files present may then differ on `state` (static props are
+                            world collision) or `pe`: a hint at content skew, never
+                            proof -- the lobby cannot tell a file nobody ships from one
+                            only it lacks.  A resumed run keeps its first session's
+                            lines.  Absent: an older build.
+    propstatic 0 | 1 <k>    P1604, additive.  1: static props were checked and k static
+                            files were missing, each also in n (once, if an entity prop
+                            uses it too), so k <= n.  0: not checked (a server engine
+                            without P1604, a non-Source world, hl2_propcollision 0, or
+                            the engine's read-only `hl2_sprpmiss` naming another map),
+                            so n covers entity props only.  Absent: an older build.
     owner <name>            may contain spaces; read to end of line
     runid <str>             unique-ish: local wall clock to the second + slot
     nonce <hex32>           Patch 416.  The 128 bits the server picked when this
