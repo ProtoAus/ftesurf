@@ -252,6 +252,13 @@
 
 ## Angle cross-check after P1599 -- what is left (17 Nov, ftesurf-a8)
 
+- (18 Nov) Stored rows re-read with P1599's reader (P1580 activation, backend-pending): 151 angle FAULT -> BLIND.
+  Five receipts went VALID -> FAULT for "run clock goes backwards": Lex's bhop runs of 21 Sep - 14 Oct whose .view
+  spans an earlier attempt (cltime and cmdframe continuous, the run clock back to 0/1, the last segment ending one tick
+  before the .rec's end). The client stopped doing it in mid-October: of the evidence store's 561 views only these 5
+  reset (Sep 2, Oct 3, Nov 0 of 271). A reader rule judging only the last segment (it must start at 0/1 and reach the
+  run's end) would clear them without weakening the join; not worth a verifier change for five historical receipts
+  unless the shape returns.
 - P1599 (Lex: ship, 17 Nov) moves only the sweep rules to the offset the frames name when nothing aligns, which
   clears the false angle FAULTs on lobby receipts (231 of 2,322 before). Record: tools/p1599-claim.md.
 - GIVEN UP BY CHOICE: a single pair cannot separate "client that aligns exactly + a small lie" from "honest

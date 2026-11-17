@@ -109,6 +109,17 @@ BEFORE `--reread-receipts`: export every receipt's (runid, verdict, reason, angl
 file. The re-read overwrites in place with no history and its summary does not count FAULT -> VALID; 231 rows
 hold angle FAULTs the current reader repeats on honest lobby clients (BACKLOG, P1599 parked). Owner: Lex said
 yes to activation on 17 Nov.
+DONE 18 Nov 2026 (P1580 ACTIVE; gen1603 runbook step 15 -- 15a/15b by lex-90, 15c/15d by worldofsurf-43 on Lex's
+"ok, go"): exports receipts/pubkeys-pre1580-20261117T191110Z.jsonl (with the backup surfd.db.bak-pre1580-...) and
+receipts/pubkeys-pre1580r-20261117T215426Z.jsonl (one receipt arrived after the first); surfd.env.bak-pre1580-20261117T191110Z;
+the three lines appended (sweep.server_allowlist: 1 host, 12 ports, 1 LAN, no error); marking pass 21:54Z marked 2,332,
+re-read complete 22:50Z. Result = the 15b rehearsal: 152 FAULT -> VALID (151 angle FAULT -> BLIND, P1599), 6 VALID ->
+FAULT (5 Lex's Sep/Oct bhop runs whose .view spans an earlier attempt -- BACKLOG; 1 borobongo surf_4am angle fault),
+sig/pub/map unchanged, 0 svport/address faults, 0 "receipt server check off". 18 rows went angles BLIND -> "" (not
+measured): their .view remains but no .rec names the run any more (a later best replaced it); verdicts unchanged.
+POSTFLIGHT HTTP CHECKS (lex-90, 18 Nov): gen1600's postflight_readonly.py and the runbook's 2d check fetched
+127.0.0.1:8080, which on the Pi is File Browser; surfd binds 8084. P1600's postflight HTTP section proved nothing;
+gen1603's copy is fixed -- start the next generation's tooling from it.
 
 BEFORE ACTIVATION, run `sweep.join_account_key` over a COPY of the live DB (each receipt's runid and pub;
 never the live file) and record the fault count here. Expected sources of honest-looking faults: the
