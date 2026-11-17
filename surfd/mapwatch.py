@@ -113,9 +113,11 @@ download GET_DELAY after the last, --max downloads and --max-gb a run, nothing
 below FLOOR_GB free, nothing started after RUN_SECONDS.  A refusal ends that
 host for the run and nothing is retried in it: cron's cadence is the backoff.
 A complete Momentum list read is replayed for MOM_LIST_SECONDS (<state>/momlist.json)
-instead of asked for again; the files it lists are still checked every run.
-What is counted against a FILE (STRIKES, at most one per STRIKE_GAP, then left
-for RETRY_DAYS) is what
+instead of asked for again (never under --scope); the files it lists are still checked.
+A 403, 429 or 502-504 from Momentum's API or CDN holds that host back across runs
+(HOST_HOLD, doubling to HOST_HOLD_MAX, cleared by its next success); KSF has its park.
+What is counted against a FILE (STRIKES, at most one per STRIKE_GAP, which it then
+waits out unasked, then left for RETRY_DAYS) is what
 only that file can be: a 404/410, its own 500, a BSP with the wrong hash, an
 archive that is one and is wrong, zones that are zones and hash wrong.  A 403,
 429, 502-504, no answer, or a 200 that is not a BSP, an archive or zones at
@@ -213,8 +215,11 @@ RUN_SECONDS = 3 * 3600  # nothing is started after this; cron runs it again
 FLOOR_GB = 20           # momgrab's floor on the same disk
 STRIKES = 3
 RETRY_DAYS = 30
-STRIKE_GAP = 6 * 3600   # P1600: cron runs every 30 min; strikes still come no faster than the old 6-hourly runs
-MOM_LIST_SECONDS = 3 * 3600     # P1600: a whole list read is reused this long (0: always asked, nothing kept)
+STRIKE_GAP = 6 * 3600   # P1600: cron runs every 30 min; a struck file waits this long, unasked, as at the old 6-hourly pace
+MOM_LIST_SECONDS = 6 * 3600     # P1600: a whole list read is reused this long (0: always asked, nothing kept)
+HOLD_CODES = (403, 429, 502, 503, 504)  # P1600: a host saying these is held back across runs (state "hosts")
+HOST_HOLD = 6 * 3600    # ...this long at first (0: no holds), doubling with each further refusal
+HOST_HOLD_MAX = 24 * 3600
 VARIANT = "_css"        # one of mapmeta.py's ALIAS_SUFFIXES: tier, picture and group follow
 # Suffixes that name ANOTHER COMPILE of a map, not another version of it: the
 # ports among mapmeta.py's ALIAS_SUFFIXES.  `_v2`, `_new` and `_redux` are maps.
@@ -1861,16 +1866,19 @@ class ListRecord:
     json = Pacer.json
 
 
-def mom_list_reused(pacer, path, now):
-    """mom_list, replaying a whole read under MOM_LIST_SECONDS old through mom_list itself.
-    -> mom_list's three + the reused read's age in seconds, or None when the list was asked."""
-    held = _load(path) if MOM_LIST_SECONDS > 0 else None
+def mom_list_reused(pacer, path, now, reuse=True, ask=True):
+    """mom_list, replaying a whole read under MOM_LIST_SECONDS old through mom_list itself (not when `reuse` is
+    False: --scope must see a fresh census). -> mom_list's three + the reused read's age in seconds, or None when
+    the list was asked. `ask` False (the host is held back): Refused rather than asking."""
+    held = _load(path) if MOM_LIST_SECONDS > 0 and reuse else None
     if (isinstance(held, dict) and type(held.get("at")) is int and 0 <= now - held["at"] < MOM_LIST_SECONDS
             and isinstance(held.get("pages"), dict) and all(isinstance(v, str) for v in held["pages"].values())):
         try:
             return mom_list(ListRecord(None, held["pages"])) + (now - held["at"],)
         except (KeyError, Refused):
             pass                            # it no longer replays whole: ask
+    if not ask:
+        raise Refused("held back after a refusal; no list read to reuse")
     record = ListRecord(pacer, {})
     got = mom_list(record)
     if MOM_LIST_SECONDS > 0:
@@ -2774,9 +2782,32 @@ def run(a):
     hashes["_path"] = hp
     pacer = Pacer(a.delay)
 
+    hosts = table("hosts")                  # P1600: host -> [held until, for how long, why]
+    for k in [k for k, w in hosts.items()
+              if not (isinstance(w, list) and len(w) == 3 and type(w[0]) in (int, float) and math.isfinite(w[0])
+                      and type(w[1]) is int and w[1] > 0 and isinstance(w[2], str)) or now - w[0] > HOST_HOLD_MAX]:
+        del hosts[k]                        # malformed, or expired so long ago that the next refusal starts afresh
+
+    def host_held(host):
+        """Held back by a refusal; a hold further off than its own length (the clock went back) is not one."""
+        w = hosts.get(host)
+        return bool(w) and 0 < w[0] - now <= w[1]
+
+    def host_hold(host, e):
+        if HOST_HOLD <= 0 or host not in ("api", "cdn") or getattr(e, "code", 0) not in HOLD_CODES:
+            return
+        w = hosts.get(host)
+        secs = min(HOST_HOLD_MAX, 2 * w[1]) if w else HOST_HOLD
+        hosts[host] = [now + secs, secs, str(e)[:120]]
+        print("  %s held back %d h (%s)" % (host, secs // 3600, e))
+
     def waiting(key):
         w = later.get(key)
-        return bool(w) and w[0] >= STRIKES and now - w[1] < RETRY_DAYS * 86400
+        if not w:
+            return False
+        if STRIKE_GAP > 0 and now - w[1] < STRIKE_GAP:
+            return True                     # struck within STRIKE_GAP: not asked again until it passes
+        return w[0] >= STRIKES and now - w[1] < RETRY_DAYS * 86400
 
     def again(key, why):
         w = later.get(key) or [0, 0, why]
@@ -2792,11 +2823,15 @@ def run(a):
     # Each source is read on its own: one refusing must not hide the others.
     mom, names, appr, ksf, said, read = {}, set(), {}, {}, [], set()
     try:
-        mom, names, appr, age = mom_list_reused(pacer, os.path.join(a.state, "momlist.json"), now)
+        mom, names, appr, age = mom_list_reused(pacer, os.path.join(a.state, "momlist.json"), now,
+                                                reuse=scope is None, ask=not host_held("api"))
         read.add("mom")
         if age is not None:
             said.append("momentum: the list read %d min ago reused" % (age // 60))
+        else:
+            hosts.pop("api", None)
     except Refused as e:
+        host_hold("api", e)
         said.append("momentum: NOT READ (%s)" % e)
     try:
         if ksf_parked(now):
@@ -2895,6 +2930,10 @@ def run(a):
     tally, took, fresh, back_again = {}, [], set(), []
     gets = {"n": 0, "bytes": 0}
     dead = {}                               # host -> why it is done for this run
+    for h in ("api", "cdn"):
+        if host_held(h):
+            dead[h] = "held back until %s: %s" % (time.strftime("%H:%M UTC", time.gmtime(hosts[h][0])), hosts[h][2])
+            print("  %s %s" % (h, dead[h]))
     zdir = os.path.join(a.maps, "zones", "online")
     zidx = stems(zdir, ".json")
     verified, ztried = [], set()            # zone stems on the published hash; maps asked
@@ -2926,6 +2965,7 @@ def run(a):
             back[key] = now
         dead[host] = str(e)
         print("  %s refused (%s): nothing more is asked of it this run" % (host, e))
+        host_hold(host, e)
 
     def take(host, key, fetch):
         """One download under every budget.  -> its ("ok", sha1, bytes), or
@@ -2970,6 +3010,7 @@ def run(a):
             return None
         later.pop(key, None)
         back.pop(key, None)
+        hosts.pop(host, None)
         return got
 
     def ksf_get(url, leaf, member, part):
