@@ -57,7 +57,11 @@ Set at activation, in `surfd.env`:
 
 Unset, the HOST check notes "not configured" -- but the svport rule below applies as soon as main's rcptcheck is in SURFD_TOOLS, env or no env (P1600 review): run it over a copy of the live receipts before copying rcptcheck. The account-key check lives in sweep.py and starts with the generation (dry run 0 of 2,299). DONE 17 Nov (main's rcptcheck, read-only on the Pi, deleted after): all 2,322 receipts carry `svport`, every one
 equal to the signed port -- 0 svport faults; with the planned HOSTS/LAN/PORTS, 2,321 match the public address,
-1 is the LAN note, 0 faults. The 16 Nov corpus (2,296
+1 is the LAN note, 0 faults.
+THE ROOT OBSERVER POLICY PINS THE EXTERNAL TOOLS BY HASH (ftesurf-4a, 17 Nov): installing new tools before the
+policy carries them breaks the observer's reader proof. P1600's policy is to carry exactly these (game main
+8a17053d): rcptcheck.py 4d4837fe6529d060..., reccheck.py 10a9a469e0b41c18..., hidcheck.py 0962bf561bfbed27...
+(full sha256 in the P1600 packet). Install those bytes, nothing newer, only after P1600 is live. The 16 Nov corpus (2,296
 receipts) has 2,295 on the public address and 1 on the LAN one. A LAN address is reported as a note, never
 passed or faulted (AGENT_NOTES: "a private address is nobody's" -- another network's server at that address
 reads the same). The signed port must also equal the unsigned `svport` the writing lobby recorded, which
