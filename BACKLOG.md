@@ -172,12 +172,25 @@
 - First-draw back-buffer waits: at cl_maxfps 300 some frames spend ~1.1-1.3 ms in "resolve, effects, bloom" -- the first
   draw into the window's buffer, which on Wayland waits for one the compositor still holds. Fullscreen (direct scanout)
   not measured.
+- Survey (lows5 artifacts: survey-linux.tsv all 57 maps, survey-matched*.tsv, summary-matched.txt): 48 of the first
+  pass's 57 rows ran on DP-2 (scale 1.0) at 1536x960 px, so they are not pixel-matched with Windows' 1920x1200; the
+  15 worst were rerun at 1920x1200 px (S_PIXELS). Matched, quiet desktop, P1605+P1607 build, warm 0.1% Linux / Windows:
+  fairy 187/129, kitsune_css 479/174, joutsenlaulu 391/209, nuclear 380/239, mesa_revo 312/240, jumble 278/267, colony
+  321/272, kitsune 338/282 -- Linux ahead wherever nothing freezes. With Survey 5's fullfx (hl2_refract 1) six of the 15
+  freeze 100-400 ms in the transparent bucket: andromeda 7 fps, boreas 7, garden 9, pantheon 10, bossfight 23,
+  hourglass 42; with hl2_refract 0: andromeda 433, boreas 368, pantheon 245, hourglass 263 (bossfight/garden: p99.9
+  2.4-2.5 ms, freezes left only in resolve/swap). Those 0.3-0.9 s "resolve, effects, bloom" / swap freezes appeared only
+  with the 1920x1200 window on the 1920x1200 DP-2 (taller than the screen with its title bar), never at 1536x960:
+  treat them as a rig artifact until seen in fullscreen.
 - Refracting glass (hl2_refract 1, off by default since P1587) costs far more on Linux: every refracting batch takes a
   full-screen $currentrender copy, and with MSAA each is a full scene resolve (MSAA_Blit) first -- surf_andromeda averages
   5.05 copies (11.6 Mpx) a frame, warm 0.1% 99 fps with it vs 324 without (Windows Survey 5: 293 with it). Stack samples
   put the time in libnvidia-eglcore under T_Gen_CurrentRender (CPU busy, likely the driver waiting on the copies); some
   frames take 120-170 ms. Lever: copy only the batch's screen rectangle plus the distortion margin, or skip the copy when
   nothing drawn since the last one overlaps the batch (round 4's idea for bossfight's 458 panes).
+  The freezes need MSAA (andromeda with vid_multisample 0 had none, max 4.9 ms -- at 1536x960 px, not pixel-matched) and
+  last a near-constant ~120-135 ms (pantheon, andromeda): a driver-level wait, not proportional work. First step next
+  round: a pixel-matched MSAA on/off pair, then resolve straight into the copy texture (one blit, no CopyTexSubImage).
 - Windowed present stalls: GPU-heavy frames wait in WL_SwapBuffers (drmSyncobjTimelineWait, explicit sync) -- surf_pantheon
   5-7 ms swaps where Windows' frames are CPU-bound at ~5.9 ms; labwc composites at 300/360 Hz beside the game. Fullscreen
   (direct scanout) is not measured: it would take over Lex's screen.
