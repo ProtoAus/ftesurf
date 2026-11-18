@@ -2332,6 +2332,11 @@ void(string cmd) SV_ParseClientCommand =
 		VM_SVCommand(self, c, cmdargc);
 		return;
 	}
+	if (!strcmp(c, "look_setup") || !strcmp(c, "look_profile"))     // P1616 (sv_viewmodel.qc)
+	{
+		Look_SVCommand(self, c, cmdargc);
+		return;
+	}
 
 	// Patch 615: Steam accounts (sv_account.qc).
 	if (c == "acct_hello")      { Account_Hello(self);                    return; }

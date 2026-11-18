@@ -7,6 +7,168 @@
 .float vm_showweapon, vm_showevent, vm_showinspect, vm_showmode;
 .float vm_publishdirty, vm_publishnext;
 
+/* P1616: the look (body, belt, trail, paint) under the Steam account, kept by the lobbies in their shared gamedir as
+   data/looks/<who>.txt, one packed line (Look_Pack, cl_viewmodel.qc). P970's handshake: the client sends
+   `look_setup "<packed>"` on change; at bind the lobby sends `look_profile load <gen> "<packed>"` and saves nothing
+   until `look_profile ack` (or 15 s), so a local look from before the load never overwrites the account's. */
+#define LOOK_FIELDS 13
+.string look_cur, look_saved;
+.float look_gen, look_wait, look_dirty, look_quiet;
+
+// Tokenizes: callers read their argv first. Fields: version 1, then numbers ("r g b" triples) or "random".
+float(string packed) Look_Valid =
+{
+	local float n, i, j, c;
+	local string f;
+	if (strlen(packed) > 240)
+		return FALSE;
+	n = tokenizebyseparator(packed, ",");
+	if (n != LOOK_FIELDS || strcmp(argv(0), "1"))
+		return FALSE;
+	for (i = 1; i < n; i = i + 1)
+	{
+		f = argv(i);
+		if (strlen(f) > 16)
+			return FALSE;
+		if (!strcmp(f, "random"))
+			continue;
+		for (j = 0; j < strlen(f); j = j + 1)
+		{
+			c = str2chr(f, j);
+			if (!((c >= 48 && c <= 57) || c == 32 || c == 46 || c == 45))
+				return FALSE;
+		}
+	}
+	return TRUE;
+};
+
+void(entity e, string packed) Look_SetCur =
+{
+	if (!strcmp(e.look_cur, packed)) return;
+	if (strcmp(e.look_cur, "")) strunzone(e.look_cur);
+	e.look_cur = strcmp(packed, "") ? strzone(packed) : "";
+};
+void(entity e, string packed) Look_SetSaved =
+{
+	if (!strcmp(e.look_saved, packed)) return;
+	if (strcmp(e.look_saved, "")) strunzone(e.look_saved);
+	e.look_saved = strcmp(packed, "") ? strzone(packed) : "";
+};
+
+string(entity e) Look_Path =
+{
+	local string who;
+	who = infokey(e, "*ahash");
+	if (!SV_RecIsHex(who, FS_WHO_IDLEN))
+		return "";
+	return sprintf("data/looks/%s.txt", who);
+};
+
+void(entity e) Look_SVSave;
+// Disconnect and SV_Shutdown (every map change): a change still settling is written, not lost.
+void(entity e) Look_SVFlush =
+{
+	if (e.look_gen && !e.look_wait && e.look_dirty)
+		Look_SVSave(e);
+};
+
+void(entity e) Look_SVConnect =
+{
+	Look_SVFlush(e);                    // connect finds nothing pending (disconnect flushed it)
+	Look_SetCur(e, "");
+	Look_SetSaved(e, "");
+	e.look_gen = e.look_wait = e.look_dirty = e.look_quiet = 0;
+};
+
+// Social_Set (via VM_SVBind): every connect of a linked, unbanned player.
+void(entity e) Look_SVBind =
+{
+	local string path, ln;
+	local float f;
+	e.look_gen = Account_NextId();
+	e.look_wait = 0;
+	Look_SetSaved(e, "");
+	path = Look_Path(e);
+	if (!strcmp(path, ""))
+		return;
+	ln = "";
+	f = fopen(path, FILE_READ);
+	if (f >= 0)
+	{
+		ln = fgets(f);
+		fclose(f);
+	}
+	if (strcmp(ln, "") && Look_Valid(ln))
+	{
+		Look_SetSaved(e, ln);
+		e.look_wait = time + 15;
+		e.look_dirty = FALSE;
+		stuffcmd(e, sprintf("look_profile load %.0f \"%s\"\n", e.look_gen, ln));
+		print(sprintf("look: %s loaded for %s\n", path, e.netname));
+		return;
+	}
+	// No account look yet: this install's becomes it.
+	e.look_dirty = (strcmp(e.look_cur, "") != 0);
+	e.look_quiet = time + 1;
+};
+
+void(entity e) Look_SVSave =
+{
+	local string path;
+	local float f;
+	path = Look_Path(e);
+	if (!strcmp(path, "") || !strcmp(e.look_cur, ""))
+		return;
+	f = fopen(path, FS_FILE_WRITESTREAM);
+	if (f < 0)
+		return;
+	fputs(f, strcat(e.look_cur, "\n"));
+	fclose(f);
+	print(sprintf("look: %s saved for %s\n", path, e.netname));
+	Look_SetSaved(e, e.look_cur);
+	e.look_dirty = FALSE;
+};
+
+void(entity e, string command, float count) Look_SVCommand =
+{
+	local string action, packed;
+	local float gen;
+	if (!strcmp(command, "look_setup"))
+	{
+		if (count != 2) return;
+		packed = argv(1);
+		if (!Look_Valid(packed)) return;
+		Look_SetCur(e, packed);
+		if (strcmp(e.look_cur, e.look_saved))
+		{
+			e.look_dirty = TRUE;
+			e.look_quiet = time + 2;       // a slider drag settles before one write
+		}
+		return;
+	}
+	// look_profile ack <gen> "<packed>": the client applied (or kept) and says what it wears now.
+	action = argv(1); gen = stof(argv(2)); packed = argv(3);
+	if (count != 4 || strcmp(action, "ack") || !e.look_wait || gen != e.look_gen) return;
+	e.look_wait = 0;
+	if (Look_Valid(packed))
+		Look_SetCur(e, packed);
+	e.look_dirty = (strcmp(e.look_cur, "") && strcmp(e.look_cur, e.look_saved));
+	e.look_quiet = time + 1;
+};
+
+void(entity e) Look_SVFrame =
+{
+	if (!e.look_gen) return;
+	if (e.look_wait)
+	{
+		if (time < e.look_wait) return;
+		e.look_wait = 0;                // no ack: whatever the client wears now is its choice
+		e.look_dirty = (strcmp(e.look_cur, "") && strcmp(e.look_cur, e.look_saved));
+	}
+	if (e.look_dirty && time >= e.look_quiet)
+		Look_SVSave(e);
+};
+
 void(entity e, float code) VM_SVError =
 {
 	e.vm_ready = FALSE;
@@ -34,6 +196,7 @@ void(entity e) VM_SVConnect =
 	e.vm_publishdirty = e.vm_publishnext = 0;
 	e.vm_showweapon = e.vm_showevent = e.vm_showinspect = e.vm_showmode = 0;
 	forceinfokey(e, "*vm", "");
+	Look_SVConnect(e);
 };
 void(entity e, string packed) VM_SVSetup =
 {
@@ -62,7 +225,7 @@ void(entity e, float kind) VM_SVRequest =
 	e.vm_req = Account_NextId();
 	e.vm_reqkind = kind;
 	e.vm_deadline = time + 15;
-	uri_post(strcat(cvar_string("lobby_url"), "/api/social/viewmodel"), e.vm_req,
+	uri_post(strcat(cvar_string("lobby_master"), "/api/social/viewmodel"), e.vm_req,   // P1616: was lobby_url, set nowhere
 	         "application/x-www-form-urlencoded", form);
 };
 void(entity e) VM_SVSave =
@@ -81,7 +244,7 @@ void(entity e, float reload) VM_SVLoad =
 	stuffcmd(e, sprintf("vm_profile begin %.0f %s %.0f\n", e.vm_generation, infokey(e, "*ahash"), reload));
 	VM_SVRequest(e, 0);
 };
-void(entity e) VM_SVBind = { VM_SVLoad(e, FALSE); };
+void(entity e) VM_SVBind = { VM_SVLoad(e, FALSE); Look_SVBind(e); };
 
 float(float reqid, float code, string body) VM_SVReply =
 {
@@ -227,6 +390,7 @@ void() VM_SVFrame =
 		}
 		if (e.vm_ready && e.vm_dirty && !e.vm_waitack && !e.vm_req && time >= e.vm_quiet)
 			VM_SVSave(e);
+		Look_SVFrame(e);
 		e = SV_PlNext(e);
 	}
 };
@@ -234,6 +398,7 @@ void() VM_SVFrame =
 void() VM_SVRegister =
 {
 	forceinfokey(world, "*vmsetup", "1");
+	forceinfokey(world, "*looksetup", "1");     // P1616
 	clientstat(STAT_VM_WEAPON, EV_FLOAT, vm_showweapon);
 	clientstat(STAT_VM_EVENT, EV_FLOAT, vm_showevent);
 	clientstat(STAT_VM_INSPECT, EV_FLOAT, vm_showinspect);

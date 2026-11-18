@@ -20,6 +20,9 @@ void() SV_Shutdown =
 		PlayStats_Leaving(p);         // P1171: progs reload per map; flush the snapshot first
 		Archive_Reset(p);
 	}
+	p = world;
+	while ((p = find(p, classname, "player")))
+		Look_SVFlush(p);              // P1616
 
 	// Patch 382: every spectate ends first -- the park writes `pause` after the
 	// `spec 0`, and a run that is not parked must not arrive on the next map held.

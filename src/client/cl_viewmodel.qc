@@ -119,6 +119,96 @@ void(string packed) VM_RememberOwn =
 	if (strcmp(vm_own, "")) strunzone(vm_own);
 	vm_own = strzone(packed);
 };
+/* P1616: the look under the Steam account (sv_viewmodel.qc Look_*): version 1, the seven hud_player keys in
+   Av_LookKey order, then Look_ClientCvar's five. Comma-separated; the lobby checks every field. */
+#define LOOK_NCLIENT 5
+string look_sent, look_start;
+float look_next, look_publishat;
+
+string(float i) Look_ClientCvar =
+{
+	if (i == 0) return "paint_color";
+	if (i == 1) return "paint_size";
+	if (i == 2) return "paint_alpha";
+	if (i == 3) return "paint_rate";
+	return "cl_trailself";
+};
+
+string() Look_Pack =
+{
+	local string s;
+	local float i;
+	s = "1";
+	for (i = 0; i < AV_LOOKKEYS; i = i + 1)
+		s = strcat(s, ",", cvar_string(strcat("cl_", Av_LookKey(i))));
+	for (i = 0; i < LOOK_NCLIENT; i = i + 1)
+		s = strcat(s, ",", cvar_string(Look_ClientCvar(i)));
+	return s;
+};
+
+void(string packed) Look_Sent =
+{
+	if (strcmp(look_sent, "")) strunzone(look_sent);
+	look_sent = strzone(packed);
+};
+
+void() Look_Poll =
+{
+	local string packed;
+	if (cltime < look_next) return;
+	look_next = cltime + 0.5;
+	packed = Look_Pack();
+	if (!strcmp(look_start, ""))
+		look_start = strzone(packed);       // this connection's look before any account load
+	if (strcmp(serverkey("*looksetup"), "1")) return;
+	// Republished like vm_setup: a first command can precede spawn.
+	if (!strcmp(packed, look_sent) && cltime < look_publishat) return;
+	look_publishat = cltime + 5;
+	localcmd(strcat("cmd look_setup \"", packed, "\"\n"));
+	Look_Sent(packed);
+};
+
+// look_profile load <gen> "<packed>": the account's look, applied unless it was already changed by hand on this
+// connection (then that change is the newer choice). Either way the ack says what is worn now.
+float() Look_ConsoleCommand =
+{
+	local string data, f, cur;
+	local float gen, n, i, ok;
+	if (strcmp(argv(0), "look_profile")) return FALSE;
+	if (strcmp(argv(1), "load")) return TRUE;
+	gen = stof(argv(2));
+	data = argv(3);
+	cur = Look_Pack();
+	n = tokenizebyseparator(data, ",");
+	ok = (n == AV_LOOKKEYS + LOOK_NCLIENT + 1 && !strcmp(argv(0), "1"));
+	for (i = 1; i < n; i = i + 1)
+	{
+		f = argv(i);
+		if (strlen(f) > 16)
+			ok = FALSE;
+		else if (strcmp(f, "random") && !Av_LookSafe(f))
+			ok = FALSE;
+	}
+	if (ok && (!strcmp(cur, look_start) || !strcmp(look_start, "")))
+	{
+		for (i = 0; i < AV_LOOKKEYS; i = i + 1)
+			if (strcmp(argv(i + 1), cvar_string(strcat("cl_", Av_LookKey(i)))))
+				Av_Put(Av_LookKey(i), argv(i + 1));
+		for (i = 0; i < LOOK_NCLIENT; i = i + 1)
+			if (strcmp(argv(AV_LOOKKEYS + 1 + i), cvar_string(Look_ClientCvar(i))))
+				cvar_set(Look_ClientCvar(i), argv(AV_LOOKKEYS + 1 + i));
+		if (strcmp(cur, Look_Pack()))
+			print("hud_player: your look from your Steam account\n");
+	}
+	else if (ok)
+		print("hud_player: look changed since joining; saving it to your Steam account\n");
+	cur = Look_Pack();
+	localcmd(sprintf("cmd look_profile ack %.0f \"%s\"\n", gen, cur));
+	Look_Sent(cur);
+	look_publishat = cltime + 5;
+	return TRUE;
+};
+
 void() VM_PollOwn =
 {
 	local string packed;
@@ -175,6 +265,7 @@ float() VM_ConsoleCommand =
 		}
 		return TRUE;
 	}
+	if (Look_ConsoleCommand()) return TRUE;     // P1616
 	if (strcmp(command, "vm_profile")) return FALSE;
 	// Copy ALL argv before the common numeric codec reuses tokenize.
 	action = argv(1); generation = stof(argv(2));
@@ -253,6 +344,7 @@ void() VM_Frame =
 	target = -1;
 	vm_active = FALSE;
 	VM_PollOwn();
+	Look_Poll();                        // P1616
 	WP_RestoreKnife();
 	if (vm_capfov) setproperty(VM_FOVPROPERTY, 0);
 	st = getstatf(STAT_FS_SPEC);
@@ -329,6 +421,7 @@ void() VM_Register =
 	vm_capfov = checkextension("FTESURF_VIEWMODEL_FOV");
 	registercommand("viewmodel_setup");
 	registercommand("vm_profile");
+	registercommand("look_profile");    // P1616: free (engine command list grepped)
 	registercvar("cl_spec_viewweapon", "1", CVAR_ARCHIVE);
 	registercvar("cl_vm_seed", "0", 0);
 	registercvar("cl_vm_scale", "1", 0);
