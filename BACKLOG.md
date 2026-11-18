@@ -327,6 +327,27 @@
   ordinal -- so the server must record the client's command number. Also on that branch: test_reccheck's
   snapshot_view gains a `fifo` link model (stalls, drains), and build()'s `in` carry, which never modelled the
   mover clock (6 ms commands 40% of the time), is made constant.
+- P1609 (18 Nov, worldofsurf-58) PROPOSED, NOT MERGED -- owner decision (branch p1609-solo, ae7cb8d2): the
+  one-frame rule abstains (BLIND) when P1599's sweep join moved, i.e. nothing aligned to 0.05 deg and offset 0 is
+  a fallback the frames' own angles contradict. Live receipts 18 Nov: 91 FAULT, 84 of them angle; 81 are the
+  one-frame rule at the fallback 0, 72 with a named offset (+13..+34) where the sweep reads 0.00%. Traced on one:
+  79% of one-frame moves match a frame exactly at the named offset, 9% a tick later, 10% lie between two drawn
+  frames (the command built between renders). On 507 lobby pairs the rule aligned on 4, all at offset 0.
+  Fleet, main vs P1609: same-run 72 FAULT -> BLIND, 18 FAULT kept, none new; cross-run 201 FAULT kept; injected
+  lies on the other 432 pairs caught identically; on the 72 cleared pairs injected snaps are caught on 0 (before:
+  FAULT honest or not), held lies on 63, splices on 49 (the sweep). Cost, found by both reviews: an assist on a
+  client that aligns, at any offset, can enter the same path cheaply (private note), and the sweep rules cannot
+  catch single-move snaps -- per pair, an honest wobbling client and an assisting aligned one read alike.
+  Choices: (a) keep today's (72 false accusations, 16 players); (b) P1609 as built plus its round-2 fixes (the
+  stored note prints score(0) as "the best" in receipts.angles_reason; no test that an assist at +N stays judged;
+  the lag-search tests now pass through abstention); (c) abstain only when the misses look like wobble -- near
+  misses (exact a tick off, or between two drawn frames) at least as many as unexplained ones: 71 of 72 honest
+  remote pairs -- which still judges a fixed-delay client but not one that fakes wobble; (d) per-player history
+  (a key that has aligned before keeps today's verdict).
+- The 9 one-frame FAULTs where the frames name offset 0 itself (8 on the owner's key, 21 Sep - 1 Nov): the sent
+  angle lies between two drawn frames. "On the drawn path within a tick" passes all 9 (0.00-0.57%) and catches
+  10 deg snaps on 2% of moves on all 9; it is weaker against a small lie along the turn (the 0.5 deg rotation test
+  would likely fail). Its own patch if wanted.
 - Stored FAULT rows: `--reread-receipts` overwrites in place with no history, and its summary does not report
   FAULT -> VALID. Export (runid, verdict, reason, angles, angles_reason) before any re-read, P1580's activation
   included; that re-read is what applies P1599 to old rows. No column says which reader version judged a row.

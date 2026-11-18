@@ -5,3 +5,6 @@ offset lines the .rec and .view up to 0.05 deg and P1599's sweep join names a di
 does not judge (BLIND, with the reason), instead of faulting at offset 0. Live receipts: 84 angle FAULTs on 16
 players, 81 of them this rule at the fallback (72 with a named sweep offset); on 507 lobby pairs the rule aligned on 4.
 Verifier change: lens reviews, corpus sweep and fleet comparison before it rides the next surfd generation.
+
+PROPOSED 18 Nov, not merged: waits on the owner's choice (BACKLOG, P1599 section, "P1609"). Code and tests on
+branch p1609-solo (ae7cb8d2); two review lenses done, fleet comparison done; reader on main unchanged.
