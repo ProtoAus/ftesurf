@@ -21,6 +21,12 @@
 
 ## next
 
+### P1608 No hitch when the scoreboards save
+- The online scoreboards are now saved for offline viewing when you leave a map, instead of a few seconds after they load, which caused a small hitch early in a run and after each finish.
+
+### P1607 Linux: even frame times with a frame cap
+- With a frame rate cap (cl_maxfps) the Linux game now spaces frames evenly, as the Windows game does, instead of letting each frame's small changes in work show as jumps in the frame time.
+
 ### P1605 Linux: smaller hitches from the game's string cleanup
 - On Linux the game's regular clean-up of temporary text now copies only what changed, so those frames cost about 0.2 ms instead of 1 to 2.5 ms. Needs Linux 6.7 or newer; older systems work as before.
 

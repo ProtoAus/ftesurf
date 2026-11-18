@@ -6,4 +6,7 @@ which already saved a dirty cache; and Milk_Supported, ~8% of csprogs' temp stri
 frame), re-reads vid_renderer at most once a second. src/client/cl_online.qc, src/milk_sys.qc.
 Root FTESurf-worktrees/lows5-20261118-ed.
 
-## Status (18 Nov 2026): claimed, in progress.
+## Status (18 Nov 2026): merged -- FTESurf 02c240e8 (QC); engine record entry 5798ac79a. Not deployed: main's QC also
+carries P1603, whose surfd goes first (tools/backend-pending.md); local installs get it with their next QC build.
+Verified: no OBC_Save in r_spikes 2 (was 3.14 ms), the cache written at quit, Milk_Supported 0 of the census reports
+(66 before), fteqcc 0 warnings. Record: engine ENGINE_PATCHES.md "Patch 1608".

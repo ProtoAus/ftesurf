@@ -7,4 +7,8 @@ view along the route costs 1.1-1.7 ms. Port the modes to Linux (clock_nanosleep 
 gl_screen.c, r_frametime sampled at the swap). Engine client/sys_linux.c, cl_main.c, cl_screen.c, gl/gl_screen.c.
 Root FTESurf-worktrees/lows5-20261118-ed.
 
-## Status (18 Nov 2026): claimed, in progress.
+## Status (18 Nov 2026): merged -- engine main 0d305da2f + entry 3cf50f716 (tag patch-1607). Installed on the Linux PC's
+game (see the delivery line in BACKLOG "Linux 0.1% lows (lows5)"). Windows binaries unchanged (the Windows code is
+untouched; only the guards widened). Verified: same binary sys_framepacing 0 / 5 on surf_andromeda at Lex's config,
+3 a side: p99 3.97 / 3.37 ms, 1% 240 / 283 fps. One review round (sched_yield spin, mode-change reset, stepped-back
+clock: fixed). Record: engine ENGINE_PATCHES.md "Patch 1607".

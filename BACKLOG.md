@@ -161,6 +161,14 @@
   with prctl(PR_SET_PTRACER_ANY), yama ptrace_scope is 1). The windows go on Lex's desktop: record the desktop's own load
   (run_survey's env column) -- a Firefox video (RDD process ~35%) turned 4-10 stutters into 140-530 on surf_beginner.
 - DONE P1605: the collector's incremental copy on Linux (userfaultfd + PAGEMAP_SCAN).
+- DONE P1607: sys_framepacing on Linux (Lex's andromeda question: views cost 1.1-1.7 ms but capped frames jumped).
+  Left: with vid_vsync "" (empty, EGL's interval 1) mode 5 still runs, on Windows too -- on Wayland the vsync wait is
+  WL_MayRefresh's, so the swap-block detector never sees it; a late frame's successor aims one slot on (P1413 design);
+  no Linux backend sets vid.isminimized.
+- DONE P1608: the board cache saves at map end (OBC_Save 3.1 ms mid-run); Milk_Supported cached.
+- First-draw back-buffer waits: at cl_maxfps 300 some frames spend ~1.1-1.3 ms in "resolve, effects, bloom" -- the first
+  draw into the window's buffer, which on Wayland waits for one the compositor still holds. Fullscreen (direct scanout)
+  not measured.
 - Refracting glass (hl2_refract 1, off by default since P1587) costs far more on Linux: every refracting batch takes a
   full-screen $currentrender copy, and with MSAA each is a full scene resolve (MSAA_Blit) first -- surf_andromeda averages
   5.05 copies (11.6 Mpx) a frame, warm 0.1% 99 fps with it vs 324 without (Windows Survey 5: 293 with it). Stack samples
