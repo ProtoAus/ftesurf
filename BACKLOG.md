@@ -171,7 +171,15 @@
   menu 508a4632 / qwprogs e073eecc (P1608). Predecessors in the task root's artifacts/install-prev1605.
 - First-draw back-buffer waits: at cl_maxfps 300 some frames spend ~1.1-1.3 ms in "resolve, effects, bloom" -- the first
   draw into the window's buffer, which on Wayland waits for one the compositor still holds. Fullscreen (direct scanout)
-  not measured.
+  not measured. P1611 (18 Nov): in a headless nested labwc the fullscreen game is the only buffer on the output (opaque
+  XRGB at 2560x1600) and labwc's scene tries direct scan-out every frame; whether NVIDIA's plane accepts it on the real
+  DP-1 is still unmeasured. F11 now switches live, so a rig can compare windowed and fullscreen in one session. rig.py
+  now passes vid_winmaximize 0: since P1611 a Wayland windowed start maximizes by default, as on Windows.
+  Installed 18 Nov: ftesurf64 32a0143e (git-8859-patch-1611-0-g7ff6dfde3; server, plugin and .dat unchanged), the
+  previous cdcdcd13 in FTESurf-worktrees/wlfs-20261118-c5/artifacts/install-prev1611.
+- Seen in P1611's headless runs, not investigated: `vid_renderer vk` on Wayland dies at start with
+  vkCreateSwapchainKHR VK_ERROR_SURFACE_LOST_KHR (the unpatched exe too; nested headless labwc, NVIDIA 620.70.06), and
+  the Wayland Vulkan path never rebuilds its swapchain on a resize, so P1611's live toggle is OpenGL only.
 - Survey (lows5 artifacts: survey-linux.tsv all 57 maps, survey-matched*.tsv, summary-matched.txt): 48 of the first
   pass's 57 rows ran on DP-2 (scale 1.0) at 1536x960 px, so they are not pixel-matched with Windows' 1920x1200; the
   15 worst were rerun at 1920x1200 px (S_PIXELS). Matched, quiet desktop, P1605+P1607 build, warm 0.1% Linux / Windows:

@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1611 Wayland fullscreen: F11 / Alt+Enter switch instantly -- installed on the Linux PC's game; owner check PENDING (record: engine ENGINE_PATCHES.md Patch 1611)
+- In a map, press F11 (or Alt+Enter) a few times. Each switch is instant: no black flash, no second of freeze, no
+  texture pop-in afterwards. Windowed is a maximized window with labwc's title bar ("World of Surf: ..."), not a
+  640x480 one.
+- Fullscreen hides the taskbar. Alt+Tab away and back is instant and the game stays fullscreen.
+- Super+F (your labwc shortcut) also takes the game in and out of fullscreen; F11 afterwards goes the other way.
+- Starting the game with vid_fullscreen 0 opens maximized. vid_fullscreen 1 and 2 are the same on Wayland: both are
+  real fullscreen (the compositor's own, with your labwc G-Sync and tearing rules).
+
 ## P1603 Linux runs rank, marked sky blue -- NOT DEPLOYED; owner check after deploy (record: tools/p1603-claim.md)
 - After the deploy in tools/backend-pending.md (surfd, lobby progs, then sv_rank_linux 1): finish a run on a lobby from
   the Linux PC. It should rank, and on the TAB board's online rows and the website board your name shows sky blue with

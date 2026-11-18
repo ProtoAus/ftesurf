@@ -21,6 +21,12 @@
 
 ## next
 
+### P1611 Linux: instant fullscreen switching on Wayland
+- On a Wayland desktop, F11 and Alt+Enter now switch between fullscreen and windowed instantly, instead of freezing for a second or more while the game reloaded its graphics.
+- Windowed mode opens maximized with the desktop's title bar, as on Windows, instead of as a small 640x480 window, and keeps its title.
+- On GNOME, fullscreen menus no longer show the game's own title strip across the top.
+- Both fullscreen settings (borderless and exclusive) give the same true fullscreen on Wayland, the fastest mode there; Wayland has no separate exclusive mode.
+
 ### P1608 No hitch when the scoreboards save
 - The online scoreboards are now saved for offline viewing when you leave a map, instead of a few seconds after they load, which caused a small hitch early in a run and after each finish.
 
