@@ -12,7 +12,13 @@ renewed-fixture admission blockers. The activated
 backend entries have been removed from this queue, not relabelled as pending.
 Do not redeploy a healthy backend merely to refresh this handoff.
 
-## P1603 Linux runs rank, marked `plat` -- pending, in this order
+## P1603 Linux runs rank, marked `plat` -- DONE 18 Nov 07:24Z (all three steps live)
+Steps 1-2 rode gen1603 and the P1604 lobby progs. Step 2's check, Lex's Linux run bhop_2hrs 0:17.520 (runid
+20261118-071933-0-p27610, lobby 27610): .rec `plat 1` in the header and after `prof platform`; community board
+row `"plat":1`; reccheck no faults (sweep 0.00%). The scoreboard's sky blue is Lex's to see. Step 3: lobby.cfg
+line 217 set to 1 on the Pi (backup cfg/lobby/lobby.cfg.pre-ranklinux-20261118T072335Z; the file equals main's),
+then rcon on all 12 lobbies, each read back 1. Rollback as below; the rcon step reads surfd.env's password in a
+loopback script (rcon.Rcon("127.0.0.1", port, pw).execute(["set", "sv_rank_linux", "0"]), then read it back).
 RULE: never run a surfd without `runs_plat` while any lobby has `sv_rank_linux 1` -- it drops `plat`, so
 Linux runs rank unmarked, and its upserts leave stale marks.
 1. surfd generation carrying `runs_plat()` (surfd.py; recplot.py, web/board.js, web/board.css,

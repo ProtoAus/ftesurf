@@ -12,3 +12,7 @@ ENGINE_PATCHES.md, ENGINE.txt, PATCHNOTES.md, AGENT_NOTES.md, BACKLOG.md, tools/
 ## Delivery (17 Nov 2026)
 FTESurf main (this commit's parent chain), three review rounds (predicate/persistence, evidence/backend, cheater).
 NOT deployed: order in tools/backend-pending.md (surfd generation, lobby progs with sv_rank_linux 0, then 1).
+
+## Live (18 Nov 2026, worldofsurf-43)
+Steps 1-2 rode gen1603 and the P1604 lobby progs; Lex's Linux run (bhop_2hrs 0:17.520) posted `plat 1` to the
+community board; step 3 set `sv_rank_linux 1` in lobby.cfg and on all 12 lobbies (tools/backend-pending.md).

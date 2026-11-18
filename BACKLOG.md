@@ -13,7 +13,7 @@
 - The site's player-name links are already var(--accent) #59bfff, near #3FC1FF: a Linux row's rank and time
   turn sky blue, its name barely changes. If that is too quiet, an edge strip or a chip (the .foreign shape).
 - Linux anti-cheat is deferred (Lex): any client without in_rawinput ranks marked, guard values unjudged.
-  The lobbies hold `sv_rank_linux 0` until the surfd with runs_plat is live (tools/backend-pending.md).
+  Live 18 Nov 07:24Z: every lobby at `sv_rank_linux 1` (tools/backend-pending.md); Linux runs rank, marked.
 
 ## 30-minute new maps -- what P1601 left (17 Nov, ftesurf-29; root C:\FTESurf-worktrees\mapnew-20261117-29)
 - surfd/mapnew.py is on main and NOT routed. It ships as guarded route `mapnew` in the surfd generation after P1600:
