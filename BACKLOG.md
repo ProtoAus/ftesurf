@@ -166,6 +166,9 @@
   WL_MayRefresh's, so the swap-block detector never sees it; a late frame's successor aims one slot on (P1413 design);
   no Linux backend sets vid.isminimized.
 - DONE P1608: the board cache saves at map end (OBC_Save 3.1 ms mid-run); Milk_Supported cached.
+- Installed 18 Nov on the Linux PC's game (~/Projects/WorldofSurf/ftesurf, wos-build.sh full): ftesurf64 cdcdcd13
+  (git-8858-patch-1607-1-g5798ac79a, carries P1605 + P1607), fteqw-sv64 332b68bc, hl2 plugin e736e25e, csprogs aafa0d66 /
+  menu 508a4632 / qwprogs e073eecc (P1608). Predecessors in the task root's artifacts/install-prev1605.
 - First-draw back-buffer waits: at cl_maxfps 300 some frames spend ~1.1-1.3 ms in "resolve, effects, bloom" -- the first
   draw into the window's buffer, which on Wayland waits for one the compositor still holds. Fullscreen (direct scanout)
   not measured.
