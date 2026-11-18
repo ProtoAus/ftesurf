@@ -2252,14 +2252,15 @@ def case_angle_lag_is_recovered():
     # the search this same pair faults.
     L2 = build(sweep=128, packets=400)
     import reccheck as _rc
-    keep = _rc.ANG_LAG_FLOOR
+    keep = _rc.ANG_LAG_FLOOR, _rc.ANG_LAG_VOTE
     _rc.ANG_LAG_FLOOR = -1.0            # no offset can ever be accepted
+    _rc.ANG_LAG_VOTE = float("inf")     # ...nor named (P1609: a named offset alone makes the one-frame rule abstain)
     try:
         f2 = run_inproc(L2, view_for(L2, shift=-3))
     finally:
-        _rc.ANG_LAG_FLOOR = keep
+        _rc.ANG_LAG_FLOOR, _rc.ANG_LAG_VOTE = keep
     check(any("the sidecar is not this recording's" in x for x in f2),
-          "CONTROL: with the search switched off the same pair faults")
+          "CONTROL: with the search and the named offset switched off the same pair faults")
     check(not run_inproc(L2, view_for(L2, shift=-3)),
           "...and with it back on, in the same process, it does not")
 
@@ -2408,9 +2409,9 @@ def case_angle_lag_is_not_claimed_when_the_winner_is_bad():
           "...and the checker says the search found nothing, not nothing at all")
     if not any("lines these two files up" in x for x in n):
         print("        notes=%s" % n)
-    check(any("the sidecar is not this recording's" in x for x in f)
-          and any("the sidecar does not describe this recording" in x for x in f),
-          "...and both rules still fault it, the sweep rules joined at the named offset")
+    check(any("the sidecar does not describe this recording" in x for x in f)
+          and not any("the sidecar is not this recording's" in x for x in f),
+          "...and the sweep rules, joined at the named offset, fault it; the one-frame rule has no join (P1609)")
 
 
 def wobble_view(lines, a=-3, b=-4, stretch=40, **kw):
@@ -2419,6 +2420,48 @@ def wobble_view(lines, a=-3, b=-4, stretch=40, **kw):
     va, vb = view_for(lines, shift=a, **kw), view_for(lines, shift=b, **kw)
     per = kw.get("dense", 1)            # frames a move: switch only between moves
     return va[:4] + [la if (i // per // stretch) % 2 == 0 else lb for i, (la, lb) in enumerate(zip(va[4:], vb[4:]))]
+
+
+def snapped(lines, every, deg=10.0):
+    """`lines` with every `every`-th `in` row's yaw turned `deg` (whole wire quanta): an assist the frames never drew."""
+    q, out, k = round(deg / QUANTUM) * QUANTUM, [], 0
+    for l in lines:
+        if l.startswith("in "):
+            if k % every == every // 2:
+                f = l.split(" ")
+                f[8] = "%.4f" % (float(f[8]) + q)
+                l = " ".join(f)
+            k += 1
+        out.append(l)
+    return out
+
+
+def case_angle_one_frame_no_join_keeps_an_assist():
+    """P1609.  The one-frame rule abstains only when offset 0 is a fallback that the frames' own angles contradict.
+    An assist on 4% of moves breaks the 2% alignment by itself; on a client aligned at offset 0 the untouched moves
+    still name 0, so the rule stays judged there and convicts."""
+    import reccheck as _rc
+    L = build(sweep=600, packets=400)
+    view = view_for(L)                   # one frame a tick, offset 0
+    r0 = report_inproc(L, view)
+    check(not r0.faults and r0.info.get("angle_rule") == "tight", "CONTROL: the aligned pair passes the tight rule")
+    a = report_inproc(snapped(L, 25), view)
+    check(any("the sidecar is not this recording's" in x for x in a.faults)
+          and not any("the sidecar does not describe this recording" in x for x in a.faults),
+          "10 deg on 1 move in 25, aligned at offset 0: the one-frame rule still convicts (the sweep alone would not)")
+    # The accepted gap (BACKLOG): the same assist on a client aligned at +3 breaks its alignment, the frames name +3,
+    # and the one-frame rule abstains. The verdict word must then read BLIND, never OK.
+    d = report_inproc(snapped(L, 25), view_for(L, shift=-3))
+    check(d.info.get("angle_rule") == "sweep-only" and d.info.get("angle_rule") != "tight",
+          "...on a client aligned at +3 the rule abstains (P1609's accepted gap) and the pair reads BLIND, not OK")
+    keep = _rc.ANG_LAG_VOTE
+    _rc.ANG_LAG_VOTE = float("inf")
+    try:
+        d2 = run_inproc(snapped(L, 25), view_for(L, shift=-3))
+    finally:
+        _rc.ANG_LAG_VOTE = keep
+    check(any("the sidecar is not this recording's" in x for x in d2),
+          "CONTROL: without the named offset that pair is the one-frame rule's fault at offset 0")
 
 
 def case_angle_sweep_joins_at_the_named_offset():
@@ -2448,10 +2491,21 @@ def case_angle_sweep_joins_at_the_named_offset():
     check(any("the sidecar does not describe this recording" in x for x in f2),
           "CONTROL: without the named offset the same pair is the sweep rule's fault")
     check(not run_inproc(L, view), "...and with it back, in the same process, it is not")
-    # The one-frame rule is untouched: one frame a tick, the same wobble, still its fault at offset 0.
-    f3, _ = run(L, view=wobble_view(L))
+    # P1609: one frame a tick, the same wobble: nothing aligns and the frames name +3/+4, so offset 0 is a fallback
+    # the pair contradicts and the one-frame rule does not judge (it faulted here until P1609).
+    r3 = report_inproc(L, wobble_view(L))
+    check(not r3.faults and r3.info.get("angle_rule") == "sweep-only"
+          and r3.info.get("angle_solo", "").endswith("-- NO JOIN, NOT JUDGED -- one-frame join at +0 ticks")
+          and any("offset 0 is a fallback this pair contradicts" in x for x in r3.notes),
+          "with one frame a tick the one-frame rule has no join and does not judge it (P1609); the note says why")
+    keep = _rc.ANG_LAG_VOTE
+    _rc.ANG_LAG_VOTE = float("inf")
+    try:
+        f3 = run_inproc(L, wobble_view(L))
+    finally:
+        _rc.ANG_LAG_VOTE = keep
     check(any("the sidecar is not this recording's" in x for x in f3),
-          "with one frame a tick the one-frame rule still judges at offset 0 and faults (unchanged)")
+          "CONTROL: without the named offset that pair is the one-frame rule's fault at offset 0 again")
     # Still faults: a 90 deg block, and another run's sidecar.
     f4, _ = run(L, view=wobble_view(L, dense=3, rot=90.0, lo=0.4, hi=0.7))
     check(any("the sidecar does not describe this recording" in x for x in f4),
@@ -3975,6 +4029,7 @@ def main():
                case_angle_head_amnesty_costs_coverage,
                case_angle_lag_is_not_claimed_when_the_winner_is_bad,
                case_angle_sweep_joins_at_the_named_offset,
+               case_angle_one_frame_no_join_keeps_an_assist,
                case_angle_sweep_offset_gate,
                case_angle_sweep_join_keeps_the_one_frame_fault,
                case_angle_sweep_join_is_v9_only,

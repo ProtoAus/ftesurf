@@ -4105,7 +4105,13 @@ def angle_join(r, rec, frames):
     # ticks to make a finding on; `covered` is whether they are enough of the
     # run to CLEAR it.  Folding them together is what let a sidecar that padded
     # 55% of its ticks print the cleanest line the rule can produce.
-    judged = tight and len(solo) >= ANG_SOLO_MIN
+    # P1609: the sweep moved (sweep_offset moves only when nothing aligns to ANG_SOLO, which leaves `lag` at 0), so
+    # offset 0 is a fallback the frames' own angles contradict and the rule has no join to judge at. Live 18 Nov: 72
+    # of the 81 one-frame FAULTs on lobby receipts, remote clients whose sent angle is drawn a tick late or between
+    # two frames; on 507 lobby pairs the rule aligned on 4, all at offset 0. An assist on an aligned client still
+    # names that client's offset, so it stays judged there.
+    nojoin = slag != lag
+    judged = tight and len(solo) >= ANG_SOLO_MIN and not nojoin
     covered = judged and cover >= ANG_SOLO_COVER
     if tight:
         # THE COVERAGE IS PRINTED FIRST AND ALWAYS, INCLUDING AT ZERO.  What
@@ -4120,6 +4126,7 @@ def angle_join(r, rec, frames):
                                    sfrac, max(solo) if solo else 0.0,
                                    "" if covered else
                                    (" -- PARTIAL COVER" if judged
+                                    else " -- NO JOIN, NOT JUDGED" if nojoin
                                     else " -- NOT ENOUGH TO JUDGE")))
         if slag != lag:
             r.info["angle_solo"] += " -- one-frame join at %+d ticks" % lag
@@ -4149,6 +4156,10 @@ def angle_join(r, rec, frames):
             why = ("this recording's angles are %s, which the tight rule cannot "
                    "use" % (source if not rec.angle_epoch else
                             "joined across a %s" % "/".join(rec.angle_epoch)))
+        elif nojoin:
+            why = ("no offset lines the two files up to %g deg (%.1f%% past at the best) and the frames' own "
+                   "angles name %+d, where the sweep judges -- offset 0 is a fallback this pair contradicts"
+                   % (ANG_SOLO, bestsc, slag))
         elif len(solo) < ANG_SOLO_MIN:
             why = ("only %d moves held one rendered frame, under the %d it needs"
                    % (len(solo), ANG_SOLO_MIN))
