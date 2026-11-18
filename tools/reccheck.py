@@ -520,6 +520,7 @@ class Report:
         # The angle stream: (ticks, yaw, pitch, instart, source) or None.  Only
         # check_rec fills it, and only angle_join reads it.
         self.angles = None
+        self.angle_times = None    # P1606: each joined move's mover clock, ticks*tickrate + carry (= sum of cmd.msec)
         self.angle_ghosts = []
         self.angle_epoch = []
         self.view_reset_budget = 0  # server restore/session history, never sidecar claims
@@ -1322,6 +1323,7 @@ def _check_rec(r, path, verbose=False, *, data=None):
     # the cheap structure is the one to pick when the expensive one is already
     # there.
     ang_mt = array.array("i")
+    ang_t = array.array("d")    # P1606: mt*tickrate + carry per joined row, the command's own clock
     ang_frozen = 0           # Patch 785: cumulative exclusion for later angles
     ang_prev = None          # floor within this origin, not a previous session
     # Only a fresh equal instart binds the timer origin. Restores carry elapsed
@@ -1543,6 +1545,7 @@ def _check_rec(r, path, verbose=False, *, data=None):
                     ang_mt.append(projected)
                     ang_pit.append(ang[0])
                     ang_yaw.append(ang[1])
+                    ang_t.append(mt * tickrate + carry)
             if in_pk is None or pk != in_pk:
                 in_packets += 1
             pose_key = (len(sessions), pk)
@@ -3558,6 +3561,8 @@ def _check_rec(r, path, verbose=False, *, data=None):
     if len(ang_mt):
         r.angles = (ang_mt, ang_yaw, ang_pit, in_start or 0,
                     "in rows" if ver >= 9 else "in rows (.v_angle, pre-v9)", ver)
+        if len(ang_t) == len(ang_mt):
+            r.angle_times = ang_t
     elif samples:
         mts = array.array("i")
         yaw = array.array("f")
@@ -3763,7 +3768,7 @@ ANG_LAG_COVER = 0.75
 ANG_LAG_FREE = 50
 ANG_STEP_REACH = 4       # P1606: how far each side to look for a framed tick for the drawn step
 ANG_PRINT = 0.01         # P1606: the .view prints angles at %.2f, so a difference of two frames is +-0.01
-ANG_STEP_FRESH = (0.75, 2.5)  # P1606: the joined label must be held this long (ticks, client clock): not a stall or burst
+ANG_VIEW_CLOCK = 0.0001  # P1606: the .view prints cltime at %.4f, so a difference of two frames is +-0.0001 s
 # THERE IS NO WINDOW, BECAUSE A WINDOW HAS AN EDGE AND THE EDGE CONVICTS.
 # Measured by a reviewer: at 12 ticks of lag an honest pair is clean and at 13
 # it draws both faults -- and widening 12 to 25 only moved the cliff to 26.
@@ -4007,14 +4012,9 @@ def angle_join(r, rec, frames):
     devs = []
     solo = []
     py = pp = None
-    try:            # one tick in client seconds, for P1606's freshness test (0 = no tickrate: no test)
-        tick_s = max(float(rec.info.get("tickrate") or 0.0), 0.0)
-    except (TypeError, ValueError):
-        tick_s = 0.0
-    held = {}       # label -> client seconds until the next label's first frame (P1606 freshness)
-    labs = sorted(byt)
-    for la, lb in zip(labs, labs[1:]):
-        held[la] = byt[lb][0][0] - byt[la][0][0]
+    times = getattr(rec, "angle_times", None)      # P1606: each move's command clock (None: no drawn step)
+    if times is not None and len(times) != len(mts):
+        times = None
     for i in range(len(mts)):
         y, p = yaws[i], pits[i]
         sy = 0.0 if py is None else angdelta(y, py)
@@ -4068,29 +4068,35 @@ def angle_join(r, rec, frames):
         dy = min(angdelta(y, f[4]) for f in g)
         dp = min(angdelta(p, f[3]) for f in g)
         # P1606: against the SMALLER of the recorded step and the drawn one, so an assist's own jump cannot widen its
-        # own allowance. Drawn step, each side: the joined tick's last frame to that of the nearest framed tick within
-        # ANG_STEP_REACH, labels inside a ghost window skipped (the flying camera is labelled there, cl_ghost.qc), plus
-        # the frames' print rounding. A side with none, or a joined label not held ANG_STEP_FRESH on the client's clock
-        # (a stall's held label, a burst's), takes the recorded step. Review rounds 1-3: a label column that skips
-        # ticks, a turn ending with one side unframed, or snapshots released in a burst after a stall (frames drawn
-        # ticks late, labels a fraction of a tick apart) read ~0 -- a flat 3 deg cut on honest turning.
-        # Lobby fleet at P1599's join, 18 Nov: honest worst 2.91% (cut 5%), dense one-tick snaps caught 1 -> 403 of 417.
+        # own allowance. The two are compared as RATES over the same span: the drawn step is the frames' turning per
+        # second of the client's own clock, times this command's own duration (the mover clock, ticks*tickrate + carry,
+        # telescopes to the sum of cmd.msec -- sv_timer.qc). Frames: the joined label's last frame to that of the
+        # nearest framed label each side within ANG_STEP_REACH, labels inside a ghost window skipped (the flying camera
+        # is labelled there, cl_ghost.qc), the faster side kept, the prints' rounding allowed for. A side with none, or
+        # no usable clock, takes the recorded step. Review rounds 1-4 each found honest clients faulted by comparing a
+        # per-label step with a per-command one: labels skipping ticks, a burst after a stall (labels 0.2 tick apart), a
+        # queue draining at 0.85 tick (labels drawn ticks late): a label's step spans however long the label was held.
         # The floor keeps a still camera from dividing 0.003 by 0.0001.
         dsy = dsp = 0.0
-        hj = held.get(jt)
-        fresh = not tick_s or (hj is not None and ANG_STEP_FRESH[0] * tick_s <= hj <= ANG_STEP_FRESH[1] * tick_s)
-        for side in (-1, 1):
-            ey, ep = sy, sp
-            for d in range(1, ANG_STEP_REACH + 1 if fresh else 1):
-                lt = jt + side * d
-                if gw and any(a <= lt and (b is None or lt <= b) for a, b in gw):
-                    continue
-                fn = byt.get(lt)
-                if fn:
-                    ey = angdelta(fn[-1][4], g[-1][4]) + ANG_PRINT
-                    ep = angdelta(fn[-1][3], g[-1][3]) + ANG_PRINT
-                    break
-            dsy, dsp = max(dsy, ey), max(dsp, ep)
+        cmd = times[i] - times[i - 1] if times is not None and i else 0.0
+        if not 0.0 < cmd < float("inf"):
+            dsy, dsp = sy, sp
+        else:
+            for side in (-1, 1):
+                ey, ep = sy, sp
+                for d in range(1, ANG_STEP_REACH + 1):
+                    lt = jt + side * d
+                    if gw and any(a <= lt and (b is None or lt <= b) for a, b in gw):
+                        continue
+                    fn = byt.get(lt)
+                    if not fn:
+                        continue
+                    dt = abs(fn[-1][0] - g[-1][0]) - ANG_VIEW_CLOCK
+                    if dt > 0.0:
+                        ey = (angdelta(fn[-1][4], g[-1][4]) + ANG_PRINT) / dt * cmd
+                        ep = (angdelta(fn[-1][3], g[-1][3]) + ANG_PRINT) / dt * cmd
+                        break
+                dsy, dsp = max(dsy, ey), max(dsp, ep)
         n = max(dy / max(min(sy, dsy), 1.0), dp / max(min(sp, dsp), 1.0))
         devs.append(max(dy, dp))
         worst = max(worst, n)

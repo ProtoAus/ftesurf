@@ -56,6 +56,7 @@ def check(cond, what):
 # mover actually produces; the carry oscillates inside [0, 0.01) as it must.
 # ---------------------------------------------------------------------------
 TICK = 0.01
+IN_CARRY = 0.003            # P1606: every fixture `in` row's carry (see build)
 HORIZON = 606           # run_movetick when the recording opened
 PAD = 4                 # pre-start padding samples, t < 0
 PACKETS = 40
@@ -145,12 +146,15 @@ def build(instart=True, inputs=True, ver=9, startjit=None, warps=(),
             # the tick's own sweep, so a fixture that never turns is BLIND and
             # cannot tell a matching sidecar from any other.
             yaw = 90.0 + n_in * sweep * QUANTUM
+            # The row's carry is the mover clock's sub-tick remainder (mt*tickrate + carry = the sum of cmd.msec,
+            # sv_timer.qc). This fixture's `mt` steps 1 or 2 ticks per command, so the row writes a constant carry:
+            # each command then lasts exactly its tick gap, the time every angle model here is built on (P1606).
             if v9:
                 L.append("in %d %d %.9g 0 0 0 0.0000 %.4f 0.0000 0 0" %
-                         (pk, mt, carry, yaw))
+                         (pk, mt, IN_CARRY, yaw))
             else:
                 L.append("in %d %d %.5f 0 0 0 0.0000 %.4f 0.0000 0" %
-                         (pk, mt, carry, yaw))
+                         (pk, mt, IN_CARRY, yaw))
             n_in += 1
             carry += 0.016 - TICK * (2 if carry + 0.016 >= 2 * TICK else 1)
             mt += 2 if carry < 0.003 else 1
