@@ -34,3 +34,4 @@
   (sh_streamfile.qc) calls checkextension on every use, sv_archive_stream.qc does so per frame, and the engine
   Con_DPrintf's each answer at the lobbies' developer level. Since the P1604 lobby engine (17 Nov 21:34Z), when the
   extension became supported. server1..12.log were 1.1-2.1 GB each on 18 Nov 18:00Z.
+  Fixed in P1617 (tools/p1617-claim.md), QC only, for the next lobby restart.

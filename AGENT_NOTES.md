@@ -6527,6 +6527,10 @@ From `src/`, with pwsh 7 (NOT `powershell`):
   `src/qcc.cfg` instead, read before allocation by both entrypoints; big new
   tables still belong in memalloc rather than definition arrays.
   `float *a, *b;` declares b a `float**`: one declarator a line.
+  A global can sit inside a function's FRAME, which the VM restores on return: fteqcc takes the
+  frame from the first local's offset, and a temporaries-only function's covered the globals
+  declared above it (P1617: a cache flag reset after every call, 0 warnings). Run
+  `tools/qcframes.py ftesurf/qwprogs.dat ftesurf/csprogs.dat` after adding globals.
 - QC-only change → default build is enough. Treat "0 warnings" as the bar, but
   check whether a warning is yours: this tree usually carries other people's
   uncommitted work (`cl_hud.qc:2007`, a 9-arg sprintf, is a standing example).

@@ -7,13 +7,22 @@ string(float fh, int quota) FS_FileSHA256Step = #0:file_sha256_step;
 __int64(float fh) FS_StreamSize = #0:fsize64;
 float(string path) FS_WritePathStatus = #0:fwritepathstatus;
 
+// P1617: asked once -- the archive stream calls this every frame and checkextension prints at developer 1
+// (pr_cmds.c:7676), 99% of every lobby log. The declared local keeps fteqcc's frame for this function off
+// the state global, which a temporaries-only frame covered and the VM reset on return: tools/qcframes.py.
+float fs_streamfiles_state;     // 0 not asked yet, 1 yes, -1 no
 float() FS_StreamFiles =
 {
-	if (!checkextension("FTESURF_QC_FILESTREAM_HASH")) return FALSE;
-	if (!checkbuiltin(FS_FileSHA256Step)) return FALSE;
-	if (!checkbuiltin(FS_StreamSize)) return FALSE;
-	if (!checkbuiltin(FS_WritePathStatus)) return FALSE;
-	return TRUE;
+	local float ok;
+	if (!fs_streamfiles_state)
+	{
+		ok = checkextension("FTESURF_QC_FILESTREAM_HASH");
+		if (ok) ok = checkbuiltin(FS_FileSHA256Step);
+		if (ok) ok = checkbuiltin(FS_StreamSize);
+		if (ok) ok = checkbuiltin(FS_WritePathStatus);
+		fs_streamfiles_state = ok ? 1 : -1;
+	}
+	return fs_streamfiles_state > 0;
 };
 
 // A decimal wire/sidecar field, never a float32 byte count.
