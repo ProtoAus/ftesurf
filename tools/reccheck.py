@@ -3762,6 +3762,7 @@ ANG_LAG_VOTE_MIN = 10    # ...of at least this many, and the sweep must join at 
 ANG_LAG_COVER = 0.75
 ANG_LAG_FREE = 50
 ANG_STEP_REACH = 4       # P1606: how far each side to look for a framed tick for the drawn step
+ANG_PRINT = 0.01         # P1606: the .view prints angles at %.2f, so a difference of two frames is +-0.01
 # THERE IS NO WINDOW, BECAUSE A WINDOW HAS AN EDGE AND THE EDGE CONVICTS.
 # Measured by a reviewer: at 12 ticks of lag an honest pair is clean and at 13
 # it draws both faults -- and widening 12 to 25 only moved the cliff to 26.
@@ -4058,22 +4059,25 @@ def angle_join(r, rec, frames):
         dy = min(angdelta(y, f[4]) for f in g)
         dp = min(angdelta(p, f[3]) for f in g)
         # P1606: against the SMALLER of the recorded step and the drawn one, so an assist's own jump cannot widen its
-        # own allowance. Drawn step: last frame of the joined tick to that of the nearest framed tick each side within
-        # ANG_STEP_REACH, ghost-window ticks skipped; none -> the recorded step (a label column that skips ticks read 0,
-        # a flat 3 deg cut on honest turning: review round 1). Lobby fleet at P1599's join, 18 Nov: honest worst 2.91%
-        # (cut 5%), dense one-tick snaps caught 1 -> 403 of 417. The floor keeps a still camera from dividing 0.003 by 0.0001.
-        dsy = dsp = None
+        # own allowance. Drawn step, each side: the joined tick's last frame to that of the nearest framed tick within
+        # ANG_STEP_REACH, labels inside a ghost window skipped (the flying camera is labelled there, cl_ghost.qc),
+        # plus the frames' print rounding; a side with none takes the recorded step. Review rounds 1-2: a label column
+        # that skips ticks, or a turn ending with one side unframed, read 0 -- a flat 3 deg cut on honest turning.
+        # Lobby fleet at P1599's join, 18 Nov: honest worst 2.91% (cut 5%), dense one-tick snaps caught 1 -> 403 of 417.
+        # The floor keeps a still camera from dividing 0.003 by 0.0001.
+        dsy = dsp = 0.0
         for side in (-1, 1):
+            ey, ep = sy, sp
             for d in range(1, ANG_STEP_REACH + 1):
-                if gw and any(a <= raw + side * d and (b is None or raw + side * d <= b) for a, b in gw):
+                lt = jt + side * d
+                if gw and any(a <= lt and (b is None or lt <= b) for a, b in gw):
                     continue
-                fn = byt.get(jt + side * d)
+                fn = byt.get(lt)
                 if fn:
-                    ey, ep = angdelta(fn[-1][4], g[-1][4]), angdelta(fn[-1][3], g[-1][3])
-                    dsy, dsp = (ey, ep) if dsy is None else (max(dsy, ey), max(dsp, ep))
+                    ey = angdelta(fn[-1][4], g[-1][4]) + ANG_PRINT
+                    ep = angdelta(fn[-1][3], g[-1][3]) + ANG_PRINT
                     break
-        if dsy is None:
-            dsy, dsp = sy, sp
+            dsy, dsp = max(dsy, ey), max(dsp, ep)
         n = max(dy / max(min(sy, dsy), 1.0), dp / max(min(sp, dsp), 1.0))
         devs.append(max(dy, dp))
         worst = max(worst, n)

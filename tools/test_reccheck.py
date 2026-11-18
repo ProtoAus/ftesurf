@@ -2609,32 +2609,37 @@ def snapshot_view(packets, fps, omega, stride, dn=(3, 3, 4, 4, 5, 6), burst=None
     return L, out
 
 
-def ghost_edge_pair(step=18, nwin=40):
-    """(rec, view): 40 three-tick ghost windows whose frames show the flying camera (+120 deg), and a 30 deg one-tick snap
-    on the move right after each window (P1606 review round 1, cheater lens)."""
+def ghost_edge_pair(step=18, nwin=40, deg=8.0):
+    """(rec, view): 40 three-tick ghost windows whose frames show a flying camera parked at the angle the view returns
+    to just after the window, and the first move after each window `deg` off the drawn view (P1606 review rounds 1-2).
+    Read as drawn evidence, those frames would make the drawn step ~0 and the sweep rule a flat 3 deg cut there."""
     L = build(sweep=360, packets=800)
     ticks = [int(l.split()[2]) - HORIZON for l in L if l.startswith("in ")]
     G, wins = L, []
     for k in range(30, 780, step)[:nwin]:
         G = with_ghost(G, ticks[k], ticks[k] + 3)
         wins.append((ticks[k], ticks[k] + 3))
-    after = {next(i for i, t in enumerate(ticks) if t > b) for a, b in wins}
-    q = round(30.0 / QUANTUM) * QUANTUM
+    first = {b: next(i for i, t in enumerate(ticks) if t > b) for a, b in wins}
+    q = round(deg / QUANTUM) * QUANTUM
     out, k = [], 0
     for l in G:
         if l.startswith("in "):
             f = l.split(" ")
-            if k in after:
+            if k in first.values():
                 f[8] = "%.4f" % ((float(f[8]) + q) % 360.0)
             k += 1
             l = " ".join(f)
         out.append(l)
+    view = view_for(L, dense=3)
+    yaw_at = {int(ln.split()[2]): ln.split()[4] for ln in view if ln[:1].isdigit() and len(ln.split()) >= 5}
     vv = []
-    for ln in view_for(L, dense=3):
+    for ln in view:
         p = ln.split()
-        if len(p) >= 5 and p[0][:1].isdigit() and any(a <= int(p[2]) <= b for a, b in wins):
-            p[4] = "%.2f" % ((float(p[4]) + 120.0 + 180.0) % 360.0 - 180.0)
-            ln = " ".join(p)
+        if len(p) >= 5 and p[0][:1].isdigit():
+            w = next(((a, b) for a, b in wins if a <= int(p[2]) <= b), None)
+            if w:
+                p[4] = yaw_at[ticks[first[w[1]]]]
+                ln = " ".join(p)
         vv.append(ln)
     return out, vv
 
@@ -2669,10 +2674,28 @@ def case_angle_sweep_against_the_drawn_step():
     check(any("the sidecar does not describe this recording" in x for x in s2.faults),
           "...and its 30 deg snaps fault: the drawn step comes from the nearest framed tick, 2 away (%s)"
           % s2.info.get("angle_off", "")[:50])
+    # Review round 2, an honest client with 2-9 ticks of snapshot jitter: a turn ending where one side has no framed
+    # tick in reach read that side as still (5.03%, a fault); a side with nothing drawn now takes the recorded step.
+    J = (2, 3, 4, 5, 6, 7, 8, 9)
+    rj, vj = snapshot_view(1200, 144, 8.0, 2, dn=J, burst=(60, 0.5))
+    hj = report_inproc(rj, vj)
+    check(not hj.faults, "honest, 2-9 ticks of jitter, turning bursts: no fault (%s)" % hj.info.get("angle_off", "")[:7])
+    # The frames print angles at %.2f: without ANG_PRINT a ratio of exactly 3 at that precision counts as past the cut.
+    import reccheck as _rc
+    rp, vp = snapshot_view(1200, 240, 8.0, 2, dn=J, burst=(20, 0.25))
+    with_allow = float(report_inproc(rp, vp).info.get("angle_off", "0%").split("%")[0])
+    keep = _rc.ANG_PRINT
+    _rc.ANG_PRINT = 0.0
+    try:
+        without = float(report_inproc(rp, vp).info.get("angle_off", "0%").split("%")[0])
+    finally:
+        _rc.ANG_PRINT = keep
+    check(with_allow < without, "the print allowance keeps rounding-only ratios under the cut (%.2f%% vs %.2f%% without)"
+          % (with_allow, without))
     gr, gv = ghost_edge_pair()
     ge = report_inproc(gr, gv)
-    check(any("the sidecar does not describe this recording" in x for x in ge.faults),
-          "snaps right after ghost windows fault: a neighbour inside a window (the flying camera) gives no drawn step (%s)"
+    check(not ge.faults and ge.info.get("angle_off", "").startswith("0.00%"),
+          "beside a ghost window the flying camera is not drawn evidence: the recorded step judges, as before P1606 (%s)"
           % ge.info.get("angle_off", "")[:40])
     # No framed tick within ANG_STEP_REACH: the recorded step alone, so the pre-P1606 rule's own figure for this seeded
     # client, 50.00% (measured with 350abe14's reader; it faults either way, a sweep-rule limit older than P1606, BACKLOG).
