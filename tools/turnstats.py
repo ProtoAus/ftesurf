@@ -52,8 +52,8 @@ with enough `in` rows; 7.94M moves, 6.55M turning, 1.001 ticks per move):
                median 4, p90 13, p99 29
     mc join    1,288 files joined: 5,423 runs at zero counts, 25,065 with counts
     zero-count rates land on the key rates: +-163/164/165 (cl_yawspeed 60 at
-               0.015) 4,800, +-109/110 (at 0.01) 290, +-245/246 (+speed) 120,
-               +-81/82/83 (half rate) 190; mouse plateaus spread over every rate
+               0.015) 4,830, +-109/110 (at 0.01) 257, +-245/246 (+speed) 126,
+               +-81/82/83 (half rate) 116; mouse plateaus spread over every rate
     flatpitch  16,119 runs >= 4, longest 323, 2.26% of turning
     onset      n 128,546, median 0, zero-offset 90.7%
     by player  28 of 44 players have zero-count plateaus; one (three ids) has
