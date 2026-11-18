@@ -12,6 +12,10 @@ renewed-fixture admission blockers. The activated
 backend entries have been removed from this queue, not relabelled as pending.
 Do not redeploy a healthy backend merely to refresh this handoff.
 
+## P1613: do NOT pin its reader yet
+Main carries only P1613's recorder (`cseq` rows, 38298aeb); main's reccheck has no command rule. The rule
+(branch p1613-cseq) is merged and pinned only after real lobby runs with `cseq` confirm it against their .view.
+
 ## P1603 Linux runs rank, marked `plat` -- DONE 18 Nov 07:24Z (all three steps live)
 Steps 1-2 rode gen1603 and the P1604 lobby progs. Step 2's check, Lex's Linux run bhop_2hrs 0:17.520 (runid
 20261118-071933-0-p27610, lobby 27610): .rec `plat 1` in the header and after `prof platform`; community board

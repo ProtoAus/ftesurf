@@ -9,3 +9,5 @@ corpus and fleet checks, the reader first in a surfd generation where it convict
 
 19 Nov: built and reviewed (three rounds; branch p1613-cseq, 84dd6747 -> 6dba844e -> 541165ed). Not deployed: waits
 on a real client's .view beside a `cseq` recording, then the recorder on the lobbies, then the reader (BACKLOG).
+
+19 Nov: recorder half merged to main (38298aeb); the rule waits on real lobby runs (branch p1613-cseq).

@@ -379,6 +379,9 @@
   few frames). Order: (1) a real local run confirms cseq = cmdframe; (2) the recorder ships to the lobbies (today's
   reader only notes `cseq`/`cmdseq`); (3) real lobby runs confirm the rule; (4) the reader rides a surfd generation.
   Latent if the epoch abstention is ever lifted: frames are keyed by number alone, and a reconnect restarts them.
+  19 Nov: the RECORDER half is on main (38298aeb), riding worldofsurf-15's P1614-1616 lobby qwprogs deploy; the
+  rule stays on branch p1613-cseq. A real local pair was not obtained (a headless client writes no .view; a
+  windowed one did not take scripted input without focus) -- the lobbies' own uploads are the check.
   With P1613 live, P1609's choice (the 72 one-frame FAULTs) can be revisited with the command rule as the judge.
 - The 9 one-frame FAULTs where the frames name offset 0 itself (8 on the owner's key, 21 Sep - 1 Nov): the sent
   angle lies between two drawn frames. "On the drawn path within a tick" passes all 9 (0.00-0.57%) and catches
