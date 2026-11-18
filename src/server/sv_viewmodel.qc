@@ -10,10 +10,11 @@
 /* P1616: the look (body, belt, trail, paint) under the Steam account, kept by the lobbies in their shared gamedir as
    data/looks/<who>.txt, one packed line (Look_Pack, cl_viewmodel.qc). P970's handshake: the client sends
    `look_setup "<packed>"` on change; at bind the lobby sends `look_profile load <gen> "<packed>"` and saves nothing
-   until `look_profile ack` (or 15 s), so a local look from before the load never overwrites the account's. */
+   until `look_profile ack`, so a local look from before the load never overwrites the account's; each write is
+   answered `look_profile saved`, which the client keeps as the look its account has (cl_look_synced). */
 #define LOOK_FIELDS 13
 .string look_cur, look_saved;
-.float look_gen, look_wait, look_dirty, look_quiet;
+.float look_gen, look_wait, look_dirty, look_quiet, look_acked;
 
 // Tokenizes: callers read their argv first. Fields: version 1, then numbers ("r g b" triples) or "random".
 float(string packed) Look_Valid =
@@ -64,54 +65,6 @@ string(entity e) Look_Path =
 	return sprintf("data/looks/%s.txt", who);
 };
 
-void(entity e) Look_SVSave;
-// Disconnect and SV_Shutdown (every map change): a change still settling is written, not lost.
-void(entity e) Look_SVFlush =
-{
-	if (e.look_gen && !e.look_wait && e.look_dirty)
-		Look_SVSave(e);
-};
-
-void(entity e) Look_SVConnect =
-{
-	Look_SVFlush(e);                    // connect finds nothing pending (disconnect flushed it)
-	Look_SetCur(e, "");
-	Look_SetSaved(e, "");
-	e.look_gen = e.look_wait = e.look_dirty = e.look_quiet = 0;
-};
-
-// Social_Set (via VM_SVBind): every connect of a linked, unbanned player.
-void(entity e) Look_SVBind =
-{
-	local string path, ln;
-	local float f;
-	e.look_gen = Account_NextId();
-	e.look_wait = 0;
-	Look_SetSaved(e, "");
-	path = Look_Path(e);
-	if (!strcmp(path, ""))
-		return;
-	ln = "";
-	f = fopen(path, FILE_READ);
-	if (f >= 0)
-	{
-		ln = fgets(f);
-		fclose(f);
-	}
-	if (strcmp(ln, "") && Look_Valid(ln))
-	{
-		Look_SetSaved(e, ln);
-		e.look_wait = time + 15;
-		e.look_dirty = FALSE;
-		stuffcmd(e, sprintf("look_profile load %.0f \"%s\"\n", e.look_gen, ln));
-		print(sprintf("look: %s loaded for %s\n", path, e.netname));
-		return;
-	}
-	// No account look yet: this install's becomes it.
-	e.look_dirty = (strcmp(e.look_cur, "") != 0);
-	e.look_quiet = time + 1;
-};
-
 void(entity e) Look_SVSave =
 {
 	local string path;
@@ -124,9 +77,58 @@ void(entity e) Look_SVSave =
 		return;
 	fputs(f, strcat(e.look_cur, "\n"));
 	fclose(f);
-	print(sprintf("look: %s saved for %s\n", path, e.netname));
+	print(sprintf("look: %s saved for %s: %s\n", path, e.netname, e.look_cur));
 	Look_SetSaved(e, e.look_cur);
 	e.look_dirty = FALSE;
+	stuffcmd(e, sprintf("look_profile saved %.0f \"%s\"\n", e.look_gen, e.look_cur));
+};
+
+// SV_Shutdown (every map change) and disconnect, BEFORE Account_Disconnect: Social_Clear empties *ahash.
+void(entity e) Look_SVFlush =
+{
+	if (e.look_gen && !e.look_wait && e.look_dirty)
+		Look_SVSave(e);
+};
+
+void(entity e) Look_SVConnect =
+{
+	Look_SetCur(e, "");
+	Look_SetSaved(e, "");
+	e.look_gen = e.look_wait = e.look_dirty = e.look_quiet = e.look_acked = 0;
+};
+
+// Social_Set (via VM_SVBind): every connect of a linked, unbanned player.
+void(entity e) Look_SVBind =
+{
+	local string path, ln;
+	local float f;
+	e.look_gen = Account_NextId();
+	e.look_wait = e.look_acked = 0;
+	e.look_dirty = FALSE;
+	Look_SetSaved(e, "");
+	path = Look_Path(e);
+	if (!strcmp(path, ""))
+		return;
+	// A stream: FILE_READ looks the name up in this server's cache, filled at its last map load, so a file
+	// another lobby wrote since is not there (P751's lesson for data/saves).
+	f = fopen(path, FS_FILE_READSTREAM);
+	if (f < 0)
+	{	// No account look yet: this install's becomes it.
+		e.look_dirty = (strcmp(e.look_cur, "") != 0);
+		e.look_quiet = time + 1;
+		return;
+	}
+	ln = fgets(f);
+	fclose(f);
+	if (!Look_Valid(ln))
+	{	// There but unreadable (mid-write by another lobby, a later version): never treated as none.
+		print(sprintf("look: %s unreadable for %s; kept\n", path, e.netname));
+		return;
+	}
+	Look_SetSaved(e, ln);
+	e.look_wait = time + 15;
+	stuffcmd(e, sprintf("look_profile load %.0f \"%s\"\n", e.look_gen, ln));
+	print(sprintf("look: %s loaded for %s\n", path, e.netname));
 };
 
 void(entity e, string command, float count) Look_SVCommand =
@@ -146,9 +148,10 @@ void(entity e, string command, float count) Look_SVCommand =
 		}
 		return;
 	}
-	// look_profile ack <gen> "<packed>": the client applied (or kept) and says what it wears now.
+	// look_profile ack <gen> "<packed>": the client applied (or kept) and says what it wears now. Late is fine.
 	action = argv(1); gen = stof(argv(2)); packed = argv(3);
-	if (count != 4 || strcmp(action, "ack") || !e.look_wait || gen != e.look_gen) return;
+	if (count != 4 || strcmp(action, "ack") || e.look_acked || !e.look_gen || gen != e.look_gen) return;
+	e.look_acked = TRUE;
 	e.look_wait = 0;
 	if (Look_Valid(packed))
 		Look_SetCur(e, packed);
@@ -162,8 +165,10 @@ void(entity e) Look_SVFrame =
 	if (e.look_wait)
 	{
 		if (time < e.look_wait) return;
-		e.look_wait = 0;                // no ack: whatever the client wears now is its choice
-		e.look_dirty = (strcmp(e.look_cur, "") && strcmp(e.look_cur, e.look_saved));
+		// No ack in 15 s: what the client sent so far is from before the load, so it is not saved; a later
+		// look_setup (republished every 5 s) or the ack decides.
+		e.look_wait = 0;
+		e.look_dirty = FALSE;
 	}
 	if (e.look_dirty && time >= e.look_quiet)
 		Look_SVSave(e);

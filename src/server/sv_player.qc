@@ -465,6 +465,7 @@ void() ClientDisconnect =
 	Lobby_ClientDisconnect(self);
 	Vote_ClientDisconnect(self);
 	Share_Disconnect(self);             // Patch 777: links, offers and streams to or from this slot
+	Look_SVFlush(self);                 // P1616: while *ahash still names the account
 	Account_Disconnect(self);           // Patch 615: an answer still out is nobody's now
 	VM_SVConnect(self);
 
@@ -574,6 +575,7 @@ void() SpectatorDisconnect =
 {
 	SV_TASShareCancel(self);
 	SV_SourcePhaseClear(self);
+	Look_SVFlush(self);                 // P1616: while *ahash still names the account
 	Account_Disconnect(self);
 	VM_SVConnect(self);
 	SV_ViewEyeDetach(self);

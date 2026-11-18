@@ -120,9 +120,12 @@ void(string packed) VM_RememberOwn =
 	vm_own = strzone(packed);
 };
 /* P1616: the look under the Steam account (sv_viewmodel.qc Look_*): version 1, the seven hud_player keys in
-   Av_LookKey order, then Look_ClientCvar's five. Comma-separated; the lobby checks every field. */
+   Av_LookKey order, then Look_ClientCvar's five. Comma-separated; the lobby checks every field.
+   cl_look_synced (archived) is the look this install last knew its account to have: a look that differs from it
+   was changed here since (offline, or on a map the account never bound) and wins over the account's at the next
+   load; one that equals it takes the account's, which may be another install's newer choice. */
 #define LOOK_NCLIENT 5
-string look_sent, look_start;
+string look_sent;
 float look_next, look_publishat;
 
 string(float i) Look_ClientCvar =
@@ -158,8 +161,6 @@ void() Look_Poll =
 	if (cltime < look_next) return;
 	look_next = cltime + 0.5;
 	packed = Look_Pack();
-	if (!strcmp(look_start, ""))
-		look_start = strzone(packed);       // this connection's look before any account load
 	if (strcmp(serverkey("*looksetup"), "1")) return;
 	// Republished like vm_setup: a first command can precede spawn.
 	if (!strcmp(packed, look_sent) && cltime < look_publishat) return;
@@ -168,17 +169,25 @@ void() Look_Poll =
 	Look_Sent(packed);
 };
 
-// look_profile load <gen> "<packed>": the account's look, applied unless it was already changed by hand on this
-// connection (then that change is the newer choice). Either way the ack says what is worn now.
+// look_profile load <gen> "<packed>": the account's look, applied unless this install changed its look since it
+// last matched the account (cl_look_synced). Either way the ack says what is worn now.
+// look_profile saved <gen> "<packed>": the lobby wrote it; if it is still what is worn, the account has it.
 float() Look_ConsoleCommand =
 {
-	local string data, f, cur;
+	local string data, f, cur, synced;
 	local float gen, n, i, ok;
 	if (strcmp(argv(0), "look_profile")) return FALSE;
-	if (strcmp(argv(1), "load")) return TRUE;
 	gen = stof(argv(2));
 	data = argv(3);
 	cur = Look_Pack();
+	if (!strcmp(argv(1), "saved"))
+	{
+		if (!strcmp(data, cur))
+			cvar_set("cl_look_synced", cur);
+		return TRUE;
+	}
+	if (strcmp(argv(1), "load")) return TRUE;
+	synced = cvar_string("cl_look_synced");
 	n = tokenizebyseparator(data, ",");
 	ok = (n == AV_LOOKKEYS + LOOK_NCLIENT + 1 && !strcmp(argv(0), "1"));
 	for (i = 1; i < n; i = i + 1)
@@ -189,7 +198,7 @@ float() Look_ConsoleCommand =
 		else if (strcmp(f, "random") && !Av_LookSafe(f))
 			ok = FALSE;
 	}
-	if (ok && (!strcmp(cur, look_start) || !strcmp(look_start, "")))
+	if (ok && (!strcmp(synced, "") || !strcmp(cur, synced) || !strcmp(cur, data)))
 	{
 		for (i = 0; i < AV_LOOKKEYS; i = i + 1)
 			if (strcmp(argv(i + 1), cvar_string(strcat("cl_", Av_LookKey(i)))))
@@ -199,9 +208,10 @@ float() Look_ConsoleCommand =
 				cvar_set(Look_ClientCvar(i), argv(AV_LOOKKEYS + 1 + i));
 		if (strcmp(cur, Look_Pack()))
 			print("hud_player: your look from your Steam account\n");
+		cvar_set("cl_look_synced", Look_Pack());
 	}
 	else if (ok)
-		print("hud_player: look changed since joining; saving it to your Steam account\n");
+		print("hud_player: this PC's look changed since your account last had it; saving it to your account\n");
 	cur = Look_Pack();
 	localcmd(sprintf("cmd look_profile ack %.0f \"%s\"\n", gen, cur));
 	Look_Sent(cur);
@@ -422,6 +432,7 @@ void() VM_Register =
 	registercommand("viewmodel_setup");
 	registercommand("vm_profile");
 	registercommand("look_profile");    // P1616: free (engine command list grepped)
+	registercvar("cl_look_synced", "", CVAR_ARCHIVE);
 	registercvar("cl_spec_viewweapon", "1", CVAR_ARCHIVE);
 	registercvar("cl_vm_seed", "0", 0);
 	registercvar("cl_vm_scale", "1", 0);

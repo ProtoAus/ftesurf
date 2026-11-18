@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """P1616: the look and the knife follow the Steam account (Linux rig, headless clients).
 
-One dedicated server on loopback, a loopback mock of surfd's social routes, two clients run one after the
-other with different local looks. A fixture-only server command (`look_fixture <who>`, compiled into a shadow
+Two dedicated servers on loopback sharing one gamedir (as the 12 lobbies do), a loopback mock of surfd's
+social routes, two clients run one after the other with different local looks. A fixture-only server command (`look_fixture <who>`, compiled into a shadow
 sv_player.qc, never deployed) binds a linked account through the real Social_Set, as tools/inventory_smoke.py
 does: account proof is not under test.
 
-  A  local look L1 -> bind (no account look) -> saved; change -> saved; change + map restart within the
-     settle time -> flushed by SV_Shutdown.
-  B  a different local look -> bind -> the account's look is applied (its own console line, its cvars).
+  A  on lobby 1: local look -> bind (no account look) -> saved; change -> saved; change + map restart within
+     the settle time -> flushed by SV_Shutdown; a change on the next map while unbound, another restart, bind:
+     the change is kept and saved; a change and an immediate quit -> flushed at disconnect.
+  B  on lobby 2, whose name cache predates the file: a different local look -> bind -> the account's look is
+     applied (its own console line, its cvars), nothing saved back.
   knife: the mock must see /api/social/viewmodel get and set (P970 posted to `lobby_url`, set nowhere).
 
 --control builds the same arm from a ref without P1616 (default origin/main): no look file, no knife post.
@@ -38,7 +40,7 @@ from test_ui_modern import make_map  # noqa: E402
 
 WHO = "1a2b3c4d"
 TOKEN = "a" * 64
-L3 = "1,9,,255 0 255,,,,,,20,0.9,20,1"
+LAST = "1,11,,255 0 255,,,,,,20,0.9,20,1"
 
 
 def fixture_src(dst, ref):
@@ -107,17 +109,18 @@ def main():
                                      'DISABLEHOMEDIR 1\nMAINCONFIG lookrig-unused\n')
     build(fixture_src(out / "build", a.ref if a.control else None), game, a.qcc)
 
-    port = None
+    ports = []
     for cand in range(27620, 27519, -1):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             try:
                 s.bind(("127.0.0.1", cand))
             except OSError:
                 continue
-            port = cand
+            ports.append(cand)
+        if len(ports) == 2:
             break
-    if not port:
-        raise RuntimeError("no free lobby port")
+    if len(ports) < 2:
+        raise RuntimeError("no two free lobby ports")
 
     wire = {"viewmodel_get": 0, "viewmodel_set": 0, "polls": 0, "other": []}
     knife = {"rev": 0, "setup": ""}
@@ -157,27 +160,31 @@ def main():
     url = "http://127.0.0.1:%d" % backend.server_port
     common = ["cfg_save_auto 0", "set log_enable 1", "set log_dir logs", "set log_readable 1",
               "set cl_idlefps 0", "set cl_maxfps 100", "set lobby_dir \"\"", "set cl_board_url \"\"",
-              "set ui_serverbgm 0", "waitms 800", "ui_close", "connect 127.0.0.1:%d" % port, "waitms 6000"]
+              "set ui_serverbgm 0", "waitms 800", "ui_close"]
     show = ["cl_lobbycolor", "cl_lobbymark", "cl_lobbybody", "paint_size", "viewmodel_setup"]
     cfgs = {
         "clientA": ['seta cl_lobbycolor "5"', 'seta cl_lobbymark "255 0 255"', 'seta paint_size "20"',
-                    "set name LookA"] + common +
-                   ["cmd look_fixture " + WHO, "waitms 4000", "set cl_lobbycolor 7", "waitms 3500",
+                    "set name LookA"] + common + ["connect 127.0.0.1:%d" % ports[0], "waitms 6000",
+                    "cmd look_fixture " + WHO, "waitms 4000", "set cl_lobbycolor 7", "waitms 3500",
                     "set cl_lobbycolor 9", "waitms 700", "rcon_password rig1616", "rcon map look_smoke.map",
-                    "waitms 6000"] + show + ["echo LOOK A FINISHED", "quit"],
+                    "waitms 6000", "set cl_lobbycolor 10", "waitms 1500", "rcon map look_smoke.map",
+                    "waitms 6000", "cmd look_fixture " + WHO, "waitms 4000", "set cl_lobbycolor 11",
+                    "waitms 700"] + show + ["echo LOOK A FINISHED", "quit"],
         "clientB": ['seta cl_lobbycolor "3"', 'seta paint_size "16"', "set name LookB"] + common +
-                   ["cmd look_fixture " + WHO, "waitms 4000"] + show + ["echo LOOK B FINISHED", "quit"],
+                   ["connect 127.0.0.1:%d" % ports[1], "waitms 6000", "cmd look_fixture " + WHO,
+                    "waitms 4000"] + show + ["echo LOOK B FINISHED", "quit"],
     }
     for label, lines in cfgs.items():
         (game / (label + ".cfg")).write_text("\n".join(["set log_name " + label] + lines) + "\n")
     env = dict(os.environ, HOME=str(rig / "home"))
-    svcmd = ["nice", "-n", "19", str(a.server), "-basedir", str(rig), "-nohome", "-port", str(port),
-             "+set", "cfg_save_auto", "0", "+set", "sv_public", "0", "+set", "lobby_master", url,
-             "+set", "lobby_master_key", "rigkey", "+set", "lobby_dir", "", "+set", "lobby_enable", "1",
-             "+set", "rcon_password", "rig1616", "+set", "log_enable", "1", "+set", "log_dir", "logs",
-             "+set", "log_name", "server", "+map", "look_smoke.map"]
+    def svcmd(i):
+        return ["nice", "-n", "19", str(a.server), "-basedir", str(rig), "-nohome", "-port", str(ports[i]),
+                "+set", "cfg_save_auto", "0", "+set", "sv_public", "0", "+set", "lobby_master", url,
+                "+set", "lobby_master_key", "rigkey", "+set", "lobby_dir", "", "+set", "lobby_enable", "1",
+                "+set", "rcon_password", "rig1616", "+set", "log_enable", "1", "+set", "log_dir", "logs",
+                "+set", "log_name", "server%d" % (i + 1), "+map", "look_smoke.map"]
     actors = []
-    report = {"control": a.control, "ref": a.ref if a.control else "worktree", "port": port, "nest": a.nest}
+    report = {"control": a.control, "ref": a.ref if a.control else "worktree", "ports": ports, "nest": a.nest}
     lab = None
     clenv = dict(env)
     render = ["+set", "vid_renderer", "headless"]
@@ -207,12 +214,13 @@ def main():
                       "vid_height", "480", "+set", "vid_fullscreen", "0", "+set", "vid_winmaximize", "0",
                       "+set", "cl_maxfps", "60"]
         threading.Thread(target=backend.serve_forever, daemon=True).start()
-        with (out / "server-launch.log").open("w") as so:
-            actors.append(subprocess.Popen(svcmd, cwd=rig, env=env, stdin=subprocess.DEVNULL, stdout=so,
-                                           stderr=subprocess.STDOUT))
+        for i in (0, 1):                # both up (name caches built) before any look file exists
+            with (out / ("server%d-launch.log" % (i + 1))).open("w") as so:
+                actors.append(subprocess.Popen(svcmd(i), cwd=rig, env=env, stdin=subprocess.DEVNULL, stdout=so,
+                                               stderr=subprocess.STDOUT))
         time.sleep(3)
-        if actors[0].poll() is not None:
-            raise RuntimeError("server exited")
+        if actors[0].poll() is not None or actors[1].poll() is not None:
+            raise RuntimeError("a server exited")
         look = game / "data/looks" / (WHO + ".txt")
         for label in ("clientA", "clientB"):
             with (out / (label + "-launch.log")).open("w") as co:
@@ -222,7 +230,7 @@ def main():
                                       cwd=rig, env=clenv, stdin=subprocess.DEVNULL, stdout=co,
                                       stderr=subprocess.STDOUT)
                 actors.append(cl)
-                cl.wait(timeout=60)
+                cl.wait(timeout=90)
             report[label + "_exit"] = cl.returncode
             report["look_after_" + label] = look.read_text().strip() if look.exists() else None
             report["mtime_after_" + label] = look.stat().st_mtime_ns if look.exists() else None
@@ -241,10 +249,12 @@ def main():
         p = game / "logs" / (name + ".log")
         return p.read_text(errors="replace") if p.exists() else ""
 
-    sv, ca, cb = log("server"), log("clientA"), log("clientB")
+    ca, cb = log("clientA"), log("clientB")
     report["wire"] = wire
     # The flush at an rcon-driven map change prints into the rcon reply, not the server log.
-    report["server_look_lines"] = [ln for ln in (sv + log("rcon")).splitlines() if " look: data/looks/" in ln]
+    report["server_look_lines"] = sorted((ln for ln in (log("server1") + log("rcon")).splitlines()
+                                          if " look: data/looks/" in ln), key=lambda ln: ln[:19])
+    report["server2_look_lines"] = [ln for ln in log("server2").splitlines() if " look: data/looks/" in ln]
     report["clientB_lines"] = [ln for ln in cb.splitlines() if "hud_player:" in ln or ln.startswith('"')]
     checks = {}
     if a.control:
@@ -252,17 +262,21 @@ def main():
         checks["no knife post"] = wire["viewmodel_get"] + wire["viewmodel_set"] == 0
         checks["clients ran"] = "LOOK A FINISHED" in ca and "LOOK B FINISHED" in cb
     else:
-        saves = [ln for ln in report["server_look_lines"] if " saved for LookA" in ln]
-        checks["A: three saves (bind, change, flush at map end)"] = len(saves) == 3
-        checks["A: the file holds the last look (flushed)"] = report["look_after_clientA"] == L3
-        checks["B: lobby loaded the account look"] = any(" loaded for LookB" in ln
-                                                         for ln in report["server_look_lines"])
+        colours = [ln.split(": ")[-1].split(",")[1] for ln in report["server_look_lines"]
+                   if " saved for LookA: " in ln]
+        report["A_saved_colours"] = colours
+        checks["A: saved at bind, change and map-end flush (5, 7, 9)"] = colours[:3] == ["5", "7", "9"]
+        checks["A: the unbound change survives the next bind (10)"] = colours[3:4] == ["10"]
+        checks["A: change then quit is flushed at disconnect (11)"] = (colours[4:] == ["11"]
+                                                                       and report["look_after_clientA"] == LAST)
+        checks["B: lobby 2 loaded the account look"] = any(" loaded for LookB" in ln
+                                                           for ln in report["server2_look_lines"])
         checks["B: client printed it"] = "hud_player: your look from your Steam account" in cb
         checks["B: cvars are the account's"] = all(s in cb for s in (
-            '"cl_lobbycolor" is "9"', '"cl_lobbymark" is "255 0 255"', '"paint_size" is "20"'))
+            '"cl_lobbycolor" is "11"', '"cl_lobbymark" is "255 0 255"', '"paint_size" is "20"'))
         checks["B: nothing saved back"] = (report["mtime_after_clientB"] == report["mtime_after_clientA"]
                                            and not any(" saved for LookB" in ln
-                                                       for ln in report["server_look_lines"]))
+                                                       for ln in report["server2_look_lines"]))
         checks["knife: account get and set reached the backend"] = (wire["viewmodel_get"] >= 1
                                                                     and wire["viewmodel_set"] >= 1)
     report["checks"] = checks
