@@ -2237,6 +2237,19 @@ def report_inproc(lines, view):
         shutil.rmtree(d, ignore_errors=True)
 
 
+def report_rec_inproc(lines):
+    """check_rec on `lines` in this process (the recording's own report: angles, angle_cmds)."""
+    import reccheck as rc
+    d = tempfile.mkdtemp(prefix="reccheck_r")
+    try:
+        p = os.path.join(d, "t.rec")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        return rc.check_rec(p)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def case_angle_lag_is_recovered():
     """THE CHECK DID NOT WORK OVER A NETWORK, AND EVERY LOBBY CLIENT IS REMOTE.
 
@@ -2619,6 +2632,28 @@ def case_angle_command_rule():
     rs = report_inproc(Ls, vs)
     check(not cmdf(rs) and "NOT JUDGED" not in rs.info.get("angle_cmd", ""),
           "every 3rd row a later part of a split usercmd: numbers stay on their commands (%s)" % rs.info.get("angle_cmd", "")[:60])
+    # A `cseq` names the very next row even when it is a later part (fl 8): the command after it counts on.
+    rows = [i for i, l in enumerate(Ls) if l.startswith("in ")]
+    lp = next(j for j in range(1, len(rows)) if int(Ls[rows[j]].split()[11]) & 8)
+    # Exact numbers: write the anchor the recorder would write before that later part, and read them back.
+    cmd_of = []
+    c = 999
+    for j, ri in enumerate(rows):
+        if not int(Ls[ri].split()[11]) & 8:
+            c += 1
+        cmd_of.append(c)
+    Lc = Ls[:rows[lp]] + ["cseq %d" % cmd_of[lp]] + Ls[rows[lp]:]
+    rr = report_rec_inproc(Lc)
+    want = [cmd_of[j] for j in range(len(rows)) if not (int(Ls[rows[j]].split()[11]) & 8)]
+    got = list(rr.angle_cmds or [])
+    check(got[-5:] == want[-5:] and len(got) == len(want),
+          "a `cseq` before a later part numbers that part, and the next command counts on from it (%s vs %s)"
+          % (got[-3:], want[-3:]))
+    # A frame cannot show a clock past the move's own tick: numbers 200 apart (an NQ client after a map change, in
+    # small) join every move to frames drawn later, and none is judged.
+    far = report_inproc(L, recmd(view_for(L), lambda cc, k: cc - 200))
+    check(not cmdf(far) and "NOT JUDGED" in far.info.get("angle_cmd", ""),
+          "numbers 200 apart join moves to frames drawn later: not judged (%s)" % far.info.get("angle_cmd", "")[:60])
     # Another run's sidecar.
     o = report_inproc(L, view_for(build(sweep=450, packets=400, cmdseq=1000)))
     check(bool(o.faults), "another run's sidecar still faults")

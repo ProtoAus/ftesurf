@@ -2217,6 +2217,7 @@ void(entity e) SV_TimerMapTeleport =
 .float  rec_rec_in;              // v6: input rows written since `begin`
 .float  rec_rec_pk;              // v6: packet ordinal, stamped on each of them
 .float  rec_rec_cseqn;           // P1613: the usercmd number the next `in` row is expected to carry (0: unknown)
+.float  rec_rec_nocs;            // P1613: no `cseq` in this recording (held metadata on: its engine reader whitelists)
 .float  rec_rec_warp;            // v7: `warp` records written since `begin`
 
 /*
@@ -3583,9 +3584,14 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             (fl 8) repeats its command's; a row whose number
                             breaks that count gets its own `cseq` first (the
                             run's first, after a command the server never ran).
-                            -1: the rows until the next `cseq` have no number
-                            (a command the server filled in, kind 0). Rows
-                            before the first `cseq` have no number.
+                            -1: the rows until the next `cseq` have no number the
+                            server vouches for (kind 0: a command it filled in or
+                            shortened to the speed budget, a TAS step, a tick part
+                            its context test rounded out; or a number past 2^24).
+                            Rows before the first `cseq` have no number. A body cut
+                            back to a save re-anchors at its next row. Not written
+                            when rec_held_metadata is on at open (the native REC15
+                            engine reader whitelists its records).
     warp <pk> <mt> <kind> <ox oy oz> <vx vy vz>
     warp <pk> <mt> <row> <kind> <ox oy oz> <vx vy vz> <fl>             (v9)
                             v9: <row> is the `in` row whose move this followed,
@@ -5819,6 +5825,7 @@ void(entity e) SV_RecOpen =
 	*/
 	e.rec_rec_in = e.rec_rec_pk = 0;
 	e.rec_rec_cseqn = 0;            // P1613: the first row anchors its own `cseq`
+	e.rec_rec_nocs = (cvar("rec_held_metadata") != 0);
 	// BUILD 83: and the warp count, here for the same reason and nowhere else.
 	e.rec_rec_warp = 0;
 	// BUILD 85: the ride count and the carrier sentinel.  rec_rec_bv is
@@ -6008,7 +6015,8 @@ void(entity e) SV_RecOpen =
 	SV_RecPut(e, sprintf("clock %s", e.run_t_clock ? "counted" : "sampled"));
 	SV_RecPut(e, "holdclock 1");
 	SV_RecPut(e, "viewclock 1");
-	SV_RecPut(e, "cmdseq 1");       // P1613: `cseq` records number the `in` rows (grammar block)
+	if (!e.rec_rec_nocs)
+		SV_RecPut(e, "cmdseq 1");   // P1613: `cseq` records number the `in` rows (grammar block)
 	if (checkextension("FTE_ANGLECAUSE_V1"))
 	{
 		e.rec_rec_anglecause = TRUE;
@@ -7647,6 +7655,7 @@ float(string k, float n) SV_RecKeyRead =
 void(entity e, float mark, float samples, float padn, float cps) SV_RecRestore =
 {
 	e.rec_rec_samplet = -1;
+	e.rec_rec_cseqn = 0;            // P1613: a body cut back to a save; the next row anchors its own `cseq`
 	e.rec_rec_lines = mark;
 	e.rec_rec_n     = samples;
 	e.rec_rec_padn  = padn;
@@ -7992,6 +8001,7 @@ float(entity e, string path, float mark, float serial,
 	if (SV_RecGenOK(e, mark))           // Patch 375: no rewind since cut below it
 	{
 		SV_RecGenPush(e, mark);
+		e.rec_rec_cseqn = 0;        // P1613: see SV_RecRestore
 		e.rec_rec_lines = mark;
 		e.rec_rec_n     = samples;
 		e.rec_rec_padn  = padn;
@@ -8040,6 +8050,7 @@ float(entity e, string path, float mark, float serial,
 		buf_del(e.rec_rec_buf);
 
 	e.rec_rec_buf   = buf;
+	e.rec_rec_cseqn = 0;            // P1613: see SV_RecRestore
 	e.rec_rec_lines = buf_getsize(buf);
 	e.rec_rec_n     = samples;
 	e.rec_rec_padn  = padn;
@@ -15609,15 +15620,18 @@ void(entity e) SV_TimerInFrame =
 	// P1613: the usercmd's own number (cl.movesequence; Patch 675 publishes it per command, kind 1/2 only). A later
 	// part keeps its command's. Written only where it breaks the count, so a lossless run carries one.
 	seq = 0;
-	if (input_cmd_kind)
+	if (input_cmd_kind && input_cmd_sequence_hi < 256)    // float32 holds it exactly below 2^24 (~31 h of one link)
 		seq = input_cmd_sequence_hi * 65536 + input_cmd_sequence_lo;
 	want = e.rec_rec_cseqn;
 	if (input_cmd_later)
 		want = want - 1;
-	if (seq >= 1 && seq != want)
-		SV_RecPut(e, sprintf("cseq %d", seq));
-	else if (seq < 1 && e.rec_rec_cseqn)
-		SV_RecPut(e, "cseq -1");
+	if (!e.rec_rec_nocs)
+	{
+		if (seq >= 1 && seq != want)
+			SV_RecPut(e, sprintf("cseq %d", seq));
+		else if (seq < 1 && e.rec_rec_cseqn)
+			SV_RecPut(e, "cseq -1");
+	}
 	e.rec_rec_cseqn = 0;
 	if (seq >= 1)
 		e.rec_rec_cseqn = seq + 1;

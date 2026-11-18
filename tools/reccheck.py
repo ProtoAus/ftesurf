@@ -1326,7 +1326,7 @@ def _check_rec(r, path, verbose=False, *, data=None):
     ang_mt = array.array("i")
     ang_cs = array.array("i")   # P1613: each joined row's usercmd number from `cseq` (0: none)
     cs_next = cs_last = 0       # the next row's number and the last row's (0: unknown)
-    cs_seen = False
+    cs_seen = cs_fresh = False  # cs_fresh: a `cseq` names the very next row, whatever it is
     ang_frozen = 0           # Patch 785: cumulative exclusion for later angles
     ang_prev = None          # floor within this origin, not a previous session
     # Only a fresh equal instart binds the timer origin. Restores carry elapsed
@@ -1532,12 +1532,12 @@ def _check_rec(r, path, verbose=False, *, data=None):
             in_chain = in_chain + 1 if (ver >= 9 and infl & 8) else 0   # past the cap, the rest of it is joined
             # P1613: the row's usercmd number, counted on from the last `cseq`; a later part of a split (fl 8, the
             # recorder's own input_cmd_later) keeps its command's.
-            if ver >= 9 and infl & 8:
+            if ver >= 9 and infl & 8 and not cs_fresh:
                 cs_row = cs_last
             else:
                 cs_row = cs_next
                 cs_next = cs_next + 1 if cs_next else 0
-            cs_last = cs_row
+            cs_last, cs_fresh = cs_row, False
             if not excluded:
                 ang_prev = mt - ang_frozen if holdclock == "1" else mt
                 projected = ang_prev + view_ticks
@@ -1674,7 +1674,7 @@ def _check_rec(r, path, verbose=False, *, data=None):
                 cs_next = 0
             else:
                 cs_next = max(n, 0)
-                cs_seen = True
+                cs_seen = cs_fresh = True
             continue
         if kind == "parkclock":
             park_edges += 1
@@ -3844,6 +3844,8 @@ ANG_CMD_HOLD = 1.0       # per cent of joined moves on no drawn path that is a f
 ANG_CMD_MIN = 100        # joined moves needed to judge
 ANG_CMD_STEP = 8         # ticks a move's own delay (its tick minus its command's frames' clock) may stray from
                          # the run's median: further is a held view (a save's tail drew a frozen clock), not judged
+ANG_CMD_DELAY = (-4, 1000)   # ticks that delay may be at all: a frame cannot show a clock past the move's own tick,
+                         # nor a thousand behind (an NQ client's numbers jump 65536 per map change)
 
 
 def _onseg(x, a, b):
@@ -3893,7 +3895,8 @@ def command_rule(mts, yaws, pits, cmds, instart, endtick, gw, frames):
     labs = [int(f[2]) for f in frames]
     lo, hi = (min(labs), max(labs)) if labs else (0, -1)
     for i, c, x in picked:
-        if abs(step[i] - mid) > ANG_CMD_STEP or not lo <= (mts[i] - instart) - mid <= hi:
+        if abs(step[i] - mid) > ANG_CMD_STEP or not lo <= (mts[i] - instart) - mid <= hi or \
+                not ANG_CMD_DELAY[0] <= step[i] <= ANG_CMD_DELAY[1]:
             out["unstep"] += 1
             continue
         out["joined"] += 1
