@@ -1,5 +1,16 @@
 # AGENT_NOTES.md
 
+## P1618 map downloads (19 Nov 2026, worldofsurf-15)
+
+- A SQLite WAL database cannot be opened read-only by a sandboxed reader (ProtectSystem=strict) once the
+  writer's last close has deleted -wal/-shm: "attempt to write a readonly database" at the first query. Whether
+  it works then depends on who touched the file last -- agents reading it as proto recreate the side files and
+  hide the fault. r2gateway (P1618) reads immutable when no -wal exists; r2gzip's own ledger is DELETE mode.
+- nginx access logs are root:adm 640 (proto cannot read them); the gateway's "disk for" lines are in the
+  journal (sudo). An access log line's time is the END of the transfer.
+- maps.proto.bar = R2 custom domain on ftesurf-public + a Cloudflare cache rule (Lex, 19 Nov). dl.proto.bar is a
+  different bucket (release archives): never point it at maps.
+
 ## P1614-P1616 Lex's list of 19 Nov (worldofsurf-15, root FTESurf-worktrees/asks-20261119-15)
 
 - P1614: no per-map cap on lobby prederror reports. Audit 19 Nov (artifacts/prederr-audit/, audit.csv): 133 reports

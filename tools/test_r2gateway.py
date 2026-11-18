@@ -180,29 +180,43 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(self.call()[0], "409 Conflict")
 
     def test_r2_outage_and_recovery_act(self):
+        # P1618: one failure retries in 2 s but keeps R2; PROBE_FAILURES in a row use disk.
         remote = mock.Mock(return_value=False)
         self.app.reachability = remote
+        for i in range(1, g.PROBE_FAILURES):
+            self.app.probe_until = 0
+            self.assertEqual(self.call()[0], "302 Found", "failure %d of %d keeps R2" % (i, g.PROBE_FAILURES))
+        self.app.probe_until = 0
         self.assertEqual(self.call()[0], "409 Conflict")
-        self.assertEqual(remote.call_count, 1)
+        calls = remote.call_count
+        self.assertEqual(calls, g.PROBE_FAILURES)
         self.assertEqual(self.call()[0], "409 Conflict")
-        self.assertEqual(remote.call_count, 1, "failure must not hammer R2")
+        self.assertEqual(remote.call_count, calls, "failure must not hammer R2")
         remote.return_value = True
         self.app.probe_until = 0
         self.assertEqual(self.call()[0], "302 Found")
-        self.assertEqual(remote.call_count, 2)
+        self.assertEqual(remote.call_count, calls + 1)
         self.assertEqual(self.call()[0], "302 Found")
-        self.assertEqual(remote.call_count, 2, "success is cached")
+        self.assertEqual(remote.call_count, calls + 1, "success is cached")
+        remote.return_value = False
+        self.app.probe_until = 0
+        self.assertEqual(self.call()[0], "302 Found", "a success resets the count")
 
     def test_r2_head_transport_failure_falls_back(self):
         self.app.reachability = self.app.head_probe
         with mock.patch.object(g.urllib.request, "urlopen", side_effect=OSError("synthetic outage")) as transport:
+            for _ in range(g.PROBE_FAILURES - 1):
+                self.app.probe_until = 0
+                self.assertEqual(self.call()[0], "302 Found")
+            self.app.probe_until = 0
             self.assertEqual(self.call()[0], "409 Conflict")
-            self.assertEqual(transport.call_count, 1)
+            self.assertEqual(transport.call_count, g.PROBE_FAILURES)
 
-    def test_inflight_head_uses_disk(self):
+    def test_inflight_first_head_keeps_r2(self):
+        # P1618: a probe in flight at start no longer sends the others to the Pi's 1 MiB/s copy.
         self.app.probe_lock.acquire()
         try:
-            self.assertEqual(self.call()[0], "409 Conflict")
+            self.assertEqual(self.call()[0], "302 Found")
         finally:
             self.app.probe_lock.release()
 
@@ -214,6 +228,78 @@ class GatewayTests(unittest.TestCase):
             self.assertEqual(self.call()[0], "302 Found", "a re-probe in flight must not send the rest to disk")
         finally:
             self.app.probe_lock.release()
+
+    def walstate(self):
+        """The ledger as r2mirror leaves it: WAL mode, closed (no -wal/-shm), in a read-only directory."""
+        state = self.root / "walstate" / "state.sqlite"
+        state.parent.mkdir()
+        with contextlib.closing(sqlite3.connect(state)) as db:
+            db.execute("PRAGMA journal_mode=WAL")
+            with contextlib.closing(sqlite3.connect(self.state)) as src:
+                src.backup(db)
+            db.execute("PRAGMA journal_mode=WAL")
+        self.assertFalse(Path(str(state) + "-wal").exists())
+        self.app = g.Gateway(dict(self.config, state=str(state)), reachability=lambda key: True)
+        return state
+
+    @unittest.skipIf(sys.platform == "win32" or not hasattr(g.os, "geteuid") or g.os.geteuid() == 0,
+                     "POSIX read-only directory control")
+    def test_wal_ledger_without_side_files_in_readonly_dir(self):
+        state = self.walstate()
+        state.parent.chmod(0o555)
+        try:
+            with contextlib.closing(sqlite3.connect(state.as_uri() + "?mode=ro", uri=True)) as db:
+                with self.assertRaises(sqlite3.OperationalError, msg="control: a plain read-only open fails"):
+                    db.execute("SELECT count(*) FROM assets").fetchone()
+            self.assertEqual(self.call()[0], "302 Found")
+            self.assertFalse(Path(str(state) + "-wal").exists(), "nothing is created")
+        finally:
+            state.parent.chmod(0o755)
+
+    @unittest.skipIf(sys.platform == "win32" or not hasattr(g.os, "geteuid") or g.os.geteuid() == 0,
+                     "POSIX read-only directory control")
+    def test_wal_ledger_with_a_live_wal_is_never_read_immutable(self):
+        state = self.walstate()
+        Path(str(state) + "-wal").write_bytes(b"")     # a writer's WAL: its pages are not in the main file
+        state.parent.chmod(0o555)
+        try:
+            self.assertEqual(self.call()[0], "409 Conflict")
+        finally:
+            state.parent.chmod(0o755)
+
+    def test_public_base_redirects_unsigned(self):
+        self.app = g.Gateway(dict(self.config, public_base="https://maps.example.org/"), reachability=lambda key: True)
+        for method in ("GET", "HEAD"):
+            status, h, _ = self.call(method=method)
+            self.assertEqual(status, "302 Found")
+            sha = hashlib.sha256(b"map-body").hexdigest()
+            self.assertEqual(h["Location"], "https://maps.example.org/objects/maps/" + sha + ".bsp")
+            self.assertEqual(h["Cache-Control"], "no-store")
+        sha = self.gzseed()
+        self.app = g.Gateway(dict(self.config, public_base="https://maps.example.org",
+                                  gzip_state=str(self.root / "gzip.sqlite")), reachability=lambda key: True)
+        self.assertEqual(self.gzcall("gzip")[1]["Location"], "https://maps.example.org/objects/maps/" + sha + ".bsp.gz")
+        for bad in ("http://maps.example.org", "https://maps.example.org/path", "https://user@maps.example.org",
+                    "https://maps.example.org?x=1", "https://-bad.example.org", "https://localhost"):
+            with self.assertRaises(ValueError, msg=bad):
+                g.Gateway(dict(self.config, public_base=bad))
+
+    def test_disk_answers_say_why(self):
+        err = io.StringIO()
+        with mock.patch.object(g.sys, "stderr", err):
+            (Path(self.sources["maps"]) / "case_Map.bsp").write_bytes(b"new-body")
+            self.assertEqual(self.call()[0], "409 Conflict")
+            self.state.write_bytes(b"not SQLite")
+            self.assertEqual(self.call()[0], "409 Conflict")
+            self.assertEqual(self.call("/ftesurf/maps/zones/local/case_Map.json")[0], "409 Conflict")
+        lines = err.getvalue().splitlines()
+        self.assertEqual(len(lines), 3, lines)
+        self.assertIn("disk for ftesurf/maps/case_Map.bsp: not verified for the current file", lines[0])
+        self.assertIn("ledger: DatabaseError", lines[1])
+        self.assertIn("ftesurf/maps/zones/local/case_Map.json", lines[2])
+        for line in lines:
+            self.assertNotIn("X-Amz", line)
+            self.assertNotIn("synthetic-secret", line)
 
     def gzseed(self, state="verified", key=None):
         gz = self.root / "gzip.sqlite"

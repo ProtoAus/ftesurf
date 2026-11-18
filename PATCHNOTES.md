@@ -21,6 +21,10 @@
 
 ## next
 
+### P1618 Faster map downloads
+- Maps now download through Cloudflare's network, cached close to you, instead of straight from our storage in Australia. A map someone near you has already fetched arrives much faster.
+- Fixed map downloads sometimes coming from the game server's own slow connection (about 1 MB/s or less) for minutes at a time, which made big maps take five to ten minutes.
+
 ### P1616 Your look follows your Steam account
 - Your body and belt colours, trail and paint settings are now saved to your linked Steam account by the servers, and come back every time you join, on any PC.
 - Your knife choice now really saves to your Steam account too; it was only ever kept on the PC you picked it on.

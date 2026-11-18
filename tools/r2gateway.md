@@ -18,6 +18,15 @@ No QC, engine, lobby config, board backend, recording or evidence changes.
   missing, queued, corrupt or unreadable rows use the current local file.
   This is a selection-time stat check, not a lock against concurrent source
   replacement after selection. No content hash is computed per request.
+- P1618: with `"public_base": "https://maps.proto.bar"` in gateway.json (a Cloudflare custom domain on the
+  bucket with a cache rule, set up by Lex 19 Nov) the 302 names `<public_base>/<key>` instead of a signed
+  URL, so Cloudflare caches each object near the player. One failed probe no longer sends requests to disk:
+  PROBE_FAILURES (3) in a row, 2 s apart, do; the gateway starts assuming R2. Every disk answer writes one
+  stderr line (journal: `sudo journalctl -u ftesurf-r2gateway`), "disk for <alias>: <why>", never an address
+  or signature. r2mirror keeps its ledger in WAL mode and its last close deletes -wal/-shm, which this
+  sandboxed service cannot recreate: a plain read-only open then fails, and before P1618 every request used
+  disk from each :05/:35 r2mirror run until a reader with write access (r2gzip at :17/:47) left them behind.
+  read_row opens it immutable when no -wal is beside it (the last writer checkpointed and closed).
 - A signed HEAD checks R2 reachability at most once per worker/15 seconds.
   Failed checks retry after2s. While a check is in flight the other requests take the last answer (P981: they used disk, so a game asking during the menu's mapshot burst got the 1 MB/s copy); only a gateway that has never checked uses disk. P981 also routes the game's gzip-accepting, non-Range map requests to verified <sha>.bsp.gz companions (r2gzip.py, gzip_state).
   R2 outages within the successful15s observation window can still fail an

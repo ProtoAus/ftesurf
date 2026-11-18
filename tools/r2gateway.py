@@ -7,6 +7,9 @@ P981: with "gzip_state" (r2gzip.py's database), a map request from the game
 (User-Agent FTE...) that accepts gzip and asks for no range goes to the verified
 <sha>.bsp.gz companion instead. Browsers always send gzip and the board's viewer
 sizes a build by Content-Length, so they keep the raw object.
+P1618: with "public_base" (a Cloudflare custom domain on the bucket, cached), the 302 names
+<public_base>/<key> instead of a signed URL; one failed R2 probe no longer sends requests to
+disk (PROBE_FAILURES in a row do); each disk answer is logged with its reason (stderr).
 """
 import configparser
 import contextlib
@@ -19,6 +22,7 @@ from pathlib import Path
 import re
 import sqlite3
 import stat
+import sys
 import threading
 import time
 from urllib.parse import quote, urlsplit
@@ -32,6 +36,28 @@ FORMATS = {
     "ramp_atlas": (r"/ftesurf/media/rampwear/([a-z0-9_-]{1,64}\.[0-9a-f]{64})\.png", "ftesurf/media/rampwear/", ".png"),
     "ramp_encoded": (r"/ftesurf/media/rampwear/([a-z0-9_-]{1,64}\.[0-9a-f]{64})\.png\.b64", "ftesurf/media/rampwear/", ".png.b64"),
 }
+
+
+PROBE_FAILURES = 3      # P1618: consecutive failed probes (2 s apart) before disk
+
+
+def read_row(state, sql, args):
+    """One row from a ledger opened read-only. P1618: r2mirror keeps its ledger in WAL mode and its
+    last close deletes -wal/-shm; this service cannot recreate them (ProtectSystem=strict), so that
+    open fails ("attempt to write a readonly database") until another reader leaves them behind --
+    and every request used the Pi's 1 MiB/s copy for up to 12 minutes in each half hour. With no -wal
+    beside it the last writer checkpointed and closed, so the main file is whole: read it immutable."""
+    plain = state.as_uri() + "?mode=ro"
+    try:
+        with contextlib.closing(sqlite3.connect(plain, uri=True, timeout=1.0)) as db:
+            db.row_factory = sqlite3.Row
+            return db.execute(sql, args).fetchone()
+    except sqlite3.OperationalError:
+        if Path(str(state) + "-wal").exists():
+            raise
+    with contextlib.closing(sqlite3.connect(plain + "&immutable=1", uri=True, timeout=1.0)) as db:
+        db.row_factory = sqlite3.Row
+        return db.execute(sql, args).fetchone()
 
 
 def regular(path, directory=False):
@@ -129,9 +155,16 @@ class Gateway:
         self.ramp_gzip_state = None
         if config.get("ramp_gzip_state"):
             self.ramp_gzip_state = directory(Path(config["ramp_gzip_state"]).parent) / Path(config["ramp_gzip_state"]).name
+        self.public_base = None
+        if config.get("public_base"):
+            base = config["public_base"].rstrip("/")
+            if not re.fullmatch(r"https://[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+", base):
+                raise ValueError("public_base must be a bare https://host")
+            self.public_base = base
         self.probe_lock = threading.Lock()
         self.probe_until = 0.0
-        self.probe_ok = False
+        self.probe_ok = True            # P1618: R2 until shown otherwise (was disk until a first probe)
+        self.probe_fails = 0
 
     def head_probe(self, key):
         url = signed_url(self.endpoint, self.bucket, self.access, self.secret, key, "HEAD")
@@ -152,8 +185,13 @@ class Gateway:
             return self.probe_ok
         try:
             if now >= self.probe_until:
-                self.probe_ok = bool(self.reachability(key))
-                self.probe_until = time.monotonic() + (15 if self.probe_ok else 2)
+                # P1618: one failure retries in 2 s but keeps R2; only PROBE_FAILURES in a row use disk.
+                if self.reachability(key):
+                    self.probe_fails = 0
+                else:
+                    self.probe_fails += 1
+                self.probe_ok = self.probe_fails < PROBE_FAILURES
+                self.probe_until = time.monotonic() + (2 if self.probe_fails else 15)
             return self.probe_ok
         finally:
             self.probe_lock.release()
@@ -172,9 +210,7 @@ class Gateway:
         state = (self.ramp_state or self.state) if group.startswith("ramp_") else self.state
         if not regular(state) or not regular(source):
             return None
-        with contextlib.closing(sqlite3.connect(state.as_uri() + "?mode=ro", uri=True, timeout=0.25)) as db:
-            db.row_factory = sqlite3.Row
-            row = db.execute("SELECT * FROM assets WHERE alias=? AND present=1 AND state='verified'", (alias,)).fetchone()
+        row = read_row(state, "SELECT * FROM assets WHERE alias=? AND present=1 AND state='verified'", (alias,))
         if not row or row["group_name"] != group or row["source"] != str(source):
             return None
         sha = row["sha"]
@@ -201,11 +237,7 @@ class Gateway:
         try:
             if not regular(state):
                 return None
-            with contextlib.closing(sqlite3.connect(state.as_uri() + "?mode=ro", uri=True,
-                                                    timeout=0.25)) as db:
-                db.row_factory = sqlite3.Row
-                row = db.execute("SELECT * FROM gz WHERE alias=? AND sha=? AND state='verified'",
-                                 (alias, sha)).fetchone()
+            row = read_row(state, "SELECT * FROM gz WHERE alias=? AND sha=? AND state='verified'", (alias, sha))
         except (OSError, ValueError, sqlite3.Error):
             return None
         want = key + ".gz"
@@ -227,22 +259,30 @@ class Gateway:
             if resolved is None:
                 status = "404 Not Found"
             else:
+                why = ""
                 try:
                     key = self.ready_key(resolved)
-                except (OSError, ValueError, sqlite3.Error):
-                    key = None
-                if key and self.r2_available(key):
+                    if not key:
+                        why = "not verified for the current file"
+                except (OSError, ValueError, sqlite3.Error) as exc:
+                    key, why = None, "ledger: %s: %s" % (type(exc).__name__, str(exc)[:80])
+                if key and not self.r2_available(key):
+                    why = "R2 probe failed %d times in a row" % self.probe_fails
+                if not why:
                     gz = self.gzip_key(resolved, key, environ)
                     status = "302 Found"
-                    headers += [("Location", signed_url(self.endpoint, self.bucket, self.access, self.secret,
-                                                        gz or key, method)),
-                                ("X-R2-Route", "r2")]
+                    target = (self.public_base + "/" + quote(gz or key, safe="/-_.~") if self.public_base else
+                              signed_url(self.endpoint, self.bucket, self.access, self.secret, gz or key, method))
+                    headers += [("Location", target), ("X-R2-Route", "r2")]
                     if gz:
                         headers.append(("X-R2-Encoding", "gzip"))
                     headers.append(("Vary", "Accept-Encoding, Range"))
                 else:
                     status = "409 Conflict"
                     headers.append(("X-R2-Route", "origin"))
+                    # P1618: no address, query or signature; the public alias and why it used disk.
+                    sys.stderr.write("r2gateway: disk for %s: %s\n" % (resolved[1], why))
+                    sys.stderr.flush()
         headers.append(("Content-Length", str(len(body))))
         start_response(status, headers)
         return [body]
