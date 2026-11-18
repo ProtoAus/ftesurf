@@ -18,3 +18,9 @@ tools/qcframes.py fails a progs where a file-scope global sits inside a function
 Measured, local fteqw-sv64 at developer 1 on ahop_coast, 20 s each: live 14f1aa82 printed the line 1242 times,
 this build (qwprogs 9e3bc024, csprogs 3da4417a) once; both advertise fs_archive2 1, no QC errors.
 Deploy: rides the next lobby qwprogs+csprogs restart. The existing 1-2 GB logs are left for Lex.
+
+menu.dat (installed b71575aa, worldofsurf-15's run): 3 frame hits, traced harmless today and left for a release.
+ui_dl_cancel_ready's own cache dl_have_cancel resets on return, so checkbuiltin(downloadcancel) runs every call
+(no print, same answer). mf_linkstate sits in MF_PresencePoll's and Sty_AskMe's frames, but neither reaches a
+writer (MF_TakeCvars, the two URI reply handlers): they call cvar, clientstate, checkbuiltin, Lob_NextReq, uri_get.
+A writer added under either would be undone on return; a declared local in each would clear the guard.
