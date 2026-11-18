@@ -21,6 +21,9 @@
 
 ## next
 
+### P1614 Send as many prediction error reports as you like
+- Prediction error reports (F6 when the box asks) are no longer limited to three per map, or twelve per server. The game still offers at most one a minute.
+
 ### P1612 No more pink clip walls over ramps
 - Graphics > Tool brushes: Shown now lasts until you restart the game. Players who had left it on saw the invisible clips some maps lay over their ramps (surf_ferros, surf_centipedes) as pink walls.
 

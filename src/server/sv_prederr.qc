@@ -3,8 +3,9 @@
   data/prederr/<map>_<utc>_p<port>_s<slot>.txt.  Chunk 0 is "begin <stem> <chunks> <worst> <seq>";
   each chunk is answered with `prederr_ack <n>` so the client sends the next one only then, and a
   refusal ends the upload.  Streamed to disk (nothing held in RAM).  Caps, review 1: 400 chunks of
-  1 KB whatever the client declares; per connection 3 a map and 20 s apart; per lobby 12 a map and
-  10 s apart; and nothing is taken once PE_SV_STORE files are on the box (fetch and clear them).
+  1 KB whatever the client declares; per connection 20 s apart; per lobby 10 s apart; and nothing is
+  taken once PE_SV_STORE files are on the box (fetch and clear them).  P1614: no per-map count (was 3 a
+  connection, 12 a lobby): Lex filters them himself.
 
   P1238: the server's own side.  Every command a player runs adds one row to that player's ring:
   P675's context (kind 1 network, 2 timestamp-split, 0 a loss fill or untagged) and time taken at
@@ -14,9 +15,7 @@
 */
 #define PE_SV_CHUNKS   400
 #define PE_SV_CHUNK    1024
-#define PE_SV_PERMAP   3
-#define PE_SV_LOBBY    12
-#define PE_SV_STORE    600
+#define PE_SV_STORE    2000     // P1614: was 600; 118 files took 13 MB on the Pi (19 Nov)
 
 .float pe_open, pe_fh, pe_next, pe_total, pe_count, pe_last;
 .float pe_chunkt;                // P1552: when its begin or last chunk arrived
@@ -325,11 +324,9 @@ void(entity p, string s) SV_PeBegin =
 	t = stof(argv(2));
 	if (!(t >= 1 && t <= PE_SV_CHUNKS) || t != floor(t))    // positive form: NaN fails it
 		return SV_PeRefuse(p, "size");
-	if (p.pe_count >= PE_SV_PERMAP)
-		return SV_PeRefuse(p, "three-this-map");
 	if (p.pe_count && time < p.pe_last + 20)
 		return SV_PeRefuse(p, "wait");
-	if (pe_lobby_n >= PE_SV_LOBBY || (pe_lobby_n && time < pe_lobby_last + 10))
+	if (pe_lobby_n && time < pe_lobby_last + 10)
 		return SV_PeRefuse(p, "lobby-busy");
 	if (SV_PeStored() >= PE_SV_STORE)
 		return SV_PeRefuse(p, "store-full");

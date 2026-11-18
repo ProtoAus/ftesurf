@@ -2312,8 +2312,9 @@ Root: C:\FTESurf-worktrees\skyroom1202-20261102T0620Z.
   Regression: `tools/test_prederr_triage.py` covers zero/below/equal/above-epsilon controls.
 - Lobby: F6 uploads in sendevent chunks (CSEv_pe_fs), one per `prederr_ack`; the lobbies' shared
   gamedir gets data/prederr/<map>_<utc>_p<port>_s<slot>.txt, streamed (FS_FILE_WRITESTREAM).
-  Caps: 400 x 1 KB chunks whatever the client declares; 3 per connection per map, 20 s apart;
-  12 per lobby per map, 10 s apart; NOTHING is taken once 600 files are there -- fetch and clear:
+  Caps: 400 x 1 KB chunks whatever the client declares; per connection 20 s apart, per lobby 10 s
+  apart, no per-map count since P1614 (was 3 / 12); NOTHING is taken once 2000 files are there (was
+  600) -- fetch and clear:
   `python tools/prederr_triage.py --fetch <dir>` copies them (scp) and prints, per report, the
   worst line, the seq where client and server first disagree, the rows around it and the context
   (server prints, mirror triggers by seq, gates, warp ops). Clear the Pi copies after reading.
