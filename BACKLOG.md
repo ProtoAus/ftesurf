@@ -298,11 +298,22 @@
   client whose delay wobbles". On a client that aligns exactly but draws several frames a tick, the offset-0
   fallback used to catch, by accident, an assist dense enough to break the alignment; P1599 does not. Recovering
   it needs a per-player record of whether each client aligns (the per-player baselines leaf).
-- The sweep rules normalise by the RECORDED angle's motion, so an assist inflates its own allowance. Fleet
-  measurement (17 Nov, 499 pairs): normalising by the DRAWN frames' step catches dense one-tick snaps the
-  current rule misses and keeps held-lie and splice detection, but at the pre-P1599 join it newly faults 2
-  honest misaligned pairs; a 3-tick drawn or recorded span loses about half the held-lie catches. Next: the
-  step form measured on P1599's join, as its own patch.
+- The sweep rules normalise by the RECORDED angle's motion, so an assist inflates its own allowance.
+  P1606 (18 Nov, worldofsurf-43) PARKED: judge each move against min(recorded, drawn step). Real readers on the
+  Pi's 506 lobby pairs: dense one-tick 10 deg snaps on 6% of moves caught on 1 of 503 pairs today, 478 with the
+  plain drawn step (b54da367), 313 with round 3's freshness gate (c4a4c32c); no lobby pair newly faults under
+  either; held lies and splices kept (+1..+8). Not shipped: four review rounds each built an honest networked
+  client it newly faults, one cause: frames join a move by snapshot LABEL, so they are drawn a variable time after
+  the move was sent, and a step taken from them spans however long the label was held -- labels skipping ticks
+  (round 1), a turn ending with a side unframed (2), a stalled queue released 0.2 tick apart (3), a queue
+  draining at 0.85 tick (4: 36 of 93 clean configurations fault at 62.5 Hz commands, 11 of 69 at one per tick).
+  A rate over each command's own duration (mover clock mt*tickrate + carry = the sum of cmd.msec; prototype
+  502875b3 on branch p1606-stepnorm) removes the span error but still faults a stalling client whose turn stops
+  while frames are drawn late (500 fps, 2% stalls: 5.69% vs 4.62% today). Next: join a move to the frames of the
+  command that built it -- the .view's cmdframe is cl.movesequence, the .rec carries only a server packet
+  ordinal -- so the server must record the client's command number. Also on that branch: test_reccheck's
+  snapshot_view gains a `fifo` link model (stalls, drains), and build()'s `in` carry, which never modelled the
+  mover clock (6 ms commands 40% of the time), is made constant.
 - Stored FAULT rows: `--reread-receipts` overwrites in place with no history, and its summary does not report
   FAULT -> VALID. Export (runid, verdict, reason, angles, angles_reason) before any re-read, P1580's activation
   included; that re-read is what applies P1599 to old rows. No column says which reader version judged a row.
