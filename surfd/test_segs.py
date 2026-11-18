@@ -52,8 +52,11 @@ def case_rec_segments(mod):
     else:
         check("rec_segments: records across every chunk boundary counted once", True)
     p = write(d, "f.rec", head + ("resume 1 9\n" * 40))
-    check("rec_segments: the limit stops the read", 1 < mod.rec_segments(p, limit=128, chunk=64) < 41,
-          mod.rec_segments(p, limit=128, chunk=64))
+    check("rec_segments: past the limit is unknown (0), not a partial count",
+          mod.rec_segments(p, limit=128, chunk=64) == 0, mod.rec_segments(p, limit=128, chunk=64))
+    check("rec_segments: a file ending exactly at the limit is counted",
+          mod.rec_segments(p, limit=os.path.getsize(p), chunk=64) == 41,
+          mod.rec_segments(p, limit=os.path.getsize(p), chunk=64))
 
 
 def case_board(mod):

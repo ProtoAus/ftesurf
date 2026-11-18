@@ -1216,8 +1216,8 @@ _REC_BODY = re.compile(rb"\nbegin\r?\n")
 
 
 def rec_segments(path, limit=64 << 20, chunk=1 << 20):
-    """P1615: 1 + the `resume ` records after `begin`; 0 when the file cannot be read or has no `begin` in its
-    first chunk (the header is 64 lines at most)."""
+    """P1615: 1 + the `resume ` records after `begin`; 0 (unknown) when the file cannot be read, has no `begin`
+    in its first chunk (the header is 64 lines at most) or runs past `limit`."""
     pat = b"\nresume "
     n, read, tail = 0, 0, b""
     try:
@@ -1233,6 +1233,8 @@ def rec_segments(path, limit=64 << 20, chunk=1 << 20):
                 n += data.count(pat)
                 tail = data[-(len(pat) - 1):]  # too short to hold a whole match: none is counted twice
                 if read >= limit:
+                    if fh.read(1):
+                        return 0                # a partial count is not a count
                     break
                 data = fh.read(chunk)
                 if not data:
