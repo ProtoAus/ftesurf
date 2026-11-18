@@ -415,7 +415,7 @@ string(float row) Gfx_Def =
 	  see the seta note on Gfx_Cycle for what build 33 did about the other 22.
 	*/
 	if (row == 16) return "hl2_propdist|Prop distance|4000 8000 12000 20000 0|4k;8k;12k;20k;Unlimited||How far away static props still draw. The biggest frame-rate setting on prop-heavy maps.";
-	if (row == 17) return "hl2_hidetools|Tool brushes|1 0|Hidden;Shown|*|Clip, nodraw, skip and hint brushes, hidden as in Source. Shown helps work out why a route is blocked.";
+	if (row == 17) return "hl2_hidetools|Tool brushes|1 0|Hidden;Shown|*|Clip, nodraw, skip and hint brushes, hidden as in Source. Shown helps work out why a route is blocked, until the game restarts.";
 	if (row == 18) return "hl2_areaportals|Areaportals|0 1|Closed;Open|*|How the map's areaportals start. Open is what Source does; Closed can seal whole areas off.";
 	if (row == 19) return "hl2_propcollision|Prop collide|0 1 2 3|None;VPhysics;Bbox;Mesh|*|How props collide. The server decides this: it changes only with sv_cheats.";
 	if (row == 20) return "hl2_dispcollision|Disp collide|0 1|None;Normal|*|Collision on displacement terrain. The server decides this: it changes only with sv_cheats.";

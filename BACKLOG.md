@@ -172,8 +172,8 @@
 - First-draw back-buffer waits: at cl_maxfps 300 some frames spend ~1.1-1.3 ms in "resolve, effects, bloom" -- the first
   draw into the window's buffer, which on Wayland waits for one the compositor still holds. Fullscreen (direct scanout)
   not measured. P1611 (18 Nov): in a headless nested labwc the fullscreen game is the only buffer on the output (opaque
-  XRGB at 2560x1600) and labwc's scene tries direct scan-out every frame; whether NVIDIA's plane accepts it on the real
-  DP-1 is still unmeasured. F11 now switches live, so a rig can compare windowed and fullscreen in one session. rig.py
+  XRGB at 2560x1600) and labwc's scene tries direct scan-out every frame. On the real display (DP-2) labwc sent the
+  game a dmabuf scan-out tranche 0.26 s after fullscreen, withdrawn while windowed (ENGINE_PATCHES.md Patch 1611). F11 now switches live, so a rig can compare windowed and fullscreen in one session. rig.py
   now passes vid_winmaximize 0: since P1611 a Wayland windowed start maximizes by default, as on Windows.
   Installed 18 Nov: ftesurf64 32a0143e (git-8859-patch-1611-0-g7ff6dfde3; server, plugin and .dat unchanged), the
   previous cdcdcd13 in FTESurf-worktrees/wlfs-20261118-c5/artifacts/install-prev1611.

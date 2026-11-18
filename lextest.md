@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1612 Tool brushes: Shown lasts one session -- installed on the Linux PC's game; owner check PENDING (record: engine ENGINE_PATCHES.md Patch 1612)
+- Ask nodsnot and Mark: is Graphics (X) > Tool brushes on Shown? That is what draws the pink clip on surf_ferros and
+  surf_centipedes. Setting it to Hidden fixes it now; the next release resets it at every launch.
+- On this PC: Graphics > Tool brushes: Shown, load surf_ferros: pink clip over the ramps. Quit and start again: the
+  console says "Tool brushes: hidden again" and the ramps are clean.
+
 ## P1611 Wayland fullscreen: F11 / Alt+Enter switch instantly -- installed on the Linux PC's game; owner check PENDING (record: engine ENGINE_PATCHES.md Patch 1611)
 - In a map, press F11 (or Alt+Enter) a few times. Each switch is instant: no black flash, no second of freeze, no
   texture pop-in afterwards. Windowed is a maximized window with labwc's title bar ("World of Surf: ..."), not a

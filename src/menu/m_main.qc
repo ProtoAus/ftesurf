@@ -8179,6 +8179,14 @@ void() m_init =
 	  Run it after anything registers and the default would win instead.
 	*/
 	FS_CvarsMoved();
+	// P1612 (Lex, 18 Nov): Graphics > Tool brushes: Shown lasts one session. A saved hl2_hidetools 0 drew mappers'
+	// $alpha 0 ramp clips (surf_ferros tools/paintclip, surf_centipedes rampcollision) as pink walls for good.
+	// Here, after the config and before any map: the cvar is map-latched and takes a set at once only now.
+	if (cvar_string("hl2_hidetools") != "" && !cvar("hl2_hidetools"))
+	{
+		cvar_set("hl2_hidetools", "1");
+		print("Tool brushes: hidden again (Shown in Graphics lasts one session)\n");
+	}
 	registercvar("ls_wireangle", "0", 32);     // P1453: loading-screen map models, degrees above side on
 	Crash_Init();       // P1418: a crash report from the engine's Sys_Error record, if one is waiting
 

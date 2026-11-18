@@ -21,6 +21,9 @@
 
 ## next
 
+### P1612 No more pink clip walls over ramps
+- Graphics > Tool brushes: Shown now lasts until you restart the game. Players who had left it on saw the invisible clips some maps lay over their ramps (surf_ferros, surf_centipedes) as pink walls.
+
 ### P1611 Linux: instant fullscreen switching on Wayland
 - On a Wayland desktop, F11 and Alt+Enter now switch between fullscreen and windowed instantly, instead of freezing for a second or more while the game reloaded its graphics.
 - Windowed mode opens maximized with the desktop's title bar, as on Windows, instead of as a small 640x480 window, and keeps its title.
