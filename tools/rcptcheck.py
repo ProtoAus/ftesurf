@@ -631,8 +631,9 @@ def join_angles(r, want):
             r.note("the recording carries no angle stream to check the sidecar against")
             return
     solo = v.info.get("angle_solo", "")
+    cmdl = v.info.get("angle_cmd", "")     # P1610
     # Reserve sweep's bounded detail field for measurements before validation prose.
-    detail = [off] + ([solo] if solo else []) + independent[:1]
+    detail = [off] + ([solo] if solo else []) + ([cmdl] if cmdl else []) + independent[:1]
     detail.extend(n for n in v.notes if n.startswith("the tight angle rule did not judge this pair:"))
     r.angles_detail = "; ".join(detail)
     # BLIND IS ABOUT THE SWEEP RULE ONLY.  Nearly every run the fleet records

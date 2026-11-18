@@ -269,10 +269,11 @@ def view_for(lines, rot=0.0, lo=0.0, hi=1.0, dense=1, dense_lo=0.0,
     # .view that runs past the recording, and that is a different finding.
     end = [l.split() for l in lines if l.startswith("end ")]
     top = int(end[0][1]) if end else max(ticks)
-    keep = [(tk, f) for tk, f in zip(ticks, rows) if 0 <= tk <= top]
+    # The command column is the move's own row number (cl.movesequence counts commands, one per move here; P1610).
+    keep = [(tk, f, j) for j, (tk, f) in enumerate(zip(ticks, rows)) if 0 <= tk <= top]
     out = ["FTESURF-VIEW 2", "map bhop_eazy", "hid 1", "begin"]
     n = len(keep)
-    for i, (tk, f) in enumerate(keep):
+    for i, (tk, f, j) in enumerate(keep):
         yaw = float(f[8])
         if lo * n <= i < hi * n:
             yaw = ((yaw + rot) + 180.0) % 360.0 - 180.0
@@ -282,7 +283,7 @@ def view_for(lines, rot=0.0, lo=0.0, hi=1.0, dense=1, dense_lo=0.0,
                 else "%d" % max(0, tk + shift)
             out.append("%.4f %d %s %.2f %.2f 0"
                        % (10.0 + (tk + k / float(d)) * TICK,
-                          1000 + tk, col, float(f[7]), yaw))
+                          1000 + j, col, float(f[7]), yaw))
     return out
 
 
@@ -2252,14 +2253,15 @@ def case_angle_lag_is_recovered():
     # the search this same pair faults.
     L2 = build(sweep=128, packets=400)
     import reccheck as _rc
-    keep = _rc.ANG_LAG_FLOOR
+    keep = _rc.ANG_LAG_FLOOR, _rc.ANG_CMD_MIN
     _rc.ANG_LAG_FLOOR = -1.0            # no offset can ever be accepted
+    _rc.ANG_CMD_MIN = 10 ** 9           # ...and no command join (P1610 would judge the pair through it)
     try:
         f2 = run_inproc(L2, view_for(L2, shift=-3))
     finally:
-        _rc.ANG_LAG_FLOOR = keep
+        _rc.ANG_LAG_FLOOR, _rc.ANG_CMD_MIN = keep
     check(any("the sidecar is not this recording's" in x for x in f2),
-          "CONTROL: with the search switched off the same pair faults")
+          "CONTROL: with the search and the command rule switched off the same pair faults")
     check(not run_inproc(L2, view_for(L2, shift=-3)),
           "...and with it back on, in the same process, it does not")
 
@@ -2421,6 +2423,200 @@ def wobble_view(lines, a=-3, b=-4, stretch=40, **kw):
     return va[:4] + [la if (i // per // stretch) % 2 == 0 else lb for i, (la, lb) in enumerate(zip(va[4:], vb[4:]))]
 
 
+def snapped(lines, every, deg=10.0, run=1, start=None, col=8):
+    """`lines` with `run` consecutive `in` rows' yaw (col 7: pitch) moved `deg` (whole wire quanta) every `every` rows."""
+    q, out, k = round(deg / QUANTUM) * QUANTUM, [], 0
+    s0 = every // 2 if start is None else start
+    for l in lines:
+        if l.startswith("in "):
+            if k >= s0 and (k - s0) % every < run:
+                f = l.split(" ")
+                f[col] = "%.4f" % (float(f[col]) + q)
+                l = " ".join(f)
+            k += 1
+        out.append(l)
+    return out
+
+
+def early_view(lines, late=False):
+    """Commands c = 1 mod 4 had their sent angle drawn only on a frame stamped c-1, their own frame showing the view
+    half a move later; with `late`, commands c = 3 mod 4 had theirs only on a frame stamped c+1, their own frame half
+    a move earlier.  Both at once is what one offset per stretch cannot cover (ANG_CMD_W)."""
+    v = view_for(lines)
+    out = v[:4]
+    body = [ln.split() for ln in v[4:]]
+    for k, p in enumerate(body):
+        c = int(p[1])
+        if 0 < k < len(body) - 1 and (c % 4 == 1 or (late and c % 4 == 3)):
+            y0 = float(p[4])
+            y1 = float(body[k + 1][4]) if c % 4 == 1 else float(body[k - 1][4])
+            dy = ((y1 - y0 + 180.0) % 360.0) - 180.0
+            q = list(p)
+            q[4] = "%.2f" % ((((y0 + 0.5 * dy) + 180.0) % 360.0) - 180.0)    # its own frame: half a move off
+            sent = " ".join([p[0], "%d" % (c - 1 if c % 4 == 1 else c + 1)] + p[2:])
+            out += [sent, " ".join(q)] if c % 4 == 1 else [" ".join(q), sent]
+        else:
+            out.append(" ".join(p))
+    return out
+
+
+def recmd(view, fn):
+    """`view` with each frame's command column passed through fn(cmd, frame index)."""
+    out = view[:4]
+    for k, ln in enumerate(view[4:]):
+        p = ln.split()
+        p[1] = "%d" % fn(int(p[1]), k)
+        out.append(" ".join(p))
+    return out
+
+
+def between_view(lines):
+    """A client that builds odd commands between two drawn frames: their two frames show 40% and 80% of the way from
+    the previous move's angle to this one's, so the sent angle is never drawn; even commands draw it (P1610: lobby
+    clients draw ~78% exactly, ~20% between)."""
+    rows = [l.split() for l in lines if l.startswith("in ")]
+    end = [l.split() for l in lines if l.startswith("end ")]
+    top = int(end[0][1]) if end else 10 ** 9
+    out, prev = ["FTESURF-VIEW 2", "map bhop_eazy", "hid 1", "begin"], None
+    for j, f in enumerate(rows):
+        tk, pt, yw = int(f[2]) - HORIZON, float(f[7]), float(f[8])
+        if prev is not None and 0 <= tk <= top:
+            for k, w in enumerate((0.4, 0.8) if j % 2 else (0.5, 1.0)):
+                dy = ((yw - prev[1] + 180.0) % 360.0) - 180.0
+                out.append("%.4f %d %d %.2f %.2f 0" % (10.0 + (tk + k / 2.0) * TICK, 1000 + j, tk,
+                                                       prev[0] + w * (pt - prev[0]),
+                                                       ((prev[1] + w * dy) + 180.0) % 360.0 - 180.0))
+        prev = (pt, yw)
+    return out
+
+
+def held_view(lines, a, b):
+    """view_for, but frames a..b-1 show frame a-1's angle and clock: a held view (a save's tail draws one)."""
+    v = view_for(lines)
+    body = [ln.split() for ln in v[4:]]
+    out = [list(r) for r in body]
+    for k in range(a, min(b, len(body))):
+        out[k][2], out[k][3], out[k][4] = body[a - 1][2], body[a - 1][3], body[a - 1][4]
+    return v[:4] + [" ".join(r) for r in out]
+
+
+def paused_view(lines, tail=20, per=40):
+    """view_for, but the last `tail` moves' commands are every `per`th: the client numbered and drew commands the
+    server never ran (a paused local save: 943 commands for 156 moves)."""
+    v = view_for(lines)
+    body = [ln.split() for ln in v[4:]]
+    n = len(body)
+    out = [list(r) for r in body[:n - tail]]
+    base = int(body[n - tail - 1][1])
+    for k in range(n - tail, n):
+        for s in range(per):
+            r = list(body[k - 1] if s < per - 1 else body[k])
+            r[1] = "%d" % (base + per * (k - (n - tail - 1)) - per + 1 + s)
+            out.append(r)
+    return v[:4] + [" ".join(r) for r in out]
+
+
+def case_angle_command_join():
+    """P1610.  THE COMMAND RULE: each move against the frames of its own command (the .view's cmdframe), a join no
+    network delay touches.  Honest clients pass whether they are aligned, delayed, wobbling, at one frame a tick or
+    three, or build commands between frames; assists the tick-joined rules cannot see are caught."""
+    import reccheck as _rc
+    L = build(sweep=600, packets=400)
+    cmdf = lambda rep: [x for x in rep.faults if "does not describe this recording by command" in x]
+    for name, view in (("aligned", view_for(L)), ("12 ticks behind", view_for(L, shift=-12)),
+                       ("wobbling 3/4 ticks, 3 frames a tick", wobble_view(L, dense=3)),
+                       ("wobbling, one frame a tick", wobble_view(L)), ("between frames", between_view(L)),
+                       ("sent angle drawn under the previous or next command", early_view(L, late=True))):
+        rep = report_inproc(L, view)
+        m = re.match(r"(\d+) of 334 moves joined.*?, ([\d.]+)% on no drawn path", rep.info.get("angle_cmd", ""))
+        check(not rep.faults and m is not None and int(m.group(1)) >= 300 and float(m.group(2)) < 0.5,
+              "honest, %s: the command rule judges every move and passes (%s)" % (name, rep.info.get("angle_cmd", "")[:60]))
+    rb = report_inproc(L, between_view(L))
+    check(re.search(r"(49|50|51)% a frame, (49|50|51)% between frames", rb.info.get("angle_cmd", "")) is not None,
+          "...half the between-frames client's sent angles are on no frame but on the drawn path (%s)"
+          % rb.info.get("angle_cmd", "")[60:140])
+    # The P1609 shape: one frame a tick, wobbling -- the one-frame rule's fallback stands aside for the command rule.
+    rw = report_inproc(L, wobble_view(L))
+    check(rw.info.get("angle_solo", "").endswith("-- NO JOIN, THE COMMAND RULE JUDGED -- one-frame join at +0 ticks"),
+          "...and there the one-frame rule's contradicted fallback does not judge: the command rule did")
+    keep = _rc.ANG_CMD_MIN
+    _rc.ANG_CMD_MIN = 10 ** 9
+    try:
+        f0 = run_inproc(L, wobble_view(L))
+    finally:
+        _rc.ANG_CMD_MIN = keep
+    check(any("the sidecar is not this recording's" in x for x in f0),
+          "CONTROL: without the command rule that honest pair is the one-frame rule's fault at offset 0 (today's)")
+    # Assists, on a delayed client at three frames a tick: the one-frame rule cannot judge it, the sweep misses snaps.
+    v3 = view_for(L, shift=-3, dense=3)
+    for every, deg, run, col in ((25, 10.0, 1, 8), (50, 3.0, 1, 7), (50, 1.0, 1, 7), (200, 1.0, 20, 7)):
+        a = report_inproc(snapped(L, every, deg, run, col=col), v3)
+        check(bool(cmdf(a)) and not any("the sidecar is not this recording's" in x for x in a.faults),
+              "%g deg %s on %d move(s) in %d, delayed, 3 frames a tick: the command rule convicts (%s)"
+              % (deg, "yaw" if col == 8 else "pitch", run, every, a.info.get("angle_cmd", "")[60:110]))
+    # ...but a lie ALONG the turn, within the commands either side, is on the drawn path (BACKLOG, P1610): this
+    # fixture turns 3.3 deg a move, so a 3 deg yaw snap ahead lands between frames it drew.
+    s3 = report_inproc(snapped(L, 50, 3.0), v3)
+    check(not cmdf(s3), "a 3 deg yaw snap along a 3.3 deg/move turn is on the drawn path (the rule's stated limit)")
+    # The P1609 evasion is closed: an aligned client that adds a delay is judged through the command join anyway.
+    e = report_inproc(snapped(L, 25), view_for(L, shift=-3))
+    check(bool(cmdf(e)), "an assist on an aligned client that adds a fixed delay is still convicted (by command)")
+    # Another run's sidecar has no sent angle on a frame: the command rule says it did not judge (the sweep convicts).
+    o = report_inproc(L, view_for(build(sweep=450, packets=400)))
+    check(bool(cmdf(o)), "another run's sidecar is the command rule's fault too")
+    lone = report_inproc(L, recmd(view_for(L), lambda c, k: 7))
+    check("NOT JUDGED" in lone.info.get("angle_cmd", "") or not lone.info.get("angle_cmd"),
+          "a sidecar whose command column never moves is not judged by it")
+    # The frame that ends a command can carry either number: a stretch stamped one low still joins (ANG_CMD_W).
+    keep = _rc.ANG_CMD_W
+    _rc.ANG_CMD_W = 0
+    try:
+        f1 = run_inproc(L, early_view(L, late=True))
+    finally:
+        _rc.ANG_CMD_W = keep
+    check(any("by command" in x for x in f1),
+          "CONTROL: without the commands either side, sent angles drawn under the previous AND the next number fault")
+    # Commands lost mid-run move the numbering: the stretches re-anchor (ANG_CMD_SUB).  Five, so the frames' clock
+    # stays within ANG_CMD_STEP and only the re-anchoring can save the moves after it.
+    jump = recmd(view_for(L), lambda c, k: c + 5 if k >= 165 else c)
+    check(not report_inproc(L, jump).faults, "5 commands lost mid-run: the stretches after it re-anchor and pass")
+    keep = _rc.ANG_CMD_SUB
+    _rc.ANG_CMD_SUB = 10 ** 9
+    try:
+        f2 = run_inproc(L, jump)
+    finally:
+        _rc.ANG_CMD_SUB = keep
+    check(any("by command" in x for x in f2), "CONTROL: with whole blocks only, that pair faults")
+    # Where the frames stop describing the aim, the rule does not judge: a held view at the run's end (the clock
+    # range), a held view mid-run past ANG_CMD_STEP, and a sidecar numbering commands the server never ran.
+    n = len(view_for(L)) - 4
+    ht = report_inproc(L, held_view(L, n - 20, n))
+    check(not ht.faults, "a held view over the last 20 moves (a save's tail) is past the frames' clock: not judged (%s)"
+          % ht.info.get("angle_cmd", "")[60:120])
+    L2 = build(sweep=97, packets=2400)
+    mh = report_inproc(L2, held_view(L2, 1000, 1030))
+    check(not mh.faults, "a 30-move held view mid-run: the moves out of step with the frames' clock are not judged (%s)"
+          % mh.info.get("angle_cmd", "")[60:120])
+    ps = report_inproc(L, paused_view(L))
+    check(not ps.faults and "NOT JUDGED" in ps.info.get("angle_cmd", ""),
+          "a sidecar numbering 40 commands for each of the last 20 moves: order is not the command number, not judged")
+    # A command join that covers under ANG_CMD_COVER of the moves does not stand in for the one-frame rule.
+    wv = wobble_view(L)
+    gap = wv[:4] + [ln for ln in wv[4:] if not 1050 <= int(ln.split()[1]) < 1090]
+    rg = report_inproc(L, gap)
+    check(any("the sidecar is not this recording's" in x for x in rg.faults) and "NOT JUDGED" not in rg.info.get("angle_cmd", ""),
+          "40 commands drawn no frame (88%% joined): the command rule passes but does not stand in (%s)"
+          % rg.info.get("angle_cmd", "")[:50])
+    # The drawn path is part of the rule: without it the between-frames client faults.
+    keep = _rc._onseg
+    _rc._onseg = lambda x, a, b: False
+    try:
+        f3 = run_inproc(L, between_view(L))
+    finally:
+        _rc._onseg = keep
+    check(any("by command" in x for x in f3), "CONTROL: without the drawn path the between-frames client faults")
+
+
 def case_angle_sweep_joins_at_the_named_offset():
     """P1599.  A SWEEP JUDGED AT THE WRONG OFFSET MEASURES NOTHING.
 
@@ -2448,10 +2644,10 @@ def case_angle_sweep_joins_at_the_named_offset():
     check(any("the sidecar does not describe this recording" in x for x in f2),
           "CONTROL: without the named offset the same pair is the sweep rule's fault")
     check(not run_inproc(L, view), "...and with it back, in the same process, it is not")
-    # The one-frame rule is untouched: one frame a tick, the same wobble, still its fault at offset 0.
+    # One frame a tick, the same wobble: the one-frame rule's offset 0 is a contradicted fallback, and since P1610
+    # the command rule judges the pair instead (case_angle_command_join holds the control that brings it back).
     f3, _ = run(L, view=wobble_view(L))
-    check(any("the sidecar is not this recording's" in x for x in f3),
-          "with one frame a tick the one-frame rule still judges at offset 0 and faults (unchanged)")
+    check(not f3, "with one frame a tick the command rule judges it and the one-frame fallback stands aside (P1610)")
     # Still faults: a 90 deg block, and another run's sidecar.
     f4, _ = run(L, view=wobble_view(L, dense=3, rot=90.0, lo=0.4, hi=0.7))
     check(any("the sidecar does not describe this recording" in x for x in f4),
@@ -3975,6 +4171,7 @@ def main():
                case_angle_head_amnesty_costs_coverage,
                case_angle_lag_is_not_claimed_when_the_winner_is_bad,
                case_angle_sweep_joins_at_the_named_offset,
+               case_angle_command_join,
                case_angle_sweep_offset_gate,
                case_angle_sweep_join_keeps_the_one_frame_fault,
                case_angle_sweep_join_is_v9_only,
