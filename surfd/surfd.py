@@ -1207,6 +1207,67 @@ def helpers_of(runners):
     return out[:HELPERS_MAX]
 
 
+# P1615: a segmented row's segment count, read from its recording when a board shows it, as row_helpers is:
+# 1 + its `resume` records. A load rewinds the recorder to the save's mark (sv_timer.qc grammar), so only the
+# loads the finished run kept are in the file. 19 Nov: 87 segmented lobby files (90 MB) counted in 0.45 s on the Pi.
+_SEGS_CACHE = collections.OrderedDict()
+_SEGS_CACHE_MAX = 2048
+_REC_BODY = re.compile(rb"\nbegin\r?\n")
+
+
+def rec_segments(path, limit=64 << 20, chunk=1 << 20):
+    """P1615: 1 + the `resume ` records after `begin`; 0 when the file cannot be read or has no `begin` in its
+    first chunk (the header is 64 lines at most)."""
+    pat = b"\nresume "
+    n, read, tail = 0, 0, b""
+    try:
+        with open(path, "rb") as fh:
+            buf = fh.read(chunk)
+            m = _REC_BODY.search(buf)
+            if m is None:
+                return 0
+            data = buf[m.end() - 1:]          # from the newline that ends `begin`
+            read = len(buf)
+            while True:
+                data = tail + data
+                n += data.count(pat)
+                tail = data[-(len(pat) - 1):]  # too short to hold a whole match: none is counted twice
+                if read >= limit:
+                    break
+                data = fh.read(chunk)
+                if not data:
+                    break
+                read += len(data)
+    except OSError:
+        return 0
+    return n + 1
+
+
+def row_segments(db, replay_id):
+    """P1615: a segmented board row's segment count from its recording (no file: 0), cached by the replay and the
+    file's size and mtime, like row_helpers."""
+    rep = db.execute("SELECT map_dir, track, leg, leaf, kind FROM replays WHERE id=?",
+                     (replay_id,)).fetchone()
+    if rep is None:
+        return 0
+    path, _why = replay_file(dict(rep))
+    if not path:
+        return 0
+    try:
+        st = os.stat(path)
+    except OSError:
+        return 0
+    key = (replay_id, path, st.st_size, st.st_mtime_ns)
+    if key in _SEGS_CACHE:
+        _SEGS_CACHE.move_to_end(key)
+        return _SEGS_CACHE[key]
+    n = rec_segments(path)
+    _SEGS_CACHE[key] = n
+    while len(_SEGS_CACHE) > _SEGS_CACHE_MAX:
+        _SEGS_CACHE.popitem(last=False)
+    return n
+
+
 def receipts_v8(conn):
     """Schema 8 (Patch 422), IDEMPOTENT and run by every migrate(): it also
     repairs a database an earlier cut stamped 8 without the receipts columns
@@ -3146,6 +3207,11 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None, n
             names = row_helpers(db, row["replay_id"])
             if names:
                 rows[-1]["helpers"] = names
+        # P1615: likewise only on a segmented row with a recording: how many segments it was run in.
+        if style != STYLE_TAS and (row["flags"] & (TF_SEGMENT | TF_SHADOW)) and row["replay_id"]:
+            segs = row_segments(db, row["replay_id"])
+            if segs:
+                rows[-1]["segs"] = segs
         # ONLY on the combined board.  Adding it everywhere would change the
         # ranked board's bytes, which is the one thing test_momindex.py exists
         # to forbid -- and on a single-tier board every row's tier is the tier

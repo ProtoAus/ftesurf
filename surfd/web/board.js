@@ -420,7 +420,13 @@
         if (c) { who.appendChild(c); }
       }
       tr.appendChild(who);
-      tr.appendChild(el('td', 'num', fmt(r.ms)));
+      var time = el('td', 'num', fmt(r.ms));
+      // P1615: a segmented run's segment count (from its recording), on hover.
+      if (r.segs > 0) {
+        time.className = 'num segs';
+        time.title = r.segs === 1 ? '1 segment' : r.segs + ' segments';
+      }
+      tr.appendChild(time);
       tr.appendChild(el('td', 'num gap', r.r === 1 ? '' : gap(r.ms - v.best)));
       tr.appendChild(el('td', 'date', day(r.when)));
       var act = el('td', 'act');

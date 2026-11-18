@@ -89,6 +89,7 @@ strbuf mlb_bdate;
 strbuf mlb_bwho;               // Patch 789: the row's picture mark, "" none
 strbuf mlb_bhand;              // P1198: the row's 12-hex handle (surfd's web_handle), "" none
 strbuf mlb_bms;                // P1199: the row's exact ms as an int string, for DELTA
+strbuf mlb_bsegs;              // P1615: a segmented row's segment count (surfd `segs`), "" unknown
 int    mlb_refms;              // the #1 row's ms (DELTA's reference)
 float  mlb_anyav;               // some row has one: every name moves over
 
@@ -757,6 +758,7 @@ void(string why) Mlb_Close =
 	buf_del(mlb_bwho);
 	buf_del(mlb_bhand);
 	buf_del(mlb_bms);
+	buf_del(mlb_bsegs);
 	print(sprintf("^5board:^7 closed %s (%s)\n", mlb_map, why));
 	strunzone(mlb_style);
 	strunzone(mlb_map);
@@ -798,6 +800,7 @@ void(string mapname, float t) Mlb_Open =
 	mlb_bwho  = buf_create();
 	mlb_bhand = buf_create();
 	mlb_bms   = buf_create();
+	mlb_bsegs = buf_create();
 	mlb_anyav = FALSE;
 	mlb_open  = TRUE;
 	mlb_tab   = mlb_lasttab = t;
@@ -837,6 +840,8 @@ void(float i, int row) Mlb_Row =
 	if (bufstr_get(mlb_bwho, i) != "") mlb_anyav = TRUE;
 	s = json_get_string(json_find_object_child(row, "player"));
 	bufstr_set(mlb_bhand, i, (s != "") ? substring(strtolower(digest_hex("SHA256", s)), 0, 12) : "");
+	ms = json_get_integer(json_find_object_child(row, "segs"));
+	bufstr_set(mlb_bsegs, i, (ms > 0i) ? Mlb_Itos(ms) : "");
 };
 
 void(string label, float i) Mlb_PrintRow =
@@ -878,6 +883,7 @@ void(float d) Mlb_DropHead =
 		bufstr_set(mlb_bwho, k - d, bufstr_get(mlb_bwho, k));
 		bufstr_set(mlb_bhand, k - d, bufstr_get(mlb_bhand, k));
 		bufstr_set(mlb_bms, k - d, bufstr_get(mlb_bms, k));
+		bufstr_set(mlb_bsegs, k - d, bufstr_get(mlb_bsegs, k));
 	}
 	mlb_n = mlb_n - d;
 	mlb_offset = mlb_offset + d;
@@ -1054,6 +1060,7 @@ void(float id, float code, string body) Mlb_PageEarlier =
 		bufstr_set(mlb_bwho, k + n, bufstr_get(mlb_bwho, k));
 		bufstr_set(mlb_bhand, k + n, bufstr_get(mlb_bhand, k));
 		bufstr_set(mlb_bms, k + n, bufstr_get(mlb_bms, k));
+		bufstr_set(mlb_bsegs, k + n, bufstr_get(mlb_bsegs, k));
 	}
 	f = mlb_focus;
 	for (i = 0; i < n; i = i + 1)
@@ -1373,6 +1380,16 @@ vector(float r) Mlb_RankCol =
 	return SUI_THEME_MUTED;
 };
 
+// P1615: "" when the row has no count (not segmented, or no recording on the board).
+string(float i) Mlb_SegTip =
+{
+	local string s;
+	s = bufstr_get(mlb_bsegs, i);
+	if (!strcmp(s, ""))
+		return "";
+	return strcmp(s, "1") ? strcat(s, " segments") : "1 segment";
+};
+
 void(vector rp, float i, float rw, float tr, float dlr, float dr, float nw) Mlb_DrawRow =
 {
 	local float ty, li, g, gp;
@@ -1439,6 +1456,15 @@ void(vector rp, float i, float rw, float tr, float dlr, float dr, float nw) Mlb_
 		s = strcat("mlb_name", bufstr_get(mlb_bhand, i), "_", bufstr_get(mlb_brank, i));
 		sui_action_element([rp_x + MLB_NAME_X + ty, rp_y], [nw - ty, MLB_ROW_H], s, sui_noop);
 		if (sui_is_released(s)) MStats_Player(bufstr_get(mlb_bhand, i));
+		sui_tooltip_for(s, Mlb_SegTip(i), 2);
+	}
+	// P1615: the time too, so pointing at the run says how many segments it took.
+	if (strcmp(bufstr_get(mlb_bsegs, i), ""))
+	{
+		s = strcat("mlb_segs", bufstr_get(mlb_bhand, i), "_", bufstr_get(mlb_brank, i));
+		sui_action_element([rp_x + tr - stringwidth(bufstr_get(mlb_btime, i), TRUE, SZ_ROW), rp_y],
+		                   [stringwidth(bufstr_get(mlb_btime, i), TRUE, SZ_ROW), MLB_ROW_H], s, sui_noop);
+		sui_tooltip_for(s, Mlb_SegTip(i), 2);
 	}
 };
 

@@ -2468,6 +2468,9 @@ string(float idx) Scores_OnlineTip =
 {
 	local string t;
 	t = Scores_HelpTip(idx);
+	if (ob_segs[idx] > 0)           // P1615
+		t = strcat((ob_segs[idx] == 1) ? "1 segment" : sprintf("%g segments", ob_segs[idx]),
+		           strcmp(t, "") ? "\n" : "", t);
 	if (ob_plat[idx] <= PLAT_VERIFIED)
 		return t;
 	if (!strcmp(t, ""))

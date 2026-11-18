@@ -163,6 +163,8 @@ table.runs { width: 100%; border-collapse: collapse; margin-top: 6px; font-size:
 .runs td.name { overflow-wrap: anywhere; color: var(--text); }
 /* P1569: a helped run's "+N" (its runners on hover). */
 .runs .helped { color: var(--foreign); font-size: 12.5px; cursor: help; }
+/* P1615: a segmented run's time (its segment count on hover). */
+.runs td.segs { cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
 /* P1603: a run from a client without Windows raw-input verification (title says so); the
    game's SBC_LINUX.  Rank, name and time, so it reads beside the accent-blue name links. */
 .runs tbody tr.linux td.num:not(.gap), .runs tbody tr.linux td.name,
