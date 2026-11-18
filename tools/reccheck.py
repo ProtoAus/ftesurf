@@ -306,6 +306,7 @@ HEAD_V9 = HEAD_V8 | {"pmpin", "nonce", "proprule", "movebnd", "holdclock", "view
                      "plat",        # P1603, additive
                      "propmiss",    # Patch 1581, additive
                      "propstatic",  # P1604, additive
+                     "cmdseq",      # P1613, additive: the body numbers its usercmds (`cseq`)
                      "momtrig",     # Patch 869, additive
                      "entfile",     # Patch 890, additive
                      "tickparts",   # Patch 893, additive
@@ -521,6 +522,7 @@ class Report:
         # check_rec fills it, and only angle_join reads it.
         self.angles = None
         self.angle_ghosts = []
+        self.angle_cmds = None     # P1613: each joined move's usercmd number (0: none), parallel to angles
         self.angle_epoch = []
         self.view_reset_budget = 0  # server restore/session history, never sidecar claims
 
@@ -1322,6 +1324,9 @@ def _check_rec(r, path, verbose=False, *, data=None):
     # the cheap structure is the one to pick when the expensive one is already
     # there.
     ang_mt = array.array("i")
+    ang_cs = array.array("i")   # P1613: each joined row's usercmd number from `cseq` (0: none)
+    cs_next = cs_last = 0       # the next row's number and the last row's (0: unknown)
+    cs_seen = False
     ang_frozen = 0           # Patch 785: cumulative exclusion for later angles
     ang_prev = None          # floor within this origin, not a previous session
     # Only a fresh equal instart binds the timer origin. Restores carry elapsed
@@ -1525,6 +1530,14 @@ def _check_rec(r, path, verbose=False, *, data=None):
                         and mt == int(in_prevtok[2]) + 1
                         and in_chain < math.ceil(0.5 / max(tickrate, 0.0078125)))   # the header cannot lift it past 128 Hz's
             in_chain = in_chain + 1 if (ver >= 9 and infl & 8) else 0   # past the cap, the rest of it is joined
+            # P1613: the row's usercmd number, counted on from the last `cseq`; a later part of a split (fl 8, the
+            # recorder's own input_cmd_later) keeps its command's.
+            if ver >= 9 and infl & 8:
+                cs_row = cs_last
+            else:
+                cs_row = cs_next
+                cs_next = cs_next + 1 if cs_next else 0
+            cs_last = cs_row
             if not excluded:
                 ang_prev = mt - ang_frozen if holdclock == "1" else mt
                 projected = ang_prev + view_ticks
@@ -1543,6 +1556,7 @@ def _check_rec(r, path, verbose=False, *, data=None):
                     ang_mt.append(projected)
                     ang_pit.append(ang[0])
                     ang_yaw.append(ang[1])
+                    ang_cs.append(cs_row)
             if in_pk is None or pk != in_pk:
                 in_packets += 1
             pose_key = (len(sessions), pk)
@@ -1647,6 +1661,21 @@ def _check_rec(r, path, verbose=False, *, data=None):
             continue
 
         kind = tok[0]
+        if kind == "cseq":
+            # P1613: the usercmd number of the next `in`/`fzin` row, or -1 (grammar block).
+            n = None
+            if len(tok) == 2 and tok[1].isascii() and "_" not in tok[1]:
+                try:
+                    n = int(tok[1])
+                except ValueError:
+                    n = None
+            if n is None or not (n == -1 or 1 <= n <= 2147483647):
+                r.fault("line %d: 'cseq' takes one usercmd number (1 or more) or -1" % (lineno + 1))
+                cs_next = 0
+            else:
+                cs_next = max(n, 0)
+                cs_seen = True
+            continue
         if kind == "parkclock":
             park_edges += 1
             try:
@@ -3558,6 +3587,8 @@ def _check_rec(r, path, verbose=False, *, data=None):
     if len(ang_mt):
         r.angles = (ang_mt, ang_yaw, ang_pit, in_start or 0,
                     "in rows" if ver >= 9 else "in rows (.v_angle, pre-v9)", ver)
+        if cs_seen and len(ang_cs) == len(ang_mt):
+            r.angle_cmds = ang_cs
     elif samples:
         mts = array.array("i")
         yaw = array.array("f")
@@ -3577,6 +3608,10 @@ def _check_rec(r, path, verbose=False, *, data=None):
             yaw.append(sv[8])
         if len(mts):
             r.angles = (mts, yaw, pit, 0, "samples (.v_angle)", ver)
+    if cs_seen and head.get("cmdseq") != "1":
+        r.note("the body carries `cseq` records but the header does not declare `cmdseq 1`")
+    elif head.get("cmdseq") == "1" and not cs_seen and len(ang_mt):
+        r.note("the header declares `cmdseq 1` but the body carries no `cseq` record")
 
     r.info["span"] = (samples[0][0], samples[-1][0])
     if head.get("anglecause") == "1":
@@ -3796,6 +3831,77 @@ ANG_LAG_FREE = 50
 def angdelta(a, b):
     """Shortest signed distance between two angles, as a magnitude."""
     return abs((a - b + 180.0) % 360.0 - 180.0)
+
+
+# P1613: THE COMMAND RULE.  The recorder numbers each move's usercmd (`cseq`, the client's cl.movesequence) and the
+# .view stamps each frame with the usercmd its input went into (`cmdframe`), so a move joins the frames of exactly
+# its own command: no snapshot tick label, so no network delay and no inferred offset (P1610's inferred join broke
+# on commands the server never ran).  A sent angle must equal a frame of its command or of the commands either side
+# (a frame drawn just after a send carries the next number), or lie on the drawn path through those frames to the
+# next command's first frame (lobby clients build ~20% of commands between two frames).
+ANG_CMD_W = 1            # commands either side whose frames a sent angle may sit among
+ANG_CMD_HOLD = 1.0       # per cent of joined moves on no drawn path that is a fault
+ANG_CMD_MIN = 100        # joined moves needed to judge
+ANG_CMD_STEP = 8         # ticks a move's own delay (its tick minus its command's frames' clock) may stray from
+                         # the run's median: further is a held view (a save's tail drew a frozen clock), not judged
+
+
+def _onseg(x, a, b):
+    """x on the wrap-aware segment a..b, with ANG_SOLO of slack."""
+    d = ((b - a + 180.0) % 360.0) - 180.0
+    e = ((x - a + 180.0) % 360.0) - 180.0
+    return min(0.0, d) - ANG_SOLO <= e <= max(0.0, d) + ANG_SOLO
+
+
+def command_rule(mts, yaws, pits, cmds, instart, endtick, gw, frames):
+    """P1613 -> dict: comparable, joined, exact, between, bad, unstep, worst."""
+    bycmd = {}
+    for f in frames:
+        bycmd.setdefault(int(f[1]), []).append(f)
+    out = {"comparable": 0, "joined": 0, "exact": 0, "between": 0, "bad": 0, "unstep": 0, "worst": 0.0}
+    picked = []
+    for i in range(len(mts)):
+        raw = mts[i] - instart
+        c = cmds[i]
+        if c < 1 or raw < 0 or (endtick is not None and raw > endtick) or \
+                (gw and any(a <= raw and (b is None or raw <= b) for a, b in gw)):
+            continue
+        out["comparable"] += 1
+        g = bycmd.get(c)
+        if g is None:
+            continue
+        y, pt = yaws[i], pits[i]
+        if any(angdelta(y, f[4]) <= ANG_SOLO and angdelta(pt, f[3]) <= ANG_SOLO for f in g):
+            picked.append((i, c, 0))
+            continue
+        fs = [f for j in range(c - ANG_CMD_W, c + ANG_CMD_W + 1) for f in bycmd.get(j, ())]
+        nx = bycmd.get(c + ANG_CMD_W + 1)
+        if nx:
+            fs.append(nx[0])
+        if any(angdelta(y, f[4]) <= ANG_SOLO and angdelta(pt, f[3]) <= ANG_SOLO for f in fs):
+            picked.append((i, c, 0))
+        elif any(_onseg(y, a[4], b[4]) and _onseg(pt, a[3], b[3]) for a, b in zip(fs, fs[1:])):
+            picked.append((i, c, 1))
+        else:
+            picked.append((i, c, 2))
+    # A held view (a save's tail, a frozen clock) stops describing the aim: a move whose own delay strays from the
+    # run's median, or whose time lies past the clock the sidecar drew, is not judged -- as the tick join leaves
+    # such moves uncovered.
+    step = {i: (mts[i] - instart) - int(bycmd[c][-1][2]) for i, c, _x in picked}
+    ds = sorted(step.values())
+    mid = ds[len(ds) // 2] if ds else 0
+    labs = [int(f[2]) for f in frames]
+    lo, hi = (min(labs), max(labs)) if labs else (0, -1)
+    for i, c, x in picked:
+        if abs(step[i] - mid) > ANG_CMD_STEP or not lo <= (mts[i] - instart) - mid <= hi:
+            out["unstep"] += 1
+            continue
+        out["joined"] += 1
+        out[("exact", "between", "bad")[x]] += 1
+        if x == 2:
+            out["worst"] = max(out["worst"], min(max(angdelta(yaws[i], f[4]), angdelta(pits[i], f[3]))
+                                                 for f in bycmd[c]))
+    return out
 
 
 def sweep_offset(lag, bestsc, moveoffs, joinable):
@@ -4090,6 +4196,26 @@ def angle_join(r, rec, frames):
         r.info["angle_joined"] += (" -- the sweep's join, at %+d ticks, so the run's first %d moves have no "
                                    "frame under it" % (slag, slag))
         r.info["angle_dev"] += " -- the sweep's join, at %+d ticks" % slag
+    # ---- the command rule (P1613) ----------------------------------------
+    cmds = getattr(rec, "angle_cmds", None)
+    if tight and cmds is not None and len(cmds) == len(mts):
+        cmd = command_rule(mts, yaws, pits, cmds, instart, endtick, gw, frames)
+        cj = cmd["joined"]
+        cbad = 100.0 * cmd["bad"] / cj if cj else 0.0
+        cjudged = cj >= ANG_CMD_MIN
+        r.info["angle_cmd"] = ("%d of %d numbered moves joined to their own command's frames, %.2f%% on no drawn path "
+                               "(worst %.2f deg; %.0f%% a frame, %.0f%% between frames; %d out of step with the "
+                               "frames' clock)%s"
+                               % (cj, cmd["comparable"], cbad, cmd["worst"],
+                                  100.0 * cmd["exact"] / cj if cj else 0.0, 100.0 * cmd["between"] / cj if cj else 0.0,
+                                  cmd["unstep"], "" if cjudged else " -- NOT JUDGED"))
+        if not cjudged:
+            r.note("the command rule did not judge this pair: %d moves joined to a frame of their own command, "
+                   "under the %d it needs" % (cj, ANG_CMD_MIN))
+        elif cbad > ANG_CMD_HOLD:
+            r.fault("the sidecar does not show what this recording sent: %.1f%% of %d moves joined to their own "
+                    "command's frames are on no drawn path, worst %.2f deg" % (cbad, cj, cmd["worst"]))
+
     # ---- the one-frame rule, which does not need the camera to have moved --
     # AGAINST THE RECORDING'S OWN MOVE COUNT, not against `joined`.  Dividing
     # by `joined` made the fraction invariant to DELETION: drop the frames for
@@ -4501,6 +4627,7 @@ def tamper_view(path):
         caught = any("does not describe this recording" in m
                      or "does not match its sidecar" in m
                      or "the sidecar is not this recording's" in m
+                     or "does not show what this recording sent" in m
                      for m in v.faults)
         print("  %-14s %s   %s" % (what, "CAUGHT  " if caught else "missed  ",
                                    measured(v)))

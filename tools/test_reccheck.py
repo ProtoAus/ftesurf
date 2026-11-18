@@ -67,7 +67,7 @@ PIN = "pmsrcver=1 gravity=800 maxspeed=320 ticrate=0.00999999978 bounce=1e-05"
 
 def build(instart=True, inputs=True, ver=9, startjit=None, warps=(),
           rides=(), inend=True, pmpin=True, seed=True, pms=(), pes=(),
-          portals=(), sessions=(), sweep=0.0, packets=None):
+          portals=(), sessions=(), sweep=0.0, packets=None, cmdseq=None):
     """-> list of lines.  A finished, well-formed recording, v9 by default.
 
     BUILD 87 (v9): `pmpin`/`seed` default on (off below v9); a `warp` may carry a
@@ -118,7 +118,11 @@ def build(instart=True, inputs=True, ver=9, startjit=None, warps=(),
     v9 = ver >= 9
     if v9 and pmpin:
         L.append("pmpin " + PIN)
+    if cmdseq is not None:
+        L.append("cmdseq 1")            # P1613: `cseq <cmdseq>` before the first `in` row, then one a row
     L.append("begin")
+    if cmdseq is not None:
+        L.append("cseq %d" % cmdseq)
     if v9 and seed:
         L.append("seed 0 0 64 0 0 0 0 ducked=0 ducktime=0 msec_carry=0.003")
 
@@ -269,10 +273,11 @@ def view_for(lines, rot=0.0, lo=0.0, hi=1.0, dense=1, dense_lo=0.0,
     # .view that runs past the recording, and that is a different finding.
     end = [l.split() for l in lines if l.startswith("end ")]
     top = int(end[0][1]) if end else max(ticks)
-    keep = [(tk, f) for tk, f in zip(ticks, rows) if 0 <= tk <= top]
+    # The command column is the move's row number from 1000 (cl.movesequence counts commands; build(cmdseq=1000)).
+    keep = [(tk, f, j) for j, (tk, f) in enumerate(zip(ticks, rows)) if 0 <= tk <= top]
     out = ["FTESURF-VIEW 2", "map bhop_eazy", "hid 1", "begin"]
     n = len(keep)
-    for i, (tk, f) in enumerate(keep):
+    for i, (tk, f, j) in enumerate(keep):
         yaw = float(f[8])
         if lo * n <= i < hi * n:
             yaw = ((yaw + rot) + 180.0) % 360.0 - 180.0
@@ -282,7 +287,7 @@ def view_for(lines, rot=0.0, lo=0.0, hi=1.0, dense=1, dense_lo=0.0,
                 else "%d" % max(0, tk + shift)
             out.append("%.4f %d %s %.2f %.2f 0"
                        % (10.0 + (tk + k / float(d)) * TICK,
-                          1000 + tk, col, float(f[7]), yaw))
+                          1000 + j, col, float(f[7]), yaw))
     return out
 
 
@@ -2421,6 +2426,222 @@ def wobble_view(lines, a=-3, b=-4, stretch=40, **kw):
     return va[:4] + [la if (i // per // stretch) % 2 == 0 else lb for i, (la, lb) in enumerate(zip(va[4:], vb[4:]))]
 
 
+def snapped(lines, every, deg=10.0, run=1, start=None, col=8):
+    """`lines` with `run` consecutive `in` rows' yaw (col 7: pitch) moved `deg` (whole wire quanta) every `every` rows."""
+    q, out, k = round(deg / QUANTUM) * QUANTUM, [], 0
+    s0 = every // 2 if start is None else start
+    for l in lines:
+        if l.startswith("in "):
+            if k >= s0 and (k - s0) % every < run:
+                f = l.split(" ")
+                f[col] = "%.4f" % (float(f[col]) + q)
+                l = " ".join(f)
+            k += 1
+        out.append(l)
+    return out
+
+
+def leads(lines, every, moves, col=8):
+    """Every `every`-th `in` row's yaw (col 7: pitch) moved `moves` moves along the fixture's constant turn."""
+    rows = [l for l in lines if l.startswith("in ")]
+    step = float(rows[2].split()[col]) - float(rows[1].split()[col])
+    return snapped(lines, every, deg=step * moves, col=col)
+
+
+def recmd(view, fn):
+    """`view` with each frame's command column passed through fn(cmd, frame index)."""
+    out = view[:4]
+    for k, ln in enumerate(view[4:]):
+        p = ln.split()
+        p[1] = "%d" % fn(int(p[1]), k)
+        out.append(" ".join(p))
+    return out
+
+
+def dropped_cs(lines, base=1000, every=60, bursts=((700, 3), (1400, 2), (2100, 4))):
+    """build(cmdseq=base) without the `in` rows of commands the server never ran, each gap re-anchored with the
+    `cseq` the recorder writes there."""
+    gone = set(range(every // 2, 10 ** 6, every))
+    for s, n in bursts:
+        gone.update(range(s, s + n))
+    out, k, gap = [], 0, False
+    for l in lines:
+        if l.startswith("in "):
+            if k in gone:
+                k += 1
+                gap = True
+                continue
+            if gap:
+                out.append("cseq %d" % (base + k))
+                gap = False
+            k += 1
+        out.append(l)
+    return out
+
+
+def between_view(lines):
+    """Odd commands built between two drawn frames (40% and 80% of the way from the previous move's angle), so their
+    sent angle is never drawn; even commands draw it (lobby clients: ~78% drawn exactly, ~20% between)."""
+    rows = [l.split() for l in lines if l.startswith("in ")]
+    end = [l.split() for l in lines if l.startswith("end ")]
+    top = int(end[0][1]) if end else 10 ** 9
+    out, prev = ["FTESURF-VIEW 2", "map bhop_eazy", "hid 1", "begin"], None
+    for j, f in enumerate(rows):
+        tk, pt, yw = int(f[2]) - HORIZON, float(f[7]), float(f[8])
+        if prev is not None and 0 <= tk <= top:
+            for k, w in enumerate((0.4, 0.8) if j % 2 else (0.5, 1.0)):
+                dy = ((yw - prev[1] + 180.0) % 360.0) - 180.0
+                out.append("%.4f %d %d %.2f %.2f 0" % (10.0 + (tk + k / 2.0) * TICK, 1000 + j, tk,
+                                                       prev[0] + w * (pt - prev[0]),
+                                                       ((prev[1] + w * dy) + 180.0) % 360.0 - 180.0))
+        prev = (pt, yw)
+    return out
+
+
+def late_stamp_view(lines):
+    """Commands c = 1 mod 4 built between frames, and the next command's frames stamped one high: the drawn path
+    past the sent angle runs to command c+2's first frame (one lobby pair needed it: 0.01% -> 0.91% without)."""
+    v = view_for(lines)
+    body = [ln.split() for ln in v[4:]]
+    out = []
+    for k, p in enumerate(body):
+        c = int(p[1])
+        q = list(p)
+        if c % 4 == 1 and 0 < k:
+            y0, y1 = float(body[k - 1][4]), float(p[4])
+            dy = ((y1 - y0 + 180.0) % 360.0) - 180.0
+            for w in (0.4, 0.8):
+                r = list(p)
+                r[4] = "%.2f" % ((((y0 + w * dy) + 180.0) % 360.0) - 180.0)
+                out.append(r)
+            continue
+        if c % 4 == 2:
+            q[1] = "%d" % (c + 1)
+        out.append(q)
+    return v[:4] + [" ".join(r) for r in out]
+
+
+def held_view(lines, a, b):
+    """view_for, but frames a..b-1 show frame a-1's angle and clock: a held view (a save's tail draws one)."""
+    v = view_for(lines)
+    body = [ln.split() for ln in v[4:]]
+    out = [list(r) for r in body]
+    for k in range(a, min(b, len(body))):
+        out[k][2], out[k][3], out[k][4] = body[a - 1][2], body[a - 1][3], body[a - 1][4]
+    return v[:4] + [" ".join(r) for r in out]
+
+
+def split_cs(lines, every=3):
+    """build(cmdseq=1000) with every `every`-th `in` row made a later part (fl 8) of the command before it, the way
+    a server splits one usercmd over ticks (Patch 893, `tickparts 1`): same packet, moves and angles, one tick on.
+    -> (rec, view): the view numbers frames by COMMAND, so a later part's command has the frames of its first row."""
+    out, prev, k, cmd, cmds = [], None, 0, 999, []
+    for l in lines:
+        if l == "begin":
+            out.append("tickparts 1")
+        if l.startswith("in "):
+            f = l.split()
+            if prev is not None and k % every == every - 1:
+                f[1] = prev[1]
+                f[4:11] = prev[4:11]
+                f[2] = str(int(prev[2]) + 1)
+                f[11] = str(int(f[11]) | 8)
+                l = " ".join(f)
+            else:
+                cmd += 1
+            cmds.append(cmd)
+            prev = f
+            k += 1
+        out.append(l)
+    v = view_for(out)
+    rows = [l.split() for l in out if l.startswith("in ")]
+    byrow = {}
+    for j, r in enumerate(rows):
+        byrow[1000 + j] = cmds[j]
+    vv = v[:4] + [" ".join([p[0], "%d" % byrow[int(p[1])]] + p[2:]) for p in (ln.split() for ln in v[4:])]
+    return out, vv
+
+
+def case_angle_command_rule():
+    """P1613.  THE COMMAND RULE: the recorder numbers each move's usercmd (`cseq`) and the .view stamps each frame
+    with its usercmd (`cmdframe`), so each move is held against exactly its own command's frames -- no snapshot tick,
+    no network delay, no inferred offset.  Honest clients pass however their delay or their losses behave."""
+    import reccheck as _rc
+    L = build(sweep=600, packets=400, cmdseq=1000)
+    cmdf = lambda rep: [x for x in rep.faults if "does not show what this recording sent" in x]
+    import re as _re
+    def ok(rep, n_min=300):
+        m = _re.match(r"(\d+) of \d+ numbered moves joined.*?, ([\d.]+)% on no drawn path", rep.info.get("angle_cmd", ""))
+        return not rep.faults and m is not None and int(m.group(1)) >= n_min and float(m.group(2)) < 0.5
+    for name, view, n_min in (("aligned", view_for(L), 300), ("12 ticks behind", view_for(L, shift=-12), 300),
+                              ("3 frames a tick", view_for(L, dense=3), 300), ("between frames", between_view(L), 300),
+                              ("the next command stamped one high (a quarter of commands frameless)",
+                               late_stamp_view(L), 240)):
+        rep = report_inproc(L, view)
+        check(ok(rep, n_min), "honest, %s: every numbered move joins its own command and passes (%s)"
+              % (name, rep.info.get("angle_cmd", "")[:70]))
+    rc0 = report_inproc(build(sweep=600, packets=400), view_for(L))
+    check(not rc0.info.get("angle_cmd"), "a recording without `cseq` gets no command rule (main's verdicts)")
+    # Losses: the recorder re-anchors each gap, so the join needs no inference (P1610's broke here).
+    L3 = build(sweep=97, packets=3000, cmdseq=1000)
+    lossy = report_inproc(dropped_cs(L3), view_for(L3))
+    check(ok(lossy, 2000), "commands the server never ran (1 in 60, bursts of 2-4), each gap re-anchored: no fault (%s)"
+          % lossy.info.get("angle_cmd", "")[:60])
+    nogap = report_inproc([l for l in dropped_cs(L3) if not l.startswith("cseq ") or l == "cseq 1000"], view_for(L3))
+    check(bool(cmdf(nogap)), "CONTROL: the same losses without the re-anchoring `cseq` records are the rule's fault")
+    # Assists, on a delayed client at three frames a tick: the one-frame rule cannot judge it, the sweep misses snaps.
+    v3 = view_for(L, shift=-3, dense=3)
+    for every, deg, rn, col in ((50, 10.0, 1, 8), (50, 3.0, 1, 7), (50, 1.0, 1, 7), (200, 1.0, 20, 7)):
+        a = report_inproc(snapped(L, every, deg, rn, col=col), v3)
+        check(bool(cmdf(a)), "%g deg %s on %d move(s) in %d, delayed, 3 frames a tick: convicted by command (%s)"
+              % (deg, "yaw" if col == 8 else "pitch", rn, every, a.info.get("angle_cmd", "")[60:110]))
+    # Leads along the turn past the window, on a few moves or a burst: nothing can move the join to absorb them.
+    for every, rn, why in ((10, 1, "1 move in 10"), (300, 16, "a burst of 16")):
+        ld = report_inproc(leads(L, every, 2.5) if rn == 1 else snapped(L, 300, 3.3 * 2.5, 16, start=150), view_for(L))
+        check(bool(cmdf(ld)), "2.5-move leads along the turn, %s: convicted (%s)" % (why, ld.info.get("angle_cmd", "")[60:110]))
+    # ...within the window (the commands either side) they are on the drawn path: the rule's stated limit.
+    s1 = report_inproc(leads(L, 10, 1.0), view_for(L))
+    check(not cmdf(s1), "a 1-move lead along the turn lies on the drawn path (the rule's stated limit)")
+    # Held views: past the frames' clock (a save's tail) or out of step mid-run, not judged.
+    n = len(view_for(L)) - 4
+    check(not report_inproc(L, held_view(L, n - 20, n)).faults, "a held view over the last 20 moves is not judged")
+    L2 = build(sweep=97, packets=2400, cmdseq=1000)
+    check(not report_inproc(L2, held_view(L2, 1000, 1030)).faults, "a 30-move held view mid-run: out of step, not judged")
+    # `cseq -1`: the rows after it have no number and are not judged; numbers resume at the next `cseq`.
+    rows = [i for i, l in enumerate(L) if l.startswith("in ")]
+    Lm = L[:rows[100]] + ["cseq -1"] + L[rows[100]:rows[140]] + ["cseq %d" % (1000 + 140)] + L[rows[140]:]
+    rm = report_inproc(Lm, view_for(L))
+    m = _re.match(r"(\d+) of (\d+) numbered", rm.info.get("angle_cmd", ""))
+    check(not rm.faults and m is not None and int(m.group(2)) <= 334 - 40 + 6,
+          "`cseq -1` leaves the rows until the next `cseq` unnumbered and unjudged (%s)" % rm.info.get("angle_cmd", "")[:40])
+    # A later part of a split usercmd (fl 8) keeps its command's number: the count does not move.
+    Ls, vs = split_cs(L)
+    rs = report_inproc(Ls, vs)
+    check(not cmdf(rs) and "NOT JUDGED" not in rs.info.get("angle_cmd", ""),
+          "every 3rd row a later part of a split usercmd: numbers stay on their commands (%s)" % rs.info.get("angle_cmd", "")[:60])
+    # Another run's sidecar.
+    o = report_inproc(L, view_for(build(sweep=450, packets=400, cmdseq=1000)))
+    check(bool(o.faults), "another run's sidecar still faults")
+    # Grammar.
+    bad = [l if l != "cseq 1000" else "cseq 0" for l in L]
+    check(any("'cseq' takes one usercmd number" in x for x in run(bad, view=view_for(L))[0]), "`cseq 0` is a fault")
+    bad2 = [l if l != "cseq 1000" else "cseq 1e3" for l in L]
+    check(any("'cseq' takes one usercmd number" in x for x in run(bad2, view=view_for(L))[0]), "`cseq 1e3` is a fault")
+    nohead = [l for l in L if l != "cmdseq 1"]
+    check(any("does not declare `cmdseq 1`" in x for x in run(nohead, view=view_for(L))[1]), "`cseq` without `cmdseq 1` is noted")
+    nobody = [l for l in L if not l.startswith("cseq ")]
+    check(any("carries no `cseq` record" in x for x in run(nobody, view=view_for(L))[1]), "`cmdseq 1` with no `cseq` is noted")
+    # The drawn path and the window are part of the rule.
+    keep = _rc._onseg
+    _rc._onseg = lambda x, a, b: False
+    try:
+        f3 = run_inproc(L, between_view(L))
+    finally:
+        _rc._onseg = keep
+    check(any("does not show what this recording sent" in x for x in f3),
+          "CONTROL: without the drawn path the between-frames client faults")
+
+
 def case_angle_sweep_joins_at_the_named_offset():
     """P1599.  A SWEEP JUDGED AT THE WRONG OFFSET MEASURES NOTHING.
 
@@ -3975,6 +4196,7 @@ def main():
                case_angle_head_amnesty_costs_coverage,
                case_angle_lag_is_not_claimed_when_the_winner_is_bad,
                case_angle_sweep_joins_at_the_named_offset,
+               case_angle_command_rule,
                case_angle_sweep_offset_gate,
                case_angle_sweep_join_keeps_the_one_frame_fault,
                case_angle_sweep_join_is_v9_only,
