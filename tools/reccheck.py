@@ -3763,6 +3763,7 @@ ANG_LAG_COVER = 0.75
 ANG_LAG_FREE = 50
 ANG_STEP_REACH = 4       # P1606: how far each side to look for a framed tick for the drawn step
 ANG_PRINT = 0.01         # P1606: the .view prints angles at %.2f, so a difference of two frames is +-0.01
+ANG_STEP_FRESH = (0.75, 2.5)  # P1606: the joined label must be held this long (ticks, client clock): not a stall or burst
 # THERE IS NO WINDOW, BECAUSE A WINDOW HAS AN EDGE AND THE EDGE CONVICTS.
 # Measured by a reviewer: at 12 ticks of lag an honest pair is clean and at 13
 # it draws both faults -- and widening 12 to 25 only moved the cliff to 26.
@@ -4006,6 +4007,14 @@ def angle_join(r, rec, frames):
     devs = []
     solo = []
     py = pp = None
+    try:            # one tick in client seconds, for P1606's freshness test (0 = no tickrate: no test)
+        tick_s = max(float(rec.info.get("tickrate") or 0.0), 0.0)
+    except (TypeError, ValueError):
+        tick_s = 0.0
+    held = {}       # label -> client seconds until the next label's first frame (P1606 freshness)
+    labs = sorted(byt)
+    for la, lb in zip(labs, labs[1:]):
+        held[la] = byt[lb][0][0] - byt[la][0][0]
     for i in range(len(mts)):
         y, p = yaws[i], pits[i]
         sy = 0.0 if py is None else angdelta(y, py)
@@ -4060,15 +4069,19 @@ def angle_join(r, rec, frames):
         dp = min(angdelta(p, f[3]) for f in g)
         # P1606: against the SMALLER of the recorded step and the drawn one, so an assist's own jump cannot widen its
         # own allowance. Drawn step, each side: the joined tick's last frame to that of the nearest framed tick within
-        # ANG_STEP_REACH, labels inside a ghost window skipped (the flying camera is labelled there, cl_ghost.qc),
-        # plus the frames' print rounding; a side with none takes the recorded step. Review rounds 1-2: a label column
-        # that skips ticks, or a turn ending with one side unframed, read 0 -- a flat 3 deg cut on honest turning.
+        # ANG_STEP_REACH, labels inside a ghost window skipped (the flying camera is labelled there, cl_ghost.qc), plus
+        # the frames' print rounding. A side with none, or a joined label not held ANG_STEP_FRESH on the client's clock
+        # (a stall's held label, a burst's), takes the recorded step. Review rounds 1-3: a label column that skips
+        # ticks, a turn ending with one side unframed, or snapshots released in a burst after a stall (frames drawn
+        # ticks late, labels a fraction of a tick apart) read ~0 -- a flat 3 deg cut on honest turning.
         # Lobby fleet at P1599's join, 18 Nov: honest worst 2.91% (cut 5%), dense one-tick snaps caught 1 -> 403 of 417.
         # The floor keeps a still camera from dividing 0.003 by 0.0001.
         dsy = dsp = 0.0
+        hj = held.get(jt)
+        fresh = not tick_s or (hj is not None and ANG_STEP_FRESH[0] * tick_s <= hj <= ANG_STEP_FRESH[1] * tick_s)
         for side in (-1, 1):
             ey, ep = sy, sp
-            for d in range(1, ANG_STEP_REACH + 1):
+            for d in range(1, ANG_STEP_REACH + 1 if fresh else 1):
                 lt = jt + side * d
                 if gw and any(a <= lt and (b is None or lt <= b) for a, b in gw):
                     continue

@@ -2563,11 +2563,13 @@ def snap_in(lines, every, deg):
     return out
 
 
-def snapshot_view(packets, fps, omega, stride, dn=(3, 3, 4, 4, 5, 6), burst=None, seed=1):
+def snapshot_view(packets, fps, omega, stride, dn=(3, 3, 4, 4, 5, 6), burst=None, seed=1, fifo=None):
     """(rec, view) for an honest networked client (P1606 review round 1's model): each move's angle comes from the
     client's last frame two ticks before the move; a snapshot every `stride` ticks arrives `dn` ticks late (jitter);
     each frame is labelled with the newest snapshot tick that has arrived, so with stride > 1 the label column skips
-    ticks.  omega deg/tick of yaw, `burst` = (period, duty) turning only part of each period."""
+    ticks.  omega deg/tick of yaw, `burst` = (period, duty) turning only part of each period.  `fifo` = (base, sigma,
+    stall_p, stall_lo, stall_hi, gap) replaces `dn` with review round 3's in-order link: base + |N(0, sigma)| ticks late,
+    a stall of stall_lo-stall_hi ticks on stall_p of snapshots, and the queue then released `gap` ticks apart."""
     import bisect
     import random
     rnd = random.Random(seed)
@@ -2594,7 +2596,15 @@ def snapshot_view(packets, fps, omega, stride, dn=(3, 3, 4, 4, 5, 6), burst=None
         f[8] = "%.4f" % ((round(yy / QUANTUM) * QUANTUM + 180.0) % 360.0 - 180.0)
         L[i] = " ".join(f)
     L = bump_end(L, "ticks", M - int([l for l in L if l.startswith("end ")][0].split()[1]))
-    arr = sorted((k + rnd.choice(dn), k) for k in range(0, M + 1, stride))
+    if fifo is None:
+        arr = sorted((k + rnd.choice(dn), k) for k in range(0, M + 1, stride))
+    else:
+        base, sigma, sp, slo, shi, gap = fifo
+        arr, prev = [], -1e9
+        for k in range(0, M + 1, stride):
+            d = base + abs(rnd.gauss(0, sigma)) + (rnd.uniform(slo, shi) if rnd.random() < sp else 0.0)
+            prev = max(k + d, prev + gap)
+            arr.append((prev, k))
     out, ai, lab = ["FTESURF-VIEW 2", "map bhop_eazy", "hid 1", "begin"], 0, -1
     for n, t in enumerate(ftimes):
         while ai < len(arr) and arr[ai][0] <= t:
@@ -2670,9 +2680,11 @@ def case_angle_sweep_against_the_drawn_step():
     h2 = report_inproc(rec2, v2)
     check(not h2.faults, "honest client, a snapshot every 2nd tick, turning 4 deg/tick: no fault (%s)"
           % h2.info.get("angle_off", "")[:50])
-    s2 = report_inproc(snap_in(rec2, 15, 30.0), v2)
-    check(any("the sidecar does not describe this recording" in x for x in s2.faults),
-          "...and its 30 deg snaps fault: the drawn step comes from the nearest framed tick, 2 away (%s)"
+    # Labels every 2nd tick but steadily delayed (fresh): the drawn step comes from the framed tick 2 away.
+    rs, vs = snapshot_view(1500, 240, 4.0, 2, dn=(3,), burst=(60, 0.5))
+    s2 = report_inproc(snap_in(rs, 12, 30.0), vs)
+    check(not report_inproc(rs, vs).faults and any("the sidecar does not describe this recording" in x for x in s2.faults),
+          "a snapshot every 2nd tick, steady delay: honest passes, its 30 deg snaps (1 move in 12) fault (%s)"
           % s2.info.get("angle_off", "")[:50])
     # Review round 2, an honest client with 2-9 ticks of snapshot jitter: a turn ending where one side has no framed
     # tick in reach read that side as still (5.03%, a fault); a side with nothing drawn now takes the recorded step.
@@ -2692,6 +2704,26 @@ def case_angle_sweep_against_the_drawn_step():
         _rc.ANG_PRINT = keep
     check(with_allow < without, "the print allowance keeps rounding-only ratios under the cut (%.2f%% vs %.2f%% without)"
           % (with_allow, without))
+    # Review round 3, an honest high-fps client on an in-order link that stalls on 2% of snapshots: the queue is
+    # released a fraction of a tick apart, each label drawn ticks late and held 0.2-0.5 tick, so its neighbours' frames
+    # make a drawn step of a fraction of the turning. A joined label held under ANG_STEP_FRESH takes the recorded step.
+    for fps, gap, seed, why in ((1000, 0.3, 1, "released 0.3 tick apart"), (500, 0.5, 2, "released 0.5 tick apart")):
+        rs, vs = snapshot_view(1500, fps, 4.0, 1, burst=(60, 0.5), seed=seed, fifo=(3.0, 0.3, 0.02, 3, 8, gap))
+        hs = report_inproc(rs, vs)
+        check(not hs.faults, "honest, %d fps, link stalls on 2%% of snapshots, queue %s: no fault (%s)"
+              % (fps, why, hs.info.get("angle_off", "")[:7]))
+    # ...and a stall's own held label (held for the stall) gives no drawn step either: on 5% stalls (which fault the
+    # recorded-step rule already) P1606 adds nothing.
+    rs, vs = snapshot_view(1200, 2000, 8.0, 1, burst=(20, 0.25), seed=1, fifo=(3.0, 0.3, 0.05, 3, 8, 0.3))
+    keep = _rc.ANG_STEP_REACH
+    _rc.ANG_STEP_REACH = 0
+    try:
+        before = report_inproc(rs, vs).info.get("angle_off", "")[:6]
+    finally:
+        _rc.ANG_STEP_REACH = keep
+    now = report_inproc(rs, vs).info.get("angle_off", "")[:6]
+    check(now == before, "stalls on 5%% of snapshots: a stall's held label is no drawn evidence (%s, recorded-step rule %s)"
+          % (now, before))
     gr, gv = ghost_edge_pair()
     ge = report_inproc(gr, gv)
     check(not ge.faults and ge.info.get("angle_off", "").startswith("0.00%"),
