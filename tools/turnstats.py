@@ -46,9 +46,18 @@ MEASURED, data/resume/surf_colin_blaster_69000/@local/save000/run.rec
     float comparator     11 plateaus, longest 6, 52 moves = 26.4%
     mc join              921 mc rows, all 11 plateaus at zero counts
 
-THE CORPUS FLOOR IS NOT MEASURED.  The figures the earlier docstring carried
-(45 recordings) came from the float comparator and are withdrawn; re-measure
-on the Pi's corpus with --pooled and --by-player before building on this.
+THE CORPUS FLOOR, MEASURED 18 Nov 2026 on the Pi's data/runs (5,426 .rec, 1,327
+with enough `in` rows; 7.94M moves, 6.55M turning, 1.001 ticks per move):
+    plateau    32,022 runs >= 4, longest 185, 3.17% of turning moves; length
+               median 4, p90 13, p99 29
+    mc join    1,288 files joined: 5,423 runs at zero counts, 25,065 with counts
+    zero-count rates land on the key rates: +-163/164/165 (cl_yawspeed 60 at
+               0.015) 4,800, +-109/110 (at 0.01) 290, +-245/246 (+speed) 120,
+               +-81/82/83 (half rate) 190; mouse plateaus spread over every rate
+    flatpitch  16,119 runs >= 4, longest 323, 2.26% of turning
+    onset      n 128,546, median 0, zero-offset 90.7%
+    by player  28 of 44 players have zero-count plateaus; one (three ids) has
+               ~4,000, nearly all at the default rate: real turn-bind samples.
 
 Usage:
     python tools/turnstats.py                      # every .rec under data/runs
