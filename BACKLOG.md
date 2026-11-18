@@ -366,6 +366,20 @@
   manufactured the delay wobble the gate asked for; network jitter fakes it): an along-the-turn lead under ~2
   commands on a low-fps client with a wobbling delay reads as an honest command built between frames. Clearing
   those 72 stays the owner's call (P1609), with a far smaller cost once the command rule ships. Next: P1613.
+- P1613 (19 Nov, worldofsurf-58) BUILT AND REVIEWED, NOT DEPLOYED (branch p1613-cseq, 541165ed): the recorder
+  writes each move's usercmd number (`cseq`, sparse: the run's first row, after a lost or filled-in command, after
+  a save cut) and reccheck holds each numbered move against the .view frames of exactly its own command (P1610's
+  window and drawn-path test, no inferred offset). On the lobbies' QW protocol the recorded number IS the client's
+  cl.movesequence (CLQW_SendCmd; the frame drawn just after a send carries the next number, inside the window).
+  Three review rounds: no honest fault in a client simulator (30-500 fps, hitches, 1-in-10 losses, bursts), the
+  rule only ever adds faults (never better than main). Limits: a lie along the turn within the commands either side
+  passes (a 3 deg yaw lead at 3 frames a tick does); the rule abstains wherever the angle check does (resume, retry,
+  sessions) and where a client's frames carry no fresh number (stringcmd-only packets, kind-0 commands) -- main's
+  verdict then. Not yet measured: a real client's .view beside a `cseq` recording (the one headless run drew too
+  few frames). Order: (1) a real local run confirms cseq = cmdframe; (2) the recorder ships to the lobbies (today's
+  reader only notes `cseq`/`cmdseq`); (3) real lobby runs confirm the rule; (4) the reader rides a surfd generation.
+  Latent if the epoch abstention is ever lifted: frames are keyed by number alone, and a reconnect restarts them.
+  With P1613 live, P1609's choice (the 72 one-frame FAULTs) can be revisited with the command rule as the judge.
 - The 9 one-frame FAULTs where the frames name offset 0 itself (8 on the owner's key, 21 Sep - 1 Nov): the sent
   angle lies between two drawn frames. "On the drawn path within a tick" passes all 9 (0.00-0.57%) and catches
   10 deg snaps on 2% of moves on all 9; it is weaker against a small lie along the turn (the 0.5 deg rotation test
