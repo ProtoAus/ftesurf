@@ -12,6 +12,13 @@ renewed-fixture admission blockers. The activated
 backend entries have been removed from this queue, not relabelled as pending.
 Do not redeploy a healthy backend merely to refresh this handoff.
 
+## P1615 segment count on segmented rows -- NEXT generation (queued 19 Nov, worldofsurf-15)
+Runtime surfd.py (rec_segments / row_segments, board_rows adds `segs`), web/board.js, web/board.css at game main;
+surfd/test_segs.py beside them (14 checks pass on the Pi, Flask 2.2.2). No schema object, no cron, no reader change.
+The lobby csprogs that shows it in game is independent (an older surfd just sends no `segs`). Check after: a
+segmented board's /api/board rows carry `segs` (surf_joutsenlaulu, Proto: 56) and a clean board's bytes are unchanged.
+Rides with P1604's reader pin (reccheck.py 059246f0..., below); P1613's reader is NOT ready (worldofsurf-58).
+
 ## P1613: do NOT pin its reader yet
 Main carries only P1613's recorder (`cseq` rows, 38298aeb); main's reccheck has no command rule. The rule
 (branch p1613-cseq) is merged and pinned only after real lobby runs with `cseq` confirm it against their .view.

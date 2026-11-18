@@ -21,6 +21,14 @@
 
 ## next
 
+### P1616 Your look follows your Steam account
+- Your body and belt colours, trail and paint settings are now saved to your linked Steam account by the servers, and come back every time you join, on any PC.
+- Your knife choice now really saves to your Steam account too; it was only ever kept on the PC you picked it on.
+- The first time you join after this update, the look on that PC becomes your account's look. Change anything and the account keeps the change.
+
+### P1615 Segment count on segmented runs
+- Point at a segmented run on the leaderboards (the scoreboard's online tab, the Leaderboards page or the website) to see how many segments it was run in.
+
 ### P1614 Send as many prediction error reports as you like
 - Prediction error reports (F6 when the box asks) are no longer limited to three per map, or twelve per server. The game still offers at most one a minute.
 

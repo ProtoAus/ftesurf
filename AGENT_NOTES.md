@@ -1,5 +1,24 @@
 # AGENT_NOTES.md
 
+## P1614-P1616 Lex's list of 19 Nov (worldofsurf-15, root FTESurf-worktrees/asks-20261119-15)
+
+- P1614: no per-map cap on lobby prederror reports. Audit 19 Nov (artifacts/prederr-audit/, audit.csv): 133 reports
+  2-18 Nov from 8 players; 12 of 89 sessions had hit the old 3 cap. Every lobby take prints "prederr: report from"
+  in /srv/nvme/ftesurf-server/server<N>.log, which reach back to Sep: the count survives fetch-and-clear.
+- P1615: `segs` is read from the recording (1 + `resume` records), never stored. A segmented row with no recording
+  (stage rows, missing file) has no count; a save-lock hold with no load is 1 segment.
+- P1616: the look lives in the lobbies' shared gamedir, data/looks/<who>.txt (one packed line, Look_Pack order in
+  cl_viewmodel.qc); the lobby prints "look: <path> loaded|saved for <name>[: <look>]". Read it with
+  FS_FILE_READSTREAM: FILE_READ misses a file another lobby wrote since this one's map load (P751 again). Anything
+  keyed on *ahash at disconnect runs BEFORE Account_Disconnect (Social_Clear empties it). The client's
+  cl_look_synced decides which side wins a load. The knife's account store is surfd's
+  account_viewmodels (P970), empty until P1616 because sv_viewmodel.qc posted to cvar lobby_url, set nowhere: grep
+  `lobby_master` for every social/account POST.
+- Rig: the headless renderer never calls CSQC_UpdateView, so VM_Frame and everything polled from it (vm_setup,
+  look_setup) never runs; console-command paths do. Run GL clients in a hidden headless labwc
+  (tools/p1616look.py --nest, after wlfs-20261118-c5's nest.py). A map change sent by rcon routes SSQC prints made
+  during SV_Shutdown into the rcon reply (logs/rcon.log), not the server log.
+
 ## P1603 Linux runs rank, marked: what it does to test arms (17 Nov 2026)
 
 - A client whose CSQC reports no IPH_RAW (the Linux game) now reads `would 0  why ok` when its profile

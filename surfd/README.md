@@ -195,6 +195,11 @@ GET /api/board?map=&track=&leg=&tier=&style=&limit=&offset=
                    "ms":..,"flags":..,"when":..,"rep":..,"run":..,"ver":0|1}]}
 ```
 
+`segs` (P1615) is on a segmented row with a recording only: 1 + the `resume`
+records after `begin` in that recording (a kept load each), read when the
+board is shown and cached by file identity, after `ver`. The game and the site
+show it on hover. Every other row keeps its bytes.
+
 `plat` (P1603) is on a row only when it is non-zero: 1 is a run from a client
 without Windows raw-input verification, which the game and the site show in sky
 blue with "Linux: Not mouse verified".  Every other row keeps its bytes.

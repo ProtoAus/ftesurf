@@ -1,5 +1,21 @@
 # lextest.md — things waiting on a human
 
+## P1616 Look and knife follow the Steam account -- owner check PENDING after the lobby deploy (record: engine ENGINE_PATCHES.md Patch 1616)
+- On a lobby, linked: open hud_player (the look panel) and pick a body colour, a belt colour and a trail. Quit, start
+  the game on the OTHER PC (Windows desktop install), join any lobby: the same look comes back within a few seconds
+  (console: "hud_player: your look from your Steam account").
+- The first install to join after the deploy sets the account's look. If that was the wrong one, just pick your
+  colours again once; every PC follows from then on.
+- Knife: pick a knife on one PC, join a lobby, then join from the other PC: the knife menu says "Linked-account setup
+  restored" and the same knife is in your hand.
+- A palette body colour another player is already wearing is still not granted on that lobby (unchanged rule);
+  slider colours and the belt always are.
+
+## P1615 Segment count on segmented runs -- NOT LIVE until the next surfd generation (record: engine ENGINE_PATCHES.md Patch 1615)
+- After that generation and the lobby csprogs: TAB, online tab, a map with segmented runs (surf_joutsenlaulu, surf_vast),
+  Segmented: point at a name: "56 segments" (Proto's joutsenlaulu) above any other hover line. The Leaderboards page
+  (this PC's menu) shows the same on the name and the time; the website shows it on the time (dotted underline).
+
 ## P1614 More than three prederror reports a map -- owner check PENDING after the lobby deploy (record: engine ENGINE_PATCHES.md Patch 1614)
 - On one lobby map, send a 4th prediction error report (F6 when the box asks; the game offers one a minute at most).
   Before P1614 the console said "the lobby did not take the report (three-this-map)"; now it says "report sent".
