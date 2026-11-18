@@ -1015,7 +1015,7 @@ void(float code, string body) Online_ParseMore =
 #define OBP_FACES  24      // rows a section's pictures are fetched for ahead of time
 float  obc_key, obc_body;  // strbufs, by slot
 float  *obc_t;             // cltime stored; -1 read from disk; 0 free
-float  obc_dirty, obc_saveat, obc_loaded;
+float  obc_dirty, obc_loaded;
 float  ob_fromdisk;        // the rows up are the saved copy, and nothing newer has landed
 float  obp_req, obp_sent, obp_next, obp_i;
 string obp_key;
@@ -1065,10 +1065,7 @@ void(string key, string body, float t) OBC_Put =
 	bufstr_set(obc_body, i, body);
 	obc_t[i] = t;
 	if (t > 0)
-	{
 		obc_dirty = TRUE;
-		obc_saveat = cltime + 5;
-	}
 };
 
 // data/boards/<map>.txt, or "" for a map name that should not become a path.
@@ -2340,9 +2337,8 @@ void() Online_Prefetch =
 		ob_svseeded = TRUE;
 		ob_svgen = stof(serverkey("*boardgen"));
 	}
-	if (obc_dirty)
-	if (cltime >= obc_saveat)
-		OBC_Save();
+	// Patch 1608: no save mid-map -- its file write held a frame 3.1 ms 5 s after each board landed (surf_andromeda,
+	// r_spikes 2: OBC_Save self); CSQC_Shutdown saves a dirty cache at every map change, disconnect and quit
 	if (obp_req)
 	{
 		if (cltime - obp_sent > OB_DEADLINE)

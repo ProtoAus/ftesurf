@@ -110,11 +110,21 @@ var void() milk_packextra = milk_nosprites;     // fills w_user[12..15] before t
 // GL only, by construction: on Vulkan the 2D render-target switch is an empty
 // function (vk_init.c:4095), so every pass would draw onto the screen instead.
 // "" is the default and resolves to GL (renderer.c's priority order).
+// Re-read at most once a second (Patch 1608): it ran several times a frame at three temp strings a call, ~8% of
+// csprogs' temps; vid_renderer changes only at a vid_restart.
+float milk_supported;
+var float milk_supported_at = -10;	// var: an initialised global is a constant
 float() Milk_Supported =
 {
 	local string r;
+	local float now;
+	now = gettime(0);
+	if (now >= milk_supported_at && now < milk_supported_at + 1)
+		return milk_supported;
+	milk_supported_at = now;
 	r = strtolower(cvar_string("vid_renderer"));
-	return r == "" || substring(r, 0, 2) == "gl" || substring(r, 0, 6) == "opengl";
+	milk_supported = (r == "" || substring(r, 0, 2) == "gl" || substring(r, 0, 6) == "opengl");
+	return milk_supported;
 };
 
 // One material.  `maps` is a run of "map ..." lines.
