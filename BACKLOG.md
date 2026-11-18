@@ -352,6 +352,20 @@
   misses (exact a tick off, or between two drawn frames) at least as many as unexplained ones: 71 of 72 honest
   remote pairs -- which still judges a fixed-delay client but not one that fakes wobble; (d) per-player history
   (a key that has aligned before keeps today's verdict).
+- P1610 (18-19 Nov, worldofsurf-58) PARKED -- the command rule with the command number inferred from move order
+  (branch p1610-cmdjoin, 36648c5d): each move joined to the .view frames of its own usercmd (`cmdframe`, which no
+  network delay touches) instead of the snapshot tick label; a sent angle must equal one of those frames or lie on
+  the drawn path through commands c-1..c+1 and c+2's first frame. Lobby fleet, 532 same-run pairs: honest worst
+  0.33%, 0 faults; 10/3 deg yaw, 3/1 deg pitch snaps on 2% of moves and +1 deg held lies caught on 513 of 528
+  (today's rules: a handful); cross-run pairs still fault 201 of 205. Not shipped: the command number is inferred
+  from the move's place in the .rec, and every command the server never ran (over its msec budget, a burst past
+  the resend) moves that mapping for good. Two review rounds built honest lossy clients it faults (bursts of 3-8
+  lost commands on short runs 1.5-4.6%; dense random losses), and the exact-angle votes that recover the mapping
+  are sparse on real pairs (3% of moves on one). The stand-in that let a pass clear the one-frame rule's
+  contradicted fallback (P1609's 72 receipts) was steerable both rounds (a burst of leads moved the offset and
+  manufactured the delay wobble the gate asked for; network jitter fakes it): an along-the-turn lead under ~2
+  commands on a low-fps client with a wobbling delay reads as an honest command built between frames. Clearing
+  those 72 stays the owner's call (P1609), with a far smaller cost once the command rule ships. Next: P1613.
 - The 9 one-frame FAULTs where the frames name offset 0 itself (8 on the owner's key, 21 Sep - 1 Nov): the sent
   angle lies between two drawn frames. "On the drawn path within a tick" passes all 9 (0.00-0.57%) and catches
   10 deg snaps on 2% of moves on all 9; it is weaker against a small lie along the turn (the 0.5 deg rotation test

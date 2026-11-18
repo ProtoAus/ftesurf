@@ -7,3 +7,7 @@ either side). Measured on the Pi's 521 lobby pairs (move order as the command nu
 move): honest unexplained median 0, worst 0.74%, 0 pairs over 1%; 10/3 deg snaps on 2% of moves and +1 deg held lies
 caught on 521 of 521. Where it judged and passed, the one-frame rule's contradicted fallback (P1609) stands aside.
 Verifier change: lens reviews, corpus sweep and fleet comparison before it rides the next surfd generation.
+
+PARKED 19 Nov, not merged: the inferred command number breaks on honest lossy clients (review rounds 1-2), and the
+stand-in was steerable. Branch p1610-cmdjoin (21f4af5e, 36648c5d) keeps the rule, the fixtures and the fleet
+numbers; BACKLOG's P1599 section has the record. Superseded by P1613 (the server records the command number).
