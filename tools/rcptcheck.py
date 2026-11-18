@@ -605,7 +605,8 @@ def join_angles(r, want):
 
     bad = [m for m in v.faults if "does not describe this recording" in m
            or "does not match its sidecar" in m
-           or "the sidecar is not this recording's" in m]
+           or "the sidecar is not this recording's" in m
+           or "does not show what this recording sent" in m]       # P1610's command rule
     independent = [m for m in v.faults if m not in bad]
     # A usable angular comparison does not make an invalid sidecar valid.
     # Unknown validation messages are faults too, not a whitelist escape.

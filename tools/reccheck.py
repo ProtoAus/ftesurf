@@ -3801,19 +3801,22 @@ def angdelta(a, b):
 # P1610: THE COMMAND RULE.  Each move is joined to the frames of the command that built it by the .view's
 # `cmdframe` (cl.movesequence, the client's own usercmd counter), not by the snapshot tick label, so network delay
 # leaves the join.  Moves arrive in order, so a move's place in the series is its command number up to an offset,
-# voted from exact angle matches like the tick offset; a block may re-anchor to one of its own top offsets when that
-# explains it better (a dropped or duplicated command, a split row in a file without `tickparts`).  A sent angle must
-# equal a frame of its command or lie on the drawn path through the frames of the commands either side (the frame
-# that ends a command is stamped with either number).  Lobby fleet, 18 Nov, 521 pairs: honest unexplained median 0,
-# worst 0.74%; 10 and 3 deg snaps on 2% of moves and a +1 deg held lie on 10% caught on all 521.
+# voted from exact angle matches like the tick offset.  A command the server never ran (over its msec budget, or
+# lost in a burst past the resend) moves that offset up for good; so the offset is STICKY: it changes only where the
+# current one explains under half of the next ANG_CMD_LOOK moves and another explains most of them.  An assist on a
+# few moves cannot move it (review round 1: re-anchoring per stretch absorbed leads, and lost commands outran it).
+# A sent angle must equal a frame of its command (or the commands either side: the frame that ends a command can
+# carry either number) or lie on the drawn path through those frames to the next command's first frame (lobby
+# clients build ~20% of commands between two frames).  Lobby fleet, 18 Nov, 523 pairs: honest worst 0.20%.
 ANG_CMD_W = 1            # commands either side whose frames a sent angle may sit among
 ANG_CMD_HOLD = 1.0       # per cent of joined moves on no drawn path that is a fault
 ANG_CMD_MIN = 100        # joined moves needed to judge
 ANG_CMD_COVER = 95.0     # per cent of comparable moves joined before a pass can stand in for the one-frame rule
-ANG_CMD_BLOCK = 300      # moves per block whose own top offsets become candidates
-ANG_CMD_SUB = 10         # moves per stretch that picks among them (a shift mid-stretch costs at most half)
-ANG_CMD_RATIO = 1.2      # the .view's command numbers per recorded move above which order is not the command number
-                         # (a paused local save: 943 commands for 156 moves); the rule then does not judge
+ANG_CMD_WOBBLE = 2.0     # per cent of exactly-drawn moves whose own delay leaves the median, needed for that stand-in
+ANG_CMD_SUB = 10         # moves judged per step of the offset walk
+ANG_CMD_LOOK = 30        # moves the offset walk looks ahead over before it moves
+ANG_CMD_RATIO = (0.5, 1.2)  # the .view's command numbers per recorded move outside which order is not the command
+                         # number (a paused local save: 943 for 156; a constant column: ~0); checked before any join
 ANG_CMD_STEP = 8         # ticks a move's own delay (its tick minus its command's frames' clock) may stray from
                          # the run's median: further is a held view (a save's tail drew a frozen clock), not judged
 
@@ -3841,60 +3844,91 @@ def command_join(mts, yaws, pits, instart, endtick, gw, frames):
         return None
 
     def offsets(ix):
-        tally, seen = {}, 0
+        tally = {}
         for i in ix:
             kp, ky = int(round(pits[i] * 100.0)), int(round(yaws[i] * 100.0))   # yaw keyed mod 360 deg
             hits = set()
             for dp in (0, -1, 1):
                 for dy in (0, -1, 1):
-                    hits.update(byang.get((kp + dp, (ky + dy) % 36000), ()))
-            if not hits or len(hits) > 12:
-                continue        # no match, or an angle so common it says nothing
-            seen += 1
-            for c in hits:
-                tally[c - i] = tally.get(c - i, 0) + 1
-        return tally, seen
+                    for c in byang.get((kp + dp, (ky + dy) % 36000), ()):
+                        hits.add(c)
+                        if len(hits) > 12:
+                            break       # an angle so common it says nothing: stop before collecting it all
+                    if len(hits) > 12:
+                        break
+                if len(hits) > 12:
+                    break
+            if hits and len(hits) <= 12:
+                for c in hits:
+                    tally[c - i] = tally.get(c - i, 0) + 1
+        return tally
+
+    memo = {}
 
     def judge(i, c):
-        """-> 0 a frame shows it, 1 on the drawn path, 2 neither, None no frame under command c."""
-        if c not in bycmd:
+        """-> 0 a frame shows it, 1 on the drawn path, 2 neither, None no frame under command c (or no counter)."""
+        k = (i, c)
+        if k in memo:
+            return memo[k]
+        g = bycmd.get(c)
+        if g is None:
+            memo[k] = None
             return None
-        fs = [f for k in range(c - ANG_CMD_W, c + ANG_CMD_W + 2) for f in bycmd.get(k, ())]
-        if any(angdelta(yaws[i], f[4]) <= ANG_SOLO and angdelta(pits[i], f[3]) <= ANG_SOLO for f in fs):
+        y, pt = yaws[i], pits[i]
+        if any(angdelta(y, f[4]) <= ANG_SOLO and angdelta(pt, f[3]) <= ANG_SOLO for f in g):
+            memo[k] = 0         # most moves: a frame of its own command (the cheap test first)
             return 0
-        if any(_onseg(yaws[i], a[4], b[4]) and _onseg(pits[i], a[3], b[3]) for a, b in zip(fs, fs[1:])):
-            return 1
-        return 2
+        fs = [f for j in range(c - ANG_CMD_W, c + ANG_CMD_W + 1) for f in bycmd.get(j, ())]
+        nx = bycmd.get(c + ANG_CMD_W + 1)
+        if nx:
+            fs.append(nx[0])
+        if any(angdelta(yaws[i], f[4]) <= ANG_SOLO and angdelta(pits[i], f[3]) <= ANG_SOLO for f in fs):
+            x = 0
+        elif any(_onseg(yaws[i], a[4], b[4]) and _onseg(pits[i], a[3], b[3]) for a, b in zip(fs, fs[1:])):
+            x = 1
+        else:
+            x = 2
+        memo[k] = x
+        return x
 
-    tally, _seen = offsets(inr[::max(1, len(inr) // 3000)])
-    out = {"comparable": len(inr), "joined": 0, "exact": 0, "between": 0,
-           "bad": 0, "moved": 0, "blocks": 0, "worst": 0.0, "c0": None, "unstep": 0,
-           "ratio": (max(bycmd) - min(bycmd) + 1) / float(len(inr))}
+    out = {"comparable": len(inr), "joined": 0, "exact": 0, "between": 0, "bad": 0, "moved": 0, "worst": 0.0,
+           "c0": None, "unstep": 0, "wobble": 0.0, "ratio": (max(bycmd) - min(bycmd) + 1) / float(len(inr))}
+    if not ANG_CMD_RATIO[0] <= out["ratio"] <= ANG_CMD_RATIO[1]:
+        return out
+    tally = offsets(inr[::max(1, len(inr) // 3000)])
     if not tally:
         return out
-    c0 = max(tally.items(), key=lambda kv: (kv[1], -abs(kv[0])))[0]
-    out["c0"] = c0
+    d = max(tally.items(), key=lambda kv: (kv[1], -abs(kv[0])))[0]
+    out["c0"] = d
+
+    def explained(ix, o):
+        v = [judge(i, i + o) for i in ix]
+        return sum(1 for x in v if x is not None), sum(1 for x in v if x in (0, 1))
+
     picked = []                 # (move, its command, verdict)
-    for s in range(0, len(inr), ANG_CMD_BLOCK):
-        blk = inr[s:s + ANG_CMD_BLOCK]
-        bt, _ = offsets(blk)
-        cands = [c0] + [o for o, _n in sorted(bt.items(), key=lambda kv: (-kv[1], kv[0]))[:3] if o != c0]
-        for u in range(0, len(blk), ANG_CMD_SUB):
-            sub = blk[u:u + ANG_CMD_SUB]
+    for s in range(0, len(inr), ANG_CMD_SUB):
+        ahead = inr[s:s + ANG_CMD_LOOK]
+        n, e = explained(ahead, d)
+        if n >= ANG_CMD_SUB // 2 and e < 0.5 * n:
+            cands = set(o for o, _n in sorted(offsets(ahead).items(), key=lambda kv: -kv[1])[:3])
+            cands.update((d - 1, d + 1, d + 2, d + 3))
+            cands.discard(d)
             best = None
-            for o in cands:
-                v = [judge(i, i + o) for i in sub]
-                n = sum(1 for x in v if x is not None)
-                key = ((sum(1 for x in v if x == 2) / n) if n else 1.0, -n)
-                if best is None or key < best[0]:
-                    best = (key, o, v)
-            out["blocks"] += 1
-            out["moved"] += best[1] != c0
-            picked += [(i, i + best[1], x) for i, x in zip(sub, best[2]) if x is not None]
-    # Each move's own delay against the clock its command's frames drew; the median is the run's.
+            for o in sorted(cands):
+                n2, e2 = explained(ahead, o)
+                if n2 and e2 >= 0.8 * n2 and e2 > e and (best is None or (e2, -abs(o - d)) > best[0]):
+                    best = ((e2, -abs(o - d)), o)
+            if best is not None:
+                d = best[1]
+                out["moved"] += 1
+        picked += [(i, i + d, judge(i, i + d)) for i in inr[s:s + ANG_CMD_SUB]]
+    picked = [(i, c, x) for i, c, x in picked if x is not None]
+    # Each move's own delay against the clock its command's frames drew; the run's is the median over moves a frame
+    # shows exactly (a mis-joined move must not pull it).
     step = {i: (mts[i] - instart) - int(bycmd[c][-1][2]) for i, c, _x in picked}
-    ds = sorted(step.values())
+    ds = sorted(step[i] for i, c, x in picked if x == 0) or sorted(step.values())
     mid = ds[len(ds) // 2] if ds else 0
+    out["wobble"] = 100.0 * sum(1 for x in ds if x != mid) / len(ds) if ds else 0.0
     labs = [int(f[2]) for f in frames]
     lo, hi = min(labs), max(labs)       # a move past the clock the sidecar ever drew is uncovered, as in the tick join
     for i, c, x in picked:
@@ -4208,26 +4242,30 @@ def angle_join(r, rec, frames):
         cj = cmd["joined"]
         cbad = 100.0 * cmd["bad"] / cj if cj else 0.0
         ccover = 100.0 * cj / cmd["comparable"]
-        cjudged = cj >= ANG_CMD_MIN and cmd["ratio"] <= ANG_CMD_RATIO
+        cratio = ANG_CMD_RATIO[0] <= cmd["ratio"] <= ANG_CMD_RATIO[1]
+        cjudged = cj >= ANG_CMD_MIN and cratio
         r.info["angle_cmd"] = ("%d of %d moves joined to their own command's frames (%.1f%%), %.2f%% on no drawn path "
-                               "(worst %.2f deg; %.0f%% a frame, %.0f%% between frames; offset %s, %d of %d stretches "
-                               "re-anchored; %d out of step with the frames' clock; %.2f commands a move)%s"
+                               "(worst %.2f deg; %.0f%% a frame, %.0f%% between frames; offset %s, moved %d times; "
+                               "%d out of step with the frames' clock; %.2f commands a move; delay off its median "
+                               "on %.1f%%)%s"
                                % (cj, cmd["comparable"], ccover, cbad, cmd["worst"],
                                   100.0 * cmd["exact"] / cj if cj else 0.0, 100.0 * cmd["between"] / cj if cj else 0.0,
-                                  "%+d" % cmd["c0"] if cmd["c0"] is not None else "none", cmd["moved"], cmd["blocks"],
-                                  cmd["unstep"], cmd["ratio"],
+                                  "%+d" % cmd["c0"] if cmd["c0"] is not None else "none", cmd["moved"],
+                                  cmd["unstep"], cmd["ratio"], cmd["wobble"],
                                   "" if cjudged else " -- NOT JUDGED"))
         if not cjudged:
             r.note("the command rule did not judge this pair: %s"
-                   % ("%d moves joined, under the %d it needs" % (cj, ANG_CMD_MIN) if cj < ANG_CMD_MIN else
-                      "the sidecar numbers %.2f commands for each recorded move, so a move's place in the recording "
-                      "is not its command number (over %g)" % (cmd["ratio"], ANG_CMD_RATIO)))
+                   % ("the sidecar numbers %.2f commands for each recorded move, so a move's place in the recording "
+                      "is not its command number (outside %g-%g)" % ((cmd["ratio"],) + ANG_CMD_RATIO) if not cratio else
+                      "%d moves joined, under the %d it needs" % (cj, ANG_CMD_MIN)))
         elif cbad > ANG_CMD_HOLD:
-            r.fault("the sidecar does not describe this recording by command: %.1f%% of %d moves joined to their own "
-                    "command's frames are on no drawn path, worst %.2f deg (honest worst measured: 0.74%%)"
+            r.fault("the sidecar does not show what this recording sent: %.1f%% of %d moves joined to their own "
+                    "command's frames are on no drawn path, worst %.2f deg (honest worst measured: 0.20%%)"
                     % (cbad, cj, cmd["worst"]))
         else:
-            cmd_clear = ccover >= ANG_CMD_COVER
+            # A stand-in only for a client whose delay is seen to wobble: a steady one whose alignment broke was
+            # broken by the moves themselves (review round 1: an along-the-turn assist did it on purpose).
+            cmd_clear = ccover >= ANG_CMD_COVER and cmd["wobble"] >= ANG_CMD_WOBBLE
 
     # ---- the one-frame rule, which does not need the camera to have moved --
     # AGAINST THE RECORDING'S OWN MOVE COUNT, not against `joined`.  Dividing
@@ -4245,7 +4283,8 @@ def angle_join(r, rec, frames):
     # run to CLEAR it.  Folding them together is what let a sidecar that padded
     # 55% of its ticks print the cleanest line the rule can produce.
     # P1610: the sweep moved, so offset 0 is a fallback the frames' own angles contradict (sweep_offset moves only when
-    # nothing aligns), and the command rule judged this pair through a join that no delay touches and cleared it.
+    # nothing aligns), and the command rule judged this pair through a join that no delay touches, cleared it, and saw
+    # the client's delay wobble.
     # Lobby receipts 18 Nov: 72 of 81 one-frame FAULTs were this shape on honest remote clients (P1609, BACKLOG).
     nojoin = slag != lag and cmd_clear
     judged = tight and len(solo) >= ANG_SOLO_MIN and not nojoin
@@ -4648,6 +4687,7 @@ def tamper_view(path):
         caught = any("does not describe this recording" in m
                      or "does not match its sidecar" in m
                      or "the sidecar is not this recording's" in m
+                     or "does not show what this recording sent" in m
                      for m in v.faults)
         print("  %-14s %s   %s" % (what, "CAUGHT  " if caught else "missed  ",
                                    measured(v)))
