@@ -1,5 +1,9 @@
 # lextest.md — things waiting on a human
 
+## P1614 More than three prederror reports a map -- owner check PENDING after the lobby deploy (record: engine ENGINE_PATCHES.md Patch 1614)
+- On one lobby map, send a 4th prediction error report (F6 when the box asks; the game offers one a minute at most).
+  Before P1614 the console said "the lobby did not take the report (three-this-map)"; now it says "report sent".
+
 ## P1612 Tool brushes: Shown lasts one session -- installed on the Linux PC's game; owner check PENDING (record: engine ENGINE_PATCHES.md Patch 1612)
 - Ask nodsnot and Mark: is Graphics (X) > Tool brushes on Shown? That is what draws the pink clip on surf_ferros and
   surf_centipedes. Setting it to Hidden fixes it now; the next release resets it at every launch.
