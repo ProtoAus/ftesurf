@@ -121,8 +121,6 @@ def build(instart=True, inputs=True, ver=9, startjit=None, warps=(),
     if cmdseq is not None:
         L.append("cmdseq 1")            # P1613: `cseq <cmdseq>` before the first `in` row, then one a row
     L.append("begin")
-    if cmdseq is not None:
-        L.append("cseq %d" % cmdseq)
     if v9 and seed:
         L.append("seed 0 0 64 0 0 0 0 ducked=0 ducktime=0 msec_carry=0.003")
 
@@ -149,6 +147,8 @@ def build(instart=True, inputs=True, ver=9, startjit=None, warps=(),
             # the tick's own sweep, so a fixture that never turns is BLIND and
             # cannot tell a matching sidecar from any other.
             yaw = 90.0 + n_in * sweep * QUANTUM
+            if cmdseq is not None and n_in == 0:
+                L.append("cseq %d" % cmdseq)      # as the recorder: just before the first `in` row
             if v9:
                 L.append("in %d %d %.9g 0 0 0 0.0000 %.4f 0.0000 0 0" %
                          (pk, mt, carry, yaw))
@@ -2660,6 +2660,10 @@ def case_angle_command_rule():
     # Grammar.
     bad = [l if l != "cseq 1000" else "cseq 0" for l in L]
     check(any("'cseq' takes one usercmd number" in x for x in run(bad, view=view_for(L))[0]), "`cseq 0` is a fault")
+    big = [l if l != "cseq 1000" else "cseq 16777216" for l in L]
+    check(any("'cseq' takes one usercmd number" in x for x in run(big, view=view_for(L))[0]), "`cseq 2^24` is a fault, not a crash")
+    clean = report_rec_inproc(L)
+    check(not clean.faults, "a build(cmdseq=) recording is itself clean (%s)" % clean.faults[:1])
     bad2 = [l if l != "cseq 1000" else "cseq 1e3" for l in L]
     check(any("'cseq' takes one usercmd number" in x for x in run(bad2, view=view_for(L))[0]), "`cseq 1e3` is a fault")
     nohead = [l for l in L if l != "cmdseq 1"]

@@ -1669,8 +1669,8 @@ def _check_rec(r, path, verbose=False, *, data=None):
                     n = int(tok[1])
                 except ValueError:
                     n = None
-            if n is None or not (n == -1 or 1 <= n <= 2147483647):
-                r.fault("line %d: 'cseq' takes one usercmd number (1 or more) or -1" % (lineno + 1))
+            if n is None or not (n == -1 or 1 <= n < 16777216):      # the recorder writes none past 2^24
+                r.fault("line %d: 'cseq' takes one usercmd number (1 to 2^24) or -1" % (lineno + 1))
                 cs_next = 0
             else:
                 cs_next = max(n, 0)

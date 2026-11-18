@@ -2216,7 +2216,8 @@ void(entity e) SV_TimerMapTeleport =
 */
 .float  rec_rec_in;              // v6: input rows written since `begin`
 .float  rec_rec_pk;              // v6: packet ordinal, stamped on each of them
-.float  rec_rec_cseqn;           // P1613: the usercmd number the next `in` row is expected to carry (0: unknown)
+.float  rec_rec_cseqn;           // P1613: the usercmd number the next `in` row is expected to carry (0: unknown,
+                                 // -1: must anchor, after a cut)
 .float  rec_rec_nocs;            // P1613: no `cseq` in this recording (held metadata on: its engine reader whitelists)
 .float  rec_rec_warp;            // v7: `warp` records written since `begin`
 
@@ -7655,7 +7656,7 @@ float(string k, float n) SV_RecKeyRead =
 void(entity e, float mark, float samples, float padn, float cps) SV_RecRestore =
 {
 	e.rec_rec_samplet = -1;
-	e.rec_rec_cseqn = 0;            // P1613: a body cut back to a save; the next row anchors its own `cseq`
+	e.rec_rec_cseqn = -1;           // P1613: a body cut back to a save; the next row anchors (`cseq n` or -1)
 	e.rec_rec_lines = mark;
 	e.rec_rec_n     = samples;
 	e.rec_rec_padn  = padn;
@@ -8001,7 +8002,7 @@ float(entity e, string path, float mark, float serial,
 	if (SV_RecGenOK(e, mark))           // Patch 375: no rewind since cut below it
 	{
 		SV_RecGenPush(e, mark);
-		e.rec_rec_cseqn = 0;        // P1613: see SV_RecRestore
+		e.rec_rec_cseqn = -1;       // P1613: see SV_RecRestore
 		e.rec_rec_lines = mark;
 		e.rec_rec_n     = samples;
 		e.rec_rec_padn  = padn;
@@ -8050,7 +8051,7 @@ float(entity e, string path, float mark, float serial,
 		buf_del(e.rec_rec_buf);
 
 	e.rec_rec_buf   = buf;
-	e.rec_rec_cseqn = 0;            // P1613: see SV_RecRestore
+	e.rec_rec_cseqn = -1;           // P1613: see SV_RecRestore
 	e.rec_rec_lines = buf_getsize(buf);
 	e.rec_rec_n     = samples;
 	e.rec_rec_padn  = padn;
