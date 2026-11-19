@@ -120,6 +120,40 @@ class BoardNavigation(unittest.TestCase):
         s = source('src/client/cl_scores.qc')
         self.assertIn('f[i + 5], pf_on_handle, pf_on_ms[act - 3]);', s)
 
+    def test_optional_mode_chips_share_toggle_to_normal(self):
+        shared = source('src/shared/sh_boardstyle.qc')
+        self.assertIn('return (current == picked) ? 0 : picked;', shared)
+        scores = source('src/client/cl_scores.qc')
+        self.assertIn('if (hot == 0) continue;', scores)
+        self.assertIn('Scores_ModeSet(online, FS_ModeToggle(on, hot));', scores)
+        board = source('src/menu/m_board.qc')
+        self.assertIn('if (t == 0) continue;', board)
+        self.assertIn('Mlb_SetStyle(FS_ModeStyle(FS_ModeToggle(on, t)));', board)
+        # Both native and legacy tables use the surrounding Scores_Draw controls.
+        self.assertIn('native = Scores_NativeDraw(rp,', scores)
+        self.assertNotIn('"sb_flt"', scores)
+
+    def test_source_selector_reserves_fetch_slot(self):
+        scores = source('src/client/cl_scores.qc')
+        self.assertIn('if (Scores_IsOnline())\n\t\t\tfetchw', scores)
+        self.assertIn('x = x - fetchw;\n\t\tif (Scores_CanFetch())', scores)
+        board = source('src/menu/m_board.qc')
+        self.assertIn('Mlb_SourceDraw([16, ly]);', board)
+        self.assertIn('"mlb_ksmore", [w - 196, ly]', board)
+        self.assertIn('"mlb_refresh", [w - 108, ly]', board)
+        self.assertNotIn('ly = ly + 38;', board)
+
+    def test_menu_default_near_preserves_profile_seek_and_missing_player_rows(self):
+        board = source('src/menu/m_board.qc')
+        self.assertIn('mlb_n == 0 && mlb_offset == 0 && mlb_focuswho == "" && mlb_near == ""', board)
+        self.assertIn('mlb_near = strzone(MH_Me());', board)
+        self.assertIn('t = mlb_browsing ? mlb_lasttab : MLB_T_OURS;', board)
+        near = board[board.index('if (mlb_near != "")\n\t{', board.index('void(float id, float code, string body, float append) Mlb_Page =')):]
+        miss = near[:near.index('tier = json_get_string')]
+        self.assertIn('if (mlb_n > 0)', miss)
+        self.assertIn('mlb_focusms = json_get_integer', miss)
+        self.assertIn('mlb_scroll_y = max(0, mlb_focus - 4) * MLB_ROW_H;', board)
+
     def test_boundary_fixture_preserves_raw_milliseconds(self):
         from test_p693_ui import Fixture, HANDLE, rig
         fixture = Fixture()

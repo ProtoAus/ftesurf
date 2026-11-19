@@ -5762,6 +5762,11 @@ def story_parse(text):
                     continue
                 lvl = {"map": name, "track": track, "ch": [], "win": None}
             chap["levels"].append(lvl)
+        elif key == "course":
+            if lvl is None or not lvl["map"] or args != ["zones"]:
+                bad(n, "course zones inside a level")
+            else:
+                lvl["course"] = "zones"
         elif key == "mode":
             if lvl is None or not lvl["map"]:
                 bad(n, "mode outside a level")
@@ -6022,6 +6027,60 @@ def _story_owner_db(db):
     return owner
 
 
+def _story_course_zoned(mapname, track):
+    """Opt-in course availability, from the first effective lobby zone file.
+
+    Never fall through a local override that omits this bonus. Missing or invalid
+    geometry is unavailable, not evidence that a lower-priority file is effective.
+    Called once per requested course per Story calculation (STORY_TTL), not per player.
+    """
+    if clean_map(mapname) != mapname or not 0 <= track <= MAX_TRACK:
+        return False
+    for directory in (ZONES_LOCAL_DIR, ZONES_MOMLOCAL_DIR, ZONES_DIR):
+        try:
+            with open(os.path.join(directory, mapname + ".json"), "rb") as fh:
+                body = fh.read(262145)
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return False
+        try:
+            if len(body) > 262144:
+                return False
+            data = json.loads(body)
+            if data.get("formatVersion") != 1:
+                return False
+            tracks = data["tracks"]
+            course = tracks["main"] if track == 0 else tracks["bonuses"][track - 1]
+            zones = course["zones"]
+            start = zones["segments"][0]["checkpoints"][0]["regions"]
+            end = zones["end"]["regions"]
+
+            def valid(regions):
+                if not isinstance(regions, list) or not regions:
+                    return False
+                for r in regions:
+                    points = r["points"]
+                    if not isinstance(points, list) or not 3 <= len(points) <= 32:
+                        return False
+                    values = [r["bottom"], r["height"]]
+                    for point in points:
+                        if not isinstance(point, list) or len(point) != 2:
+                            return False
+                        values.extend(point)
+                    if any(type(v) not in (int, float) or not math.isfinite(v) for v in values):
+                        return False
+                    if r["height"] <= 0 or zonefit._box(r) is None:
+                        return False
+                return True
+
+            return valid(start) and valid(end)
+        except (ValueError, TypeError, KeyError, IndexError, AttributeError,
+                OverflowError, RecursionError):
+            return False
+    return False
+
+
 def _story_calc(db, lists, now):
     names, banned, linked = _story_ident(db)
     want = {(lv["map"], lv["track"]) for L in lists for c in L["chapters"]
@@ -6118,6 +6177,7 @@ def _story_calc(db, lists, now):
         {k[0] for k in rows}
     firsts = {}
     out = []
+    courses = {}
     for L in lists:
         levels, bars, avail = [], [], 0
         for c in L["chapters"]:
@@ -6125,6 +6185,11 @@ def _story_calc(db, lists, now):
                         else -(-avail * L["pct"] // 100))
             for lv in c["levels"]:
                 timed = bool(lv["map"]) and lv["map"] in zoned
+                if timed and lv.get("course") == "zones":
+                    course = (lv["map"], lv["track"])
+                    if course not in courses:
+                        courses[course] = _story_course_zoned(*course)
+                    timed = courses[course]
                 live = [ch for ch in lv["ch"] if _story_live(ch, lv)]
                 # A dated level counts toward the bars only while it is open.
                 if timed and live and _story_open(lv["win"], now):

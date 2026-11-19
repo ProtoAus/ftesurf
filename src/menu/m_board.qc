@@ -427,6 +427,11 @@ float(float append) Mlb_Fetch =
 		return FALSE;
 	}
 
+	// First opens/filter changes start near the player; profile seeks keep their target.
+	if (!append && mlb_n == 0 && mlb_offset == 0 && mlb_focuswho == "" && mlb_near == "")
+	if (MH_Me() != "")
+		mlb_near = strzone(MH_Me());
+
 	if (!append)
 	if (Mlb_CPlain())
 	{
@@ -499,6 +504,7 @@ void() Mlb_JumpToMe =
 		strunzone(mlb_jumpnote); mlb_jumpnote = strzone("Your player identity is not available yet. Finish a WOS run or link Steam.");
 		return;
 	}
+	Mlb_Abandon(mlb_req); mlb_req = 0;
 	strunzone(mlb_near); mlb_near = strzone(who);
 	Mlb_Fetch(FALSE);
 };
@@ -774,7 +780,7 @@ void(string why) Mlb_Close =
 void(string mapname, float t) Mlb_Open =
 {
 	if (t < 0 || t >= MLB_NTABS)
-		t = mlb_browsing ? mlb_lasttab : MLB_T_ALL;
+		t = mlb_browsing ? mlb_lasttab : MLB_T_OURS;
 	if (mlb_open)
 	{
 		if (!strcmp(mapname, mlb_map) && mlb_track == 0 && mlb_leg == 0 && mlb_style == "clean")
@@ -946,15 +952,22 @@ void(float id, float code, string body, float append) Mlb_Page =
 			strunzone(mlb_jumpnote);
 			mlb_jumpnote = strzone(rows ? "No record of yours matches these filters." : "Jump to me is not available on this leaderboard yet.");
 			strunzone(mlb_near); mlb_near = "";
-			mlb_state = MLBS_OK;
-			json_free(root);
-			return;
+			if (mlb_n > 0)
+			{
+				mlb_state = MLBS_OK;
+				json_free(root);
+				return;
+			}
+			// No own time: still show the first page returned with the near miss.
 		}
-		strunzone(mlb_focuswho); mlb_focuswho = strzone(mlb_near);
-		Mlb_ClearRows();
-		mlb_offset = json_get_float(json_find_object_child(root, "offset"));
-		mlb_focusms = json_get_integer(json_find_object_child(rows, "ms"));
-		strunzone(mlb_near); mlb_near = "";
+		else
+		{
+			strunzone(mlb_focuswho); mlb_focuswho = strzone(mlb_near);
+			Mlb_ClearRows();
+			mlb_offset = json_get_float(json_find_object_child(root, "offset"));
+			mlb_focusms = json_get_integer(json_find_object_child(rows, "ms"));
+			strunzone(mlb_near); mlb_near = "";
+		}
 	}
 	tier = json_get_string(json_find_object_child(root, "tier"));
 	off  = json_get_float(json_find_object_child(root, "offset"));
@@ -1390,7 +1403,7 @@ string(float i) Mlb_SegTip =
 	return strcmp(s, "1") ? strcat(s, " segments") : "1 segment";
 };
 
-void(vector rp, float i, float rw, float tr, float dlr, float dr, float nw) Mlb_DrawRow =
+void(vector rp, float i, float rw, float tr, float dlr, float dr, float nx, float nw) Mlb_DrawRow =
 {
 	local float ty, li, g, gp;
 	local string s;
@@ -1420,7 +1433,7 @@ void(vector rp, float i, float rw, float tr, float dlr, float dr, float nw) Mlb_
 	s = bufstr_get(mlb_btime, i);
 	sui_text([rp_x + tr - stringwidth(s, TRUE, SZ_ROW), ty], SZ_ROW, s, COL_TEXT, 1, 0);
 	s = bufstr_get(mlb_bms, i);
-	if (mlb_refms > 0i && s != "")
+	if (dlr > 0 && mlb_refms > 0i && s != "")
 	{
 		ms = Mlb_Stoi(s);
 		s = (ms == mlb_refms) ? "best" : ((ms > mlb_refms) ? Mlb_Delta(ms - mlb_refms) : "");
@@ -1428,7 +1441,8 @@ void(vector rp, float i, float rw, float tr, float dlr, float dr, float nw) Mlb_
 		         (ms == mlb_refms) ? SUI_THEME_GOOD : COL_FAIL, 0.9, 0);
 	}
 	s = bufstr_get(mlb_bdate, i);
-	sui_text([rp_x + dr - stringwidth(s, TRUE, SZ_ROW), ty], SZ_ROW, s, COL_DIM, 1, 0);
+	if (dr > 0)
+		sui_text([rp_x + dr - stringwidth(s, TRUE, SZ_ROW), ty], SZ_ROW, s, COL_DIM, 1, 0);
 	Font_Set(ui_font_ui);
 
 	s = bufstr_get(mlb_bwho, i);
@@ -1436,25 +1450,25 @@ void(vector rp, float i, float rw, float tr, float dlr, float dr, float nw) Mlb_
 	{
 		if (s != "")
 		{
-			if (!MP_Draw([rp_x + MLB_NAME_X, rp_y + 2], MLB_ROW_H - 4, s, 1))
-				sui_roundbox([rp_x + MLB_NAME_X, rp_y + 2], [MLB_ROW_H - 4, MLB_ROW_H - 4], 4, SUI_THEME_CHIP, 1);
+			if (!MP_Draw([rp_x + nx, rp_y + 2], MLB_ROW_H - 4, s, 1))
+				sui_roundbox([rp_x + nx, rp_y + 2], [MLB_ROW_H - 4, MLB_ROW_H - 4], 4, SUI_THEME_CHIP, 1);
 			// P1206: keyed by player and rank, not row: a page landing mid-click shifts the rows.
-			sui_action_element([rp_x + MLB_NAME_X, rp_y + 2], [MLB_ROW_H - 4, MLB_ROW_H - 4],
+			sui_action_element([rp_x + nx, rp_y + 2], [MLB_ROW_H - 4, MLB_ROW_H - 4],
 			                   strcat("mlb_profile", bufstr_get(mlb_bhand, i), "_", bufstr_get(mlb_brank, i)), sui_noop);
 			if (sui_is_released(strcat("mlb_profile", bufstr_get(mlb_bhand, i), "_", bufstr_get(mlb_brank, i))))
 				MStats_Player(bufstr_get(mlb_bhand, i));
 		}
-		sui_text([rp_x + MLB_NAME_X + MLB_ROW_H, ty], SZ_ROW,
+		sui_text([rp_x + nx + MLB_ROW_H, ty], SZ_ROW,
 		         ui_fit_text(bufstr_get(mlb_bname, i), nw - MLB_ROW_H, SZ_ROW), COL_TEXT, 1, 0);
 	}
 	else
-		sui_text([rp_x + MLB_NAME_X, ty], SZ_ROW,
+		sui_text([rp_x + nx, ty], SZ_ROW,
 		         ui_fit_text(bufstr_get(mlb_bname, i), nw, SZ_ROW), COL_TEXT, 1, 0);
 	if (bufstr_get(mlb_bhand, i) != "")         // P1198: the name opens their Stats page too
 	{
 		ty = mlb_anyav ? MLB_ROW_H : 0;
 		s = strcat("mlb_name", bufstr_get(mlb_bhand, i), "_", bufstr_get(mlb_brank, i));
-		sui_action_element([rp_x + MLB_NAME_X + ty, rp_y], [nw - ty, MLB_ROW_H], s, sui_noop);
+		sui_action_element([rp_x + nx + ty, rp_y], [nw - ty, MLB_ROW_H], s, sui_noop);
 		if (sui_is_released(s)) MStats_Player(bufstr_get(mlb_bhand, i));
 		sui_tooltip_for(s, Mlb_SegTip(i), 2);
 	}
@@ -1555,10 +1569,34 @@ float(vector pos, string id, string label, vector col, float on) Mlb_ModeChip =
 	return w;
 };
 
+// The same direct three-stop game selector as the in-game board.
+void(vector p) Mlb_SourceDraw =
+{
+	local float step, i, t, x;
+	local string id, label;
+	step = ceil(stringwidth("Momentum", TRUE, SZ_LABEL) + SZ_LABEL_H * 0.9);
+	sui_roundbox(p + [step * 0.5, 6], [step * 2, 4], 2, SUI_THEME_WELL, 1);
+	for (i = 0; i < 3; i = i + 1)
+	{
+		t = (i == 0) ? MLB_T_OURS : ((i == 1) ? MLB_T_MOM : MLB_T_KSF);
+		id = strcat("mlb_tab", ftos(t));
+		x = p_x + step * (i + 0.5);
+		sui_action_element([p_x + step * i, p_y], [step, 32], id, sui_noop);
+		sui_roundbox([x - 2, p_y + 6], [4, 4], 2, SUI_THEME_EDGE_HI, 1);
+		if (t == mlb_tab)
+			sui_roundbox([x - 6, p_y + 2], [12, 12], 6, COL_ACCENT, 1);
+		label = Mlb_TabName(t);
+		sui_text([x - stringwidth(label, TRUE, SZ_LABEL) * 0.5, p_y + 16], SZ_LABEL, label,
+		         t == mlb_tab ? COL_ACCENT : COL_DIM, sui_is_hovered(id) ? 1 : 0.8, 0);
+		if (sui_is_clicked(id) || sui_is_held(id))
+			Mlb_SetTab(t);
+	}
+};
+
 void(vector screensize) Mlb_Draw =
 {
 	local vector p, sz, ls, rp, lp, lsz;
-	local float w, h, x, t, k, ly, rw, tr, dlr, dr, nw, idx, cw, closeit, sidew, lx, on, hot, c, ksffetch;
+	local float w, h, x, t, k, ly, rw, tr, dlr, dr, nx, nw, idx, cw, closeit, sidew, lx, on, hot, c, ksffetch;
 	local string s, id;
 
 	if (!mlb_open)
@@ -1578,53 +1616,48 @@ void(vector screensize) Mlb_Draw =
 	// Closed at the end: the rows below still read the buffers a close frees.
 	closeit = FALSE;
 	ksffetch = (mlb_tab != MLB_T_OURS && !FS_BoardSegmented(mlb_style) && strcmp(mlb_style, "tas"));    // P1448: KSF and Momentum
-	if (ksffetch && w >= 640)
-	if (ui_button("mlb_ksmore", [w - 354, 12], [112, 30], "Fetch")) Mlb_KsfMore();
 	if (ui_button("mlb_jumpme", [w - 234, 12], [126, 30], "Jump to me")) Mlb_JumpToMe();
 	if (ui_button("mlb_close", [w - 100, 12], [84, 30], "close"))
 		closeit = TRUE;
 
-	sui_text([16, 14], SZ_HEAD, ui_fit_text(mlb_map, w - ((ksffetch && w >= 640) ? 386 : 266), SZ_HEAD), COL_ACCENT, 1, 0);
+	sui_text([16, 14], SZ_HEAD, ui_fit_text(mlb_map, w - 266, SZ_HEAD), COL_ACCENT, 1, 0);
 	s = sprintf("%s / %s / %s", (Mlb_Mode() == FS_MODE_TAS) ? "Community" : Mlb_TabName(mlb_tab),
 	            Mlb_LegName(mlb_track, mlb_leg), FS_ModeName(Mlb_Mode()));
 	sui_text([16, 38], '12 12 0', ui_fit_text(s, w - 32, '12 12 0'), COL_DIM, 1, 0);
 
-	// The games, in the in-game filter's order: every game, then each one.
+	// Reserve Fetch's slot even when it is not available.
 	ly = 56;
-	if (ksffetch && w < 640)
-	{
-		if (ui_button("mlb_ksmore", [16, ly], [112, 30], "Fetch")) Mlb_KsfMore();
-		ly = ly + 38;
-	}
-	x = 16;
 	if (Mlb_Mode() == FS_MODE_TAS)
-		sui_text([x, ly + 5], SZ_LABEL, "TAS -- tool-assisted runs: assisted, not verified, every game",
-		         SUI_THEME_WARN, 1, 0);
+		sui_text([16, ly + 5], SZ_LABEL, "TAS -- assisted, not verified", SUI_THEME_WARN, 1, 0);
 	else
-	for (k = 0; k < MLB_NTABS; k = k + 1)
+		Mlb_SourceDraw([16, ly]);
+	if (ksffetch)
+	if (ui_button("mlb_ksmore", [w - 196, ly], [80, 30], "Fetch")) Mlb_KsfMore();
+	if (ui_button("mlb_refresh", [w - 108, ly], [92, 30], "refresh"))
 	{
-		t = Mlb_TabAt(k);
-		id = strcat("mlb_tab", ftos(t));
-		x = x + ui_chip([x, ly], id, Mlb_TabLabel(t), t == mlb_tab) + CHIP_GAP;
-		if (sui_is_released(id))
-			Mlb_SetTab(t);
+		Mlb_ClearRows();
+		t = Mlb_CFind(Mlb_CKey(mlb_tab));
+		if (t >= 0) mlb_ct[t] = 0;
+		Mlb_Fetch(FALSE);
 	}
 
-	// P1590: one mode row, exactly one lit: Segmented (blue), TAS (purple), the directions.
+	// Keep the default mode visible without moving the optional chips.
 	x = 16;
-	ly = ly + CHIP_H + 8;
+	ly = ly + 40;
 	on = Mlb_Mode();
+	sui_text([x, ly + 7], SZ_LABEL, on == 0 ? "Normal" : "Mode", COL_DIM, 1, 0);
+	x = x + ceil(stringwidth("Normal", TRUE, SZ_LABEL)) + CHIP_GAP;
 	for (k = 0; k < FS_MODES; k = k + 1)
 	{
 		t = FS_ModeAt(k);
+		if (t == 0) continue;
 		id = strcat("mlb_style", ftos(t));
 		s = FS_ModeName(t);
 		cw = ui_chip_w(s);
 		if (x + cw > w - 16 && x > 16) { x = 16; ly = ly + CHIP_H + 8; }
 		x = x + Mlb_ModeChip([x, ly], id, s, FS_ModeColour(t), t == on) + CHIP_GAP;
 		if (sui_is_released(id))
-		if (t != on)
-			Mlb_SetStyle(FS_ModeStyle(t));
+			Mlb_SetStyle(FS_ModeStyle(FS_ModeToggle(on, t)));
 	}
 	ly = ly + CHIP_H + 12;
 	s = mlb_play_known ? sprintf("Your map time: %gh %gm | %g main/bonus attempts", floor(mlb_map_seconds / 3600), floor(mlb_map_seconds / 60) % 60, mlb_map_attempts) : (mlb_time_req ? "Loading your map time / attempts..." : "Map playtime / attempts: not recorded yet");
@@ -1679,17 +1712,22 @@ void(vector screensize) Mlb_Draw =
 	ls = [w - lx - 16, h - ly - 44];
 	rw = ls_x - 14;
 	Font_Set(ui_font_mono);
-	dr = rw - 12;
-	dlr = dr - stringwidth("0000-00-00", TRUE, SZ_ROW) - 24;
-	tr = dlr - stringwidth("+00:00.000", TRUE, SZ_ROW) - 20;
-	nw = tr - stringwidth("0:00:00.000", TRUE, SZ_ROW) - 24 - MLB_NAME_X;
+	// Keep rank / time / gap / player in the in-game board's order.
+	tr = MLB_RANK_R + 20 + stringwidth("0:00:00.000", TRUE, SZ_ROW);
+	dlr = (rw >= 490) ? tr + 20 + stringwidth("+00:00.000", TRUE, SZ_ROW) : 0;
+	nx = ((dlr > 0) ? dlr : tr) + 24;
+	dr = (rw >= 620) ? rw - 12 : 0;
+	nw = ((dr > 0) ? dr - stringwidth("0000-00-00", TRUE, SZ_ROW) - 24 : rw - 12) - nx;
+
 	Font_Set(ui_font_ui);
 
 	sui_text([lx + 1 + MLB_RANK_R - stringwidth("#", TRUE, SZ_LABEL), ly - 22], SZ_LABEL, "#", COL_DIM, 1, 0);
-	sui_text([lx + 1 + MLB_NAME_X, ly - 22], SZ_LABEL, "PLAYER", COL_DIM, 1, 0);
+	sui_text([lx + 1 + nx, ly - 22], SZ_LABEL, "PLAYER", COL_DIM, 1, 0);
 	sui_text([lx + 1 + tr - stringwidth("TIME", TRUE, SZ_LABEL), ly - 22], SZ_LABEL, "TIME", COL_DIM, 1, 0);
-	sui_text([lx + 1 + dlr - stringwidth("DELTA", TRUE, SZ_LABEL), ly - 22], SZ_LABEL, "DELTA", COL_DIM, 1, 0);
-	sui_text([lx + 1 + dr - stringwidth("DATE", TRUE, SZ_LABEL), ly - 22], SZ_LABEL, "DATE", COL_DIM, 1, 0);
+	if (dlr > 0)
+		sui_text([lx + 1 + dlr - stringwidth("DELTA", TRUE, SZ_LABEL), ly - 22], SZ_LABEL, "DELTA", COL_DIM, 1, 0);
+	if (dr > 0)
+		sui_text([lx + 1 + dr - stringwidth("DATE", TRUE, SZ_LABEL), ly - 22], SZ_LABEL, "DATE", COL_DIM, 1, 0);
 
 	sui_style_box([lx, ly], ls, 9, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
 
@@ -1707,7 +1745,7 @@ void(vector screensize) Mlb_Draw =
 			if (idx >= mlb_n)
 				Mlb_DrawTail(rp, rw);
 			else
-				Mlb_DrawRow(rp, idx, rw, tr, dlr, dr, nw);
+				Mlb_DrawRow(rp, idx, rw, tr, dlr, dr, nx, nw);
 		}
 		sui_list_view_end();
 

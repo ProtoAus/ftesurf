@@ -8114,10 +8114,12 @@ void(vector screensize) screen_create =
 						// A re-get is not the same offer as a download and must
 						// not read like one: this row already has a playable
 						// map, it is just the wrong cut of it.
-						sui_text([gp_x + DL_PAD, gp_y + 2], SZ_ROW,
+						// Centre the two-line block using the label em and 12px detail face.
+						float texty = gp_y + floor((gs_y - (SZ_LABEL_H + 4 + 12)) * 0.5);
+						sui_text([gp_x + DL_PAD, texty], SZ_ROW,
 						         wrong ? "Wrong build" : "Download",
 						         gh ? COL_TEXT : COL_ACCENT, 1, 0);
-						sui_text([gp_x + DL_PAD, gp_y + 23], '12 12 0',
+						sui_text([gp_x + DL_PAD, texty + SZ_LABEL_H + 4], '12 12 0',
 						         wrong ? strcat(SUI_ESC_WARN, "re-get ",
 						                        ui_dl_size(stof(bufstr_get(ms_dlkb, er))))
 						               : ui_dl_size(stof(bufstr_get(ms_dlkb, er))),

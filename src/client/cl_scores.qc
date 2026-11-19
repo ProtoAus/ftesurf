@@ -3513,33 +3513,20 @@ float(float ow) Scores_Need =
 	return max(a, b);
 };
 
-/*
-  Patch 635: THE ONLINE LIST'S FILTER -- a switch, and a slider with a stop for
-  each game (the owner: "the filter on the right, to be like a slider, with a
-  filter toggle switch").  Off, the list is every game's and the slider waits,
-  dim, on the stop it was left at; a press on a stop turns the filter on there,
-  and the knob follows a drag.  Drawn right-aligned at xr in the header row.
-*/
-// Measured from the labels as drawn, not counted in mono characters: the small
-// type stops at 12 px while cw goes on shrinking with the rows.
+// Three direct source stops; the knob also follows a drag.
+// Measure labels on their own face, not in mono characters.
 float() Scores_FilterStep =
 {
 	return ceil(stringwidth("Momentum", TRUE, [rec_sb_szhead, rec_sb_szhead]) + rec_sb_szhead * 0.9);
 };
-float() Scores_FilterLab =
-{
-	return ceil(stringwidth("filter", TRUE, [rec_sb_szhead, rec_sb_szhead]) + rec_sb_szhead * 0.7);
-};
 float() Scores_FilterW =
 {
-	// "filter", the switch, a gap, the three stops
-	return Scores_FilterLab() + ceil(ceil(rec_sb_szhead * 1.2) * 1.9) + ceil(rec_sb_szhead * 0.8)
-	     + Scores_FilterStep() * 3;
+	return Scores_FilterStep() * 3;
 };
 
 void(float xr, float y, float h) Scores_FilterDraw =
 {
-	local float st, on, stop, sp, x, th, tw, yt, i, a, sx, kx, r, tx, lw;
+	local float st, on, stop, sp, yt, i, a, sx, kx, r, tx;
 	local string s, id;
 	local vector c;
 
@@ -3601,27 +3588,6 @@ void(float xr, float y, float h) Scores_FilterDraw =
 			sui_roundbox([kx - r, yt - r], [r * 2, r * 2], r, on ? SUI_THEME_ACCENT : SUI_THEME_DIM, 1);
 		Scores_Text([kx - stringwidth(s, TRUE, [rec_sb_szhead, rec_sb_szhead]) * 0.5,
 		             y + h - rec_sb_szhead - 1], rec_sb_szhead, s, c, (on || sui_is_hovered(id)) ? 1 : 0.6);
-	}
-
-	// The switch, left of the slider: off is every game.
-	th = ceil(rec_sb_szhead * 1.2);
-	tw = ceil(th * 1.9);
-	x  = sx - ceil(rec_sb_szhead * 0.8) - tw;
-	lw = Scores_FilterLab();
-	sui_action_element([x - lw, y], [tw + lw, h], "sb_flt", sui_noop);
-	sui_roundbox([x, y + floor((h - th) * 0.5)], [tw, th], th * 0.5, on ? SBC_SEL : SBC_PANEL, 1);
-	kx = on ? (x + tw - th + 2) : (x + 2);
-	sui_roundbox([kx, y + floor((h - th) * 0.5) + 2], [th - 4, th - 4], (th - 4) * 0.5,
-	             on ? SUI_THEME_ACCENT : SUI_THEME_DIM, 1);
-	s = "filter";
-	Scores_Text([x - lw, y + floor((h - rec_sb_szhead) * 0.5)], rec_sb_szhead, s,
-	            (on || sui_is_hovered("sb_flt")) ? SUI_THEME_TEXT : SUI_THEME_DIM, 1);
-	if (sui_is_released("sb_flt"))
-	{
-		if (st == SB_IMP_ONLY)
-			rec_sb_imponly = FALSE;     // back to what is saved; nothing is written
-		else
-			Scores_ImpSet(!on, stop);
 	}
 };
 
@@ -3806,7 +3772,7 @@ void(vector scr) Scores_Draw =
 		pad   = rec_sb_szrow;           // every ladder rung is even: its halves are whole pixels
 		chipw = ceil(rec_sb_cw * 8.5);
 		fetchw = 0;
-		if (Scores_IsOnline() && Scores_CanFetch())
+		if (Scores_IsOnline())
 			fetchw = ceil(stringwidth("Fetch", TRUE, [sb_szui, sb_szui]) + pad * 1.5) + 6;
 		// P724: the row's mono em can shrink below the UI label's 12px floor.
 		// Measure the shared formatter in the actual label face/size.
@@ -3827,9 +3793,9 @@ void(vector scr) Scores_Draw =
 		floorw = segw * n + pad
 		       + max((chipw + 6) * 4 - 6, Scores_FilterW() + ceil(pad * 0.75) + chipw + fetchw)
 		       - (pad * 1.5 + sidew);
-		// P1590: and the mode row, its six chips and Jump to me.
-		stylew = stringwidth("Mode", TRUE, [rec_sb_szhead, rec_sb_szhead]) + pad + sb_szui * 9 + pad;
-		for (idx = 0; idx < FS_MODES; idx = idx + 1)
+		// The five optional mode chips and Jump to me.
+		stylew = stringwidth("Mode: Normal", TRUE, [rec_sb_szhead, rec_sb_szhead]) + pad + sb_szui * 9 + pad;
+		for (idx = 1; idx < FS_MODES; idx = idx + 1)
 			stylew = stylew + ceil(stringwidth(FS_ModeName(idx), TRUE, [sb_szui, sb_szui]) + pad * 1.4) + 4;
 		floorw = max(floorw, stylew - (pad * 1.5 + sidew));
 
@@ -4028,9 +3994,9 @@ void(vector scr) Scores_Draw =
 			Online_Fetch(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg],
 			             Scores_TierOf(), Scores_StyleOf());
 		}
-		if (fetchw > 0)
+		x = x - fetchw;
+		if (Scores_CanFetch())
 		{
-			x = x - fetchw;
 			if (Scores_Chip("sb_ksmore", [x, yc], [fetchw - 6, chiph], "Fetch", FALSE))
 				Online_KsfMore(rec_sb_legtrack[rec_sb_leg], rec_sb_legnum[rec_sb_leg], Scores_TierOf(), Scores_StyleOf());
 		}
@@ -4040,22 +4006,21 @@ void(vector scr) Scores_Draw =
 	if (online && rec_sb_tab != SB_T_TAS)
 		Scores_FilterDraw(x - ceil(pad * 0.75), ytabs, tabh);
 
-	// P1590: one mode row, exactly one lit (Lex, 16 Nov): Segmented in blue, TAS in
-	// purple, then the directions. Each is its own board on every leg, Online and Local.
+	// Normal is implicit; the selected mode toggles off back to Normal.
 	{
 		x = x0 + pad;
 		yc = ytabs + tabh + pad * 0.5;
-		Scores_Text([x, yc + (chiph - rec_sb_szhead) * 0.5], rec_sb_szhead, "Mode", SBC_DIM, 1);
-		x = x + ceil(stringwidth("Mode", TRUE, [rec_sb_szhead, rec_sb_szhead]) + pad);
+		Scores_Text([x, yc + (chiph - rec_sb_szhead) * 0.5], rec_sb_szhead, Scores_Mode() == 0 ? "Mode: Normal" : "Mode", SBC_DIM, 1);
+		x = x + ceil(stringwidth("Mode: Normal", TRUE, [rec_sb_szhead, rec_sb_szhead]) + pad);
 		on = Scores_Mode();
 		for (idx = 0; idx < FS_MODES; idx = idx + 1)
 		{
 			hot = FS_ModeAt(idx);
+			if (hot == 0) continue;
 			s = FS_ModeName(hot);
 			stylew = ceil(stringwidth(s, TRUE, [sb_szui, sb_szui]) + pad * 1.4);
 			if (Scores_ModeChip(strcat("sb_ks", ftos(hot)), [x, yc], [stylew, chiph], s, FS_ModeColour(hot), hot == on))
-			if (hot != on)
-				Scores_ModeSet(online, hot);
+				Scores_ModeSet(online, FS_ModeToggle(on, hot));
 			x = x + stylew + 4;
 		}
 		if (on == FS_MODE_TAS)

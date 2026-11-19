@@ -62,6 +62,12 @@ vector(float m) FS_ModeColour =
 	return '-1 0 0';
 };
 
+// Normal has no selected chip; clicking the active mode clears it.
+float(float current, float picked) FS_ModeToggle =
+{
+	return (current == picked) ? 0 : picked;
+};
+
 // P1590: surfd's groups (game_groups): 0 Top 10, 1-6 G1-G6, 7 ungrouped.
 string(float g) FS_GroupName =
 {

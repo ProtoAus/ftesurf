@@ -558,6 +558,22 @@ class Friends(unittest.TestCase):
         # A lobby that sends no cursor gets no room at all.
         self.assertNotIn("room", self.poll()[1])
 
+    def test_room_origin_body_survives_map_changes_and_old_tags(self):
+        start = self.room_poll(-1)[0]['rack']
+        messages = ['[surf_666 B3] bonus message',
+                    '[surf_colinblaster_69000 S8] stage message',
+                    '[Lobby 7] saved older message']
+        for text in messages:
+            response = self.post('/api/social/action', token=self.tokens[0],
+                                 op='message', who='-', text=text)
+            self.assertEqual(response.status_code, 200)
+            self.now += 2
+        self.db.execute("UPDATE lobbies SET map='surf_receiver_new_map'")
+        self.db.commit()
+        self.assertEqual([m['text'] for m in self.room_poll(start)[1]['room']], messages)
+        room = self.menu_read(self.menu_form(1, 'chat'))['room']
+        self.assertEqual([m['text'] for m in room], messages)
+
     def test_room_post_controls(self):
         for text in ("", "x" * 161, "x\nnewline", "* fake record"):
             r = self.post("/api/social/action", token=self.tokens[0], op="message", who="-", text=text)

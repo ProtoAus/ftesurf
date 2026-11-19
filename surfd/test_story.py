@@ -4,6 +4,7 @@
 Real Flask routes on an isolated database; the map library is patched, no HTTP."""
 from contextlib import closing
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -221,12 +222,117 @@ class Story(unittest.TestCase):
             self.assertLessEqual(bar, avail, (j, bar, avail))
             if j:
                 self.assertGreater(bar, bars[j - 1])
-            if j >= 11:
-                pct = 65 if j == 11 else 70
-                self.assertEqual(bar, -(-avail * pct // 100))
+            # Explicit occupied chapter bars stay fixed as empty slots fill.
             avail += sum(max(S.STORY_POINTS[ch["m"]] for ch in lv["ch"]
                              if S._story_live(ch, lv))
                          for lv in ladder["levels"] if lv["chap"] == j and lv["timed"])
+
+    def test_shipped_story_matches_aggregate_group_snapshot(self):
+        root = Path(__file__).resolve().parent.parent
+        snapshot = json.loads((root / 'tools/story-groups.json').read_text())
+        refs = {(r['map'], r['track']): r for r in snapshot['courses']}
+        lists, problems = S.story_parse((root / 'surfd/story.txt').read_text())
+        self.assertFalse(problems)
+        levels = [lv for c in lists[0]['chapters'] for lv in c['levels']]
+        requested = {32: 'surf_fuchnut', 35: 'surf_despair', 37: 'surf_centipedes',
+                     64: 'surf_shape', 68: 'surf_remeanian', 69: 'surf_autumn_fix',
+                     70: 'surf_ferros', 80: 'surf_highlands'}
+        for number, name in requested.items():
+            self.assertEqual(levels[number - 1]['map'], name)
+        for lv in levels:
+            if not lv['map']:
+                continue
+            self.assertEqual(lv['ch'][0]['k'], 'finish')
+            self.assertEqual(lv['ch'][0]['m'], 'b')
+            ref = refs[(lv['map'], lv['track'])]
+            if 'ms' not in ref:
+                self.assertEqual(len(lv['ch']), 1)
+                continue
+            self.assertGreater(ref['x'], 10)
+            self.assertEqual(len(ref['ms']), 7)
+            self.assertLessEqual(ref['ms'][2], ref['ms'][4])
+            for medal, index in [('s', 4), ('g', 2)]:
+                ch = next(ch for ch in lv['ch'] if ch['m'] == medal)
+                self.assertEqual((ch['k'], ch['v']), ('time', ref['ms'][index] + 1))
+                facts = dict(ms=ref['ms'][index], sums=[])
+                self.assertTrue(S._story_ok(ch, lv, 'player', facts))
+                facts['ms'] += 1
+                self.assertFalse(S._story_ok(ch, lv, 'player', facts))
+        events = [lv for c in lists[1]['chapters'] for lv in c['levels']]
+        for number, name, track in [(3, 'surf_autosave', 0), (5, 'surf_gary_barlow', 0),
+                                    (9, 'surf_nightingale', 4), (12, 'surf_nightingale', 5)]:
+            lv = events[number - 1]
+            self.assertEqual((lv['map'], lv['track']), (name, track))
+            self.assertEqual([(c['m'], c['k']) for c in lv['ch']], [('g', 'finish')])
+            if track:
+                self.assertEqual(lv['course'], 'zones')
+
+    def test_course_zones_effective_override_and_fail_closed(self):
+        with tempfile.TemporaryDirectory(dir=HOME) as scratch:
+            directories = [Path(scratch) / str(i) for i in range(3)]
+            for directory in directories:
+                directory.mkdir()
+            region = dict(points=[[0, 0], [8, 0], [8, 8], [0, 8]], bottom=0, height=8)
+            course = dict(zones=dict(segments=[dict(checkpoints=[dict(regions=[region])])],
+                                     end=dict(regions=[region])))
+            def write(directory, count):
+                (directory / 'surf_nightingale.json').write_text(json.dumps(dict(
+                    formatVersion=1, tracks=dict(main=course, bonuses=[course] * count))))
+            with patch.object(S, 'ZONES_LOCAL_DIR', str(directories[0])), \
+                    patch.object(S, 'ZONES_MOMLOCAL_DIR', str(directories[1])), \
+                    patch.object(S, 'ZONES_DIR', str(directories[2])):
+                check = lambda: [S._story_course_zoned('surf_nightingale', t) for t in (4, 5)]
+                self.assertEqual(check(), [False, False])
+                write(directories[2], 5)
+                self.assertEqual(check(), [True, True])
+                write(directories[0], 0)  # main-only local overrides both lower bonuses
+                self.assertEqual(check(), [False, False])
+                write(directories[0], 4)
+                self.assertEqual(check(), [True, False])
+                write(directories[0], 5)
+                self.assertEqual(check(), [True, True])
+                (directories[0] / 'surf_nightingale.json').write_text('{broken')
+                self.assertEqual(check(), [False, False])
+                with patch('builtins.open', side_effect=PermissionError):
+                    self.assertEqual(check(), [False, False])
+                write(directories[0], 5)
+                data = json.loads((directories[0] / 'surf_nightingale.json').read_text())
+                del data['tracks']['bonuses'][4]['zones']['end']
+                (directories[0] / 'surf_nightingale.json').write_text(json.dumps(data))
+                self.assertFalse(S._story_course_zoned('surf_nightingale', 5))
+                self.assertFalse(S._story_course_zoned('../surf_nightingale', 5))
+                write(directories[0], 5)
+                data = json.loads((directories[0] / 'surf_nightingale.json').read_text())
+                data['tracks']['bonuses'][4]['zones']['end']['regions'][0]['height'] = 10 ** 400
+                (directories[0] / 'surf_nightingale.json').write_text(json.dumps(data))
+                self.assertFalse(S._story_course_zoned('surf_nightingale', 5))
+                (directories[0] / 'surf_nightingale.json').write_text('[' * 2000 + ']' * 2000)
+                self.assertEqual(check(), [False, False])
+
+    def test_course_gating_retains_credit_and_reuses_story_ttl(self):
+        text = ('list events "Events"\nchapter\nlevel surf_one bonus 4\n'
+                '  course zones\n  gold finish\nlevel surf_one bonus 5\n  gold finish\n')
+        (HOME / 'story.txt').write_text(text)
+        self.run_row('surf_one', G2, 1000, track=4)
+        with patch.object(S, '_story_course_zoned', return_value=False) as check:
+            calc, rev = S._story_current(self.db, self.now)
+            self.assertEqual(check.call_count, 1)
+            self.assertFalse(calc['lists'][0]['levels'][0]['timed'])
+            self.assertTrue(calc['lists'][0]['levels'][1]['timed'])  # legacy unaffected
+            self.assertEqual(calc['lists'][0]['mine'][G2]['lv'][0][1], 3)
+            self.assertEqual(calc['lists'][0]['hold'][0], [1, 1, 1])
+            check.return_value = True
+            S._story_current(self.db, self.now + S.STORY_TTL - 1)
+            self.assertEqual(check.call_count, 1)
+            with patch.object(S, '_story_kick') as kick:
+                stale, _ = S._story_current(self.db, self.now + S.STORY_TTL)
+                kick.assert_called_once()
+                self.assertFalse(stale['lists'][0]['levels'][0]['timed'])
+            # The queued worker recalculates; stale-while-revalidate is not instant.
+            refreshed = S._story_calc(self.db, S.story_parse(text)[0], self.now + S.STORY_TTL)
+            self.assertTrue(refreshed['lists'][0]['levels'][0]['timed'])
+            self.assertEqual(check.call_count, 2)
+            self.assertEqual(refreshed['lists'][0]['mine'][G2]['lv'][0][1], 3)
 
     def test_parse_grammar_and_problems(self):
         lists, problems = S.story_parse(STORY)

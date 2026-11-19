@@ -1,5 +1,20 @@
 # World of Surf patch notes
 
+### P1622 Story targets based on real groups, plus new maps
+- Bronze means completing the map. Silver targets G4 and gold targets G2 using a fixed snapshot of real group times; maps without enough time data stay finish-only.
+- Added fuchnut, despair, centipedes, shape, remeanian, autumn_fix, ferros and highlands to Story, and autosave/gary_barlow to Events. Nightingale B4/B5 are set up as finish-only Events and become available after their bonus zones are published.
+
+### P1621 Stage results follow Splits
+- The stage-complete time and placement now use plain HUD text below Splits, following its position, size and visibility in hud_edit. The Splits settings also control the stage-result display and duration.
+
+### P1620 Map and course in global chat
+- New chat lines sent from a game show the sender's map and stage/bonus instead of the lobby number. Previously saved messages keep their original tags.
+
+### P1619 Cleaner leaderboard controls
+- Normal is shown when no optional mode is selected. Click a mode to select it, then click it again to return to Normal.
+- WOS/Momentum/KSF selection no longer needs a Filter switch, and Fetch no longer shifts the selector. The menu leaderboard matches the in-game column/control layout and starts near your record when available.
+- The Download map button's two-line label is centered vertically.
+
 <!--
   What each update changes, written for players. The release turns this file into
   patchnotes.json beside update.json (src/release/releaselib.ps1 ConvertFrom-PatchNotes);

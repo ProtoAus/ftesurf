@@ -1,5 +1,27 @@
 # lextest.md — things waiting on a human
 
+## P1619–P1622 — boards, chat, Splits and Story/Event
+
+Local QC build/install status and backend/fleet boundaries: `tools/p1619-1622-delivery.md`. These are owner checks,
+not claimed passes from source assertions or the headless renderer. Independent reviewer could not launch because
+Node lacked libsimdjson.so.36; parent source review and tests are recorded separately.
+
+- On both native and legacy +showscores, no optional mode is lit and Normal is visible; select each mode, see the
+  others dim, then click the selected mode to return to Normal. WOS/Momentum/KSF and Fetch must stay in place.
+- Open a map's menu leaderboard with/without your record and from a profile time. Check it starts near you when
+  available, preserves the profile target, and still shows other players if you have no matching time. Check a
+  narrow window and the rank/time/gap/player columns; the Download/Wrong build two-line label should look centered.
+- After server QC deployment, send global chat from stage S8 and a bonus, change map, then read the saved lines in
+  the main menu: the sender's original map/course must remain. Old lobby-tagged lines remain readable.
+- Finish a stage: time/rank should be plain text below Splits. Move/resize/hide/reset Splits in hud_edit and check
+  the result follows; check its preview, Stage result switch and duration, and a long split list near a screen edge.
+- After the guarded backend + catalogue promotion, inspect Story bronze=finish, silver=G4, gold=G2 and the eight
+  new maps (autumn_fix explicitly). Check linear runs and staged retry totals in practice. Nightingale B4/B5 should
+  remain unavailable until you publish each bonus's start/end zones, then become available after Story refresh.
+- Audit follow-up: old Voyager/Fiellu route Events lack authored via spots, Events14/15 duplicate kvas,
+  Story59 still awaits Monkeys2/Whoknows3 clarification, and aircontrol/rookie need group data for timed medals.
+  These were reported, not silently rewritten or filled with invented criteria.
+
 ## P1616 Look and knife follow the Steam account -- owner check PENDING after the lobby deploy (record: engine ENGINE_PATCHES.md Patch 1616)
 - On a lobby, linked: open hud_player (the look panel) and pick a body colour, a belt colour and a trail. Quit, start
   the game on the OTHER PC (Windows desktop install), join any lobby: the same look comes back within a few seconds

@@ -569,8 +569,8 @@ string(string id, float row) HE_OptDef =
 		                     "|The e figure at each checkpoint. Slides left when the speed column is off.";
 		if (row == 2) return "hud_splits_class|Class column|t||"
 		                     "|A ~ mark in the left gutter for practice stages: noclip or a loaded save.";
-		if (row == 3) return "hud_results_toast|Stage toast|t||"
-		                     "|The pill above the splits when you finish a stage in a full run: its time and rank.";
+		if (row == 3) return "hud_results_toast|Stage finish|t||"
+		                     "|Time and rank below Splits after a full-run stage. Moves and scales with Splits.";
 		return "";
 	}
 
@@ -822,7 +822,7 @@ string(string id, float row) HE_OptDef =
 string(string id) HE_Tip =
 {
 	if (id == "timer")    return "The run clock, and the status line under it.";
-	if (id == "splits")   return "Checkpoint times against your best, as you pass each one.";
+	if (id == "splits")   return "Checkpoint comparisons and stage-finish time/rank below them.";
 	if (id == "seq")      return "One row per segment of flight: what each was worth.";
 	if (id == "strafe")   return "How close your turn rate is to the ideal one, right now.";
 	if (id == "trainer")  return "The last jump, strafe by strafe: how each was graded and whether the key swap matched the flick.";

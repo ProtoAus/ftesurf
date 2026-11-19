@@ -146,33 +146,21 @@ void() Social_Frame =
 		social_poll = 0;
 };
 
-/*
-  P1187: chat goes to everyone by default -- a linked player's line is said here AND
-  posted to the main menu's room (cl_chat.qc). The post carries this lobby's tag ("[#4] "
-  from "Open Lobby #4"), and the room's lines from players in this lobby are not relayed
-  back here: they were said here. A post has its own one-a-second gate and request, so a
-  quick second line or a pending post drops only the room's copy, without a note, and a
-  friend action is never refused for it.
-*/
-string() Social_RoomTag =
+// Freeze the sender's location in the message body; old stored lobby tags remain readable.
+string(entity e) Social_RoomTag =
 {
-	local string h;
-	local float k, i, c;
-
-	h = cvar_string("hostname");
-	k = -1;
-	for (i = 0; i < strlen(h); i = i + 1)
-		if (str2chr(h, i) == 35)        // '#'
-			k = i;
-	if (k < 0 || k >= strlen(h) - 1 || strlen(h) - k > 4)
-		return "[lobby] ";
-	for (i = k + 1; i < strlen(h); i = i + 1)
+	local string course;
+	course = "";
+	if (e.run_sp_phase == 2)
+		course = " Spectating";
+	else if (e.run_t_segs > 0)
 	{
-		c = str2chr(h, i);
-		if (c < 48 || c > 57)
-			return "[lobby] ";
+		if (e.run_t_track > 0)
+			course = sprintf(" B%g", bound(1, e.run_t_track, 999));
+		else
+			course = sprintf(" S%g", bound(1, e.run_t_seg + 1, 999));
 	}
-	return strcat("[", substring(h, k, -1), "] ");
+	return strcat("[", mapname, course, "] ");
 };
 
 float(string who) Social_HereWho =
@@ -207,7 +195,7 @@ void(entity e, string op, string who, string text) Social_Action =
 		if (e.social_roomreq && time - e.social_roomreqtime < 15) return;
 		e.social_roomlast = time + 1;
 		form = strcat(Social_Form(), "&game=1&token=", e.social_token, "&op=message&who=-&text=",
-		              uri_escape(strcat(Social_RoomTag(), uri_unescape(text))));
+		              uri_escape(strcat(Social_RoomTag(e), uri_unescape(text))));
 		e.social_roomreq = Account_NextId();
 		e.social_roomreqtime = time;
 		if (!uri_post(strcat(cvar_string("lobby_master"), "/api/social/action"), e.social_roomreq,

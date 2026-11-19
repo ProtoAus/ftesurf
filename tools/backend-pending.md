@@ -1,5 +1,21 @@
 # Backend handoff delivered together — 10 November 2026 UTC
 
+## P1622 pending: course-aware Story catalogue (19 November 2026)
+
+- Include current `surfd.py`'s opt-in `course zones` Story parser and effective-bonus-zone gate in the next guarded
+  backend generation. No schema/native/recording change. Missing/malformed/unreadable effective zones fail closed;
+  previously earned credit is independent of playability, and normal Story TTL refresh notices later zone edits.
+- Only AFTER that generation passes its existing fleet/backend gates, validate/promote `surfd/story.txt` with
+  `tools/story_push.py` and its current live-hash compare-and-swap; the old parser does not know `course zones`.
+  Do not directly scp the catalogue/code into the live sealed generation or bypass generation/fence guards.
+- Catalogue: 73 occupied ordinary Story levels, 71 real G4/G2 target pairs, all bronze finishes; eight requested
+  Story additions (autumn_fix exact KSF identity), autosave/gary_barlow and Nightingale B4/B5 Event additions.
+  The two Nightingale bonuses stay unavailable until Lex publishes their actual zones; finish-only, no invented
+  times. Audit/provenance: `tools/story-catalogue-audit.md`, `tools/story-groups.json`.
+- P1619–P1621 QC UI/chat/Splits changes are independent of this backend promotion. Local verification and actual
+  install/deployment boundaries are recorded in `tools/p1619-1622-delivery.md`; no public-fleet deployment was
+  performed by this task.
+
 The requested P1447/P1448 entries were activated together in the accepted primary
 backend, with the corresponding QC on all12 NanoPi lobbies. Public frontend assets
 and a real single-leg Fetch were verified. See the

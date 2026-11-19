@@ -1,5 +1,30 @@
 # AGENT_NOTES.md
 
+## P1619–P1622 boards, chat, Splits and Story/Event (19 Nov 2026)
+
+- Normal is implicit in the optional mode chips but explicitly labeled; click the selected chip to clear it.
+  Keep P1590's exclusive Segmented/TAS modes. Source selection reserves Fetch space in both boards; do not make
+  its presence move WOS/Momentum/KSF. Menu first-page requests default to `near=MH_Me()` unless an explicit
+  profile target exists; a near miss must still consume first-page rows when no old rows are held.
+- `Social_RoomTag(entity)` puts the sender's current map/course in stored text. Never rebuild old message
+  locations from the receiving lobby. Stage-result text belongs to Splits (`hud_splits_*`); its preview extends
+  the same editor bounds. No separate fixed rounded toast and no timing/recording changes.
+- Ordinary Story medals use the static aggregate `tools/story-groups.json`: finish / G4 / G2, strict-under
+  boundary +1 ms. Refresh explicitly with `tools/story_groups.py`, not WR multipliers or moving live targets.
+  Exact fixed builds stay exact (user confirmed surf_autumn_fix). Stable occupied slots/Story59/gates are retained.
+- Nightingale B4/B5 have opt-in `course zones`, unavailable until their own valid start/end zones exist in the
+  effective server file; higher-priority overrides do not fall through merely for missing bonuses. Availability
+  is cached with the existing Story calculation, credit is not revoked, and refresh is stale-while-revalidate.
+  Deploy backend parser/course gating in a guarded generation BEFORE publishing the catalogue. See
+  `tools/backend-pending.md`, `tools/story-catalogue-audit.md` and `tools/p1619-1622-delivery.md`.
+- Testing: headless can load CSQC and run console commands but never exercises CSQC_UpdateView/pixels. A startup
+  `map` before Renderer_Started is requeued at the tail (SV_Map_f); put waitms2000 before it, not only after it,
+  or waitmap can time out before the map ever executes. Source assertions are not rendered acceptance.
+- Native independent review failed before launch because /usr/bin/node lacked libsimdjson.so.36; no fallback
+  provider/CLI was used. Parent reviewed and added malformed numeric/deep JSON gating tests. Existing baseline
+  failures remain explicit: navigation expects PF_CF4 while untouched source defines5; two social configured-
+  verifier tests error on Flask2.2.5/Python3.14. Do not report those full suites green.
+
 ## P1618 map downloads (19 Nov 2026, worldofsurf-15)
 
 - A SQLite WAL database cannot be opened read-only by a sandboxed reader (ProtectSystem=strict) once the

@@ -914,20 +914,15 @@ void() Results_Frame =
 	}
 };
 
-/*
-  The toast: one line, above the split column, gone in a few seconds.
-
-  Built on the split-flash idiom rather than on sui -- it takes no input, it has
-  no hit target, and a sui frame per stage boundary would be a frame stack push
-  for something that is one string.  Patch 904: a Dusk pill, like the card.
-*/
+// A short-lived stage result below Splits, sharing its font, size and editor bounds.
 void(vector scr) Results_DrawToast =
 {
-	local float a, u, sz, lsz, life, tick, lw, tw, rw, w, h, pad;
-	local vector p, col;
+	local float a, u, sz, lsz, life, tick, lw, tw, rw, w, h, pad, base, k, bottom, i;
+	local vector p, col, hp, hs;
 	local string lab, t, r;
 
-	if (ui_rs_toastat <= 0)
+	if (!cvar("hud_splits") || !cvar("hud_results_toast")) return;
+	if (ui_rs_toastat <= 0 && !ui_he_open)
 		return;
 
 	tick = Timer_Tick();
@@ -937,6 +932,7 @@ void(vector scr) Results_DrawToast =
 		life = 3.5;
 
 	a = 1 - (cltime - ui_rs_toastat) / life;
+	if (ui_he_open) a = 1;
 	if (a <= 0)
 	{
 		ui_rs_toastat = 0;
@@ -951,33 +947,49 @@ void(vector scr) Results_DrawToast =
 		col = SUI_THEME_DIM;    // it did not record; say so by going quiet
 
 	u   = ui_cv_scale;
-	pad = 7 * u;
+	Font_Set(ui_font_mono);
+	base = Font_Px(7 * u);
+	sz = Font_Px(HUD_Size("hud_splits_size", base));
+	k = sz / max(1, base);
+	pad = 7 * u * k;
 	lab = sprintf("Stage %g", ui_rs_toastseg);
+	if (ui_he_open && ui_rs_toastat <= 0) lab = "Stage 3";
 	t   = Time_TickString(ui_rs_toastticks, tick);
+	if (ui_he_open && ui_rs_toastat <= 0) t = "0:24.816";
 	r   = "";
 	if (ui_rs_toastrank > 0)
 		r = sprintf("#%g of %g", ui_rs_toastrank, ui_rs_toastof);
-	Font_Set(ui_font_ui);
-	lsz = Font_Px(8 * u);
+	if (ui_he_open && ui_rs_toastat <= 0) r = "#12 of 145";
+	lsz = sz;
 	lw  = stringwidth(lab, TRUE, [lsz, lsz]);
-	Font_Set(ui_font_mono);
-	sz  = Font_Px(8 * u);
 	tw  = stringwidth(t, TRUE, [sz, sz]);
 	rw  = 0;
 	if (r != "")
 		rw = stringwidth(r, TRUE, [sz, sz]) + pad;
 	w = pad + lw + pad + tw + rw + pad;
-	h = sz + 8 * u;
+	h = sz + 8 * u * k;
 
-	p = [floor(scr_x * cvar("hud_splits_x")), floor(scr_y * cvar("hud_splits_y") * 0.62 - 4 * u), 0];
-	p_y = bound(2 * u, p_y, max(2 * u, scr_y - h - 2 * u));
-	sui_style_hud(scr);
-	_sui_round_draw(p, [w, h, 0], h * 0.5, SUI_THEME_EDGE, a * 0.95);
-	_sui_round_draw(p + '1 1 0', [w - 2, h - 2, 0], h * 0.5 - 1, SUI_THEME_PANEL, a * 0.95);
-	HUD_Text([p_x + pad + lw + pad, p_y + 4 * u], t, sz, col, a);
+	// Splits is centre-anchored and grows both ways; follow its lower edge.
+	p = [floor(scr_x * cvar("hud_splits_x")),
+	     floor(scr_y * cvar("hud_splits_y") + (ui_sp_n + 1) * (sz + 3 * u * k) * 0.5 + 4 * u * k), 0];
+	if (ui_he_open)
+	{
+		for (i = 0; i < hude_n; i = i + 1)
+		if (strcmp(hude_id[i], "splits") == 0)
+		{
+			hp = hude_pos[i]; hs = hude_size[i];
+			bottom = max(hp_y + hs_y, p_y + h);
+			hs_x = max(hs_x, w);
+			hs_y = bottom - hp_y;
+			hude_size[i] = hs;
+			break;
+		}
+		if (i == hude_n)
+			HUD_Rect("splits", p, [w, h, 0], [p_x, scr_y * cvar("hud_splits_y"), 0]);
+	}
+	HUD_Text([p_x + pad + lw + pad, p_y + 4 * u * k], t, sz, col, a);
 	if (r != "")
-		HUD_Text([p_x + pad + lw + pad + tw + pad, p_y + 4 * u], r, sz, SUI_THEME_DIM, a);
-	Font_Set(ui_font_ui);
+		HUD_Text([p_x + pad + lw + pad + tw + pad, p_y + 4 * u * k], r, sz, SUI_THEME_DIM, a);
 	HUD_Text([p_x + pad, p_y + (h - lsz) * 0.5], lab, lsz, SUI_THEME_ACCENT, a);
 	Font_Reset();
 };
