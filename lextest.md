@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P1623 — Linux deployment tooling
+
+- Host PowerShell7.7, real NoDeploy3VM build (zero warnings/byte-identical), read-only UTF8 SSH, focused7,
+  offline26 and independent review pass. No public deployment, permission change or gameplay claim.
+- On the next supported Windows build host, check native compiler/default second-install behavior is unchanged;
+  native Linux -Run is also not exercised by this task. See tools/p1623-linux-deploy.md.
+- The P1619–P1622 OS-shell blocker is superseded: PowerShell now works on Linux and is not needed on Pi.
+  Live rollout still requires a freshly qualified preservation caller/backend packet and normal owner Root
+  authentication where specified. Do not run bare -Pi or the legacy helper as a sealed-generation shortcut.
+
 ## P1619–P1622 — boards, chat, Splits and Story/Event
 
 Local QC build/install status and backend/fleet boundaries: `tools/p1619-1622-delivery.md`. These are owner checks,

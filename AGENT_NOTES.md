@@ -1,5 +1,24 @@
 # AGENT_NOTES.md
 
+## P1623 Linux PowerShell/deployment support (19 Nov 2026)
+
+- Lex's host has official checksum-verified PowerShell7.7 at ~/.local/share/powershell/7.7.0, launcher on PATH.
+  No Wine/root package change. The Pi does not need PowerShell. Read workspace SETUP-NOTES.md for commands.
+- build.ps1 supports native Unix QC discovery/defaults and NoDeploy; native Engine/Full still use wos-build.sh.
+  Real NoDeploy outputs match the Linux wrapper bytes, not proof of compiler/gameplay correctness. The entire
+  official Pi body remains45 unchanged statements; it still requires the current qualified preservation caller.
+- Legacy surfd-deploy Unix apply requires explicit owned WorkRoot (PlanOnly inert); lexical ancestry, owner
+  marker and mount metadata fail closed. Stage command quotes the whole ownership text, not just paths.
+  Full fixtures must supply WorkRoot to reach their intended later publication/refusal boundary.
+- test_surfd_deploy's nested collector needs a fresh per-test output: replay/normalization caches survive a
+  process even when rows/ledgers reset. Reusing args.out/flattened-collector caused zero-request/old-cache
+  failures; fixed the maintained consumer to existing self.root and asserted freshness, preserving the old
+  failed cohort/log. Do not wipe it or relabel a cache-contaminated run as a pass.
+- sudo true failing is not proof per-command fleet grants are absent; listing a grant is not Root approval.
+  The sealed-backend successor is already Python/Linux, not the legacy helper. Fresh reviewed payload/caller
+  bindings and owner authentication remain required. No broad sudoers change or live deployment was done.
+- Final focused7/full26 and independent review pass; source/probe limits in tools/p1623-linux-deploy.md.
+
 ## P1619–P1622 boards, chat, Splits and Story/Event (19 Nov 2026)
 
 - Normal is implicit in the optional mode chips but explicitly labeled; click the selected chip to clear it.

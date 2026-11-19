@@ -1,5 +1,10 @@
 # P1619–P1622 — requested boards/chat/Splits/Story changes
 
+**Later environment correction (P1623, 19 Nov):** the historical blocker below is superseded by
+`p1623-linux-deploy.md`: host PowerShell/native QC/read-only SSH now work on Linux; PowerShell is not needed
+on Pi and a failed unrestricted sudo probe did not establish per-command eligibility. This does not change
+this task's original no-live-rollout status or replace fresh caller/payload qualification and Root approval.
+
 Owner: pi.dev task `requests-20261119-5a3b`, 19 November 2026. Game baseline
 `163ef4edffb75e45872bc3260b522541c6de5dea`; engine documentation base `e8329c814`.
 Pre-existing unrelated `ROADMAP.md` tournament-planning edits were preserved and excluded.

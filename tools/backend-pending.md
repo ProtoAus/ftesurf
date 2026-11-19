@@ -1,5 +1,13 @@
 # Backend handoff delivered together — 10 November 2026 UTC
 
+## P1623 host tooling ready (19 November 2026)
+
+PowerShell7.7 now works on the Linux workstation; it is not required on the Pi. Native QC NoDeploy and the
+actual read-only SSH transport pass. Prior missing-shell/general-sudo probes were not a complete deployment
+eligibility test. Current per-command grants, exact packet/caller binding and owner-authenticated Root steps
+remain distinct. This tooling task did not promote any generation, catalogue or progs. The legacy helper's
+Linux WorkRoot support is not a route around sealed-generation controls. Details: `p1623-linux-deploy.md`.
+
 ## P1622 pending: course-aware Story catalogue (19 November 2026)
 
 - Include current `surfd.py`'s opt-in `course zones` Story parser and effective-bonus-zone gate in the next guarded

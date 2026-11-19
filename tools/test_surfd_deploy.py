@@ -397,7 +397,9 @@ print('FLAT_CODEC_ACTED')'''
                 held.rename(dest)
         # Existing real SQLite/index and Flask test-client suite. No socket,
         # HTTP listener, upstream request or game is launched by this suite.
-        output = args.out/'flattened-collector'
+        # Collector replay caches survive a process; isolate each test invocation.
+        output = self.root/'flattened-collector'
+        self.assertFalse(output.exists(), 'collector fixture must start without prior replay/cache state')
         r = run([sys.executable, 'test_ksfgrab.py', '--out', str(output)], cwd=layout, env=env)
         (args.out/'flattened-collector.log').write_text(r.stdout+r.stderr)
         count = re.search(r'Ran (\d+) tests', r.stderr)
@@ -486,14 +488,17 @@ sys.exit(int(os.environ.get('CONVERT_FAIL','0')))
         for name in ('surfd-deploy.ps1', 'surfd-deploy-plan.ps1'):
             shutil.copyfile(TOOLS/name, repo/'tools'/name)
         marker = self.root/'transport-called'
-        workspaces = Path('C:/FTESurf-worktrees')
+        workspaces = self.root/'workspaces'
+        workspaces.mkdir()
+        (workspaces/'OWNER.md').write_text('Offline publication-refusal fixture\n')
         before = set(workspaces.glob('surfdship-*'))
         r = powershell('''
 function ssh { Set-Content $env:DEPLOY_TEST_MARKER ssh; throw 'network forbidden' }
 function scp { Set-Content $env:DEPLOY_TEST_MARKER scp; throw 'network forbidden' }
 function New-Item { Set-Content $env:DEPLOY_TEST_MARKER workspace; throw 'workspace forbidden' }
-& (Join-Path $env:DEPLOY_TEST_REPO 'tools/surfd-deploy.ps1') -Ref $env:DEPLOY_TEST_REF
-''', DEPLOY_TEST_REPO=repo, DEPLOY_TEST_REF=complete, DEPLOY_TEST_MARKER=marker)
+& (Join-Path $env:DEPLOY_TEST_REPO 'tools/surfd-deploy.ps1') -Ref $env:DEPLOY_TEST_REF -WorkRoot $env:DEPLOY_TEST_WORKROOT
+''', DEPLOY_TEST_REPO=repo, DEPLOY_TEST_REF=complete, DEPLOY_TEST_MARKER=marker,
+             DEPLOY_TEST_WORKROOT=workspaces)
         self.assertNotEqual(r.returncode, 0, r.stdout+r.stderr)
         self.assertIn('could not establish publication', r.stdout+r.stderr)
         self.assertFalse(marker.exists())

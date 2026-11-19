@@ -1,5 +1,8 @@
 # World of Surf patch notes
 
+### P1623 Linux development tooling
+- PowerShell build/deployment tooling now supports native Linux compiler paths and safe owned workspaces. This is an operator-tooling change, not a gameplay update or live-server rollout.
+
 ### P1622 Story targets based on real groups, plus new maps
 - Bronze means completing the map. Silver targets G4 and gold targets G2 using a fixed snapshot of real group times; maps without enough time data stay finish-only.
 - Added fuchnut, despair, centipedes, shape, remeanian, autumn_fix, ferros and highlands to Story, and autosave/gary_barlow to Events. Nightingale B4/B5 are set up as finish-only Events and become available after their bonus zones are published.

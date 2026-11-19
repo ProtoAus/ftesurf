@@ -134,13 +134,15 @@ param(
     # The engine tree -- github.com/ProtoAus/ftequakers.  Only needed with
     # -Engine.  Override per-invocation with -FteRoot, or per-shell with
     # $env:FTESURF_FTEROOT.
-    [string]$FteRoot  = $(if ($env:FTESURF_FTEROOT)  { $env:FTESURF_FTEROOT }
-                          else { 'C:\msys64\home\Lex\fteqw' }),
+    [string]$FteRoot  = $(if ($env:FTESURF_FTEROOT) { $env:FTESURF_FTEROOT }
+                          elseif ($env:OS -eq 'Windows_NT') { 'C:\msys64\home\Lex\fteqw' }
+                          else { [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../ftequakers')) }),
 
     # A SECOND install that shares the same engine tree.  Where it exists the
-    # dual deploy is not optional -- see the header.  Absent on disk: skipped.
+    # dual deploy is not optional -- see the header.  Linux has no default second install.
     [string]$QuakeDir = $(if ($null -ne $env:FTESURF_QUAKEDIR) { $env:FTESURF_QUAKEDIR }
-                          else { 'C:\FTEQuake' }),
+                          elseif ($env:OS -eq 'Windows_NT') { 'C:\FTEQuake' }
+                          else { '' }),
 
     # msys2's make.  Only needed with -Engine.
     [string]$Make     = $(if ($env:FTESURF_MAKE)     { $env:FTESURF_MAKE }
@@ -149,13 +151,16 @@ param(
 
 $ErrorActionPreference = 'Stop'
 if ($NoDeploy -and ($Pi -or $Run)) { throw '-NoDeploy cannot be combined with -Pi or -Run' }
+$RunningOnWindows = $env:OS -eq 'Windows_NT'
+if (-not $RunningOnWindows -and ($Engine -or $Full)) {
+    throw 'Native -Engine/-Full here targets Windows. Use the workspace wos-build.sh engine/full for Linux.'
+}
 
-# Derived from this script's own location, so a fresh clone builds wherever it
-# landed.  build.ps1 lives in <install>\src\, so the install is its parent.
+# Derived from this script's own location, so a fresh clone builds wherever it landed.
 $SrcDir     = $PSScriptRoot
 $SurfDir    = Split-Path $SrcDir -Parent
-$EngineDir  = "$FteRoot\engine"
-$ReleaseDir = "$EngineDir\release"
+$EngineDir  = Join-Path $FteRoot 'engine'
+$ReleaseDir = Join-Path $EngineDir 'release'
 
 function Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Ok($msg)   { Write-Host "    $msg" -ForegroundColor DarkGray }
@@ -167,25 +172,28 @@ function Ok($msg)   { Write-Host "    $msg" -ForegroundColor DarkGray }
 #  `make -C <FteRoot>\engine qcc-rel FTE_TARGET=win64` puts it.  So there is no
 #  third-party download here: fteqcc comes from the engine this game requires.
 $Fteqcc = $null
-foreach ($cand in @((Join-Path $SrcDir 'fteqcc64.exe'),
-                    (Join-Path $SrcDir 'fteqcc.exe'),
-                    "$ReleaseDir\fteqcc64.exe")) {
-    if (Test-Path -LiteralPath $cand) { $Fteqcc = (Resolve-Path $cand).Path; break }
+$compilerNames = if ($RunningOnWindows) { @('fteqcc64.exe', 'fteqcc.exe') }
+                 else { @('fteqcc64', 'fteqcc') }
+$candidates = @($compilerNames | ForEach-Object { Join-Path $SrcDir $_ })
+$candidates += Join-Path $ReleaseDir $compilerNames[0]
+foreach ($cand in $candidates) {
+    if (Test-Path -LiteralPath $cand -PathType Leaf) { $Fteqcc = (Resolve-Path $cand).Path; break }
 }
 if (-not $Fteqcc) {
-    $onPath = Get-Command fteqcc64.exe, fteqcc.exe -ErrorAction SilentlyContinue |
+    $onPath = Get-Command -Name $compilerNames -CommandType Application -ErrorAction SilentlyContinue |
               Select-Object -First 1
     if ($onPath) { $Fteqcc = $onPath.Source }
 }
 if (-not $Fteqcc) {
+    $compilerTarget = if ($RunningOnWindows) { 'win64' } else { 'linux64' }
     throw @"
 fteqcc not found.
   looked in : $SrcDir
-              PATH
               $ReleaseDir
+              PATH
 Build it out of the engine tree (github.com/ProtoAus/ftequakers):
-    make -C "$EngineDir" qcc-rel FTE_TARGET=win64
-then copy engine\release\fteqcc64.exe into $SrcDir, put it on PATH, or set
+    make -C "$EngineDir" qcc-rel FTE_TARGET=$compilerTarget
+Keep $($compilerNames[0]) in engine/release or src, put it on PATH, or set
 `$env:FTESURF_FTEROOT so this script can find your engine tree.
 "@
 }
@@ -685,5 +693,6 @@ if ($PassThru) {
 
 if ($Run) {
     Step "Launching"
-    Start-Process -FilePath "$SurfDir\ftesurf64.exe" -WorkingDirectory $SurfDir
+    $clientName = if ($RunningOnWindows) { 'ftesurf64.exe' } else { 'ftesurf64' }
+    Start-Process -FilePath (Join-Path $SurfDir $clientName) -WorkingDirectory $SurfDir
 }

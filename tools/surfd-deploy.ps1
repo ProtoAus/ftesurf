@@ -75,6 +75,8 @@ param(
     # `.bak-preboard`) are never touched by any value: they are somebody's
     # deliberate rollback point, not this script's output.
     [int]$KeepDbBackups = 0,
+    # Linux apply requires an existing owned task root. PlanOnly creates nothing.
+    [string]$WorkRoot = "",
     # A deploy-only commit that reverts another session's unapproved work
     # (AGENTS.md: revert it in the deploy worktree, never on main) cannot be
     # on origin/main.  Say so explicitly; the commit is still what ships.
@@ -83,6 +85,17 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+
+function New-SurfdStageCommand([string]$Stage, [string]$Commit, [string]$Receipt) {
+    $parent = $Stage.Substring(0, [Math]::Max(1, $Stage.LastIndexOf('/')))
+    $owner = "Owner: surfd-deploy.ps1; commit $Commit; local receipt $Receipt; status active, retained on failure."
+    $qParent = "'" + $parent.Replace("'", "'\''") + "'"
+    $qStage = "'" + $Stage.Replace("'", "'\''") + "'"
+    $qOwner = "'" + $owner.Replace("'", "'\''") + "'"
+    return ("set -eu; umask 077; mkdir -p $qParent; mkdir $qStage; " +
+        "printf '%s\n' $qOwner > $qStage/OWNER.md; mkdir $qStage/surfd $qStage/tmp")
+}
+
 $repo = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'surfd-deploy-plan.ps1')
 try { $plan = Get-SurfdDeployPlan -Repo $repo -Ref $Ref -Only $Only }
@@ -99,6 +112,74 @@ if ($GuardStateDir) {
     }
 }
 if ($PlanOnly) { $plan | ConvertTo-Json -Depth 4; exit 0 }
+
+if (-not $WorkRoot) {
+    if ($env:OS -ne 'Windows_NT') {
+        throw 'Linux apply requires -WorkRoot pointing to an existing task directory with OWNER.md; PlanOnly needs none.'
+    }
+    $WorkRoot = 'C:\FTESurf-worktrees'
+}
+if (-not [IO.Path]::IsPathFullyQualified($WorkRoot)) { throw '-WorkRoot must be an absolute path' }
+if ($env:OS -ne 'Windows_NT') {
+    if ($WorkRoot.Contains('//') -or $WorkRoot -match '/\.{1,2}(/|$)') {
+        throw '-WorkRoot must be a canonical absolute path'
+    }
+    $rootItem = Get-Item -LiteralPath $WorkRoot -Force
+    for ($cursor = $rootItem; $null -ne $cursor; $cursor = $cursor.Parent) {
+        $node = Get-Item -LiteralPath $cursor.FullName -Force
+        if (-not $node.PSIsContainer -or ($node.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw '-WorkRoot and every ancestor must be ordinary directories, not links'
+        }
+    }
+    $ownerPath = Join-Path $WorkRoot 'OWNER.md'
+    if (-not (Test-Path -LiteralPath $ownerPath -PathType Leaf)) { throw '-WorkRoot requires OWNER.md' }
+    if ((Get-Item -LiteralPath $ownerPath -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        throw '-WorkRoot OWNER.md must not be a link'
+    }
+
+    function Assert-NoWorkRootMountAlias([string]$Path, [string[]]$Lines) {
+        function Below([string]$Child, [string]$Parent) {
+            return ($Parent -ceq '/' -or $Child -ceq $Parent -or
+                $Child.StartsWith($Parent.TrimEnd('/') + '/', [StringComparison]::Ordinal))
+        }
+        function MountPath([string]$Value) {
+            return $Value.Replace('\040', ' ').Replace('\011', "`t").Replace('\012', "`n").Replace('\134', '\')
+        }
+        $mounts = @(foreach ($line in $Lines) {
+            $f = $line -split ' +'
+            $separator = [Array]::IndexOf($f, '-')
+            if ($f.Count -lt 10 -or $f[2] -notmatch '^\d+:\d+$' -or
+                $separator -lt 6 -or $f.Count -lt $separator + 4) { throw 'Invalid mountinfo; ownership unproven' }
+            $subvolume = @($f[$separator + 3] -split ',' | Where-Object { $_.StartsWith('subvol=') })
+            if ($subvolume.Count -gt 1) { throw 'Invalid mountinfo; ambiguous subvolume' }
+            $declared = if ($subvolume.Count) { MountPath $subvolume[0].Substring(7) } else { '' }
+            [pscustomobject]@{ Device = $f[2]; Root = MountPath $f[3]; Point = MountPath $f[4];
+                Kind = $f[$separator + 1]; Subvolume = $declared }
+        })
+        if (-not $mounts.Count) { throw 'Missing mountinfo; ownership unproven' }
+        foreach ($mount in $mounts) {
+            if (-not (Below $Path $mount.Point)) { continue }
+            $identityOrigin = $false
+            foreach ($origin in $mounts) {
+                if ($origin.Point -ceq $mount.Point -or $origin.Device -cne $mount.Device -or
+                    -not (Below $mount.Root $origin.Root)) { continue }
+                $suffix = $mount.Root.Substring($origin.Root.Length).TrimStart('/')
+                $backing = ($origin.Point.TrimEnd('/') + '/' + $suffix).TrimEnd('/')
+                if (-not $backing) { $backing = '/' }
+                if ($backing -cne $mount.Point) {
+                    throw '-WorkRoot crosses a redirected or ambiguous mount; ownership unproven'
+                }
+                $identityOrigin = $true
+            }
+            $ordinary = $mount.Root -ceq '/' -or
+                ($mount.Kind -ceq 'btrfs' -and $mount.Subvolume -ceq $mount.Root)
+            if (-not $ordinary -and -not $identityOrigin) {
+                throw '-WorkRoot crosses an unresolved subtree mount; ownership unproven'
+            }
+        }
+    }
+    Assert-NoWorkRootMountAlias -Path $rootItem.FullName -Lines @(Get-Content -LiteralPath '/proc/self/mountinfo')
+}
 
 $script:PiExit = 0        # exit code of the last remote command; see Invoke-PiSsh
 function Fail([string]$m) {
@@ -229,7 +310,7 @@ $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 # have only 5 GB free while NVMe has ample room; stage on the target volume.
 $nonce = [guid]::NewGuid().ToString('N')
 $stage = "/srv/nvme/agent-work/surfdship-$sha-$stamp-$nonce"
-$work = Join-Path 'C:\FTESurf-worktrees' "surfdship-$sha-$stamp-$nonce"
+$work = Join-Path $WorkRoot "surfdship-$sha-$stamp-$nonce"
 # Exclusive creation before any archive/script, ownership before population.
 [IO.Directory]::CreateDirectory((Split-Path -Parent $work)) | Out-Null
 New-Item -ItemType Directory -Path $work -ErrorAction Stop | Out-Null
@@ -244,9 +325,7 @@ $dbBackupTag = "bak-$sha-$stamp-$nonce"
 
 # ---- 1. stage from the commit ---------------------------------------------
 Step "1. stage from the commit on the Pi"
-Invoke-PiSsh -Cmd ("set -eu; umask 077; mkdir -p '/srv/nvme/agent-work'; mkdir '$stage'; " +
-    "printf '%s\n' 'Owner: surfd-deploy.ps1; commit $commit; local receipt $work; status active, retained on failure.' > '$stage/OWNER.md'; " +
-    "mkdir '$stage/surfd' '$stage/tmp'") | Out-Null
+Invoke-PiSsh -Cmd (New-SurfdStageCommand -Stage $stage -Commit $commit -Receipt $work) | Out-Null
 if ($script:PiExit -ne 0) { Fail "could not make the stage directory on the Pi" }
 
 Push-Location $repo
