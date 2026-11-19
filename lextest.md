@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P1634 -- tournament lobbies (off by default; worldofsurf-ed)
+
+Local only until the backend enables tournaments. Launch the Desktop "World of Surf - Tournament Playtest (Local)"
+(or ~/.local/bin/wos-tournament-playtest); after the first build a launch opens the game in a few seconds.
+- Host a tournament: the room opens at once. Players left (seat slots, HOST/ACCEPTED/READY tags), settings right,
+  room chat under the players, the next step as one line under the panels. Do the panels line up with the chat?
+- Give the practice partner a seat; it accepts and says glhf. Change a tier or the round time: "Saving..." then
+  "Saved", the partner re-accepts. Kick asks "Sure?" first. Start draft: ban/pick on the cards.
+- I'm ready, then Launch: "the server is loading <map>", then both join. F6 in game: standings, round clock, maps;
+  a key held when F6 opens is released normally after it closes.
+- Anything unclear, cramped or ugly at your resolution? The narrow layout (window < ~1200 px) uses tabs.
+
 ## P1625-P1633 -- Lex's 20 Nov list (worldofsurf-bb)
 
 Measured on the PC (i9-9900K, RTX 2080 SUPER) in a hidden nested labwc from a disposable install

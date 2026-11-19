@@ -1225,6 +1225,8 @@ float(float reqid, float code, string body) Sty_Reply;        // m_story.qc, Pat
 float(float reqid, float code, string body) MU_NotesReply;    // m_update.qc, Patch 876
 float(float reqid, float code, string body) Mmm_Reply;        // m_mapmedia.qc, P1099
 
+float(float reqid, float code, string body) MT_Reply;
+
 void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 {
 	/*
@@ -1243,6 +1245,7 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 	}
 
 	// Before the poll's test, which is a bare inequality and would swallow it.
+	if (MT_Reply(reqid, responsecode, resourcebody)) return;
 	if (MF_Reply(reqid, responsecode, resourcebody))
 		return;
 	if (MC_Reply(reqid, responsecode, resourcebody))

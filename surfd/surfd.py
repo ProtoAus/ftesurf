@@ -44,6 +44,8 @@ from flask import Flask, Response, g, jsonify, request, send_file
 import hidupload        # signed, bounded raw journals; never a run verdict
 import accounts         # Steam accounts: schema 12 and its routes
 import social           # Steam friends; authenticated lobby-only capabilities
+import party_lobbies
+import tournaments      # Free alpha; durable reservations even while feature is off
 import viewmodel        # bounded account setup; additive schema 23
 import inventory        # account-owned cosmetics; additive schema 25
 import playstats        # consented lobby time/attempt watermarks; additive schema 26
@@ -1903,6 +1905,11 @@ def migrate():
         story_schema(conn)
         import mapmanifest
         conn.execute(mapmanifest.DDL)
+        tournaments.schema(conn)
+        party_lobbies.schema(conn)
+        # Ordinary address handoffs outlive an empty/map-arrival heartbeat.
+        conn.execute("CREATE TABLE IF NOT EXISTS lobby_handoffs"
+                     " (node TEXT PRIMARY KEY, until INTEGER NOT NULL)")
         conn.commit()
         if RANKED_LINKED:
             moved = accounts.ranked_now(conn, TIERS_IMPORTED)
@@ -2617,7 +2624,8 @@ def heartbeat():
             db.execute("DELETE FROM assignments WHERE asked_at < ?",
                        (now - ASSIGN_TTL,))
             row = db.execute(
-                "SELECT map, map_dir FROM assignments WHERE node = ?", (node,)
+                "SELECT map, map_dir FROM assignments WHERE node = ? AND NOT EXISTS"
+                " (SELECT 1 FROM tournament_reservations r WHERE r.node=assignments.node)", (node,)
             ).fetchone()
             if row is not None:
                 if mapname.lower() == row["map"]:
@@ -2665,6 +2673,7 @@ def live_rows(now):
         SELECT node, map, players, maxplayers, addr, name, last_seen, last_used
           FROM lobbies
          WHERE last_seen > ?
+           AND NOT EXISTS (SELECT 1 FROM tournament_reservations r WHERE r.node=lobbies.node)
          ORDER BY players DESC, map ASC
         """,
         (now - LOBBY_TTL,),
@@ -2806,6 +2815,14 @@ def _lobby_touch(db, node):
                " FROM lobbies) WHERE node=?", (node,))
 
 
+def _ordinary_handoff(db, node, now):
+    # Use the same 90s client-arrival window as assignments, without asking
+    # heartbeat to change maps or allowing its map ACK to erase this fact.
+    db.execute("DELETE FROM lobby_handoffs WHERE until < ?", (now,))
+    db.execute("INSERT INTO lobby_handoffs VALUES (?,?) ON CONFLICT(node)"
+               " DO UPDATE SET until=MAX(until,excluded.until)", (node, now + ASSIGN_TTL))
+
+
 def _join_lobby(db, now, src, mapname, map_dir, timed):
     """Read/select/claim under join_map's single write transaction."""
     db.execute("DELETE FROM assignments WHERE asked_at < ?", (now - ASSIGN_TTL,))
@@ -2841,6 +2858,7 @@ def _join_lobby(db, now, src, mapname, map_dir, timed):
             best = row
     if best is not None:
         _lobby_touch(db, best["node"])
+        _ordinary_handoff(db, best["node"], now)
         return _join_reply(200, {
             "map": mapname, "timed": timed, "state": "ready", "wait": 0,
             "addr": best["addr"], "name": best["name"],
@@ -2857,6 +2875,7 @@ def _join_lobby(db, now, src, mapname, map_dir, timed):
         if row is None:
             continue        # claimed a node that has since gone stale
         _lobby_touch(db, node)
+        _ordinary_handoff(db, node, now)
         return _join_reply(200, {
             "map": mapname, "timed": timed, "state": "loading",
             "wait": max(0, ASSIGN_TTL - (now - claim["asked_at"])),
@@ -2893,6 +2912,7 @@ def _join_lobby(db, now, src, mapname, map_dir, timed):
     db.execute("INSERT INTO assignments (node, map, map_dir, asked_at, src)"
                " VALUES (?, ?, ?, ?, ?)", (node, mapname, map_dir, now, src))
     _lobby_touch(db, node)
+    _ordinary_handoff(db, node, now)
 
     log.info("join: %s asked for %r -- assigning %s (was %r)",
              src, map_dir, node, row["map"])
@@ -8532,6 +8552,20 @@ accounts.register(app, types.SimpleNamespace(
     clean_text=clean_text, http=lambda *a, **k: STEAM_HTTP(*a, **k),
     public_host=lambda: PUBLIC_HOST, resolve=lambda name: RESOLVE(name),
     ranked_linked=RANKED_LINKED, social_issue=social.issue))
+
+tournaments.register(app, types.SimpleNamespace(
+    get_db=get_db, clock=lambda: time.time(), secret=lambda: SECRET,
+    setting=setting, game_json=game_json, log=log, lobby_ttl=LOBBY_TTL,
+    assign_ttl=ASSIGN_TTL, map_index=map_index, zone_file_index=zone_file_index,
+    map_tiers=map_tiers, maps_root=MAPS_DIR,
+    rate_key=rate_key, rate_ok=rate_ok))
+
+party_lobbies.register(app, types.SimpleNamespace(
+    get_db=get_db, clock=lambda: time.time(), secret=lambda: SECRET,
+    setting=setting, game_json=game_json, log=log, lobby_ttl=LOBBY_TTL,
+    assign_ttl=ASSIGN_TTL, map_index=map_index, zone_file_index=zone_file_index,
+    map_tiers=map_tiers, maps_root=MAPS_DIR,
+    rate_key=rate_key, rate_ok=rate_ok))
 
 social.register(app, types.SimpleNamespace(
     get_db=get_db, clock=lambda: time.time(), secret=lambda: SECRET,

@@ -361,4 +361,6 @@ client/cl_prederr.qc
 client/cl_crash.qc          // P1418: after cl_prederr.qc (PE_Local, PE_BoxUp)
 // P1391: the report panel. After cl_keycfg.qc (KC_Button, KC_TextW) and cl_prederr.qc (PE_Local).
 client/cl_report.qc
+// Tournament consumes the UI/account helpers above; main owns its lifecycle hooks.
+client/cl_tournament.qc
 client/cl_main.qc

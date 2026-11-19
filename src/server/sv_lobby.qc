@@ -1848,6 +1848,8 @@ void() Lobby_Frame =
   every single-player session, which runs this same progs -- silent.
 ===========================================================================
 */
+float() Tour_Owns;
+float(float reqid, float code, string body) Tour_Reply;
 float  lobby_run_waiting;       // build 64: the probe has said "waiting" once
 string lobby_board_said;        // what serverinfo "board" currently says
 float  lobby_hb_next;           // next server time to send
@@ -1999,6 +2001,11 @@ float(string body) Lobby_Directed =
 
 	if (substring(body, 0, 4) != "map ")
 		return FALSE;
+	if (Tour_Owns())
+	{
+		print("tournament: ignored ordinary directed map change on reserved server\n");
+		return TRUE;
+	}
 
 	want = substring(body, 4, strlen(body) - 4);
 
@@ -2067,6 +2074,7 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 		if (Inv_SVReply(reqid, responsecode, resourcebody)) return;
 		if (VM_SVReply(reqid, responsecode, resourcebody)) return;
 		if (Social_Reply(reqid, responsecode, resourcebody)) return;
+		if (Tour_Reply(reqid, responsecode, resourcebody)) return;
 		Account_Reply(reqid, responsecode, resourcebody);
 		return;
 	}
@@ -3524,6 +3532,7 @@ void() Lobby_Cycle =
 		cyc_cvreg = TRUE;
 	}
 
+	if (Tour_Owns()) return;
 	per = cvar("lobby_cycle");
 	if (per <= 0)
 	{

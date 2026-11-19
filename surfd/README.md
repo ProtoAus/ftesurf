@@ -1461,3 +1461,221 @@ Control: `python surfd/test_admin_similarity_probe.py` (real SQLite interruption
 All three are deployed/installed-verified on the Pi at 2026-10-08T13:59:52Z.
 Exact-source controls, ship set, failed procedure arms and verification limits:
 [tools/p595observers.md](../tools/p595observers.md). No game/reader/config swap.
+
+## Tournament free alpha (isolated integration only)
+
+This is a **clickable 2D lobby**, with the current server map as its background;
+there is no new 3D lobby, billing, private match mode or autoscaler. This section
+is an alpha operating/test contract, **not approval to enable production**.
+
+The backend defaults OFF (`SURFD_TOURNAMENTS=0`, environment first then the existing
+`surfd.env` loader). Game servers separately opt in using `tournament_enable=1`
+and advertise capability with the keyed state poll below. Operator-qualified
+`SURFD_TOURNAMENT_MAPS` is an explicit comma/space-separated allowlist, at most 24
+build names. Lock requires at least **3N distinct installed, zoned, enabled surf
+build names** for N accepted competitors (2..8). The installed index preserves
+case for changelevel. No map uploads/downloads are initiated by this feature.
+Qualification is operator-owned: a zone file is not proof that a map is safe,
+that a shader/renderer is ready, or that the backend verified its BSP checksum.
+Do not change an allowlisted build's bytes during a match.
+
+### Fixed game endpoint
+
+`POST /api/tournaments/game` is form encoded, with the existing lobby master
+`key`, `node`, `op`. Never send that key or a social capability to clients.
+Bad keys get HTTP403. **Valid-key replies always HTTP200**, including semantic
+refusals: `{v:1,ok:0|1,status,error?,match:<public snapshot>|null}`. Check `ok`,
+not just HTTP status. Successful mutations return `status=ok` (release returns
+`released`); failures return `refused` or `storage`. `state` returns `ok` or
+`disabled`. Storage failures may be retried with the **same** request.
+
+- `state`: read current node reservation, including aborted/finished matches.
+  Include `enabled=1,occupants=<0..256>` every poll to advertise server opt-in
+  and complete native-slot occupancy (fresh for 20s), or `enabled=0` to withdraw
+  capability. A missing/unknown native count is not an empty slot. Capability
+  needs an already-known heartbeat
+  node. No actor token or request/revision is required. Polling cannot advance
+  clocks, clear readiness, abort, release, or reallocate a match.
+- Every other op requires a stable `request` (1..64 lowercase hex) and expected
+  `revision`. Retries must preserve all operation fields. A transactional journal
+  returns the original committed reply, even if the match has since progressed;
+  the receiver must not apply an older snapshot over a newer revision. Changing
+  fields under one request ID is refused. IDs are unique per node, across matches.
+  A refusal does not consume the ID. A stale revision needs resync/new intent,
+  not a blind new-ID retry of an already committed operation.
+- `create`: `revision=0,capacity=2..8,round_seconds=60..900,occupants=1,token`.
+  The token is the **server-held** existing social token. `social.session` checks
+  its digest, node, expiry, unbanned account and current key link on every actor
+  request, including retries. No claimed public handle or key proves an actor.
+  Creator starts competing, unaccepted. Creation needs fresh heartbeat + capability,
+  no ordinary pending assignment, no reservation and enough physical client slots.
+  Backend requires heartbeat players<=1 and the trusted server occupancy assertion
+  exactly 1. QC must recheck full client-slot occupancy before changing mode.
+  This connect-first handoff is **not an authenticated pre-connect reservation**.
+- Subsequent mutations: `id=<match id>,revision=<current revision>`. Snapshot
+  `epoch` equals the randomly generated match ID (immutable ownership epoch).
+  `generation` equals the round index (1..7). Both persist through backend reload
+  and map changes; neither is a process PID/time-based lease.
+- Actor ops additionally send `token`: `enter`, `seat(target=<public who>)`,
+  `accept`, `lock`, `ban(map=<exact card spelling>)`, `pick(map=...)`, `ready`,
+  `start`, `next`, `leave`, `cancel`. Only host can seat/lock/start/next/cancel;
+  ban/pick requires the actual account's draft turn, **not host proxy voting**.
+  Seating toggles player/spectator in lobby and invalidates every competitor's
+  acceptance so the new roster is acknowledged.
+  Every competitor must accept to lock; entrants and rules then freeze. New
+  arrivals can only enter as spectators (max64 spectators, max8 competitor/eliminated
+  rows, max72 total; 256 distinct proven accounts per match lifetime to bound history).
+- Server-only ops have **no token**, but require `epoch=<snapshot epoch>` as well
+  as ownership ID, CAS revision and request: `arrive`, `go`, `score`, `settle`,
+  `advance`, `abort`, `release`. Fleet-key holders are trusted event issuers;
+  clients must never be able to invoke these directly through command forwarding.
+- `arrive`: `current_map=<exact scheduled map>,generation=<snapshot generation>`.
+  Only in loading; the first arrival establishes the round, repeats never reset
+  readiness. `ready` sends the same two fields and requires a surviving seat.
+  Host `start` requires everyone ready and moves to countdown, not live.
+- `go`: `elapsed_ms=5000..3600000,tickrate=1..1000` after common 5-second countdown.
+  Locks the round tickrate. The game server owns actual live/deadline clocks after
+  this ACK. Neither state polling nor repeated snapshots restart those clocks.
+- `score`: `who,ticks,tickrate,current_map,generation,elapsed_ms,start_elapsed_ms,runid`.
+  Ticks are positive, at most round_seconds*tickrate; rate must match GO's rate.
+  Start is nonnegative and strictly before finish; finish must be <= round_seconds
+  *1000 (a finish exactly at cutoff is accepted). `runid` is a dedicated stable
+  **16..64 lowercase hex event ID**, not a legacy short recorder run number.
+  Event IDs cannot be reused anywhere within the match, even on a later map.
+  Best ticks are round-owned, never personal/world PBs. The trusted QC producer
+  must admit only clean, unassisted, main-course finishes whose run began live;
+  the backend does not parse recorder files or independently attest that predicate.
+- `settle`: `elapsed_ms>=round_seconds*1000` (max3600000). A unique DNF loses;
+  otherwise the unique slowest best loses. Results assign loser place equal to
+  the pre-elimination surviving count, final winner place1. Tied slowest best,
+  multiple DNF or all DNF **abort with explicit no-contest**. No random elimination
+  and no claimed tiebreak/reserve replay support. `advance`/host `next` moves results
+  to the next loading generation, clearing readiness and round bests, or finished.
+- Competitor `leave` after lock aborts no-contest: withdrawal replay is not
+  implemented. It never creates a second round elimination. Spectators can leave
+  without cancelling a live match. Host `cancel` works only before the first GO;
+  no post-GO host veto. Server `abort` gives no-contest without freeing the node.
+- `release`: only finished/cancelled/aborted and requires `restored=1`, the trusted
+  QC acknowledgement that public mode was restored. This is the **only** reservation
+  removal. Abort/release remain available even if the backend feature is turned off.
+
+The candidate cards are a seeded subset of exactly 3N qualified builds. Draft
+order is seeded/shuffled once, bans in seeded entrant order then picks in
+reverse order. There is one distinct ban and one distinct pick per entrant, no
+skipping. Picks are seeded/shuffled into N-1 scheduled rounds and one reserve.
+The reserve is displayed but unused in this alpha. Later rounds require explicit
+host start after fresh arrival/readiness; no wall-clock readiness assumption.
+
+### Persistence, exclusions and public browser
+
+Four additive `tournament_*` tables bootstrap idempotently without changing main
+SQLite `user_version`. Snapshots, account bindings, consumed score event IDs,
+request outcomes, reservations and capability polls are stored in the existing
+protected SQLite database. `BEGIN IMMEDIATE` serializes both tournament admission
+and ordinary allocator decisions. There is no active-match timeout. Backend
+reload, map changes, heartbeat loss or disabling the feature do not free a node.
+Keep this database and its WAL under the existing preservation/backup procedure;
+never clear tournament tables merely to recover public capacity.
+
+The shared ordinary `live_rows` query excludes reservations **regardless of feature
+flag**, covering same-map reuse, pending-map reuse, idle selection, busy fallback
+and `/lobbies.json`. Heartbeat directed assignments cannot move reserved nodes.
+Direct friend/connect links still require QC spectator admission on arrival; they
+do not allocate/changelevel a node. Unresolved/aborted nodes stay protected until
+explicit restoration/release. A stuck owner requires deliberate operator recovery,
+not a shorter TTL. No extra server is spawned automatically.
+
+`GET /api/tournaments` is public and read-only:
+`{v:1,enabled:0|1,rows:[{id,node,name,addr,phase,players,capacity,map}],slots:[{node,name,addr,map}]}`.
+Only reserved public nonterminal matches appear in rows. Slots require opt-in
+capability <=20s old and a fresh **empty** heartbeat, excluding assignments and
+reservations. It publishes no account IDs, tokens, recorder internals or keys.
+Collecting/drafting rows have an empty map and remain joinable; only empty-server
+create slots require a concrete map. Disabled returns empty rows/slots. An active
+QC owner seeing backend-disabled or a refused trusted control holds play, queues
+a single durable abort and follows the still-permitted restoration/release path;
+it cannot remain silently LIVE after a refused settle. Per-server
+`tournament_enable=0` blocks new creation but retains ownership of an existing
+match. State snapshots intentionally expose only public
+who/name/role/consent/readiness/round-best/place and draft/map/rule state. `_`-prefixed
+internal account/seed/event fields are never returned. Public names are bounded;
+the game must still percent-encode text in its separate server->CSQC wire.
+
+Storage is bounded: 8192 scored events per match and 50000 committed mutation
+ordinary requests across the alpha database. Abort/release are exempt from the
+journal ceiling so full storage policy cannot strand a node; each admitted match
+can add at most one successful abort and one release beyond that ceiling. Reaching
+a limit refuses more work instead of forgetting event/idempotency history. There
+is no automated archival/payment-grade
+retention process; plan an explicit reviewed archival procedure before long-term
+operation. Do not prune an active match or a request journal on a timer.
+
+### Local validation and remaining gates
+
+With Flask installed in an owned environment, set `TMPDIR` to owned scratch and run:
+
+```
+python -B surfd/test_tournaments.py
+python -B surfd/test_join.py
+python -B surfd/test_social.py
+python -B surfd/test_mappool.py
+python -B surfd/test_schema_compat.py --work-root <owned-root>/schema
+```
+
+The new suite uses pure transition checks and real Flask/SQLite fixtures: permission
+failures, stale revisions, duplicate requests/scores, concurrent admission/CAS,
+reservation same-map/pending/idle/fallback exclusion, incomplete draft/readiness,
+strict score cutoff, map/backend restore, unique DNF/slowest, ties/all-DNF explicit
+no-contest, winner places and explicit release. All accounts/tokens are synthetic;
+this is not a new test of Steam signature verification (existing accounts/social
+suites cover that boundary).
+
+Native fixture tools additionally take explicit **owned** work roots and pinned
+compiler/engine paths; they do not use the shared install or real player data:
+
+```
+python -B tools/test_tournament_server.py --work-root <owned-root>/native --compiler <fteqcc64> --server <fteqw-sv64>
+python -B tools/test_tournament_menu.py --work-root <owned-root>/menu --compiler <fteqcc64> --client <fteqw64>
+python -B tools/test_tournament_transport.py --work-root <owned-root>/transport --compiler <fteqcc64> --server <fteqw-sv64>
+```
+
+The native server fixture has 29 passing guard/codec/callback checks, including
+identity changes mid-snapshot, release-to-second-create CAS reset and disabled-LIVE
+abort deduplication. `--mutant-no-score` deliberately bypasses its finish consumer
+and MUST fail: this is a negative control, not a product pass. The headless menu
+fixture has eight passing actual menuQC parser/action checks; final connect
+emission is captured, not executed or presented as visual acceptance. The native
+transport fixture makes actual keyed HTTP requests to owned Flask, physically
+loads two synthetic maps with QC resets, restores elimination state, then confirms
+explicit public restoration/release and local clear. It injects round-one scores
+through the real rule kernel in one fixture transaction and fast-forwards only
+the terminal result screen. It is NOT a real three-player/start/finish test.
+
+All three QC programs compile with their baseline warning counts (66 server,
+78 client, 25 menu). Current client source requires the compiler's documented
+`-max_strings 4194304` capacity, also required by its peer baseline; a successful
+manual compile is not qualification of the unchanged stock build entrypoint.
+Production ship-list/build-entrypoint integration remains a release gate.
+
+Open the in-game window with `tournament`; the menu has a Tournament entry.
+Create/Join/Watch are a free-alpha connect-first workflow, not paid pre-connect
+allocation. The browser creates with the 8-seat/300-second preset; isolated
+operator tests may use `cmd tour create <2..8> <60..900>` instead. Server-side
+creation requires a linked creator as the sole native occupant, sufficient player
+capacity and a spectator cap that leaves competitor seats. No source/content
+mounts or public services are activated automatically.
+
+Fresh independent review accepted only isolated default-OFF alpha integration;
+four discovered lifecycle findings were fixed and covered by native/API fixtures.
+Pending acceptance: linked real-client reconnect/native spectator lifecycle,
+actual clean-main finishes, common starts/cutoffs with several clients, 2D visual
+and input behavior, thumbnails, manual-ready UX and qualified Source content.
+Manual ready is not proof of renderer/shader readiness. Full tiebreak/reserve
+replay, forfeit/recovery continuation, private mode, scoreboard/history polish,
+paid entitlements and payment handling remain incomplete. Nothing here is
+paid-ready, deployed or production-enabled by these local tests.
+
+Follow workspace `COORDINATION.md`: reserve exact overlapping files before shared
+edits; use `wos-lock game` for shared installs/builds/tests and retain one outer
+lock through dependent work. Independently owned fixtures do not need that lock.
+Do not disturb another agent's processes, compiled actors or player data.

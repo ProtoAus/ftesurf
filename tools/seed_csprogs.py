@@ -36,21 +36,30 @@ def md4(msg):
         c = (c + cc) & 0xFFFFFFFF; d = (d + dd) & 0xFFFFFFFF
     return struct.pack('<4I', a, b, c, d)
 
-path = sys.argv[1] if len(sys.argv) > 1 else r"C:\FTESurf\ftesurf\csprogs.dat"
-data = open(path, 'rb').read()
-dig = md4(data)
-fold = [0, 0, 0, 0]
-for i, byte in enumerate(dig): fold[i % 4] ^= byte
-h = '%x' % struct.unpack('<I', bytes(fold))[0]
-print('digest', dig.hex(), 'folded', h)
+def fold_md4(digest):
+    """The engine's XOR of the four little-endian MD4 words."""
+    a, b, c, d = struct.unpack('<4I', digest)
+    return a ^ b ^ c ^ d
 
-import os, shutil
-d = os.path.join(os.path.dirname(os.path.abspath(path)), 'downloads', 'csprogsvers')
-if os.path.isdir(d):
-    dst = os.path.join(d, h + '.dat')
-    shutil.copyfile(path, dst)
-    print('seeded', dst)
-    # Preserve other hashes AND pending .tmp/.dcl downloads. Their names do not
-    # establish ownership or inactivity; a peer/owner client may still use them.
-else:
-    print('no', d, '-- copy manually')
+
+def main():
+    import os, shutil
+    path = sys.argv[1] if len(sys.argv) > 1 else r"C:\FTESurf\ftesurf\csprogs.dat"
+    with open(path, 'rb') as source:
+        dig = md4(source.read())
+    # Cache names retain the CLI's historical unpadded representation.
+    h = '%x' % fold_md4(dig)
+    print('digest', dig.hex(), 'folded', h)
+    d = os.path.join(os.path.dirname(os.path.abspath(path)), 'downloads', 'csprogsvers')
+    if os.path.isdir(d):
+        dst = os.path.join(d, h + '.dat')
+        shutil.copyfile(path, dst)
+        print('seeded', dst)
+        # Preserve other hashes AND pending .tmp/.dcl downloads. Their names do not
+        # establish ownership or inactivity; a peer/owner client may still use them.
+    else:
+        print('no', d, '-- copy manually')
+
+
+if __name__ == '__main__':
+    main()

@@ -1173,9 +1173,11 @@ void(float reqid, float code, string body) Account_Reply =
   kept whatever `*phash` its client sent, and the room list drew another
   account's best beside it (Patch 629's review; true before it too).
 */
+void(entity e) Tour_Connected;
 void() SpectatorConnect =
 {
 	Account_Connect(self);
+	Tour_Connected(self);
 	forceinfokey(self, "*phash", "");
 	forceinfokey(self, "*pself", "");
 };

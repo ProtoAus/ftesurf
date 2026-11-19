@@ -605,6 +605,14 @@ void() Vote_Frame =
 	local float live, c, left;
 
 	Vote_Cvars();
+	if (Tour_Owns())
+	{
+		if (lobby_vt_kind) Vote_Cancel();
+		vote_on = FALSE;
+		lobby_vt_force = FALSE;
+		Vote_Publish();
+		return;
+	}
 	if (!vote_init)
 	{
 		vote_init = TRUE;
@@ -855,6 +863,7 @@ void(entity p, string tail) Vote_Nominate =
 
 void(entity p, float n, float id) Vote_Cast =
 {
+	if (Tour_Owns()) return;
 	if (!lobby_vt_kind)
 	{
 		sprint(p, PRINT_MEDIUM, "vote: no vote running\n");
@@ -918,6 +927,11 @@ float(entity p, string w, string tail, float from, float argc) Vote_Say =
 	if (w != "!nominate")
 	if (tail != "")
 		return FALSE;                           // "!rtv pls" is chat
+	if (Tour_Owns())
+	{
+		Vote_Tell(p, "map votes are unavailable during a tournament");
+		return TRUE;
+	}
 	Vote_Cvars();
 	if (time < p.vote_cmdat)
 	{

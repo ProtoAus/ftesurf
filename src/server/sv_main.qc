@@ -270,6 +270,7 @@ void() StartFrame =
 	*/
 	Lobby_Heartbeat();
 	Social_Frame();
+	Tour_Frame();
 	PlayStats_Frame();
 	Account_SelfFrame();            // Patch 1000: private games publish players' own marks
 	VM_SVFrame();

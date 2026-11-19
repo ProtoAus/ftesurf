@@ -211,26 +211,32 @@ vector(vector screensize) MH_ShellOrigin =
 
 void(vector screensize) MH_Tabs =
 {
-	local float x, w, total, i, target, on;
+	local float x, w, total, i, j, n, target, on;
 	local string id, label;
 	local vector pos, textsize;
 	pos = MH_ShellOrigin(screensize);
 	screensize = MH_ShellSize(screensize);
 	mh_header_pos = pos; mh_header_size = [screensize_x, screensize_x < 900 ? 32 : 40];
+	// 24/32 are rungs of the display ladder: native glyphs, not a scaled face.
 	textsize = screensize_x < 900 ? '24 24 0' : '32 32 0';
 	Font_Set(ui_font_display);
+	// Draw order LOBBIES MAPS STORY EVENT [TOURNAMENT] SETTINGS QUIT; i keeps each
+	// tab's old index (ids home_tab0..6, targets), j is its slot.
+	n = MT_TabVisible() ? 7 : 6;
 	total = -28;
-	for (i = 0; i < 6; i = i + 1)
+	for (j = 0; j < n; j = j + 1)
 	{
-		label = i == 0 ? "LOBBIES" : (i == 1 ? "MAPS" : (i == 2 ? "STORY" : (i == 3 ? "EVENT" : (i == 4 ? "SETTINGS" : "QUIT"))));
+		i = (n == 7 && j == 4) ? 6 : ((n == 7 && j > 4) ? j - 1 : j);
+		label = (i == 6) ? "TOURNAMENT" : ((i == 0) ? "LOBBIES" : ((i == 1) ? "MAPS" : ((i == 2) ? "STORY" : ((i == 3) ? "EVENT" : ((i == 4) ? "SETTINGS" : "QUIT")))));
 		total = total + stringwidth(label, TRUE, textsize) + 28;
 	}
 	x = max(4, floor((screensize_x - total) * 0.5));
 	sui_push_frame(pos, mh_header_size);
-	for (i = 0; i < 6; i = i + 1)
+	for (j = 0; j < n; j = j + 1)
 	{
-		label = i == 0 ? "LOBBIES" : (i == 1 ? "MAPS" : (i == 2 ? "STORY" : (i == 3 ? "EVENT" : (i == 4 ? "SETTINGS" : "QUIT"))));
-		target = i == 0 ? SCREEN_MAIN : (i == 1 ? SCREEN_CREATE : (i <= 3 ? SCREEN_STORY : SCREEN_SETTINGS));
+		i = (n == 7 && j == 4) ? 6 : ((n == 7 && j > 4) ? j - 1 : j);
+		label = (i == 6) ? "TOURNAMENT" : ((i == 0) ? "LOBBIES" : ((i == 1) ? "MAPS" : ((i == 2) ? "STORY" : ((i == 3) ? "EVENT" : ((i == 4) ? "SETTINGS" : "QUIT")))));
+		target = (i == 6) ? SCREEN_TOURNAMENT : ((i == 0) ? SCREEN_MAIN : ((i == 1) ? SCREEN_CREATE : ((i <= 3) ? SCREEN_STORY : SCREEN_SETTINGS)));
 		on = (menu_screen == target);
 		if (i == 4 && menu_screen == SCREEN_VISUALS) on = TRUE;
 		if (i == 0 && menu_screen == SCREEN_STATS) on = TRUE;       // P1084: opened from the Lobbies home

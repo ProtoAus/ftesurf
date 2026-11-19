@@ -164,6 +164,7 @@ void() CL_RenderMapFrame =
 
 void() CSQC_WorldLoaded =
 {
+	Tour_Clear();
 	cl_scene_worldonly = FALSE;
 	TASJargon_FlyCancel(FALSE);     // P1449: Jargon's editor camera does not outlive the map (review)
 	TASUI_Close();
@@ -379,6 +380,7 @@ void() TimeScale_ThreadRelease =
 
 void(float apilevel, string enginename, float engineversion) CSQC_Init =
 {
+	Tour_Init();
 	SaveEvent_Init();
 	Font_Init();
 	sui_style_init();
@@ -953,7 +955,7 @@ void(float apilevel, string enginename, float engineversion) CSQC_Init =
 	print("FTESurf CSQC loaded\n");
 };
 
-void() CSQC_Shutdown = { Weather_Free(); TASUI_Close(); TASShare_Reset(); TimeScale_PredictRelease(); TimeScale_ThreadRelease(); MA_Shutdown(); Archive_ClientCancel(); Friends_MenuClear(); Scores_NativeClose(); if (obc_dirty) OBC_Save(); };
+void() CSQC_Shutdown = { Tour_Shutdown(); Weather_Free(); TASUI_Close(); TASShare_Reset(); TimeScale_PredictRelease(); TimeScale_ThreadRelease(); MA_Shutdown(); Archive_ClientCancel(); Friends_MenuClear(); Scores_NativeClose(); if (obc_dirty) OBC_Save(); };
 
 /*
   Forced view angles from the server -- svc_setangle, its relative form, and
@@ -1336,6 +1338,14 @@ void() CSQC_Input_Frame =
 		TimeScale_InputFrame();
 		return;
 	}
+	// The F6 panel holds the cursor: an empty cmd, after the handlers above that act
+	// "whatever else is open" (spectate, timescale return, count-in lock, replay, ghost).
+	if (tour_open)
+	{
+		input_movevalues = '0 0 0';
+		input_buttons = input_impulse = 0;
+		return;
+	}
 	if (TASJargon_InputFrame())     // P1449: Jargon's route editor flies a camera on the movement keys (cl_jargon.qc)
 	{
 		TimeScale_InputFrame();
@@ -1507,6 +1517,7 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 	  steal of the messagemode bind happens here because this is the only
 	  place offered keys before the engine runs their bind.
 	*/
+	if (Tour_Input(evtype, scanx, chary, devid)) return TRUE;
 	Vote_Track(evtype, scanx);      // Patch 372: observes only -- the draft below swallows key-ups
 	MPad_Track(evtype, scanx, chary);   // Patch 390: observes only -- the draft swallows deltas
 	if (evtype == IE_KEYDOWN)
@@ -1925,6 +1936,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 	// and a gap in the sidecar would read as a camera that teleported.
 	Rec_ViewFrame();
 	Net_MatchTicrate();             // P1083: every frame, not only at map load
+	Tour_Frame();
 	Account_Frame();                // Patch 615: here, not with the HUD, which a menu skips
 	StoryToast_Poll();               // medal mailbox advances even while a menu hides the HUD
 	PE_Frame();                     // Patch 1195: a prederror report is written even under a menu
@@ -2399,6 +2411,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		WPU_Draw(scr);
 		TASUI_Draw(scr);
 		Gfx_Draw(scr);                  // P1566: the last bracket before the board's, so its clicks are its own
+		Tour_Draw(scr);
 		GameMode_Draw(scr);             // P1598: never in a frame with Gfx_Draw's bracket (it yields)
 		Friends_Finish();
 
@@ -2490,6 +2503,7 @@ float(string cmd) CSQC_ConsoleCommand =
 	// next thing to run is very likely a command.  Nothing real is nested here.
 	cl_input_real = FALSE;
 	cmdargc = tokenize(cmd);
+	if (Tour_Command(cmdargc, cmd)) return TRUE;
 	if (RampWear_Command(cmdargc)) return TRUE;
 	if (GA_Command()) return TRUE;
 	if (MA_Command()) return TRUE;

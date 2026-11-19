@@ -140,6 +140,13 @@
 #define SCREEN_STORY    9
 #define SCREEN_CHAT    10
 #define SCREEN_SETTINGS 11
+#define SCREEN_TOURNAMENT 13
+void(vector scr) MT_Draw;
+void() MT_Frame;
+float() MT_Esc;
+void() MT_ChatSend;
+float() MT_TabVisible;
+string mt_chatdraft;
 #define SCREEN_STATS   12       // P1084: hud_player's Stats page (m_stats.qc)
 void() MC_Init;
 void() MC_Open;
@@ -261,7 +268,7 @@ float menu_screen;
 float() ui_browser_screen =
 {
 	return (menu_screen == SCREEN_MAIN || menu_screen == SCREEN_CREATE || menu_screen == SCREEN_STORY
-	        || menu_screen == SCREEN_STATS);
+	        || menu_screen == SCREEN_STATS || menu_screen == SCREEN_TOURNAMENT);
 };
 float ui_boot_savedshowall;
 float ui_boot_savedalso, ui_boot_bhop;  // P1583: the saved Bhop chips; the Bhop-only count
@@ -8306,6 +8313,8 @@ void() m_init =
 	registercommand("ui_stats_open");
 	registercommand("ui_maplist");
 	registercommand("ui_browse");
+	registercommand("ui_tournaments");
+	registercommand("ui_tournament_say");
 	registercommand("ui_compsort");
 	registercommand("ui_stats");
 	registercommand("ui_build");
@@ -8482,6 +8491,9 @@ void(vector screensize) m_draw =
 	ui_boot_preload();
 	ui_dlkb_step();                 // Patch 999
 
+	// A joined main-menu waiting room must receive the host's Start even
+	// while another menu page is open. MT_Frame keeps its own consent/state gate.
+	MT_Frame();
 	// m_draw is called EVERY frame whether or not the menu has focus
 	// (menu.c:168-176), so the gate is ours to enforce.
 	if (!menu_active)
@@ -8552,7 +8564,7 @@ void(vector screensize) m_draw =
 	if (menu_screen == SCREEN_CREATE) ui_map_backdrop(fullsize);
 	shell = (menu_screen == SCREEN_MAIN || menu_screen == SCREEN_CREATE || menu_screen == SCREEN_STORY
 	         || menu_screen == SCREEN_VISUALS || menu_screen == SCREEN_MUSIC || menu_screen == SCREEN_CHAT || menu_screen == SCREEN_SETTINGS
-	         || menu_screen == SCREEN_STATS);
+	         || menu_screen == SCREEN_STATS || menu_screen == SCREEN_TOURNAMENT);
 	if (shell)
 	{
 		shellsize = MH_ShellSize(screensize);
@@ -8595,6 +8607,8 @@ void(vector screensize) m_draw =
 			Mlb_Draw(content);
 		}
 	}
+	else if (menu_screen == SCREEN_TOURNAMENT)
+		MT_Draw(MH_ContentSize(screensize));
 	else if (menu_screen == SCREEN_CHAT)
 		MC_Draw(screensize);
 	else if (menu_screen == SCREEN_SETTINGS)
@@ -8719,6 +8733,12 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 	if (sui_text_has_focus("mc_text"))
 	{
 		MC_Send();
+		return TRUE;
+	}
+	if (evtype == IE_KEYDOWN && (scanx == K_ENTER || scanx == K_KP_ENTER))
+	if (menu_screen == SCREEN_TOURNAMENT && sui_text_has_focus("mt_chat_text"))
+	{
+		MT_ChatSend();
 		return TRUE;
 	}
 	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE)
@@ -8906,7 +8926,8 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 				Sty_Esc();
 				return TRUE;
 			}
-			if (menu_screen == SCREEN_VISUALS || menu_screen == SCREEN_MUSIC || menu_screen == SCREEN_SETTINGS)
+			if (MT_Esc()) return TRUE;   // a tournament dialog closes first
+			if (menu_screen == SCREEN_VISUALS || menu_screen == SCREEN_MUSIC || menu_screen == SCREEN_SETTINGS || menu_screen == SCREEN_TOURNAMENT)
 				menu_screen = SCREEN_MAIN;
 			else if (clientstate() == 2)
 				m_close();          // in a game: ESC returns to it
@@ -9012,6 +9033,18 @@ float(string cmd) m_consolecommand =
 	if (argv(0) == "ui_browse")
 	{
 		ui_browse_print(argv(1));
+		return TRUE;
+	}
+	if (argv(0) == "ui_tournament_say")
+	{
+		mt_chatdraft = substring(cmd, strlen(argv(0)) + 1, -1);
+		MT_ChatSend();
+		return TRUE;
+	}
+	if (argv(0) == "ui_tournaments")
+	{
+		menu_screen = SCREEN_TOURNAMENT;
+		m_open();                  // MT_Draw polls through the tab's existing consent gate
 		return TRUE;
 	}
 

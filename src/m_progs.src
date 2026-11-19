@@ -32,6 +32,8 @@ menu/m_mapmedia.qc          // P1099: tiers, mounts and thumbnails from the Pi
 menu/m_loading.qc          // P1244: the loading screen (m_drawloading; m_draw draws it before the plaque)
 menu/m_crash.qc             // P1418: m_init calls Crash_Init
 menu/m_main.qc
+// Browser draws with main helpers; callback and main use forward declarations.
+menu/m_tournament.qc
 // Private CSQC snapshot view; uses the picker/UI helpers and forward MF_* declarations.
 menu/m_friends.qc
 menu/m_chat.qc             // P963: explicit MENU lobby/DM proofs, no chat disk cache

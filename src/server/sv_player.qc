@@ -436,6 +436,7 @@ void() ClientConnect =
 	Lobby_ClientConnect(self);
 	Vote_ClientConnect(self);           // Patch 372: every begin, map changes included
 	Account_Connect(self);              // Patch 615: edicts are recycled
+	Tour_Connected(self);
 	VM_SVConnect(self);
 };
 
@@ -466,6 +467,7 @@ void() ClientDisconnect =
 	Vote_ClientDisconnect(self);
 	Share_Disconnect(self);             // Patch 777: links, offers and streams to or from this slot
 	Look_SVFlush(self);                 // P1616: while *ahash still names the account
+	Tour_Disconnected(self);
 	Account_Disconnect(self);           // Patch 615: an answer still out is nobody's now
 	VM_SVConnect(self);
 
@@ -576,6 +578,7 @@ void() SpectatorDisconnect =
 	SV_TASShareCancel(self);
 	SV_SourcePhaseClear(self);
 	Look_SVFlush(self);                 // P1616: while *ahash still names the account
+	Tour_Disconnected(self);
 	Account_Disconnect(self);
 	VM_SVConnect(self);
 	SV_ViewEyeDetach(self);
@@ -594,6 +597,7 @@ void() PlayerPreThink =
 {
 	local float speedmod, speedcap;
 
+	if (Tour_PreThink(self)) return;
 	SV_PeCmd(self);                     // P1238: the last command's row, this one's context
 	SV_HeldCheck(self);
 	SV_VsVelPost(self);                 // P1205: the previous command's VScript velocity write
@@ -924,6 +928,7 @@ void() PlayerPostThink =
 
 	SV_HeldCheck(self);
 	SV_TASAutoKeysStat(self);           // the keys HUD shows what a TAS tape or Jargon pressed (Lex), before the paused return
+	if (self.tq_hold) return;          // no save-spectate rollback on tournament start hold
 	SV_NoColPost(self);                 // P1193: before anything else traces
 	SV_PeNameSync(self);                // P1405: the client's name filters
 	SV_VsVelPost(self);                 // P1205: a VScript velocity write from this command's touches
@@ -1796,6 +1801,7 @@ void(string cmd) SV_ParseClientCommand =
 	}
 	cmdargc = tokenize(cmd);
 	c = argv(0);
+	if (c == "tour") { Tour_Command(self, cmdargc); return; }
 	// QW's final network message is "drop". Never consume lifecycle commands
 	// as weapon presentation: the engine must run its normal ClientDisconnect.
 	if (!strcmp(c, "drop") || !strcmp(c, "disconnect"))

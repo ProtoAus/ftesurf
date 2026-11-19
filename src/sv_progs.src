@@ -79,6 +79,7 @@ shared/sh_tasdirectory.qc
 server/sv_prederr.qc
 server/sv_crash.qc          // P1418: after sv_prederr.qc (SV_PeSafe)
 server/sv_matreport.qc      // P1382: after sv_prederr.qc (SV_PeSafe)
+server/sv_tournament.qc       // opt-in 2D tournament alpha, keyed persistence and live timing
 server/sv_player.qc
 server/sv_practicereturn.qc
 server/sv_maptier.qc

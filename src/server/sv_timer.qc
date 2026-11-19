@@ -57,6 +57,8 @@
 
 // Segments per track.  surf_classics3 is the library's worst at 11 bonuses;
 // the deepest single track measured is 10 segments, so 24 is a wide margin.
+void(entity e) Tour_RunStart;
+void(entity e) Tour_Finished;
 #define FS_MAXSPLITS   24
 #define FS_MAXTRACKS   12       // main + up to 11 bonuses
 
@@ -14258,6 +14260,7 @@ void(entity e, float ticks) SV_TimerFinish =
 	e.run_t_finleg   = e.run_t_track * 100 + leg + 1;
 	e.run_t_finflags = e.run_t_flags;
 	e.run_t_finrec   = e.run_t_finrec + 1;
+	Tour_Finished(e);             // independent round-owned scoring consumer
 
 	/*
 	  BUILD 64, STAGE 3 -- AND OFF TO THE LEADERBOARD, IF THIS SERVER HOLDS A KEY.
@@ -14736,6 +14739,7 @@ void(entity e) SV_TimerStart =
 {
 	local float pr, ln;
 
+	Tour_RunStart(e);             // capture the actual attempt start, including warmup exclusion
 	PlayStats_Attempt(e, e.run_t_track, FS_LegOf(e.run_t_startseg, e.run_t_stagerun));
 	e.run_t_state = TS_RUNNING;
 	e.run_momon = vbsp_momtrig;     // Patch 869: before SV_RecOpen writes `momtrig`

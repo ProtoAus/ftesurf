@@ -1,5 +1,21 @@
 # BACKLOG.md
 
+## P1634 tournaments -- settle before enabling them anywhere (20 Nov, worldofsurf-ed)
+- Evidence (opt-in tournament servers only): Tour_Roles holds a player mid-run when the round ends, the match ends or
+  tq_broken is set (sv_tournament.qc ~257) by zeroing velocity before PlayerPostThink's normal hold branch, and
+  Tour_Unhold clears run_pmhold without SV_SpecRelease's rebase/rollback; the run then continues from a standstill
+  with its timer running and could submit to the ordinary board. Needs a test run and an evidence review.
+- surfd: /api/tournament-lobbies/challenge and op=state still answer with SURFD_TOURNAMENTS=0 (kept so a member can
+  leave/cancel; it takes the write lock and writes a proof row). rate_ok's 4096-key flush resets the party buckets
+  too. The reserved node's address is not secret: a non-member can take one of its slots (README: unauthenticated
+  hand-off). Chat has host kick but no mute or kept log.
+- Release: players need an engine with Patch 1634's signer before the menu can act (it says "update the native game
+  client" otherwise); nodes need qualification (tools/tournament_qualify.py) and SURFD_TOURNAMENTS=1.
+- Scale: every menu poll is an Ed25519 signature that surfd verifies in pure Python (tools/ed25519.py, ~3.6 ms on
+  the PC, more on the Pi). Budget 1200/min shared (seats poll every 3 s, spectators 6 s: one full 72-member room is
+  ~800/min); 240/min per IP fits ~12 seated players behind one address. Before big events: a short-lived HMAC read
+  token for state polls (signatures only for actions), or a native verifier.
+
 ## Lex's 20 Nov list -- what P1625-P1633 left (20 Nov, worldofsurf-bb; root FTESurf-worktrees/lexlist-20261120-bb)
 - Lobby rollout: none of P1625-P1633 is on the Pi. Lobby csprogs (P1625 banner, P1632 chat), cfg/lobby/mode_ahop.cfg
   and the 237 changed cfg/maps files (P1631), and data/mapmeta.txt (candidate with the 7 changed rows:
