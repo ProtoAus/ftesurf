@@ -712,6 +712,7 @@ float() clipboard_paste = #0:clipboard_paste;
 float(float cliptype) clipboard_get = #0:clipboard_get;
 #endif
 string _sui_paste;              // pasted text, until the field with the keyboard draws
+float  sui_text_utf8;           // set around a field's sui_text_input: it takes any printable code point
 float  _sui_mods;               // SUI_MOD_* down now, by this VM's key events
 float  _sui_in_mods;            // ...and as they were for the key sui_get_input last gave
 var float _sui_sel_anchor = -1; // the selection's fixed end in the focused field, or -1
@@ -838,20 +839,21 @@ void(float evtype, float scanx) _sui_mods_track =
 
 // One character the engine handed over as a paste: the field that has the
 // keyboard takes it when it next draws (sui_text_input), and sui_end drops
-// what nobody took.  A field's text is ASCII.
+// what nobody took.  A field's text is ASCII unless it sets sui_text_utf8
+// (the menu's chat); the menu's paste is filtered when a field takes it.
 #define SUI_PASTE_MAX 256
 void(float c) sui_paste_char =
 {
+	local string glyph;
 #ifdef MENU
 	local float at;
-	local string glyph;
 #endif
-	if (c < 32 || c > 126)
+	glyph = UI_Utf8Char(c);
+	if (glyph == "")
 		return;
 #ifdef MENU
 	if (_sui_paste_chars >= SUI_PASTE_MAX)
 		return;
-	glyph = chr2str(c);
 	if (_input_length > 0)
 	{
 		at = _input_length - 1;
@@ -871,8 +873,10 @@ void(float c) sui_paste_char =
 	_input_length += 1;
 	_sui_paste_chars += 1;
 #else
+	if (c > 126)
+		return;                     // cl_main.qc gives the game's fields none either
 	if (strlen(_sui_paste) < SUI_PASTE_MAX)
-		_sui_paste = strcat(_sui_paste, chr2str(c));
+		_sui_paste = strcat(_sui_paste, glyph);
 #endif
 };
 
@@ -1186,6 +1190,7 @@ void(float char, float scan, __inout string text, __inout float cursor) sui_hand
 {
 	float maxlen = 128;
 	float chord, a, b, shift;
+	string glyph = "";
 
 	string prev = text;
 	string pre_cursor, post_cursor;
@@ -1230,26 +1235,30 @@ void(float char, float scan, __inout string text, __inout float cursor) sui_hand
 		// sui_text_event in the game, by Menu_InputEvent in the menu.
 		return;
 	}
-	if (char > 31 && char < 127) //an actual input, typed or pasted
+	if (char > 31 && char < 127)
+		glyph = chr2str(char);
+	else if (sui_text_utf8)
+		glyph = UI_Utf8Char(char);  // "" for controls
+	if (glyph != "") //an actual input, typed or pasted
 	{
 		_sui_sel_delete(text, cursor);
 		prev = text;
 		length = strlen(prev);
-		if (length >= maxlen) return;
+		if (length + strlen(glyph) > maxlen) return;
 		pre_cursor = substring(prev, 0, cursor);
 		post_cursor = substring(prev, cursor, length);
 
-		text = sprintf("%s%s%s", pre_cursor, chr2str(char), post_cursor);
-		cursor += 1;
+		text = sprintf("%s%s%s", pre_cursor, glyph, post_cursor);
+		cursor += strlen(glyph);
 	}
-	else if (char == 8) // backspace
+	else if (char == 8) // backspace: the whole character before the caret
 	{
 		if (_sui_sel_delete(text, cursor)) return;
 		if (cursor <= 0) return;
-		pre_cursor = substring(prev, 0, cursor - 1);
+		a = UI_Utf8Prev(prev, cursor);
+		pre_cursor = substring(prev, 0, a);
 		post_cursor = substring(prev, cursor, length);
-		cursor -= 1;
-		cursor = max(0, cursor);
+		cursor = a;
 		text = strcat(pre_cursor, post_cursor);
 	}
 	else if (scan == K_DEL)
@@ -1257,7 +1266,7 @@ void(float char, float scan, __inout string text, __inout float cursor) sui_hand
 		if (_sui_sel_delete(text, cursor)) return;
 		if (cursor >= length) return;
 		pre_cursor = substring(prev, 0, cursor);
-		post_cursor = substring(prev, cursor + 1, length);
+		post_cursor = substring(prev, UI_Utf8Next(prev, cursor), length);
 		text = strcat(pre_cursor, post_cursor);
 	}
 	else if (char == 13 || char == 27) // enter or escape
@@ -1273,14 +1282,14 @@ void(float char, float scan, __inout string text, __inout float cursor) sui_hand
 		if (!shift && _sui_sel_anchor >= 0)
 			_sui_caret_to(min(_sui_sel_anchor, cursor), cursor);
 		else
-			_sui_caret_to(max(0, cursor - 1), cursor);
+			_sui_caret_to(UI_Utf8Prev(text, cursor), cursor);
 	}
 	else if (scan == K_RIGHTARROW)
 	{
 		if (!shift && _sui_sel_anchor >= 0)
 			_sui_caret_to(max(_sui_sel_anchor, cursor), cursor);
 		else
-			_sui_caret_to(min(length, cursor + 1), cursor);
+			_sui_caret_to(UI_Utf8Next(text, cursor), cursor);
 	}
 	else if (scan == K_HOME)
 		_sui_caret_to(0, cursor);
@@ -1570,14 +1579,15 @@ void(float text_x, vector fontsize) sui_text_metrics =
 // The caret position nearest `x`, measured from the text's origin.
 float(string text, float x, vector fontsize) _sui_text_index =
 {
-	float i, n, w, pw;
+	float i, j, n, w, pw;
 	n = strlen(text);
 	pw = 0;
-	for (i = 1; i <= n; i++)
+	for (i = 0; i < n; i = j)
 	{
-		w = stringwidth(substring(text, 0, i), TRUE, fontsize);
+		j = UI_Utf8Next(text, i);   // never inside a UTF-8 sequence
+		w = stringwidth(substring(text, 0, j), TRUE, fontsize);
 		if (x < (pw + w) * 0.5)
-			return i - 1;
+			return i;
 		pw = w;
 	}
 	return n;
@@ -1586,12 +1596,16 @@ float(string text, float x, vector fontsize) _sui_text_index =
 #ifdef MENU
 void(__inout string text, __inout float cursor) _sui_text_paste =
 {
+	if (!sui_text_utf8)
+		_sui_paste = UI_Ascii(_sui_paste);
+	if (_sui_paste == "")
+		return;                     // nothing this field takes: the selection stays
 	cursor = bound(0, cursor, strlen(text));
 	if (_sui_sel_anchor > strlen(text))
 		_sui_sel_anchor = -1;
 	_sui_sel_delete(text, cursor);
 	cursor = bound(0, cursor, strlen(text));
-	_sui_paste = substring(_sui_paste, 0, max(0, 128 - strlen(text)));
+	_sui_paste = substring(_sui_paste, 0, UI_Utf8Fit(_sui_paste, max(0, 128 - strlen(text))));
 	text = strcat(substring(text, 0, cursor), _sui_paste, substring(text, cursor, strlen(text)));
 	cursor = cursor + strlen(_sui_paste);
 	_sui_paste = "";
@@ -1719,7 +1733,7 @@ void(string id, vector pos, vector size, __inout string text, __inout float curs
 				_sui_sel_anchor = -1;
 			_sui_sel_delete(text, cursor);
 			cursor = bound(0, cursor, strlen(text));
-			_sui_paste = substring(_sui_paste, 0, max(0, 128 - strlen(text)));
+			_sui_paste = substring(_sui_paste, 0, max(0, 128 - strlen(text)));   // ASCII here
 			text = strcat(substring(text, 0, cursor), _sui_paste, substring(text, cursor, strlen(text)));
 			cursor = cursor + strlen(_sui_paste);
 			_sui_paste = "";

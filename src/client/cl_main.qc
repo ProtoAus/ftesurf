@@ -1868,8 +1868,13 @@ float(float evtype, float scanx, float chary, float devid) CSQC_InputEvent =
 	if (evtype == IE_PASTE)
 	{
 		if (chary == 10 && Report_Paste(chary)) return TRUE;   // P1391: the report body keeps pasted lines
-		if (chary < 32 || chary > 126)
-			return TRUE;                // the fields are ASCII
+		if (chary > 126)
+		{
+			Chat_Paste(chary);          // the chat draft takes UTF-8 (emoji); the other fields are ASCII
+			return TRUE;
+		}
+		if (chary < 32)
+			return TRUE;
 		TASTimeline_RecipeHasFocus(); // abandon stale focus if chat/another cursor owns it
 		if (Report_Paste(chary)) return TRUE;    // P1391
 		if (HUD_EditPaste(chary)) return TRUE;   // Patch 901: the ghost offset field

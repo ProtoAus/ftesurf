@@ -1026,7 +1026,7 @@ float() Chat_FieldSelected =
 // space where one fits; a word wider than a row is cut.  The font must be set.
 void(float w, float sz) Chat_FieldWrap =
 {
-	local float n, s, i, sp, e;
+	local float n, s, i, j, sp, e;
 
 	if (chat_fr_n > 0)
 	if (strcmp(chat_fr_buf, chat_buf) == 0)
@@ -1044,9 +1044,10 @@ void(float w, float sz) Chat_FieldWrap =
 	while (chat_fr_n < CHAT_FR_MAX)
 	{
 		sp = -1;
-		for (i = s; i < n; i = i + 1)
+		for (i = s; i < n; i = j)
 		{
-			if (stringwidth(substring(chat_buf, s, i + 1 - s), FALSE, [sz, sz]) > w)
+			j = UI_Utf8Next(chat_buf, i);   // whole characters: a row never splits one
+			if (stringwidth(substring(chat_buf, s, j - s), FALSE, [sz, sz]) > w)
 				break;
 			if (str2chr(chat_buf, i) == 32)
 				sp = i + 1;
@@ -1058,7 +1059,7 @@ void(float w, float sz) Chat_FieldWrap =
 		else if (sp > s)
 			e = sp;
 		else
-			e = max(i, s + 1);
+			e = max(i, UI_Utf8Next(chat_buf, s));
 		chat_fr[chat_fr_n] = e;
 		chat_fr_n = chat_fr_n + 1;
 		s = e;
@@ -1087,7 +1088,7 @@ float(float maxw, float sz, float lh) Chat_FieldLayout =
 // The caret nearest the cursor m, in the field as last drawn.
 float(vector m) Chat_FieldHit =
 {
-	local float i, r, s, e, w, pw, sz, lh, px;
+	local float i, j, r, s, e, w, pw, sz, lh, px;
 
 	sz = chat_wkey_y;
 	lh = sz * 1.35;
@@ -1099,15 +1100,16 @@ float(vector m) Chat_FieldHit =
 	px = m_x - chat_fld_tx;
 	pw = 0;
 	Font_Set(ui_font_ui);
-	for (i = s + 1; i <= e; i = i + 1)
+	for (i = s; i < e; i = j)
 	{
-		w = stringwidth(substring(chat_buf, s, i - s), FALSE, [sz, sz]);
+		j = min(e, UI_Utf8Next(chat_buf, i));
+		w = stringwidth(substring(chat_buf, s, j - s), FALSE, [sz, sz]);
 		if (px < (pw + w) * 0.5)
 			break;
 		pw = w;
 	}
 	Font_Reset();
-	return i - 1;
+	return i;
 };
 
 // The field at the panel's foot, fh tall from Chat_FieldLayout: box, the PM's
@@ -1672,8 +1674,9 @@ float() Chat_FieldCut =
 	return TRUE;
 };
 
-// Typed or pasted text at the caret, over the selection; the draft is capped so a
-// held key cannot grow it past what say itself would take.
+// Typed or pasted text at the caret, over the selection; the draft is capped (in
+// bytes, between characters) so a held key cannot grow it past what say would take.
+// A closing colon swaps a `:name:` before it for its emoji (sh_font.qc UI_EMOJI).
 void(string s) Chat_Insert =
 {
 	local float n;
@@ -1683,10 +1686,17 @@ void(string s) Chat_Insert =
 	if (n <= 0)
 		return;
 	if (strlen(s) > n)
-		s = substring(s, 0, n);
+		s = substring(s, 0, UI_Utf8Fit(s, n));
 	chat_buf = strcat(substring(chat_buf, 0, chat_caret), s,
 	                  substring(chat_buf, chat_caret, strlen(chat_buf) - chat_caret));
 	chat_caret = chat_caret + strlen(s);
+	if (s != "")
+	if (str2chr(s, strlen(s) - 1) == 58)
+	if (UI_EmojiTail(chat_buf, chat_caret))
+	{
+		chat_buf   = ui_emo_s;
+		chat_caret = ui_emo_c;
+	}
 };
 
 // The caret to `to`; with Shift held the field's selection stretches there.
@@ -1859,6 +1869,7 @@ void() Chat_DragTo =
 void(float scanx, float chary) Chat_FieldKey =
 {
 	local float shift, ctrl, n, chord, to;
+	local string g;
 
 	shift = (ui_kmods & 3);
 	ctrl  = (ui_kmods & 48);
@@ -1901,7 +1912,7 @@ void(float scanx, float chary) Chat_FieldKey =
 	{
 		if (!Chat_FieldCut())
 		{
-			to = chat_caret - 1;
+			to = (chat_caret > 0) ? UI_Utf8Prev(chat_buf, chat_caret) : -1;
 			if (ctrl)                   // the word before the caret, as Ctrl+Left goes
 			{
 				to = chat_caret;
@@ -1923,7 +1934,7 @@ void(float scanx, float chary) Chat_FieldKey =
 			Chat_Copy();                // Shift+Delete is a cut
 		if (!Chat_FieldCut())
 		{
-			to = chat_caret + 1;
+			to = (chat_caret < n) ? UI_Utf8Next(chat_buf, chat_caret) : n + 1;
 			if (ctrl)
 			{
 				to = Chat_WordEnd(chat_buf, chat_caret);
@@ -1947,7 +1958,7 @@ void(float scanx, float chary) Chat_FieldKey =
 		else if (!shift && Chat_FieldSelected())
 			to = min(chat_anchor, chat_caret);
 		else
-			to = chat_caret - 1;
+			to = UI_Utf8Prev(chat_buf, chat_caret);
 		Chat_CaretTo(to, shift);
 		return;
 	}
@@ -1962,7 +1973,7 @@ void(float scanx, float chary) Chat_FieldKey =
 		else if (!shift && Chat_FieldSelected())
 			to = max(chat_anchor, chat_caret);
 		else
-			to = chat_caret + 1;
+			to = UI_Utf8Next(chat_buf, chat_caret);
 		Chat_CaretTo(to, shift);
 		return;
 	}
@@ -1976,8 +1987,9 @@ void(float scanx, float chary) Chat_FieldKey =
 		Chat_Recall((scanx == K_UPARROW) ? 1 : -1);
 		return;
 	}
-	if (chary >= 32 && chary < 127)
-		Chat_Insert(chr2str(chary));
+	g = UI_Utf8Char(chary);             // any printable code point, as UTF-8
+	if (g != "")
+		Chat_Insert(g);                 // (an empty one would still cut the selection)
 };
 
 float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
@@ -2041,6 +2053,7 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 
 	if (scanx == K_ENTER || scanx == K_KP_ENTER)
 	{
+		chat_buf = UI_Emojify(chat_buf);    // shortcodes not closed by typing (chat_say, paste)
 		if (strtrim(chat_buf) != "")
 		{
 			// a private line never comes back to go public
@@ -2110,9 +2123,13 @@ float(float evtype, float scanx, float chary, float devid) Chat_InputEvent =
 // Patch 667: one pasted character, into a draft being typed.  -> the draft's.
 float(float c) Chat_Paste =
 {
+	local string g;
+
 	if (!chat_typing)
 		return FALSE;
-	Chat_Insert(chr2str(c));
+	g = UI_Utf8Char(c);
+	if (g != "")
+		Chat_Insert(g);
 	return TRUE;
 };
 
@@ -2136,7 +2153,7 @@ float(string cmd) Chat_ConsoleCommand =
 	for (i = 1; i < n; i = i + 1)
 		t = (i == 1) ? argv(1) : strcat(t, " ", argv(i));
 	if (strlen(t) > CHAT_DRAFT_MAX)
-		t = substring(t, 0, CHAT_DRAFT_MAX);
+		t = substring(t, 0, UI_Utf8Fit(t, CHAT_DRAFT_MAX));
 	Chat_Open(t);
 	Chat_PickRoom(FALSE);
 	return TRUE;

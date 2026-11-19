@@ -232,6 +232,7 @@ void(string op, string target) MC_Request =
 void() MC_Send =
 {
 	if (!MC_Active() || mc_wire || !strlen(mc_draft)) return;
+	mc_draft = UI_Emojify(mc_draft);
 	if (strlen(mc_draft) > 320)
 	{
 		MC_Keep(mc_note, "Use 1-160 characters on one line.");
@@ -575,7 +576,16 @@ void(vector pos, vector size, float embedded) MC_Panel =
 		if (mc_markdue) MC_MarkRead();
 	}
 	else ui_para([right, message_y + 8], width, SZ_LABEL, 18, "Waiting for a fresh chat snapshot...", COL_DIM, TRUE);
+	sui_text_utf8 = TRUE;                  // emoji and any other code point, this field only
 	ui_field("mc_text", [right, field_y], [width - 88, field_h], mc_draft, mc_cursor, "Write a message...");
+	sui_text_utf8 = FALSE;
+	if (mc_cursor > 0)
+	if (str2chr(mc_draft, mc_cursor - 1) == 58)
+	if (UI_EmojiTail(mc_draft, mc_cursor))    // a typed `:name:` becomes its emoji
+	{
+		mc_draft  = ui_emo_s;
+		mc_cursor = ui_emo_c;
+	}
 	if (ui_button("mc_send", [size_x - 96, field_y], [80, field_h], mc_wire ? "wait..." : "send")) MC_Send();
 	sui_text([right, size_y - (compact ? 24 : 36)], '12 12 0', ui_fit_text(MC_Plain(mc_note), width, '12 12 0'), COL_DIM, 1, 0);
 	sui_pop_frame();

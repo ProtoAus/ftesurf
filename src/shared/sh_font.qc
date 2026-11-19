@@ -141,12 +141,17 @@ float ui_font_native[4], ui_font_native_tries[4];
   Thai come out letter by letter, which reads better than boxes.
   Linux gets .ttf names only: a list entry that fails to load and does not end
   .ttf or .otf is then tried as an image font (Font_LoadFont).
+  Linux names are under /usr/share/fonts (gl_font.c; no fontconfig in this build),
+  one spelling per distro family: Debian truetype/..., Arch noto/ and TTF/, Fedora
+  google-noto-color-emoji-fonts/ and dejavu-sans-fonts/. The first face with a glyph
+  draws it, and DejaVu has mono U+1F600-1F64x faces, so the colour emoji go first.
 */
 #define FONT_FACE_UI    "gfx/fonts/Roboto.ttf"
 #define FONT_FACE_DISP  "gfx/fonts/BebasNeueRegular.ttf,gfx/fonts/Roboto.ttf"
 #define FONT_FACE_MONO  "gfx/fonts/GoogleMed.ttf,gfx/fonts/Roboto.ttf"
 #define FONT_FB_WIN     ",segoeui.ttf,seguisym.ttf,msgothic.ttc,msyh.ttc,malgun.ttf,leelawui.ttf,seguiemj.ttf"
-#define FONT_FB_LINUX   ",truetype/dejavu/DejaVuSans.ttf,truetype/droid/DroidSansFallbackFull.ttf"
+#define FONT_FB_LINUX   ",truetype/noto/NotoColorEmoji.ttf,noto/NotoColorEmoji.ttf,google-noto-color-emoji-fonts/NotoColorEmoji.ttf,truetype/dejavu/DejaVuSans.ttf,TTF/DejaVuSans.ttf,dejavu-sans-fonts/DejaVuSans.ttf,truetype/droid/DroidSansFallbackFull.ttf"
+#define FONT_FB_LINUX0  ",truetype/dejavu/DejaVuSans.ttf,truetype/droid/DroidSansFallbackFull.ttf"   // before the emoji
 
 string(string faces) Font_Faces =
 {
@@ -196,6 +201,205 @@ string(string s, float chars) UI_NameShow =
 	}
 	if (strstrofs(s, "^") >= 0) s = strreplace("^", "^^", s);
 	return s;
+};
+
+/*
+  EMOJI IN TYPED TEXT. QC strings are bytes (utf8_enable 0), so a typed code point
+  is encoded here (chr2str writes 128-255 as one Latin-1 byte), and a caret or a
+  cap steps over whole UTF-8 sequences, never into one.
+*/
+// Code point c as UTF-8, or "" for what a line should not hold: controls, surrogates,
+// the private use area (Quake glyphs, which paste drops too) and non-characters.
+string(float c) UI_Utf8Char =
+{
+	if (c < 32 || c > 0x10FFFF || c == 0xFFFE || c == 0xFFFF)
+		return "";
+	if ((c >= 127 && c < 160) || (c >= 0xD800 && c < 0xF900))
+		return "";
+	if (c < 128)
+		return chr2str(c);
+	if (c < 2048)
+		return chr2str(192 + floor(c / 64), 128 + (c & 63));
+	if (c < 65536)
+		return chr2str(224 + floor(c / 4096), 128 + (floor(c / 64) & 63), 128 + (c & 63));
+	return chr2str(240 + floor(c / 262144), 128 + (floor(c / 4096) & 63),
+	               128 + (floor(c / 64) & 63), 128 + (c & 63));
+};
+
+// Where the character before byte i of s starts.
+float(string s, float i) UI_Utf8Prev =
+{
+	local float k;
+
+	if (i <= 0)
+		return 0;
+	i = i - 1;
+	for (k = 0; k < 3; k = k + 1)
+	{
+		if (i <= 0)
+			break;
+		if ((str2chr(s, i) & 192) != 128)
+			break;
+		i = i - 1;
+	}
+	return i;
+};
+
+// Where the character at byte i of s ends.
+float(string s, float i) UI_Utf8Next =
+{
+	local float k, n;
+
+	n = strlen(s);
+	if (i >= n)
+		return n;
+	i = i + 1;
+	for (k = 0; k < 3; k = k + 1)
+	{
+		if (i >= n)
+			break;
+		if ((str2chr(s, i) & 192) != 128)
+			break;
+		i = i + 1;
+	}
+	return i;
+};
+
+// The most of s's first n bytes that ends between characters.
+float(string s, float n) UI_Utf8Fit =
+{
+	local float k;
+
+	if (n >= strlen(s))
+		return strlen(s);
+	for (k = 0; k < 3; k = k + 1)
+	{
+		if (n <= 0)
+			return 0;
+		if ((str2chr(s, n) & 192) != 128)
+			break;
+		n = n - 1;
+	}
+	return max(0, n);
+};
+
+// s without its non-ASCII bytes, for a field that holds ASCII only.
+string(string s) UI_Ascii =
+{
+	local float i, n;
+	local string o;
+
+	n = strlen(s);
+	o = "";
+	for (i = 0; i < n; i = i + 1)
+		if (str2chr(s, i) < 128)
+			o = strcat(o, substring(s, i, 1));
+	return o;
+};
+
+/*
+  `:name:` SHORTCODES, as Discord and Slack spell them. The engine's console has
+  its own list (keys.c Key_Demoji), but it reads data-by-emoji.json / emoji.lst,
+  which do not ship, so the chat keeps this one. Single code points only: the
+  engine draws no ZWJ sequences or variation selectors (gl_font.c FIXME). Every
+  name is at least two characters, so a swap never makes a line longer.
+  Decimal code points; a name is [a-z0-9_+-].
+*/
+const string UI_EMOJI =
+	" skull=128128 joy=128514 sob=128557 fire=128293 heart=10084 thumbsup=128077 +1=128077"
+	" thumbsdown=128078 -1=128078 clap=128079 eyes=128064 pray=128591 100=128175 smile=128516"
+	" smiley=128515 grin=128513 grinning=128512 laughing=128518 cry=128546 rofl=129315"
+	" sweat_smile=128517 thinking=129300 wave=128075 ok_hand=128076 moyai=128511 wink=128521"
+	" blush=128522 innocent=128519 heart_eyes=128525 kissing_heart=128536 sunglasses=128526"
+	" smirk=128527 neutral_face=128528 expressionless=128529 unamused=128530 sweat=128531"
+	" pensive=128532 confused=128533 slight_smile=128578 upside_down=128579"
+	" rolling_eyes=128580 angry=128544 rage=128545 triumph=128548 weary=128553"
+	" tired_face=128555 scream=128561 flushed=128563 astonished=128562 open_mouth=128558"
+	" sleeping=128564 zipper_mouth=129296 nerd=129299 hugging=129303 cowboy=129312"
+	" clown=129313 nauseated_face=129314 star_struck=129321 exploding_head=129327"
+	" shushing_face=129323 partying_face=129395 hot_face=129397 cold_face=129398"
+	" woozy_face=129396 pleading_face=129402 melting_face=129760 saluting_face=129761"
+	" smiling_imp=128520 imp=128127 ghost=128123 alien=128125 robot=129302 poop=128169"
+	" facepalm=129318 shrug=129335 raised_hands=128588 muscle=128170 handshake=129309"
+	" fingers_crossed=129310 point_up_2=128070 point_down=128071 point_left=128072"
+	" point_right=128073 tada=127881 trophy=127942 medal=127941 first_place=129351"
+	" second_place=129352 third_place=129353 rocket=128640 boom=128165 dizzy=128171"
+	" ocean=127754 surfer=127940 surf=127940 goat=128016 broken_heart=128148"
+	" sparkling_heart=128150 blue_heart=128153 green_heart=128154 yellow_heart=128155"
+	" purple_heart=128156 orange_heart=129505 black_heart=128420 white_heart=129293"
+	" kiss=128139 zzz=128164 pizza=127829 beer=127866 popcorn=127871 snowman=9924";
+
+// The emoji a shortcode's name (without its colons) stands for, or "".
+string(string name) UI_EmojiOf =
+{
+	local float i, n, c;
+
+	n = strlen(name);
+	if (n < 2 || n > 24)
+		return "";
+	name = strtolower(name);
+	for (i = 0; i < n; i = i + 1)
+	{
+		c = str2chr(name, i);
+		if (!((c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c == 95 || c == 43 || c == 45))
+			return "";
+	}
+	i = strstrofs(UI_EMOJI, strcat(" ", name, "="));
+	if (i < 0)
+		return "";
+	return UI_Utf8Char(stof(substring(UI_EMOJI, i + n + 2, 7)));
+};
+
+// Every shortcode in s, swapped for its emoji.
+string(string s) UI_Emojify =
+{
+	local float i, j;
+	local string e, o;
+
+	o = "";
+	i = strstrofs(s, ":");
+	while (i >= 0)
+	{
+		j = strstrofs(s, ":", i + 1);
+		if (j < 0)
+			break;
+		e = UI_EmojiOf(substring(s, i + 1, j - i - 1));
+		if (e == "")
+		{
+			i = j;                      // the closing colon may open the next one
+			continue;
+		}
+		o = strcat(o, substring(s, 0, i), e);
+		s = substring(s, j + 1, strlen(s) - j - 1);
+		i = strstrofs(s, ":");
+	}
+	return strcat(o, s);
+};
+
+// A colon just typed at caret closed a shortcode: -> TRUE, with the line and the
+// caret after the swap in ui_emo_s and ui_emo_c.
+string ui_emo_s;
+float  ui_emo_c;
+float(string s, float caret) UI_EmojiTail =
+{
+	local float i;
+	local string e;
+
+	if (caret < 4)
+		return FALSE;
+	if (str2chr(s, caret - 1) != 58)
+		return FALSE;
+	for (i = caret - 2; i >= 0 && i >= caret - 27; i = i - 1)
+		if (str2chr(s, i) == 58)
+			break;
+	if (i < 0 || i < caret - 27)
+		return FALSE;
+	e = UI_EmojiOf(substring(s, i + 1, caret - i - 2));
+	if (e == "")
+		return FALSE;
+	ui_emo_s = strcat(substring(s, 0, i), e, substring(s, caret, strlen(s) - caret));
+	ui_emo_c = i + strlen(e);
+	return TRUE;
 };
 
 // A recording's `owner` line as the whole name. The recorder writes "owner %s" with the
@@ -425,7 +629,7 @@ void() Font_Init =
 	have = cvar_string("con_textfont");
 	if (have != want)
 	if (have == "gfx/fonts/GoogleMed.ttf" || have == strcat(FONT_FACE_MONO, FONT_FB_WIN)
-	    || have == strcat(FONT_FACE_MONO, FONT_FB_LINUX))
+	    || have == strcat(FONT_FACE_MONO, FONT_FB_LINUX) || have == strcat(FONT_FACE_MONO, FONT_FB_LINUX0))
 		cvar_set("con_textfont", want);
 
 	ui_lad_ui_first   = 0;
