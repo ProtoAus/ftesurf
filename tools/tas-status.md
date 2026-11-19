@@ -111,7 +111,9 @@ preimages checked. Details and limits remain in [qualification](p1355-tas-solve.
    comparisons remain unverified. Baseline was best in the actual control; no
    measured speed improvement or global-optimum claim. Tune the next change from
    the small owner pilot instead of another broad proof-framework campaign.
-3. **Stage 6.3: public submission and verified TAS board writer.** The approved
+3. **Stage 6.3: public submission and verified TAS board writer.** 20 Nov 2026:
+   Lex widened admission to uploads whose physics checks out, from any tool or
+   fork; plan, verdict ladder and the physics checker in [tas-uploads.md](tas-uploads.md). The approved
    runtime registry needs protected canonical sources, complete effective
    map/zone/dependency identities, alias/writer controls and real-map replay
    qualification. Queue work exists on a held development branch; recover and
