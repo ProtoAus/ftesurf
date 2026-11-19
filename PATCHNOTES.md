@@ -39,6 +39,39 @@
 
 ## next
 
+### P1633 Taskbar icon on Linux
+- On Linux the game window now has the World of Surf icon and name in the taskbar (KDE, GNOME and wlroots desktops); the launcher keeps a menu entry and icons up to date.
+- Files a server offers for download, other than maps, now go into the downloads folder instead of the game folder.
+
+### P1632 Emoji in chat
+- Chat now accepts emoji and accented letters, typed, pasted or written as shortcodes such as :skull: and :joy:, and draws colour emoji on Linux.
+
+### P1631 All bhop and ahop maps in the finder; ahop rules; speed caps
+- Every bhop_ and ahop_ map now shows under Bhop in the map finder (bhop_canals was hidden).
+- Maps in Momentum's ahop mode play with its ahop movement (gravity 600, slower walking, 66 tick).
+- Maps that raise their speed cap on Momentum or KSF (such as surf_affliction at 10000) now get it automatically.
+
+### P1630 Displacements collide where you see them
+- About a third of terrain displacements had an invisible layer about 4 units in front of the rock. You no longer fall off ahop_coast's ladder or catch on terrain seams. Times on affected maps are not comparable with older builds.
+
+### P1629 Linux crash fix: menu memory
+- Fixed a Linux crash after long menu use ("temp-string table full"). Crash messages now show in a dialog on Wayland desktops instead of the window just closing.
+
+### P1628 Smoother crouch in HL1-style modes
+- In the AG and CS 1.6 movement modes the view no longer dips a second time when a crouch finishes.
+
+### P1627 Noclip through walls without a stutter
+- Flying through a wall with noclip keeps the normal view instead of switching to the whole-map view for a frame, which caused a stutter on every map.
+- Out in the void the sky is no longer drawn behind the map.
+- Maps that name no sky draw Half-Life 2's day sky when the default sky is not installed, instead of a black sky.
+
+### P1626 No more cliffs floating in the sky
+- Large terrain pieces from other parts of a map no longer draw in the sky (ahop_coast and others).
+
+### P1625 Clearer missing-content warning
+- When a map's textures or models are missing, the warning lists up to ten of them with the game that ships them, for example "CS:S: models/props/de_tides/truck.mdl". Type hl2_missing in the console for the full list.
+- A game whose files are only partly on disk (a half-moved or half-deleted Steam install) is reported at launch, and the game no longer picks a leftover folder over the real install.
+
 ### P1624 QuakeC build tools
 - Fixed two compiler bugs affecting builtin calls and array checks. This is a source/build-tool repair, not a live-server update.
 

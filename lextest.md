@@ -1,5 +1,26 @@
 # lextest.md — things waiting on a human
 
+## P1625-P1633 -- Lex's 20 Nov list (worldofsurf-bb)
+
+Measured on the PC (i9-9900K, RTX 2080 SUPER) in a hidden nested labwc from a disposable install
+(FTESurf-worktrees/lexlist-20261120-bb); evidence in its artifacts/. These are owner checks, not claimed passes.
+Lobbies are NOT updated (no qualified Linux fleet caller, see tools/p1623-linux-deploy.md): check offline/local.
+- P1625: surf_fuchnut / surf_ace / surf_classics with Linux Steam's CS:S: no missing textures or props, no banner.
+  (The Windows drive no longer mounts -- its NTFS is flagged dirty -- and steam_libraries.txt pointing there was moved
+  to steam_libraries.txt.windows-20261117; scripts/matcolours.txt, missing from this install, was generated.)
+  If anything is missing, the red banner lists "<game>: <path>" lines.
+- P1626: ahop_coast -- no rock pieces floating in the sky; the cliffs still draw from inside their own stage.
+- P1627: noclip through a few walls on any map -- no stutter crossing them; fly far out -- no sky behind the map.
+- P1628: ag-1000 or cs16 -- hold crouch on flat ground; the view goes down once and stays.
+- P1629: nothing to do unless a crash happens; metalgio should get the next release.
+- P1630: ahop_coast's metal ladder by the cliff climbs to the top; bhop over displacement seams feels like Momentum.
+- P1631: the finder shows bhop_canals and every bhop_/ahop_ map under Bhop (the menu half is local; the lobbies
+  need data/mapmeta.txt and cfg/ copied). surf_affliction: your zone_edit 5000 still overrides the 10000 cap --
+  set 10000 (or clear it) in zone_edit to use Momentum/KSF's value.
+- P1632: type or paste an emoji, or :skull:, in chat (Wayland can't type emoji directly: paste or shortcode).
+- P1633: taskbar shows the World of Surf icon after starting from the desktop entry (labwc/waybar); a KDE check by
+  metalgio would close it.
+
 ## P1624 — standalone QuakeC compiler repair
 
 - Automated clean-source3VM/full32 and checked/unchecked/expired-scope warning controls pass; independent

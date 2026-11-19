@@ -1,5 +1,29 @@
 # BACKLOG.md
 
+## Lex's 20 Nov list -- what P1625-P1633 left (20 Nov, worldofsurf-bb; root FTESurf-worktrees/lexlist-20261120-bb)
+- Lobby rollout: none of P1625-P1633 is on the Pi. Lobby csprogs (P1625 banner, P1632 chat), cfg/lobby/mode_ahop.cfg
+  and the 237 changed cfg/maps files (P1631), and data/mapmeta.txt (candidate with the 7 changed rows:
+  task root scratch/mapdata/mapmeta.candidate.txt, sha1 c81971f0) need the qualified fleet caller (p1623-linux-deploy.md).
+  A mover-13 lobby needs its engine rebuilt; until then clients predict at the lobby's 12, which is correct.
+- mod_unresolved lists a model's FIRST failure only: a model that failed on an earlier map is not retried, so the
+  banner omits it on the next map (gl_model.c Mod_ModelLoaded; falsifier: two maps sharing a missing prop).
+- assetgames.txt labels by directory: materials/de_dust reads "CS:S/CS:GO" though only CS:S has rockwall01.
+- surf_fuchnut draws a garbled striped strip above the black start structure with every game present
+  (task root artifacts/fz_compare.png, bottom right). Not investigated.
+- P1630: AG/HL1 profiles (unranked) collide re-wound displacements as rendered with no fence of their own, so an older
+  AG recording can replay differently where it touched one. pm_dettest's trace hashes now run in the render winding
+  (its "srctrace stays the triangles every older pin replays on" comment, sv_ccmds.c ~4500, is stale) and its mover
+  passes stop at 12. The hl2 plugin and exe must ship together (an old plugin on a mover-13 exe collides like 12).
+- ahop_coast: its published zone and Lex's local editor say gamemode 2, so it plays bhop at 100 Hz, not mode_ahop;
+  zone_edit accepts only 1/2. Momentum ranks it in bhop and ahop: Lex's choice.
+- mode_ahop has no ABH jump boost (only the hl2-* engine profiles do); wiring mode ahop to that profile would drop the
+  pm_walkspeed sprint line. Momentum's bhop maxvelocity is 100000; mode_bhop.cfg keeps 3500.
+- surf_not_so_prosurf's cap goes 5000 -> 3500 (KSF's explicit value beats the entity lump); surf_ispy's shipped zone
+  says 5000 with no source.
+- Chat emoji: multi-codepoint emoji (ZWJ, skin tones, flags) draw as pieces; Windows lists Segoe UI Symbol before the
+  emoji font; console `say :x:` does not expand; Wayland has no text-input/compose path.
+- Linux icon: no live sv_dlURL download test; no real KDE taskbar check.
+
 ## Linux runs marked -- what P1603 left (17 Nov, lex-90; root linux-20261117-90)
 - Marked so far: the scoreboard's online rows (csprogs), the site's map board rows and its map list's WR holder,
   the owner's run page. Still WITHOUT the mark (each needs `plat` in its JSON and a display):
