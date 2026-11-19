@@ -310,6 +310,9 @@ $ShipGlobs = @(
     @{ Path = 'ftesurf/gfx/mapthumbs';  Filter = '*.png' }
     @{ Path = 'ftesurf/gfx/mapthumbs';  Filter = 'hd*.jpg' }   # P1178: the 160x90 atlas
     @{ Path = 'ftesurf/gfx/crosshairs'; Filter = '*.png' }
+    # Linux menu/taskbar icons: ftesurf.sh installs the hicolor set, the X11 engine reads the 256.
+    # Under gfx/ for the update allowlist (P1293): installed launchers refuse a feed naming ftesurf/icon.png.
+    @{ Path = 'ftesurf/gfx/icons';      Filter = 'worldofsurf-*.png' }
     # Patch 467: the 2x1 placeholder that makes `r_skybox milk` register the
     # skybox_milk script shader -- R_SetSky only takes that branch when an image
     # of the name loads.  scripts/milk.shader's header has the whole chain.
@@ -1557,6 +1560,9 @@ yours), OpenGL, and an X11 or Wayland desktop.
     permission; the game's own auto-check still follows that permission.
     Engine options are forwarded, for example:
         ./ftesurf.sh -window +map <mapname>
+    Each start also keeps a World of Surf menu entry and icon in
+    ~/.local/share (applications/worldofsurf.desktop, icons/hicolor), which
+    is how the taskbar shows the icon.  WOS_NO_DESKTOP=1 skips that.
     The script uses the engine directly only if the bootstrap is absent.
     Starting ftesurf64 directly from another folder stops at a mod list.
 

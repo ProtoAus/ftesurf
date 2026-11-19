@@ -146,6 +146,7 @@ def main():
             env = os.environ.copy()
             env.update(FTESURF_WRAPPER_ACTOR_LOG=str(actor_log), FTESURF_WRAPPER_ACTOR_EXIT=str(code))
             env['PATH'] = str(dialogs) + os.pathsep + env['PATH']
+            env['XDG_DATA_HOME'] = str(runtime / 'xdg-data')  # ftesurf.sh's desktop_entry writes here, not to ~
             if win:
                 # Pass the /c payload raw: list2cmdline on the whole payload adds
                 # C-runtime quote escaping that cmd.exe itself does not understand.

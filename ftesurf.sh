@@ -6,6 +6,7 @@
 #   ./ftesurf.sh -window +map x   options starting with - or +: WOS-Launcher forwards only +map, +connect,
 #                                 -window, -fullscreen, -width, -height and --debug's -condebug,
 #                                 +set log_dir logs, +set developer 1 (engine-only fallback: all)
+#   WOS_NO_DESKTOP=1 ./ftesurf.sh  do not write the menu entry and icons (desktop_entry below)
 # No set -e: each failure below is handled or deliberately ignored.
 
 # stderr, plus a dialog when there is no terminal to read it (desktop launch).
@@ -19,9 +20,53 @@ say() {
     fi 2>/dev/null
 }
 
+# The engine names its window worldofsurf (Wayland app_id, X11 WM_CLASS); taskbars take the icon from the
+# .desktop file of that name. Writes it and the hicolor icons when their content differs. An existing entry
+# is replaced only when its Exec runs this install or a program that no longer exists (a moved install);
+# another install's, a wrapper's (gamescope, flatpak) or a symlinked entry is left alone.
+desktop_entry() (
+    case ${XDG_DATA_HOME-} in /*) data=$XDG_DATA_HOME ;; *) [ -n "${HOME-}" ] || return; data=$HOME/.local/share ;; esac
+    icons=ftesurf/gfx/icons
+    [ -f "$icons/worldofsurf-256.png" ] || return
+    case $here in *[\"\`\$\\%]*|*'
+'*) return ;; esac  # no Exec escaping needed in what is left
+    changed=
+    for n in 48 64 128 256 512; do
+        src=$icons/worldofsurf-$n.png dir=$data/icons/hicolor/${n}x$n/apps
+        [ -f "$src" ] || continue
+        [ -f "$dir/worldofsurf.png" ] && [ "$(cksum < "$src")" = "$(cksum < "$dir/worldofsurf.png")" ] && continue
+        mkdir -p -- "$dir" && cp -- "$src" "$dir/.worldofsurf.png.$$" && mv -f -- "$dir/.worldofsurf.png.$$" "$dir/worldofsurf.png" && changed=1
+    done
+    # GTK ignores a user icon-theme.cache older than its theme folder.
+    [ -n "$changed" ] && touch -- "$data/icons/hicolor"
+    entry=$data/applications/worldofsurf.desktop
+    [ -L "$entry" ] && return
+    if [ -f "$entry" ]; then
+        old=$(sed -n 's/^Exec=//p' "$entry" | head -n 1)
+        case $old in \"*) old=${old#\"}; old=${old%%\"*} ;; *) old=${old%% *} ;; esac
+        case $old in */*) ;; ?*) old=$(command -v "$old") || old= ;; esac
+        if [ -n "$old" ] && [ -e "$old" ] && [ "$(readlink -f -- "$old")" != "$self" ]; then
+            [ -t 2 ] && printf 'ftesurf.sh: %s starts %s; left as it is\n' "$entry" "$old" >&2
+            return
+        fi
+    fi
+    want="[Desktop Entry]
+Type=Application
+Name=World of Surf
+GenericName=Surf and bhop
+Exec=\"$self\"
+Path=$here
+Icon=worldofsurf
+Terminal=false
+Categories=Game;
+StartupWMClass=worldofsurf"
+    [ "$(cat -- "$entry" 2>/dev/null)" = "$want" ] && return
+    mkdir -p -- "$data/applications" && printf '%s\n' "$want" > "$entry.$$" && mv -f -- "$entry.$$" "$entry" || rm -f -- "$entry.$$"
+)
+
 # The engine takes its basedir from the working directory (sys_linux.c:1557-1582),
 # so cd to this script's real folder, through any symlink pointing at it.
-here=$(dirname -- "$(readlink -f -- "$0")") && cd -- "$here" || {
+self=$(readlink -f -- "$0") && here=$(dirname -- "$self") && cd -- "$here" || {
     echo "ftesurf.sh: cannot enter the folder this script is in" >&2; exit 1; }
 runner=./ftesurf64
 # P1209: the launcher is WOS-Launcher; an install from before it has ftesurf-launcher.
@@ -53,6 +98,7 @@ Move the FTESurf folder somewhere you own, such as your home folder."
 fi
 # fs_addons.txt is untracked and rewritten by the engine; seed it from its annotated master.
 [ -f ftesurf/fs_addons.txt ] || cp ftesurf/fs_addons.default.txt ftesurf/fs_addons.txt 2>/dev/null
+case ${WOS_NO_DESKTOP-} in ''|0) desktop_entry ;; esac
 
 debug=
 if [ "${1-}" = --debug ]; then debug=1; shift; fi

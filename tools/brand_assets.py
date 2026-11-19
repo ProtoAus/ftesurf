@@ -4,6 +4,7 @@
 Python dependencies and export recipe: src/brand/README.md. SVG glyphs are
 outlined from the repository's OFL Bebas Neue font, not a system-font fallback.
 Raster exports use a locally installed Chromium browser through Playwright.
+The Linux icons are cut from the ICO and 512 exports, so --check covers them without a browser.
 """
 
 import argparse
@@ -19,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FONT = ROOT / "ftesurf/gfx/fonts/BebasNeueRegular.ttf"
 KIT = Path("src/brand")
 SITE = Path("src/release/site")
+LINUX_ICONS = Path("ftesurf/gfx/icons")
 
 
 def lettering(font, text, box, color):
@@ -118,6 +120,24 @@ def exports(browser_path):
             browser.close()
 
 
+def linux_icons(files, root):
+    """ftesurf.sh's hicolor set and the X11 window icon (gl_vidlinuxglx.c): the ICO's native-grid frames + the 512."""
+    from PIL import Image
+
+    def png(image):
+        out = io.BytesIO()
+        image.save(out, format="PNG", optimize=True)
+        return out.getvalue()
+
+    def export(rel):
+        return files[rel] if rel in files else (root / rel).read_bytes()
+
+    ico = Image.open(io.BytesIO(export(KIT / "worldofsurf.ico"))).ico
+    icons = {n: png(ico.getimage((n, n)).convert("RGBA")) for n in (48, 64, 128, 256)}
+    icons[512] = png(Image.open(io.BytesIO(export(SITE / "worldofsurf-512.png"))).convert("RGBA"))
+    return {LINUX_ICONS / f"worldofsurf-{n}.png": data for n, data in icons.items()}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--browser", help="absolute path to an installed Chromium/Edge executable")
@@ -129,6 +149,7 @@ def main():
         files.update(exports(args.browser))
     else:
         print("SVG only; pass --browser to include PNG/ICO exports.")
+    files.update(linux_icons(files, ROOT))
     for rel, data in files.items():
         path = args.out / rel
         if args.check:

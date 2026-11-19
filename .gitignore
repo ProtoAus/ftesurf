@@ -314,6 +314,10 @@ __pycache__/
 !/ftesurf/gfx/ui/
 /ftesurf/gfx/ui/*
 !/ftesurf/gfx/ui/roundmask.png
+# Linux desktop/window icons (tools/brand_assets.py): ftesurf.sh installs them; X11 reads the 256.
+!/ftesurf/gfx/icons/
+/ftesurf/gfx/icons/*
+!/ftesurf/gfx/icons/worldofsurf-*.png
 #  Patch 467: the sky placeholder `r_skybox milk` needs (scripts/milk.shader).
 !/ftesurf/gfx/env/
 /ftesurf/gfx/env/*
