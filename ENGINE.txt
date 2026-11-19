@@ -1,4 +1,8 @@
 # The engine build this QuakeC requires.
+# P1624 (compiler only): engine source 1e847e3d6333eed541ac60958d95488766444da0 repairs checked-builtin
+# alias binding and literal array bounds; scoped diagnostics preserved. Pinned Linux QC producer and actual
+# clean-source/full32 controls: tools/p1624-qcc.md. No shared compiler install, native runtime pin/tag, QC Build
+# change or fleet/backend rollout; tournament/main-menu signing WIP is not included.
 # P1623 (host tooling only): official portable PowerShell on Linux, native QC discovery/NoDeploy, explicit
 # owned legacy-deployer workspace and quoted staging metadata. Official Pi body remains unchanged and needs
 # its current qualified caller; sealed backend keeps reviewed owner-authenticated generation steps. No native

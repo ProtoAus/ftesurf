@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1624 — standalone QuakeC compiler repair
+
+- Automated clean-source3VM/full32 and checked/unchecked/expired-scope warning controls pass; independent
+  compiler-only review and diagnostic closure pass. See tools/p1624-qcc.md for the exact pinned producer.
+- No new owner confirmation is claimed. After a separately qualified rollout, check normal menu/map entry
+  and key hints on a Source map; report any QC runtime error. This is not a native engine release or a
+  tournament/main-menu acceptance claim, and no shared compiler or live install was changed here.
+
 ## P1623 — Linux deployment tooling
 
 - Host PowerShell7.7, real NoDeploy3VM build (zero warnings/byte-identical), read-only UTF8 SSH, focused7,

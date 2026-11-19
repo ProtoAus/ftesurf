@@ -39,6 +39,9 @@
 
 ## next
 
+### P1624 QuakeC build tools
+- Fixed two compiler bugs affecting builtin calls and array checks. This is a source/build-tool repair, not a live-server update.
+
 ### P1618 Faster map downloads
 - Maps now download through Cloudflare's network, cached close to you, instead of straight from our storage in Australia. A map someone near you has already fetched arrives much faster.
 - Fixed map downloads sometimes coming from the game server's own slow connection (about 1 MB/s or less) for minutes at a time, which made big maps take five to ten minutes.
