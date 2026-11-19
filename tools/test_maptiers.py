@@ -181,6 +181,20 @@ class Ratings(unittest.TestCase):
             self.assertIsNone(mt.tier(v))
         self.assertEqual(mt.tier(10), 10)
 
+    def test_mode_tie_prefix_first_only_for_bhop_ahop(self):
+        prev = dict(mapmeta.PREV_MODE)
+        try:
+            mapmeta.PREV_MODE.clear()
+            mapmeta.PREV_MODE.update(bhop_canals=12, ahop_coast=2, conc_fal=8)
+            self.assertEqual(mapmeta.vote([2, 12], "bhop_canals"), 2)
+            self.assertEqual(mapmeta.vote([2, 9], "ahop_coast"), 9)
+            self.assertEqual(mapmeta.vote([8, 10], "conc_fal"), 8)     # P1098: the table's mode
+            self.assertEqual(mapmeta.vote([3, 12], "bhop_canals"), 12)  # prefix not tied
+            self.assertEqual(mapmeta.vote([2, 2, 12], "bhop_x"), 2)
+        finally:
+            mapmeta.PREV_MODE.clear()
+            mapmeta.PREV_MODE.update(prev)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

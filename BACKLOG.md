@@ -627,9 +627,15 @@
 
 ## Bhop-family maps after P1583 (16 Nov)
 
-- Movement: only cfg/lobby/mode_bhop.cfg exists, so ahop_ (mode/category ahop) and kz_ maps (mode kz, category climb)
-  play the base surf settings (engine SV_LoadGamemodeRuleset: mode_<mode>.cfg, else mode_<category>.cfg). The HL2/AG
-  bhop modes Lex is adding decide what these play in; a picker chip only lists them.
+- Movement: kz_ maps (mode kz, category climb) play the base surf settings (engine SV_LoadGamemodeRuleset:
+  mode_<mode>.cfg, else mode_<category>.cfg); a picker chip only lists them. Ahop has cfg/lobby/mode_ahop.cfg
+  (20 Nov) but not HL2's jump boost (ABH), HL2 Duck/Friction or the ducked-sprint refusal: only the hl2-* profiles
+  carry PMSrc_HL2JumpBoost. Giving mode ahop that mover kind is an engine change (then drop mode_ahop.cfg's
+  pm_walkspeed sprint line, or the two sprints compound). Falsifier: `movement` on an ahop_ map lists the boost.
+- A zone file's or the local editor's gamemode may only be 1/2 (SV_ZoneRulesetFile, SV_ReadEditorRuleset,
+  sh_zones.qc, zone_edit), and it beats mapmeta: ahop_coast's published zone and Lex's local editor file say 2, so it
+  plays bhop at 100 Hz whatever mapmeta (9 after a regeneration) and mode_ahop.cfg say. Needs ahop (9) offered there,
+  or the gamemode cleared and republished. Falsifier: `movement` on ahop_coast on a lobby says ahop.
 - Downloads offer surf/bhop only: tools/maproster.py PREFIX, tools/mapscan.py, src/menu/m_lobby.qc Mdl_Row's mode
   check, surfd/mapmanifest.py. An ahop or kz map a player lacks cannot be fetched from the menu, so the chips show
   only what is installed. Falsifier: an ahop_ row in data/mapdl.txt and a fresh install fetching it from Maps.
@@ -2075,8 +2081,9 @@ gave 0:12.825 and 5 backtracks on two builds).
   (fy_bloodgroundz.5 fails update_mapdeps' name check, so it is retried every run); `--update-map`
   sorts a map's specs while a full scan writes ADDONS order (mount order, for two-pack maps).
 - **Gamemode ties (P1098):** 166 maps' modes are a tie that list order used to break;
-  P1098 keeps whatever the table held. A prefix-first rule would change ~100 tiers,
-  mostly conc_ maps ranked in both sj (8) and conc (10). Lex to decide which is native.
+  P1098 keeps whatever the table held; bhop_/ahop_ take their prefix since 20 Nov (mapmeta.py
+  PREFIX_FIRST). Prefix-first for the rest would change 128 modes and 69 tiers (20 Nov), mostly
+  conc_ maps ranked in both sj (8) and conc (10). Lex to decide which is native.
 - **P1096 leftovers (review 1):** the `[texdiag] PROPLIGHT` one-shot still averages
   bakes that later drop (it runs before prop models load). And a stock model
   present in two mounted packs with different checksums (surf_garden's

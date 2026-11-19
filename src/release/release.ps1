@@ -281,7 +281,7 @@ $ShipGlobs = @(
     # fs_*.cfg are dev tools; lobby_local.cfg holds SURFD_KEY on the Pi and must
     # never appear here even by accident.
     @{ Path = 'ftesurf/cfg';            Filter = '*.cfg'; Deny = @('build*.cfg', 'fs_*.cfg', 'lobby_local.cfg') }
-    # P330: the per-map layer lives in cfg\maps\ now (80 map_*.cfg rulesets plus
+    # P330: the per-map layer lives in cfg\maps\ now (313 map_*.cfg rulesets, P1631 speed caps included, plus
     # the render_*.cfg client layer and its render_default.cfg baseline).  It is
     # shipping content -- SV_LoadMapRuleset and CSQC_WorldLoaded both read it at
     # map load -- so the non-recursion above that keeps test\ out must not keep

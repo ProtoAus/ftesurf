@@ -435,25 +435,33 @@ def main_rows(lbs, style, gm=None):
 
 
 PREV_MODE = {}      # name -> the mode the table being replaced holds (main())
+# A tie on these names takes the prefix's mode before the previous table's: Lex, 20 Nov, bhop_canals
+# (df-vq3) and ahop_coast (bhop) were filed outside their mode.  7 rows on 20 Nov, one tier
+# (bhop_forevertranslucent 5 -> 2, its bhop tier rather than bhop-hl1's).
+PREFIX_FIRST = ("bhop_", "ahop_")
 
 
 def vote(modes, name):
     """The most common mode.  A tie keeps the previous table's mode, else takes the
-    name prefix's, else the lowest id.  Not most_common(1), which breaks a tie by
-    list order: the API and Momentum's cache list leaderboards in different
-    orders, and that flipped bhop_forevertranslucent between mode 3 tier 5 and
-    mode 2 tier 2 (P1098).  Prefix-first for every row would change 166 modes and
-    ~100 tiers, mostly conc_ maps tied between sj and conc: a ranking decision,
-    in BACKLOG, not a side effect of a refresh."""
+    name prefix's, else the lowest id (bhop_/ahop_: the prefix's first, PREFIX_FIRST).
+    Not most_common(1), which breaks a tie by list order: the API and Momentum's
+    cache list leaderboards in different orders, and that flipped
+    bhop_forevertranslucent between mode 3 tier 5 and mode 2 tier 2 (P1098).
+    Prefix-first for every row changes 128 modes and 69 tiers (20 Nov), mostly
+    conc_ maps tied between sj and conc: a ranking decision, in BACKLOG, not a
+    side effect of a refresh."""
     count = Counter(modes)
     top = max(count.values())
     tied = sorted(gm for gm, n in count.items() if n == top)
     low = name.lower()
-    if PREV_MODE.get(low) in tied:
+    first = low.startswith(PREFIX_FIRST)
+    if not first and PREV_MODE.get(low) in tied:
         return PREV_MODE[low]
     for pfx, gm in PREFIX_MODE.items():
         if low.startswith(pfx) and gm in tied:
             return gm
+    if PREV_MODE.get(low) in tied:
+        return PREV_MODE[low]
     return tied[0]
 
 

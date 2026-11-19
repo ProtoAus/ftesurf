@@ -1756,21 +1756,30 @@ void() ui_meta_load =
   its name, which is the right answer for every one that has a prefix.
 
   Momentum's category wins where both exist, because it is a statement about
-  the map rather than a reading of how somebody named it.
+  the map rather than a reading of how somebody named it -- except bhop_ and
+  ahop_, which file under Bhop by name (Lex, 20 Nov: bhop_canals sat under defrag). The
+  engine plays any bhop_ map as bhop (SV_ApplyGamemodeModes, P1371).
 */
 void() ui_cat_load =
 {
 	local float i, c, s, k;
-	local string rep;
+	local string rep, nm;
 
 	if (ms_catv >= 0) buf_del(ms_catv);
 	ms_catv = buf_create();
 
 	for (i = 0; i < ms_count; i = i + 1)
 	{
-		c = ui_mode_cat(stof(bufstr_get(ms_modev, i)));
+		nm = strtolower(bufstr_get(ms_name, i));
+		c = 0;
+		if (!strcmp(substring(nm, 0, 5), "bhop_"))
+			c = GC_BHOP;
+		else if (!strcmp(substring(nm, 0, 5), "ahop_"))
+			c = GC_BHOP;	// the ahop chip is off by default; Lex wants every bhop/ahop map listed
 		if (!c)
-			c = ui_name_cat(bufstr_get(ms_name, i));
+			c = ui_mode_cat(stof(bufstr_get(ms_modev, i)));
+		if (!c)
+			c = ui_name_cat(nm);
 		if (!c)
 			c = GC_OTHER;
 		bufstr_add(ms_catv, ftos(c), TRUE);
