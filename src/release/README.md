@@ -43,6 +43,8 @@ these two current generated outputs from `C:\FTESurf\ftesurf\scripts`, or regene
 a game or library change. For a pre-P1571 developer install, copy the two named old `data/`
 outputs to the new staging names after checking their hashes; leave the original files untouched.
 Never bulk-copy `data/`. The format is unchanged and `.txt` tables are not executable scripts.
+`scripts/assetgames.txt` (P1625, which game ships each materials/models folder) is tracked: rerun
+`python3 tools/assetgames.py` only after a game adds content folders.
 
 Use the existing Linux builder for the engine pin when needed:
 

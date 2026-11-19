@@ -126,10 +126,56 @@ void() Gfx_MissingReport =
 	sendevent("mmr", "s", substring(strreplace("\n", " ", s), 0, 900));
 };
 
+// FTESurf Patch 1625: the game(s) shipping a models/ or materials/ folder, from scripts/assetgames.txt
+// (tools/assetgames.py), for the banner's model lines -- the hl2 plugin labels materials itself. "?" if none.
+hashtable gfx_agtab;
+float gfx_agloaded;
+string(string path) Gfx_AssetGame =
+{
+	local filestream fh;
+	local string l, d, g;
+	local float sp, i, j;
+
+	if (!gfx_agloaded)
+	{
+		gfx_agloaded = TRUE;
+		gfx_agtab = hash_createtab(2048, EV_STRING);
+		fh = fopen("scripts/assetgames.txt", FILE_READ);
+		if (fh >= 0)
+		{
+			for (l = fgets(fh); l != ""; l = fgets(fh))
+			{
+				sp = strstrofs(l, " ");
+				if (sp > 0 && substring(l, 0, 2) != "//")
+					hash_add(gfx_agtab, substring(l, 0, sp), strreplace(",", "/", strtrim(substring(l, sp + 1, -1))), HASH_REPLACE | EV_STRING);
+			}
+			fclose(fh);
+		}
+	}
+	d = strtolower(strreplace("\\", "/", path));
+	while (TRUE)
+	{
+		j = -1;
+		for (i = strstrofs(d, "/"); i >= 0; i = strstrofs(d, "/", i + 1))
+			j = i;
+		if (j < 0)
+			return "?";
+		d = substring(d, 0, j);
+		if (d == "materials" || d == "models" || d == "materials/models" || d == "materials/maps")
+			return "?";	// every game has these (see VBSP_AssetGame)
+		g = hash_get(gfx_agtab, d, "", EV_STRING);
+		if (g != "")
+			return g;
+	}
+	return "?";
+};
+
 void(vector scr) Gfx_DrawMissing =
 {
 	local vector p;
 	local float n, age, a, sz;
+	local float nvis, nmod, k, shown, y;	// P1625
+	local string mods, hdr;
 
 	if (!cvar("fs_missingwarn"))
 		return;
@@ -148,11 +194,19 @@ void(vector scr) Gfx_DrawMissing =
 	  materials did not resolve" and "1 of them is visible" are different claims and
 	  the honest banner makes the first one.
 	*/
-	if (cvar("hl2_unresolved_visible") < 1)
-		return;
-
+	// P1625: models too (mod_unresolved, engines from P1625; "" before), so a map missing only props still says so.
+	nvis = cvar("hl2_unresolved_visible");
 	n = cvar("hl2_unresolved");     // set by the hl2 plugin at the end of load
-	if (n < 1)
+	if (nvis < 1)
+		n = 0;
+	mods = cvar_string("mod_unresolved");
+	nmod = 0;
+	if (mods != "")
+	{
+		Gfx_AssetGame("");	// loads the table (fopen/fgets) before argv holds the names
+		nmod = tokenizebyseparator(mods, " ");
+	}
+	if (n < 1 && nmod < 1)
 		return;
 
 	age = cltime - ui_gfx_loadtime;
@@ -183,24 +237,50 @@ void(vector scr) Gfx_DrawMissing =
 	second, different answer three lines high in the middle of the screen -- so it
 	says what it can see and points at the one place that knows.
 	*/
-	HUD_TextC(p, sprintf("%g material%s did not resolve on this map",
-	                     n, (n == 1) ? "" : "s"),
-	          sz, '1.00 0.45 0.35', a);
+	hdr = "";
+	if (n >= 1)
+		hdr = sprintf("%g material%s", n, (n == 1) ? "" : "s");
+	if (nmod >= 1)
+		hdr = strcat(hdr, (hdr != "") ? " and " : "", sprintf("%g model%s", nmod, (nmod == 1) ? "" : "s"));
+	HUD_TextC(p, strcat(hdr, " did not load on this map"), sz, '1.00 0.45 0.35', a);
+	y = p_y + sz * 1.4;
 	// P1382: an fs_addons.txt game that did not mount is the likelier cause (engines from P1382 say which).
 	if (cvar_string("fs_addons_missing") != "")
-		HUD_TextC([p_x, p_y + sz * 1.4],
+	{
+		HUD_TextC([p_x, y],
 		          sprintf("not found on this PC: %s  (another drive?  console: fs_steamlibs)", cvar_string("fs_addons_missing")),
 		          sz * 0.85, '1.00 0.80 0.45', a * 0.9);
+		y = y + sz * 1.2;
+	}
+	// P1625 (Lex, 20 Nov): "<game>: <path>", ten at most -- models first (tokenized above), then the plugin's
+	// materials (hl2_unresolved_list, engines from P1625; hl2_unresolved_first before).
+	shown = 0;
+	for (k = 0; k < nmod && shown < 10; k++)
+	{
+		HUD_TextC([p_x, y], strcat(Gfx_AssetGame(argv(k)), ": ", argv(k)), sz * 0.8, '0.88 0.82 0.78', a * 0.9);
+		y = y + sz * 1.05;
+		shown = shown + 1;
+	}
+	if (n >= 1)
+	{
+		mods = cvar_string("hl2_unresolved_list");
+		if (mods == "")
+			mods = cvar_string("hl2_unresolved_first");
+		nvis = tokenizebyseparator(mods, ";");
+		for (k = 0; k < nvis && shown < 10; k++)
+		{
+			HUD_TextC([p_x, y], argv(k), sz * 0.8, '0.88 0.82 0.78', a * 0.9);
+			y = y + sz * 1.05;
+			shown = shown + 1;
+		}
+	}
+	y = y + sz * 0.3;
+	if (n + nmod > shown)
+		HUD_TextC([p_x, y], sprintf("...%g more: type  hl2_missing  in the console for more", n + nmod - shown),
+		          sz * 0.72, '0.72 0.78 0.90', a * 0.85);
 	else
-		HUD_TextC([p_x, p_y + sz * 1.4],
-		          sprintf("first: %s", cvar_string("hl2_unresolved_first")),
-		          sz * 0.85, '0.88 0.82 0.78', a * 0.9);
-	HUD_TextC([p_x, p_y + sz * 2.6],
-	          "console:  hl2_missing  lists every one and says what each of them is.",
-	          sz * 0.72, '0.72 0.78 0.90', a * 0.85);
-	HUD_TextC([p_x, p_y + sz * 3.5],
-	          "fs_missingwarn 0 hides this.",
-	          sz * 0.72, '0.60 0.64 0.70', a * 0.8);
+		HUD_TextC([p_x, y], "console:  hl2_missing  says what each of them is.", sz * 0.72, '0.72 0.78 0.90', a * 0.85);
+	HUD_TextC([p_x, y + sz * 0.9], "fs_missingwarn 0 hides this.", sz * 0.72, '0.60 0.64 0.70', a * 0.8);
 
 	Font_Reset();
 };

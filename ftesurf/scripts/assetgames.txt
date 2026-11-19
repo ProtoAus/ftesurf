@@ -1,0 +1,1578 @@
+// FTESURF-ASSETGAMES 1 -- tools/assetgames.py (Patch 1625). <directory> <games>; longest prefix wins.
+// read: CS:S=Counter-Strike Source/cstrike/cstrike_pak_dir.vpk CS:GO=csgo legacy/csgo/pak01_dir.vpk TF2=Team Fortress 2/tf/tf2_misc_dir.vpk TF2=Team Fortress 2/tf/tf2_textures_dir.vpk Portal 2=Portal 2/portal2/pak01_dir.vpk Portal=Portal/portal/portal_pak_dir.vpk HL2=Half-Life 2/hl2/hl2_misc_dir.vpk HL2=Half-Life 2/hl2/hl2_textures_dir.vpk HL2=Half-Life 2/hl2/hl2_pak_dir.vpk HL2=Momentum Mod Playtest/mount/hl2_dir.vpk
+materials CS:S,CS:GO,TF2,Portal 2,Portal,HL2
+materials/ads CS:GO
+materials/ambulance TF2
+materials/anim_wp Portal 2
+materials/animated_wallpanels Portal 2
+materials/anubis CS:GO
+materials/ar_dizzy CS:GO
+materials/ar_greece CS:GO
+materials/asphalt CS:GO
+materials/backpack TF2,Portal 2
+materials/backpack/crafting TF2
+materials/backpack/hwn_crafting TF2
+materials/backpack/items TF2
+materials/backpack/player/ballbot Portal 2
+materials/backpack/player/eggbot Portal 2
+materials/backpack/player/gesture Portal 2
+materials/backpack/player/items/all_class TF2
+materials/backpack/player/items/ballbot Portal 2
+materials/backpack/player/items/crafting TF2
+materials/backpack/player/items/cyoa_pda TF2
+materials/backpack/player/items/demo TF2
+materials/backpack/player/items/eggbot Portal 2
+materials/backpack/player/items/engineer TF2
+materials/backpack/player/items/heavy TF2
+materials/backpack/player/items/medic TF2
+materials/backpack/player/items/mvm_loot TF2
+materials/backpack/player/items/pyro TF2
+materials/backpack/player/items/scout TF2
+materials/backpack/player/items/sniper TF2
+materials/backpack/player/items/soldier TF2
+materials/backpack/player/items/spy TF2
+materials/backpack/props_halloween TF2
+materials/backpack/weapons TF2
+materials/backpack/workshop TF2
+materials/backpack/workshop_partner TF2
+materials/br_debris Portal 2
+materials/brick CS:S,CS:GO,TF2,HL2
+materials/brick/hr_brick CS:GO
+materials/building_template CS:GO,TF2,HL2
+materials/buildings CS:S,CS:GO
+materials/cable CS:GO,TF2,Portal 2,HL2
+materials/carpet CS:S,CS:GO,Portal 2
+materials/ceiling CS:GO
+materials/christmas CS:GO
+materials/coalmines TF2
+materials/coastal TF2
+materials/cobblestone CS:GO
+materials/composite CS:S,CS:GO,HL2
+materials/concrete/hr_c CS:GO
+materials/console/characters TF2
+materials/coop_cementplant CS:GO
+materials/correction CS:GO,Portal
+materials/cp_bloodstained TF2
+materials/cp_gullywash TF2
+materials/cp_manor TF2
+materials/cp_mountainlab TF2
+materials/cp_standin TF2
+materials/cp_sunshine TF2
+materials/cs_assault CS:S,CS:GO
+materials/cs_havana CS:S,CS:GO
+materials/cs_italy CS:S,CS:GO
+materials/cs_office CS:GO
+materials/cstrike CS:S,CS:GO
+materials/cubemaps CS:GO,TF2,Portal 2,HL2
+materials/cubemaps/render_source TF2
+materials/customcubemaps HL2
+materials/customdev TF2
+materials/de_aztec CS:S,CS:GO
+materials/de_aztec/hr_aztec CS:GO
+materials/de_burger CS:GO
+materials/de_cache CS:GO
+materials/de_cbble CS:S,CS:GO
+materials/de_cbble/fabric CS:GO
+materials/de_cbble/flags CS:GO
+materials/de_cbble/grass_alt CS:GO
+materials/de_cbble/pictures CS:GO
+materials/de_cbble/roof_alt CS:GO
+materials/de_cbble/signs CS:GO
+materials/de_cbble/stain_glass CS:GO
+materials/de_cbble/stone_alt CS:GO
+materials/de_chateau CS:S,CS:GO,Portal 2
+materials/de_dust CS:S,CS:GO
+materials/de_dust/hr_dust CS:GO
+materials/de_mirage CS:GO
+materials/de_nuke CS:S,CS:GO
+materials/de_nuke/hr_nuke CS:GO
+materials/de_piranesi CS:S,CS:GO
+materials/de_prodigy CS:S,CS:GO
+materials/de_shacks CS:GO
+materials/de_tides CS:S,CS:GO
+materials/de_train CS:S,CS:GO
+materials/de_vertigo CS:GO
+materials/debug CS:GO,Portal 2,HL2
+materials/decals/alienflesh Portal 2,HL2
+materials/decals/antlion HL2
+materials/decals/asphalt CS:GO
+materials/decals/blank CS:GO
+materials/decals/bloodyflesh Portal 2,HL2
+materials/decals/brick CS:GO
+materials/decals/cardboard CS:GO
+materials/decals/computer CS:GO
+materials/decals/concrete CS:S,CS:GO,TF2,Portal 2,HL2
+materials/decals/dirt CS:GO,TF2
+materials/decals/flesh CS:GO,TF2,Portal 2,HL2
+materials/decals/glass CS:GO,Portal 2,HL2
+materials/decals/hr_decals CS:GO
+materials/decals/metal CS:S,CS:GO,Portal 2,HL2
+materials/decals/plaster CS:GO
+materials/decals/rock CS:GO
+materials/decals/rubber CS:GO
+materials/decals/sand HL2
+materials/decals/sheetrock CS:GO
+materials/decals/sprays CS:GO
+materials/decals/tile CS:GO
+materials/decals/upholstery CS:GO
+materials/decals/wood CS:S,CS:GO,TF2,Portal 2,HL2
+materials/demo HL2
+materials/dev CS:S,CS:GO,TF2,Portal 2,HL2
+materials/dev/hitlocator CS:GO
+materials/dirt CS:GO
+materials/dry_wall CS:GO
+materials/dust2_legacy CS:GO
+materials/dust_massive CS:GO
+materials/editor CS:GO,TF2,HL2
+materials/effects/advisoreffect HL2
+materials/effects/animatedbat TF2
+materials/effects/animatedcards TF2
+materials/effects/animatedcash TF2
+materials/effects/animatedcaustic TF2
+materials/effects/animatedcow TF2
+materials/effects/animateddiscoball TF2
+materials/effects/animatedeyes TF2
+materials/effects/animatedrock TF2
+materials/effects/animatedsheen TF2
+materials/effects/animatedspirit01 TF2
+materials/effects/animatedtentmonster TF2
+materials/effects/animatedtornado TF2
+materials/effects/bubbles TF2
+materials/effects/bulletsplash TF2
+materials/effects/coin_spin TF2
+materials/effects/comball HL2
+materials/effects/comball_d TF2
+materials/effects/combineshield HL2
+materials/effects/confetti TF2
+materials/effects/debris TF2
+materials/effects/doomsday TF2
+materials/effects/explosion TF2
+materials/effects/fogcards HL2
+materials/effects/invulnoverlay TF2
+materials/effects/papertrail TF2
+materials/effects/projected_wall_rail_mips Portal 2
+materials/effects/saxxy TF2
+materials/effects/smoke CS:GO,TF2
+materials/effects/smokelit TF2
+materials/effects/smokelit2 TF2
+materials/effects/splinter TF2
+materials/effects/stamp_spin TF2
+materials/effects/tiledfire TF2
+materials/effects/tp_eyefx HL2
+materials/effects/workshop TF2
+materials/egypt TF2
+materials/elevator Portal 2
+materials/engine CS:GO,TF2,Portal 2,Portal,HL2
+materials/environment maps CS:S,CS:GO,HL2
+materials/fabric Portal 2
+materials/fall_massive CS:GO
+materials/floors CS:GO
+materials/fx CS:S,CS:GO
+materials/gamepadui Portal,HL2
+materials/gamepadui/achievements HL2
+materials/garbageday TF2
+materials/gg_tibet CS:GO
+materials/gg_vietnam CS:GO
+materials/glass/hr_g CS:GO
+materials/graffiti CS:GO
+materials/grass CS:GO
+materials/ground CS:S,CS:GO
+materials/ground/hr_g CS:GO
+materials/halflife CS:S,CS:GO,HL2
+materials/harvest TF2
+materials/heatmap CS:GO
+materials/hlmv CS:GO,HL2
+materials/hr_massive CS:GO
+materials/hud CS:S,CS:GO,TF2,Portal 2,HL2
+materials/hud/arena TF2
+materials/icarus TF2
+materials/icons CS:GO
+materials/ies_decals CS:GO
+materials/island TF2
+materials/koth_viaduct_event TF2
+materials/lights CS:GO,TF2,Portal 2,Portal,HL2
+materials/liquids CS:S,CS:GO,Portal 2
+materials/lobby_mapveto CS:GO
+materials/logo TF2,Portal 2
+materials/maps TF2,HL2
+materials/maps/ctf_2fort TF2
+materials/maps/gman_scene HL2
+materials/matsys_regressiontest HL2
+materials/medieval TF2
+materials/metal/hr_metal CS:GO
+materials/models/a4_destruction Portal 2
+materials/models/advisor_pod HL2
+materials/models/advisorbarn HL2
+materials/models/advisorpod_crash HL2
+materials/models/airboat HL2
+materials/models/alyx HL2
+materials/models/alyx_intro HL2
+materials/models/anim_wp Portal 2
+materials/models/animated_wallpanels Portal 2
+materials/models/antlers CS:GO
+materials/models/antlion HL2
+materials/models/antlion_grub HL2
+materials/models/antlion_guard HL2
+materials/models/barnacle HL2
+materials/models/barney HL2
+materials/models/blackout HL2
+materials/models/blob Portal 2
+materials/models/bot_male Portal 2
+materials/models/bots TF2
+materials/models/boxrocket_chell_head HL2
+materials/models/breen HL2
+materials/models/brokenglass CS:GO,HL2
+materials/models/buggy HL2
+materials/models/buildables TF2
+materials/models/catwalk_destruction Portal 2
+materials/models/charger_jalopy HL2
+materials/models/charple HL2
+materials/models/chicken CS:GO
+materials/models/citadeldestruction HL2
+materials/models/class_menu TF2
+materials/models/cliffs HL2
+materials/models/cloudtest HL2
+materials/models/combine_advisor HL2
+materials/models/combine_advisor_juvenile HL2
+materials/models/combine_advisor_pod HL2
+materials/models/combine_apc HL2
+materials/models/combine_camera HL2
+materials/models/combine_citadel HL2
+materials/models/combine_dropship HL2
+materials/models/combine_helicopter HL2
+materials/models/combine_mine HL2
+materials/models/combine_room HL2
+materials/models/combine_scanner HL2
+materials/models/combine_soldier HL2
+materials/models/combine_strider HL2
+materials/models/combine_turrets HL2
+materials/models/combine_wall HL2
+materials/models/combinecannon HL2
+materials/models/container_destruction Portal 2
+materials/models/container_ride Portal 2
+materials/models/coop CS:GO
+materials/models/crafting TF2
+materials/models/crane_docks HL2
+materials/models/crashedgunship HL2
+materials/models/crow CS:GO,HL2
+materials/models/cs_havana CS:S,CS:GO
+materials/models/cs_italy CS:S,CS:GO
+materials/models/custom TF2
+materials/models/de_cbble CS:S,CS:GO
+materials/models/de_chateau CS:S
+materials/models/de_dust CS:S,CS:GO
+materials/models/de_piranesi CS:S,CS:GO
+materials/models/debug HL2
+materials/models/destruction_tanker CS:GO,Portal 2
+materials/models/dog HL2
+materials/models/dogvsstrider HL2
+materials/models/editor CS:GO,HL2
+materials/models/effects CS:GO,TF2,Portal 2,HL2
+materials/models/effects/camera_flash TF2
+materials/models/effects/ghosts CS:GO
+materials/models/effects/invulnerability TF2
+materials/models/effects/muzzleflash TF2
+materials/models/effects/pyro TF2
+materials/models/effects/resist_shield TF2
+materials/models/elevator Portal 2
+materials/models/eli HL2
+materials/models/ep2_out12_hut1 HL2
+materials/models/error CS:GO,Portal 2,HL2
+materials/models/extras CS:GO,Portal 2,HL2
+materials/models/f18 CS:GO
+materials/models/flag TF2,Portal
+materials/models/gantry_crane HL2
+materials/models/gibs CS:GO,TF2,Portal 2,HL2
+materials/models/gibs/airboat_broken_gibs HL2
+materials/models/gibs/combine_helicopter_gibs HL2
+materials/models/gibs/furniture_gibs CS:GO,HL2
+materials/models/gibs/glass CS:GO,Portal 2,HL2
+materials/models/gibs/hgibs CS:GO,Portal 2,HL2
+materials/models/gibs/metalgibs CS:GO,Portal 2,HL2
+materials/models/gibs/woodgibs CS:GO,Portal 2,HL2
+materials/models/gladdysdestruction Portal 2,Portal
+materials/models/gman HL2
+materials/models/grub_nugget HL2
+materials/models/gunship HL2
+materials/models/headcrab HL2
+materials/models/headcrab_black HL2
+materials/models/headcrab_classic HL2
+materials/models/healthvial HL2
+materials/models/hevsuit HL2
+materials/models/hostage CS:GO
+materials/models/hostages CS:S,CS:GO
+materials/models/humans HL2
+materials/models/hybridphysx CS:GO,TF2
+materials/models/ichthyosaur HL2
+materials/models/ihvtest HL2
+materials/models/ihvtest_tree HL2
+materials/models/inventory_items CS:GO
+materials/models/items CS:S,TF2,HL2
+materials/models/items/banana TF2
+materials/models/items/paintkit_tool TF2
+materials/models/kleiner HL2
+materials/models/leech HL2
+materials/models/lights Portal 2
+materials/models/lightwarps TF2
+materials/models/lilchewchew TF2
+materials/models/magnusson HL2
+materials/models/magnusson_device HL2
+materials/models/magnusson_teleporter HL2
+materials/models/manhack HL2
+materials/models/map10_doors HL2
+materials/models/map12_bigbaddaboom HL2
+materials/models/map12_building2 HL2
+materials/models/map12_sawmill HL2
+materials/models/map12a_hangar HL2
+materials/models/map1_boards HL2
+materials/models/map1_bridge HL2
+materials/models/map1_rubble HL2
+materials/models/mini_borealis HL2
+materials/models/ministrider HL2
+materials/models/monk HL2
+materials/models/mortarsynth HL2
+materials/models/mossman HL2
+materials/models/npcs Portal 2
+materials/models/odessa HL2
+materials/models/ol TF2
+materials/models/paintkits TF2
+materials/models/passtime TF2
+materials/models/perftest HL2
+materials/models/pi_fern CS:S
+materials/models/pi_shrub CS:S
+materials/models/pi_window CS:S
+materials/models/pickups TF2
+materials/models/pigeon CS:GO,HL2
+materials/models/pl_hoodoo TF2
+materials/models/player/chell Portal 2
+materials/models/player/contactshadows CS:GO
+materials/models/player/coop_bots Portal 2
+materials/models/player/ct_fbi CS:GO
+materials/models/player/ct_gign CS:S,CS:GO
+materials/models/player/ct_gsg9 CS:S,CS:GO
+materials/models/player/ct_idf CS:GO
+materials/models/player/ct_sas CS:S,CS:GO
+materials/models/player/ct_st6 CS:GO
+materials/models/player/ct_swat CS:GO
+materials/models/player/ct_urban CS:S
+materials/models/player/custom_player CS:GO
+materials/models/player/demo TF2
+materials/models/player/eggbot Portal 2
+materials/models/player/engineer TF2
+materials/models/player/holiday CS:GO
+materials/models/player/hvyweapon TF2
+materials/models/player/items TF2
+materials/models/player/medic TF2
+materials/models/player/pyro TF2
+materials/models/player/scout TF2
+materials/models/player/shared TF2
+materials/models/player/sniper TF2
+materials/models/player/soldier TF2
+materials/models/player/spy TF2
+materials/models/player/t_arctic CS:S,CS:GO
+materials/models/player/t_guerilla CS:S,CS:GO
+materials/models/player/t_leet CS:S,CS:GO
+materials/models/player/t_phoenix CS:S,CS:GO
+materials/models/player/tm_anarchist CS:GO
+materials/models/player/tm_balkan CS:GO
+materials/models/player/tm_leet CS:GO
+materials/models/player/tm_phoenix CS:GO
+materials/models/player/tm_pirate CS:GO
+materials/models/player/tm_professional CS:GO
+materials/models/player/tm_separatist CS:GO
+materials/models/player/zombie CS:GO
+materials/models/police HL2
+materials/models/portals Portal 2,Portal
+materials/models/props CS:S,CS:GO,Portal 2,Portal
+materials/models/props/128_fuse_set01 Portal 2,Portal
+materials/models/props/128_fuse_set02 Portal
+materials/models/props/128_fuse_set03 Portal 2,Portal
+materials/models/props/128_fuse_set04 Portal 2,Portal
+materials/models/props/128_fuse_set05 Portal 2,Portal
+materials/models/props/128_fuse_set06 Portal 2,Portal
+materials/models/props/128_fuse_set07 Portal 2,Portal
+materials/models/props/128_fuse_set08 Portal
+materials/models/props/128_fuse_set09 Portal 2,Portal
+materials/models/props/128_fuse_set10 Portal 2,Portal
+materials/models/props/ar_dizzy CS:GO
+materials/models/props/ar_lunacy CS:GO
+materials/models/props/autoportal_frame Portal
+materials/models/props/bts_bed Portal
+materials/models/props/cake Portal
+materials/models/props/christmas CS:GO
+materials/models/props/claw Portal
+materials/models/props/coop_autumn CS:GO
+materials/models/props/coop_cementplant CS:GO
+materials/models/props/coop_kashbah CS:GO
+materials/models/props/crates CS:GO
+materials/models/props/cs_assault CS:S,CS:GO
+materials/models/props/cs_italy CS:GO
+materials/models/props/cs_militia CS:S,CS:GO
+materials/models/props/cs_militia/cs_militia CS:GO
+materials/models/props/cs_militia/ranchsign CS:GO
+materials/models/props/cs_militia/rocka CS:GO
+materials/models/props/cs_militia/rockb CS:GO
+materials/models/props/cs_militia/rockwall CS:GO
+materials/models/props/cs_militia/rockwall_sect_col CS:GO
+materials/models/props/cs_militia/weather_vane CS:GO
+materials/models/props/cs_office CS:S,CS:GO
+materials/models/props/de_alleyway CS:GO
+materials/models/props/de_aztec CS:GO
+materials/models/props/de_bank CS:GO
+materials/models/props/de_boathouse CS:GO
+materials/models/props/de_burger CS:GO
+materials/models/props/de_cbble CS:GO
+materials/models/props/de_depot CS:GO
+materials/models/props/de_dust CS:GO
+materials/models/props/de_house CS:GO
+materials/models/props/de_inferno CS:S,CS:GO
+materials/models/props/de_inferno/hr_i CS:GO
+materials/models/props/de_mill CS:GO
+materials/models/props/de_mirage CS:GO
+materials/models/props/de_nuke CS:S,CS:GO,Portal 2
+materials/models/props/de_nuke/hr_nuke CS:GO
+materials/models/props/de_overpass CS:GO
+materials/models/props/de_piranesi CS:GO
+materials/models/props/de_port CS:S
+materials/models/props/de_prodigy CS:S,CS:GO,Portal 2
+materials/models/props/de_shacks CS:GO
+materials/models/props/de_tides CS:S,CS:GO
+materials/models/props/de_train CS:S,CS:GO,Portal 2
+materials/models/props/de_train/hr_t CS:GO
+materials/models/props/de_train/vending CS:GO
+materials/models/props/de_tvstation CS:GO
+materials/models/props/de_venice CS:GO
+materials/models/props/de_vertigo CS:GO
+materials/models/props/de_vostok CS:GO
+materials/models/props/dust_massive CS:GO
+materials/models/props/dz_fall CS:GO
+materials/models/props/elevator_caps Portal 2,Portal
+materials/models/props/elevatorshaft_wall Portal 2,Portal
+materials/models/props/food_can Portal 2,Portal
+materials/models/props/gd_crashsite CS:GO
+materials/models/props/gg_handling CS:GO
+materials/models/props/gg_tibet CS:GO
+materials/models/props/gg_vietnam CS:GO
+materials/models/props/glados_ceiling_light Portal 2,Portal
+materials/models/props/glados_pillar Portal 2,Portal
+materials/models/props/holiday_light CS:GO
+materials/models/props/hr_massive CS:GO
+materials/models/props/hr_vertigo CS:GO
+materials/models/props/kb_mouse Portal
+materials/models/props/lab_chair Portal 2,Portal
+materials/models/props/lab_desk01 Portal 2,Portal
+materials/models/props/lab_desk02 Portal 2,Portal
+materials/models/props/lab_desk03 Portal 2,Portal
+materials/models/props/lab_desk04 Portal 2,Portal
+materials/models/props/lab_desk05 Portal 2,Portal
+materials/models/props/lab_monitor Portal 2,Portal
+materials/models/props/lab_shelf Portal
+materials/models/props/lab_shelf_small Portal
+materials/models/props/milk_carton Portal
+materials/models/props/pc_case02 Portal 2,Portal
+materials/models/props/pc_case_open Portal 2,Portal
+materials/models/props/props_critters CS:GO
+materials/models/props/props_crossover CS:GO
+materials/models/props/props_gameplay CS:GO
+materials/models/props/props_utilities CS:GO
+materials/models/props/rot_door Portal
+materials/models/props/saucepan Portal 2,Portal
+materials/models/props/server_wall Portal
+materials/models/props/shelf128 Portal
+materials/models/props/sign_frame01 Portal 2,Portal
+materials/models/props/sign_frame02 Portal 2,Portal
+materials/models/props/speaker_system01 Portal
+materials/models/props/terror Portal 2
+materials/models/props/vert_door Portal 2,Portal
+materials/models/props/wall_pipes_bend01 Portal 2,Portal
+materials/models/props/wall_pipes_bend02 Portal 2,Portal
+materials/models/props/wall_pipes_bend03 Portal 2,Portal
+materials/models/props/wall_pipes_corner Portal 2,Portal
+materials/models/props/wall_pipes_horiz Portal 2,Portal
+materials/models/props/wall_pipes_terminate01 Portal 2,Portal
+materials/models/props/wall_pipes_tjunc01 Portal 2,Portal
+materials/models/props/wall_pipes_wave Portal 2,Portal
+materials/models/props/water_bottle Portal 2,Portal
+materials/models/props_2fort TF2
+materials/models/props_animated_breakable HL2
+materials/models/props_animsigns Portal 2,Portal
+materials/models/props_backstage Portal 2
+materials/models/props_badlands TF2
+materials/models/props_barnblitz TF2
+materials/models/props_basement Portal 2
+materials/models/props_borealis HL2
+materials/models/props_bts Portal 2,Portal
+materials/models/props_building_details HL2
+materials/models/props_buildings CS:GO,Portal 2,HL2
+materials/models/props_c17 CS:S,CS:GO,Portal,HL2
+materials/models/props_cables Portal 2
+materials/models/props_canal CS:GO,Portal,HL2
+materials/models/props_cemetery CS:GO
+materials/models/props_citizen_tech HL2
+materials/models/props_coalmine TF2
+materials/models/props_coldfront TF2
+materials/models/props_combine HL2
+materials/models/props_crates CS:GO
+materials/models/props_critters CS:GO
+materials/models/props_debris CS:S,CS:GO,Portal 2,HL2
+materials/models/props_decker TF2
+materials/models/props_destruction Portal 2
+materials/models/props_dev HL2
+materials/models/props_diorama Portal 2
+materials/models/props_docks CS:GO,HL2
+materials/models/props_doomsday TF2
+materials/models/props_doors CS:GO
+materials/models/props_downtown CS:GO,Portal 2
+materials/models/props_equipment CS:GO
+materials/models/props_explosive HL2
+materials/models/props_exteriors CS:GO
+materials/models/props_facemovie Portal
+materials/models/props_factory Portal 2
+materials/models/props_fairgrounds CS:GO
+materials/models/props_farm CS:GO,TF2
+materials/models/props_farm/gibs TF2
+materials/models/props_foliage CS:S,CS:GO,TF2,Portal 2,HL2
+materials/models/props_foliage/hr_f CS:GO
+materials/models/props_forest TF2,HL2
+materials/models/props_fortifications CS:GO,Portal 2
+materials/models/props_frontline TF2
+materials/models/props_furniture CS:GO
+materials/models/props_gameplay CS:GO,TF2,Portal 2
+materials/models/props_granary TF2
+materials/models/props_halloween TF2
+materials/models/props_harbor TF2
+materials/models/props_hightower_event TF2
+materials/models/props_highway CS:GO,Portal 2
+materials/models/props_hive HL2
+materials/models/props_holidays CS:GO
+materials/models/props_hub Portal 2
+materials/models/props_hydro TF2
+materials/models/props_industrial CS:S,CS:GO
+materials/models/props_interiors CS:S,CS:GO,HL2
+materials/models/props_island TF2
+materials/models/props_junk CS:S,CS:GO,Portal 2,HL2
+materials/models/props_lab CS:GO,Portal 2,HL2
+materials/models/props_lakeside TF2
+materials/models/props_lakeside_event TF2
+materials/models/props_lighting CS:GO,Portal 2
+materials/models/props_lights TF2,Portal 2
+materials/models/props_mall CS:GO,Portal 2
+materials/models/props_manor TF2
+materials/models/props_medical TF2
+materials/models/props_medieval TF2
+materials/models/props_mill CS:GO
+materials/models/props_mining TF2,HL2
+materials/models/props_misc CS:GO
+materials/models/props_moon Portal 2
+materials/models/props_moonbase TF2
+materials/models/props_motel Portal 2
+materials/models/props_movies TF2
+materials/models/props_mvm TF2
+materials/models/props_nature TF2
+materials/models/props_nightfall TF2
+materials/models/props_nucleus TF2
+materials/models/props_office CS:GO,Portal 2
+materials/models/props_outland HL2
+materials/models/props_p1_backstage Portal 2
+materials/models/props_pipes CS:S,CS:GO,HL2
+materials/models/props_plants CS:GO
+materials/models/props_powerhouse TF2
+materials/models/props_radiostation HL2
+materials/models/props_rooftop CS:S,CS:GO,HL2
+materials/models/props_shacks CS:GO
+materials/models/props_signs CS:GO
+materials/models/props_silhouettes TF2
+materials/models/props_silo HL2
+materials/models/props_skybox CS:GO,TF2,HL2
+materials/models/props_soho TF2
+materials/models/props_spytech TF2
+materials/models/props_street CS:GO,Portal 2
+materials/models/props_sunshine TF2
+materials/models/props_survival CS:GO
+materials/models/props_swamp TF2
+materials/models/props_teaser TF2
+materials/models/props_trailers CS:GO
+materials/models/props_training TF2
+materials/models/props_trainstation CS:GO,Portal 2,HL2
+materials/models/props_trainyard TF2
+materials/models/props_ui TF2
+materials/models/props_underground CS:GO,Portal 2
+materials/models/props_unique CS:GO,Portal 2
+materials/models/props_unique/airport CS:GO
+materials/models/props_unique/small_town CS:GO
+materials/models/props_unique/spawn_apartment CS:GO
+materials/models/props_urban CS:GO,TF2,Portal 2
+materials/models/props_urban/fountain_a CS:GO
+materials/models/props_urban/ornate_fence_a CS:GO
+materials/models/props_urban/pillar_cap_a CS:GO
+materials/models/props_vac_anim Portal 2
+materials/models/props_vehicle HL2
+materials/models/props_vehicles CS:S,CS:GO,TF2,Portal 2,HL2
+materials/models/props_vents CS:GO,HL2
+materials/models/props_viaduct TF2
+materials/models/props_viaduct_event TF2
+materials/models/props_wasteland CS:S,CS:GO,Portal 2,Portal,HL2
+materials/models/props_well TF2
+materials/models/props_windows CS:GO
+materials/models/props_woods TF2
+materials/models/props_yard CS:GO
+materials/models/rendering_regression_test HL2
+materials/models/rockslide HL2
+materials/models/roller HL2
+materials/models/sabotage Portal 2
+materials/models/seagull CS:GO,HL2
+materials/models/seesawbridge HL2
+materials/models/shadertest CS:S,HL2
+materials/models/shells CS:S,CS:GO
+materials/models/shield_scanner HL2
+materials/models/skeleton HL2
+materials/models/soldier_statue TF2
+materials/models/soldier_stripped HL2
+materials/models/spitball HL2
+materials/models/sprays CS:GO
+materials/models/stalker HL2
+materials/models/stars Portal 2
+materials/models/striderbustervendor1 HL2
+materials/models/synth HL2
+materials/models/tanker HL2
+materials/models/thundermountain_fx TF2
+materials/models/tools CS:GO,HL2
+materials/models/tools/camera HL2
+materials/models/tools/green_plane CS:GO
+materials/models/turret TF2
+materials/models/vehicle HL2
+materials/models/vehicles HL2
+materials/models/vgui TF2
+materials/models/vortigaunt HL2
+materials/models/weapons/c_items TF2
+materials/models/weapons/c_models TF2
+materials/models/weapons/csgo_awp TF2
+materials/models/weapons/customization CS:GO
+materials/models/weapons/flare HL2
+materials/models/weapons/nail TF2
+materials/models/weapons/pedestals CS:GO
+materials/models/weapons/pistol_shell HL2
+materials/models/weapons/rifle_shell HL2
+materials/models/weapons/shared CS:GO
+materials/models/weapons/shell HL2
+materials/models/weapons/shells TF2
+materials/models/weapons/stattrack CS:GO,TF2
+materials/models/weapons/stattrack_weaponpreview CS:GO
+materials/models/weapons/stinger_missile HL2
+materials/models/weapons/syringe_projectile TF2
+materials/models/weapons/uid CS:GO
+materials/models/weapons/uid_weaponpreview CS:GO
+materials/models/weapons/v_357 HL2
+materials/models/weapons/v_baseball TF2
+materials/models/weapons/v_bat TF2
+materials/models/weapons/v_bonesaw TF2
+materials/models/weapons/v_bottle TF2
+materials/models/weapons/v_bugbait HL2
+materials/models/weapons/v_builder TF2
+materials/models/weapons/v_cigarette_case TF2
+materials/models/weapons/v_crossbow HL2
+materials/models/weapons/v_crowbar HL2
+materials/models/weapons/v_fireaxe TF2
+materials/models/weapons/v_grenade HL2
+materials/models/weapons/v_grenadelauncher TF2
+materials/models/weapons/v_hand HL2
+materials/models/weapons/v_irifle HL2
+materials/models/weapons/v_knife TF2
+materials/models/weapons/v_machete TF2
+materials/models/weapons/v_medigun TF2
+materials/models/weapons/v_minigun TF2
+materials/models/weapons/v_models CS:S,CS:GO,Portal 2,Portal
+materials/models/weapons/v_models/arms CS:GO
+materials/models/weapons/v_models/breachcharge CS:GO
+materials/models/weapons/v_models/bump_mine CS:GO
+materials/models/weapons/v_models/c4 CS:S,CS:GO
+materials/models/weapons/v_models/c4/compass_arrow CS:GO
+materials/models/weapons/v_models/eq_flashbang CS:S
+materials/models/weapons/v_models/eq_fraggrenade CS:S
+materials/models/weapons/v_models/eq_grenades CS:GO
+materials/models/weapons/v_models/eq_healthshot CS:GO
+materials/models/weapons/v_models/eq_molotov CS:GO
+materials/models/weapons/v_models/eq_smokegrenade CS:S
+materials/models/weapons/v_models/eq_sonar_bomb CS:GO
+materials/models/weapons/v_models/eq_taser CS:GO
+materials/models/weapons/v_models/hands CS:S,CS:GO
+materials/models/weapons/v_models/knife_bayonet CS:GO
+materials/models/weapons/v_models/knife_butterfly CS:GO
+materials/models/weapons/v_models/knife_canis CS:GO
+materials/models/weapons/v_models/knife_cord CS:GO
+materials/models/weapons/v_models/knife_css CS:GO
+materials/models/weapons/v_models/knife_ct CS:GO
+materials/models/weapons/v_models/knife_falchion_advanced CS:GO
+materials/models/weapons/v_models/knife_flip CS:GO
+materials/models/weapons/v_models/knife_gut CS:GO
+materials/models/weapons/v_models/knife_gypsy_jack CS:GO
+materials/models/weapons/v_models/knife_karam CS:GO
+materials/models/weapons/v_models/knife_m9_bay CS:GO
+materials/models/weapons/v_models/knife_outdoor CS:GO
+materials/models/weapons/v_models/knife_push CS:GO
+materials/models/weapons/v_models/knife_skeleton CS:GO
+materials/models/weapons/v_models/knife_stiletto CS:GO
+materials/models/weapons/v_models/knife_survival_bowie CS:GO
+materials/models/weapons/v_models/knife_t CS:S,CS:GO
+materials/models/weapons/v_models/knife_t/gg CS:GO
+materials/models/weapons/v_models/knife_tactical CS:GO
+materials/models/weapons/v_models/knife_ursus CS:GO
+materials/models/weapons/v_models/knife_widowmaker CS:GO
+materials/models/weapons/v_models/mach_m249para CS:S,CS:GO
+materials/models/weapons/v_models/mach_negev CS:GO
+materials/models/weapons/v_models/melee CS:GO
+materials/models/weapons/v_models/pist_223 CS:GO
+materials/models/weapons/v_models/pist_cz_75 CS:GO
+materials/models/weapons/v_models/pist_deagle CS:S,CS:GO
+materials/models/weapons/v_models/pist_elite CS:S,CS:GO
+materials/models/weapons/v_models/pist_fiveseven CS:S,CS:GO
+materials/models/weapons/v_models/pist_glock18 CS:S,CS:GO
+materials/models/weapons/v_models/pist_hkp2000 CS:GO
+materials/models/weapons/v_models/pist_p228 CS:S
+materials/models/weapons/v_models/pist_p250 CS:GO
+materials/models/weapons/v_models/pist_revolver CS:GO
+materials/models/weapons/v_models/pist_tec9 CS:GO
+materials/models/weapons/v_models/pist_usp CS:S
+materials/models/weapons/v_models/rif_ak47 CS:S,CS:GO
+materials/models/weapons/v_models/rif_aug CS:S,CS:GO
+materials/models/weapons/v_models/rif_famas CS:S,CS:GO
+materials/models/weapons/v_models/rif_galil CS:S
+materials/models/weapons/v_models/rif_galilar CS:GO
+materials/models/weapons/v_models/rif_m4a1 CS:S,CS:GO
+materials/models/weapons/v_models/rif_m4a1_s CS:GO
+materials/models/weapons/v_models/rif_sg552 CS:S
+materials/models/weapons/v_models/rif_sg556 CS:GO
+materials/models/weapons/v_models/shield CS:GO
+materials/models/weapons/v_models/shot_m3super90 CS:S
+materials/models/weapons/v_models/shot_mag7 CS:GO
+materials/models/weapons/v_models/shot_nova CS:GO
+materials/models/weapons/v_models/shot_sawedoff CS:GO
+materials/models/weapons/v_models/shot_xm1014 CS:S,CS:GO
+materials/models/weapons/v_models/smg_bizon CS:GO
+materials/models/weapons/v_models/smg_mac10 CS:S,CS:GO
+materials/models/weapons/v_models/smg_mp5 CS:S
+materials/models/weapons/v_models/smg_mp5sd CS:GO
+materials/models/weapons/v_models/smg_mp7 CS:GO
+materials/models/weapons/v_models/smg_mp9 CS:GO
+materials/models/weapons/v_models/smg_p90 CS:S,CS:GO
+materials/models/weapons/v_models/smg_tmp CS:S
+materials/models/weapons/v_models/smg_ump45 CS:S,CS:GO
+materials/models/weapons/v_models/snip_awp CS:S,CS:GO
+materials/models/weapons/v_models/snip_g3sg1 CS:S,CS:GO
+materials/models/weapons/v_models/snip_scar20 CS:GO
+materials/models/weapons/v_models/snip_scout CS:S
+materials/models/weapons/v_models/snip_sg550 CS:S
+materials/models/weapons/v_models/snip_ssg08 CS:GO
+materials/models/weapons/v_models/tablet CS:GO
+materials/models/weapons/v_models/v_portalgun Portal 2,Portal
+materials/models/weapons/v_pda TF2
+materials/models/weapons/v_pda_engineer TF2
+materials/models/weapons/v_physcannon HL2
+materials/models/weapons/v_pistol TF2,HL2
+materials/models/weapons/v_revolver TF2
+materials/models/weapons/v_rocket_launcher HL2
+materials/models/weapons/v_rocketlauncher TF2
+materials/models/weapons/v_sapper TF2
+materials/models/weapons/v_scattergun TF2
+materials/models/weapons/v_shotgun TF2,HL2
+materials/models/weapons/v_shovel TF2
+materials/models/weapons/v_slam HL2
+materials/models/weapons/v_smg TF2
+materials/models/weapons/v_smg1 HL2
+materials/models/weapons/v_smg2 HL2
+materials/models/weapons/v_sniperrifle TF2
+materials/models/weapons/v_stickybomb_defender TF2
+materials/models/weapons/v_stickybomb_launcher TF2
+materials/models/weapons/v_stunbaton HL2
+materials/models/weapons/v_stunstick HL2
+materials/models/weapons/v_syringegun TF2
+materials/models/weapons/v_toolbox TF2
+materials/models/weapons/v_watch TF2
+materials/models/weapons/v_wrench TF2
+materials/models/weapons/w_357 HL2
+materials/models/weapons/w_alyx_gun_xsi HL2
+materials/models/weapons/w_annabelle HL2
+materials/models/weapons/w_arrow TF2
+materials/models/weapons/w_bat TF2
+materials/models/weapons/w_bonesaw TF2
+materials/models/weapons/w_bottle TF2
+materials/models/weapons/w_bugbait HL2
+materials/models/weapons/w_builder TF2
+materials/models/weapons/w_bullet HL2
+materials/models/weapons/w_cannonball TF2
+materials/models/weapons/w_cigarette_case TF2
+materials/models/weapons/w_drg_ball TF2
+materials/models/weapons/w_fireaxe TF2
+materials/models/weapons/w_frontierjustice TF2
+materials/models/weapons/w_grenade HL2
+materials/models/weapons/w_grenade_grenadelauncher TF2
+materials/models/weapons/w_grenadelauncher TF2
+materials/models/weapons/w_irifle HL2
+materials/models/weapons/w_knife TF2
+materials/models/weapons/w_machete TF2
+materials/models/weapons/w_medigun TF2
+materials/models/weapons/w_minigun TF2
+materials/models/weapons/w_missile HL2
+materials/models/weapons/w_models CS:S,CS:GO,Portal 2,Portal
+materials/models/weapons/w_models/arms CS:GO
+materials/models/weapons/w_models/portalgun Portal 2,Portal
+materials/models/weapons/w_models/w_c4 CS:S,CS:GO
+materials/models/weapons/w_models/w_eq_armor CS:GO
+materials/models/weapons/w_models/w_eq_defuser CS:S,CS:GO
+materials/models/weapons/w_models/w_eq_eholster CS:S,CS:GO
+materials/models/weapons/w_models/w_eq_flashbang CS:S
+materials/models/weapons/w_models/w_eq_fraggrenade CS:S
+materials/models/weapons/w_models/w_eq_grenades CS:GO
+materials/models/weapons/w_models/w_eq_helmet CS:GO
+materials/models/weapons/w_models/w_eq_molotov CS:GO
+materials/models/weapons/w_models/w_eq_shield CS:GO
+materials/models/weapons/w_models/w_eq_smokegrenade CS:S
+materials/models/weapons/w_models/w_eq_tablet CS:GO
+materials/models/weapons/w_models/w_eq_taser CS:GO
+materials/models/weapons/w_models/w_knife_bayonet CS:GO
+materials/models/weapons/w_models/w_knife_butterfly CS:GO
+materials/models/weapons/w_models/w_knife_canis CS:GO
+materials/models/weapons/w_models/w_knife_cord CS:GO
+materials/models/weapons/w_models/w_knife_css CS:GO
+materials/models/weapons/w_models/w_knife_ct CS:GO
+materials/models/weapons/w_models/w_knife_falchion_advanced CS:GO
+materials/models/weapons/w_models/w_knife_flip CS:GO
+materials/models/weapons/w_models/w_knife_gut CS:GO
+materials/models/weapons/w_models/w_knife_gypsy_jack CS:GO
+materials/models/weapons/w_models/w_knife_karam CS:GO
+materials/models/weapons/w_models/w_knife_m9_bay CS:GO
+materials/models/weapons/w_models/w_knife_outdoor CS:GO
+materials/models/weapons/w_models/w_knife_push CS:GO
+materials/models/weapons/w_models/w_knife_stiletto CS:GO
+materials/models/weapons/w_models/w_knife_survival_bowie CS:GO
+materials/models/weapons/w_models/w_knife_t CS:S,CS:GO
+materials/models/weapons/w_models/w_knife_t/gg CS:GO
+materials/models/weapons/w_models/w_knife_tactical CS:GO
+materials/models/weapons/w_models/w_knife_ursus CS:GO
+materials/models/weapons/w_models/w_knife_widowmaker CS:GO
+materials/models/weapons/w_models/w_mach_m249 CS:S
+materials/models/weapons/w_models/w_mach_m249para CS:GO
+materials/models/weapons/w_models/w_mach_negev CS:GO
+materials/models/weapons/w_models/w_pist_223 CS:GO
+materials/models/weapons/w_models/w_pist_cz_75 CS:GO
+materials/models/weapons/w_models/w_pist_deagle CS:S,CS:GO
+materials/models/weapons/w_models/w_pist_elite CS:S,CS:GO
+materials/models/weapons/w_models/w_pist_fiveseven CS:S,CS:GO
+materials/models/weapons/w_models/w_pist_glock18 CS:S,CS:GO
+materials/models/weapons/w_models/w_pist_hkp2000 CS:GO
+materials/models/weapons/w_models/w_pist_p228 CS:S
+materials/models/weapons/w_models/w_pist_p250 CS:GO
+materials/models/weapons/w_models/w_pist_revolver CS:GO
+materials/models/weapons/w_models/w_pist_tec9 CS:GO
+materials/models/weapons/w_models/w_pist_usp CS:S
+materials/models/weapons/w_models/w_rif_ak47 CS:S,CS:GO
+materials/models/weapons/w_models/w_rif_aug CS:S,CS:GO
+materials/models/weapons/w_models/w_rif_famas CS:S,CS:GO
+materials/models/weapons/w_models/w_rif_galil CS:S
+materials/models/weapons/w_models/w_rif_galilar CS:GO
+materials/models/weapons/w_models/w_rif_m4a1 CS:S,CS:GO
+materials/models/weapons/w_models/w_rif_m4a1_s CS:GO
+materials/models/weapons/w_models/w_rif_sg552 CS:S
+materials/models/weapons/w_models/w_rif_sg556 CS:GO
+materials/models/weapons/w_models/w_shot_m3super90 CS:S
+materials/models/weapons/w_models/w_shot_mag7 CS:GO
+materials/models/weapons/w_models/w_shot_nova CS:GO
+materials/models/weapons/w_models/w_shot_sawedoff CS:GO
+materials/models/weapons/w_models/w_shot_xm1014 CS:S,CS:GO
+materials/models/weapons/w_models/w_smg_bizon CS:GO
+materials/models/weapons/w_models/w_smg_mac10 CS:S,CS:GO
+materials/models/weapons/w_models/w_smg_mp5 CS:S
+materials/models/weapons/w_models/w_smg_mp5sd CS:GO
+materials/models/weapons/w_models/w_smg_mp7 CS:GO
+materials/models/weapons/w_models/w_smg_mp9 CS:GO
+materials/models/weapons/w_models/w_smg_p90 CS:S,CS:GO
+materials/models/weapons/w_models/w_smg_tmp CS:S
+materials/models/weapons/w_models/w_smg_ump45 CS:S,CS:GO
+materials/models/weapons/w_models/w_snip_awp CS:S,CS:GO
+materials/models/weapons/w_models/w_snip_g3sg1 CS:S,CS:GO
+materials/models/weapons/w_models/w_snip_scar20 CS:GO
+materials/models/weapons/w_models/w_snip_scout CS:S
+materials/models/weapons/w_models/w_snip_sg550 CS:S
+materials/models/weapons/w_models/w_snip_ssg08 CS:GO
+materials/models/weapons/w_package HL2
+materials/models/weapons/w_pda_engineer TF2
+materials/models/weapons/w_physics HL2
+materials/models/weapons/w_pistol HL2
+materials/models/weapons/w_pistol1 TF2
+materials/models/weapons/w_repair_claw TF2
+materials/models/weapons/w_revolver TF2
+materials/models/weapons/w_rocket_launcher HL2
+materials/models/weapons/w_rocketlauncher TF2
+materials/models/weapons/w_rpg TF2
+materials/models/weapons/w_sapper TF2
+materials/models/weapons/w_scattergun TF2
+materials/models/weapons/w_sd_sapper TF2
+materials/models/weapons/w_shotgun TF2,HL2
+materials/models/weapons/w_shovel TF2
+materials/models/weapons/w_slam HL2
+materials/models/weapons/w_smg TF2
+materials/models/weapons/w_smg1 HL2
+materials/models/weapons/w_sniper HL2
+materials/models/weapons/w_sniperrifle TF2
+materials/models/weapons/w_stickybomb TF2
+materials/models/weapons/w_stickybomb_launcher TF2
+materials/models/weapons/w_stunbaton HL2
+materials/models/weapons/w_syringe TF2
+materials/models/weapons/w_syringegun TF2
+materials/models/weapons/w_wrangler TF2
+materials/models/weapons/w_wrench TF2
+materials/models/workshop TF2
+materials/models/workshop_partner TF2
+materials/models/worldcraft HL2
+materials/models/zombie_classic HL2
+materials/models/zombie_fast HL2
+materials/models/zombie_poison HL2
+materials/moon TF2,Portal 2
+materials/moon/mercury TF2
+materials/motel Portal 2
+materials/mvm TF2
+materials/nature/hr_c CS:GO
+materials/newde_cache CS:GO
+materials/nightfall TF2
+materials/objects Portal
+materials/overlays/german_signs CS:GO
+materials/overlays/red TF2
+materials/overviews CS:S,TF2
+materials/paint Portal 2
+materials/paintblobs Portal 2
+materials/panorama CS:GO
+materials/particle/antlion_gib1 HL2
+materials/particle/antlion_goop1 HL2
+materials/particle/antlion_goop2 HL2
+materials/particle/antlion_goop3 CS:S,CS:GO,Portal 2,HL2
+materials/particle/antlion_goop4 HL2
+materials/particle/antlion_goop5 HL2
+materials/particle/aurora_1 HL2
+materials/particle/aurora_2 HL2
+materials/particle/blood1 TF2,HL2
+materials/particle/blood_mist CS:S,HL2
+materials/particle/blood_splatter CS:GO
+materials/particle/confetti CS:GO,Portal 2
+materials/particle/coop Portal 2
+materials/particle/debris1 HL2
+materials/particle/debris2 HL2
+materials/particle/dirt_splash CS:GO
+materials/particle/drink TF2
+materials/particle/droplets CS:S,CS:GO,HL2
+materials/particle/electrical_arc Portal 2
+materials/particle/electricity Portal 2
+materials/particle/fastsidesprites CS:GO,HL2
+materials/particle/feathers CS:GO
+materials/particle/fire_burning_character CS:S,CS:GO,Portal 2,HL2
+materials/particle/fire_explosion_1 CS:GO,Portal 2
+materials/particle/fire_particle_1 HL2
+materials/particle/fire_particle_2 CS:S,CS:GO,HL2
+materials/particle/fire_particle_3 HL2
+materials/particle/fire_particle_4 CS:S,CS:GO,Portal 2,HL2
+materials/particle/fire_particle_5 HL2
+materials/particle/fire_particle_6 CS:S,HL2
+materials/particle/fire_particle_7 CS:S,HL2
+materials/particle/fire_particle_8 CS:S,CS:GO,HL2
+materials/particle/flamethrowerfire TF2,HL2
+materials/particle/fluidexplosions CS:GO,TF2,Portal 2
+materials/particle/headshot CS:GO
+materials/particle/impact CS:GO,Portal 2
+materials/particle/impacteffect HL2
+materials/particle/leaf CS:GO,Portal 2
+materials/particle/midsidesprites CS:S,HL2
+materials/particle/money CS:GO
+materials/particle/muzzleflash CS:S,CS:GO
+materials/particle/old CS:S,HL2
+materials/particle/pagetest HL2
+materials/particle/paintblobs Portal 2
+materials/particle/paper CS:GO
+materials/particle/particle_debris_burst CS:GO,Portal 2
+materials/particle/particle_flares CS:GO,Portal 2
+materials/particle/particle_ring_wave_curl CS:S,HL2
+materials/particle/particle_spore CS:GO
+materials/particle/pebble1 CS:S,CS:GO,Portal 2,HL2
+materials/particle/playerping CS:GO
+materials/particle/ripplemapv2 HL2
+materials/particle/screen CS:GO
+materials/particle/shells CS:GO
+materials/particle/smoke1 CS:S,CS:GO,Portal 2,Portal,HL2
+materials/particle/smoke2 HL2
+materials/particle/sparks CS:GO,TF2,Portal 2
+materials/particle/splash01 CS:S,CS:GO,Portal 2,HL2
+materials/particle/spray1 CS:GO,Portal 2
+materials/particle/testsequence HL2
+materials/particle/tinyfiresprites CS:S,CS:GO,HL2
+materials/particle/toxic_slime Portal 2
+materials/particle/vistasmokev1 CS:S,CS:GO,Portal 2,HL2
+materials/particle/wake Portal 2
+materials/particle/water CS:S,CS:GO,Portal 2,HL2
+materials/particle/water_splash CS:GO,Portal 2
+materials/particles TF2,Portal 2
+materials/particles/explosion TF2
+materials/particles/rockettrail TF2
+materials/passtime TF2
+materials/patterns TF2
+materials/perftest HL2
+materials/pl_barnblitz TF2
+materials/pl_halfacre TF2
+materials/pl_hoodoo TF2
+materials/plaster CS:S,CS:GO,Portal 2,HL2
+materials/plaster/hr_p CS:GO
+materials/plastic Portal 2,Portal
+materials/props CS:S,CS:GO,TF2,Portal 2,HL2
+materials/rendering_regression_test HL2
+materials/rj TF2
+materials/road_markings CS:GO
+materials/rubber CS:GO
+materials/scripted HL2
+materials/sd_doomsday_event TF2
+materials/sewage CS:GO
+materials/shadertest Portal 2,HL2
+materials/signage Portal 2,Portal
+materials/signage/scoreboard Portal 2
+materials/signs CS:GO,TF2
+materials/sixense_controller_manager CS:GO
+materials/slides Portal
+materials/soho TF2
+materials/space HL2
+materials/sprites/fireburst HL2
+materials/sprites/flames1 HL2
+materials/sprites/flames2 HL2
+materials/sprites/hud CS:GO,Portal 2,Portal,HL2
+materials/sprites/minimap_icons TF2
+materials/sprites/obj_icons CS:S,CS:GO,TF2
+materials/sprites/plasma1 HL2
+materials/sticker_preview CS:GO
+materials/stone CS:S,CS:GO,HL2
+materials/stone/hr_stone CS:GO
+materials/storefront_template CS:GO,HL2
+materials/sun CS:GO,Portal 2,HL2
+materials/swamp TF2
+materials/swift TF2
+materials/tarps CS:GO
+materials/tech CS:GO
+materials/test TF2
+materials/test_speakers CS:S
+materials/tile/hr_t CS:GO
+materials/tools CS:S,CS:GO,TF2,Portal 2,HL2
+materials/tools/camera TF2
+materials/traincar_interior Portal 2
+materials/traincars Portal 2
+materials/training CS:GO
+materials/trash CS:GO
+materials/tropics TF2
+materials/vehicle CS:GO,HL2
+materials/vgui/animated TF2
+materials/vgui/appchooser HL2
+materials/vgui/backgrounds Portal 2
+materials/vgui/bonusmaps Portal,HL2
+materials/vgui/buymenu CS:GO
+materials/vgui/casual TF2
+materials/vgui/chapters TF2,Portal 2,Portal,HL2
+materials/vgui/class_icons TF2
+materials/vgui/class_portraits TF2
+materials/vgui/common TF2,HL2
+materials/vgui/competitive TF2
+materials/vgui/contracts TF2
+materials/vgui/crosshairs TF2
+materials/vgui/cursors HL2
+materials/vgui/cyoa TF2
+materials/vgui/extras Portal 2
+materials/vgui/fonts CS:GO,TF2,Portal 2,HL2
+materials/vgui/friends HL2
+materials/vgui/gfx CS:S,CS:GO,TF2
+materials/vgui/gfx/vgui/fav_weap CS:S,CS:GO
+materials/vgui/gfx/vgui/summary_maps CS:S,CS:GO
+materials/vgui/heavy_pyro_war TF2
+materials/vgui/hud CS:S,CS:GO,TF2,Portal 2,HL2
+materials/vgui/hud/commands Portal 2
+materials/vgui/icons HL2
+materials/vgui/illustrations TF2
+materials/vgui/loading_screens Portal 2
+materials/vgui/logos CS:S,CS:GO
+materials/vgui/main_menu TF2
+materials/vgui/maps CS:S,CS:GO,TF2,HL2
+materials/vgui/medals Portal 2,Portal
+materials/vgui/menu_tiles Portal 2
+materials/vgui/mp_sp_screens CS:GO
+materials/vgui/mvm TF2
+materials/vgui/plugin HL2
+materials/vgui/pve TF2
+materials/vgui/replay TF2
+materials/vgui/resource CS:GO,TF2,Portal 2,Portal,HL2
+materials/vgui/scanline Portal 2
+materials/vgui/scoreboard CS:S,CS:GO,Portal 2
+materials/vgui/servers CS:S,CS:GO,TF2,Portal 2,HL2
+materials/vgui/signage Portal 2
+materials/vgui/slideshow Portal 2,Portal
+materials/vgui/slideshow/diagnostics Portal 2
+materials/vgui/slideshow/glados Portal
+materials/vgui/sound_test Portal 2
+materials/vgui/steam HL2
+materials/vgui/store CS:GO,TF2,Portal 2
+materials/vgui/teamclass CS:GO
+materials/vgui/techcredits HL2
+materials/vgui/tools Portal 2,HL2
+materials/vgui/trade_ups TF2
+materials/vgui/training TF2
+materials/vgui/workshop_partner TF2
+materials/vguiedit Portal 2
+materials/voice CS:GO,TF2,Portal 2,HL2
+materials/vr HL2
+materials/wall_paper CS:GO
+materials/wallpaper CS:GO,Portal 2
+materials/water TF2
+materials/windows CS:GO
+materials/winter TF2
+materials/wood CS:S,CS:GO,TF2,Portal 2,HL2
+materials/wood/hr_w CS:GO
+models CS:S,CS:GO,TF2,Portal 2,Portal,HL2
+models/a4_destruction Portal 2
+models/advisorbarn HL2
+models/advisorpod_crash HL2
+models/anim_wp Portal 2
+models/antlers CS:GO
+models/anubis CS:GO
+models/bots TF2
+models/br_camera Portal 2
+models/br_debris Portal 2
+models/buildables TF2
+models/car_int_dest Portal 2
+models/car_wrecked_dest Portal 2
+models/cara_dest Portal 2
+models/catwalk_destruction Portal 2
+models/characters CS:S,CS:GO
+models/chicken CS:GO
+models/citadeldestruction HL2
+models/class_menu TF2
+models/cliffs HL2
+models/combine_advisor_pod HL2
+models/combine_camera HL2
+models/combine_helicopter HL2
+models/combine_room HL2
+models/combine_turrets HL2
+models/combinecannon HL2
+models/container_ride Portal 2
+models/container_ride_360 Portal 2
+models/coop CS:GO
+models/crafting TF2
+models/cranes HL2
+models/cs_italy CS:GO
+models/cubemaps TF2
+models/custom TF2
+models/de_alleyway CS:GO
+models/de_aztec CS:GO
+models/destruction_tanker CS:GO,Portal 2
+models/dogvsstrider HL2
+models/editor CS:GO,HL2
+models/effects CS:GO,TF2,Portal 2,HL2
+models/effects/lightshaft TF2
+models/effects/muzzleflash TF2
+models/effects/resist_shield TF2
+models/effects/saxxy_flash TF2
+models/effects/sentry1_muzzle TF2
+models/egypt TF2
+models/elevator Portal 2
+models/ep2_out12_hut1 HL2
+models/extras CS:GO,Portal 2,HL2
+models/f18 CS:GO
+models/flag TF2
+models/gantry_crane HL2
+models/ghost CS:GO
+models/gibs CS:GO,Portal 2,HL2
+models/gibs/furniture_gibs CS:GO,HL2
+models/gladdysdestruction Portal 2,Portal
+models/harvest TF2
+models/hostage CS:GO
+models/humans CS:S,CS:GO,HL2
+models/humans/group01 HL2
+models/humans/group02 HL2
+models/humans/group03 HL2
+models/humans/group03m HL2
+models/hybridphysx CS:GO,TF2
+models/inventory_items CS:GO
+models/items CS:S,TF2,HL2
+models/items/banana TF2
+models/lilchewchew TF2
+models/map10_doors HL2
+models/map12_bigbaddaboom HL2
+models/map12_building2 HL2
+models/map12_sawmill HL2
+models/map12a_hangar HL2
+models/map1_boards HL2
+models/map1_bridge HL2
+models/map1_rubble HL2
+models/mini_borealis HL2
+models/models CS:GO
+models/npcs Portal 2
+models/ol TF2
+models/passtime TF2
+models/perftest HL2
+models/pickups TF2
+models/pl_hoodoo TF2
+models/player CS:S,CS:GO,TF2,Portal 2,Portal
+models/player/ballbot Portal 2
+models/player/bot_assembly Portal 2
+models/player/br Portal 2
+models/player/chell Portal 2
+models/player/contactshadow CS:GO
+models/player/custom_player CS:GO
+models/player/eggbot Portal 2
+models/player/gibs TF2
+models/player/holiday CS:GO
+models/player/hwm TF2
+models/player/items TF2,Portal 2
+models/player/items/all_class TF2
+models/player/items/ballbot Portal 2
+models/player/items/crafting TF2
+models/player/items/cyoa_pda TF2
+models/player/items/demo TF2
+models/player/items/eggbot Portal 2
+models/player/items/engineer TF2
+models/player/items/heavy TF2
+models/player/items/medic TF2
+models/player/items/mvm_loot TF2
+models/player/items/pyro TF2
+models/player/items/scout TF2
+models/player/items/sniper TF2
+models/player/items/soldier TF2
+models/player/items/spy TF2
+models/player/items/taunts TF2
+models/portal Portal 2
+models/portals Portal 2,Portal
+models/prop_cables Portal 2
+models/props CS:S,CS:GO,Portal 2,Portal
+models/props/128_fuse_set01 Portal 2,Portal
+models/props/128_fuse_set02 Portal
+models/props/128_fuse_set03 Portal 2,Portal
+models/props/128_fuse_set04 Portal 2,Portal
+models/props/128_fuse_set05 Portal 2,Portal
+models/props/128_fuse_set06 Portal 2,Portal
+models/props/128_fuse_set07 Portal 2,Portal
+models/props/128_fuse_set08 Portal
+models/props/128_fuse_set09 Portal 2,Portal
+models/props/128_fuse_set10 Portal 2,Portal
+models/props/ar_dizzy CS:GO
+models/props/ar_lunacy CS:GO
+models/props/autoportal_frame Portal
+models/props/bts_bed Portal
+models/props/cake Portal
+models/props/camera Portal
+models/props/christmas CS:GO
+models/props/claw Portal
+models/props/coop_autumn CS:GO
+models/props/coop_cementplant CS:GO
+models/props/coop_kashbah CS:GO
+models/props/crates CS:GO
+models/props/cs_assault CS:S,CS:GO
+models/props/cs_havana CS:S,CS:GO
+models/props/cs_italy CS:S,CS:GO
+models/props/cs_italy/window CS:GO
+models/props/cs_militia CS:S,CS:GO
+models/props/cs_office CS:S,CS:GO
+models/props/de_aztec CS:GO
+models/props/de_boathouse CS:GO
+models/props/de_burger CS:GO
+models/props/de_cbble CS:S,CS:GO
+models/props/de_cbble/arch_a CS:GO
+models/props/de_cbble/arch_b CS:GO
+models/props/de_cbble/arch_c CS:GO
+models/props/de_cbble/arch_d CS:GO
+models/props/de_cbble/arch_e CS:GO
+models/props/de_cbble/arch_f CS:GO
+models/props/de_cbble/arch_g CS:GO
+models/props/de_cbble/arch_g_pillar CS:GO
+models/props/de_cbble/arch_h CS:GO
+models/props/de_cbble/arch_i CS:GO
+models/props/de_cbble/arch_j CS:GO
+models/props/de_cbble/arch_k CS:GO
+models/props/de_cbble/arch_k_broken CS:GO
+models/props/de_cbble/bomb_site_stat_a CS:GO
+models/props/de_cbble/bomb_site_stat_base CS:GO
+models/props/de_cbble/corner_trim_a CS:GO
+models/props/de_cbble/corner_trim_b CS:GO
+models/props/de_cbble/corner_trim_c CS:GO
+models/props/de_cbble/corner_trim_d CS:GO
+models/props/de_cbble/corner_trim_e CS:GO
+models/props/de_cbble/debris_stone_a CS:GO
+models/props/de_cbble/dist_mountain_a CS:GO
+models/props/de_cbble/door_a CS:GO
+models/props/de_cbble/door_b CS:GO
+models/props/de_cbble/fountain_a CS:GO
+models/props/de_cbble/fountain_stat_a CS:GO
+models/props/de_cbble/gate_a CS:GO
+models/props/de_cbble/knight_armour CS:GO
+models/props/de_cbble/lamp_a CS:GO
+models/props/de_cbble/metal_grate_a CS:GO
+models/props/de_cbble/old_weapons CS:GO
+models/props/de_cbble/ornate_door_a CS:GO
+models/props/de_cbble/out_crop_a CS:GO
+models/props/de_cbble/pine_a CS:GO
+models/props/de_cbble/port_a CS:GO
+models/props/de_cbble/port_b CS:GO
+models/props/de_cbble/port_c CS:GO
+models/props/de_cbble/port_sect_a CS:GO
+models/props/de_cbble/roof_dec_a CS:GO
+models/props/de_cbble/roof_top_a CS:GO
+models/props/de_cbble/stone_trans_a CS:GO
+models/props/de_cbble/tapestry_a CS:GO
+models/props/de_cbble/tapestry_b CS:GO
+models/props/de_cbble/tapestry_c CS:GO
+models/props/de_cbble/trim_a CS:GO
+models/props/de_cbble/trim_b CS:GO
+models/props/de_cbble/trim_c CS:GO
+models/props/de_cbble/trim_d CS:GO
+models/props/de_cbble/trim_e CS:GO
+models/props/de_cbble/trim_f CS:GO
+models/props/de_cbble/trim_g CS:GO
+models/props/de_cbble/twin_arch_a CS:GO
+models/props/de_cbble/wall_detail_a CS:GO
+models/props/de_cbble/wall_detail_b CS:GO
+models/props/de_cbble/wall_hole CS:GO
+models/props/de_cbble/wall_inset_a CS:GO
+models/props/de_cbble/wall_trim_a CS:GO
+models/props/de_cbble/wall_trim_b CS:GO
+models/props/de_cbble/window_arch_a CS:GO
+models/props/de_cbble/window_arch_b CS:GO
+models/props/de_cbble/window_b CS:GO
+models/props/de_cbble/window_bars_a CS:GO
+models/props/de_cbble/window_c CS:GO
+models/props/de_cbble/window_c_half CS:GO
+models/props/de_cbble/window_d CS:GO
+models/props/de_chateau CS:S
+models/props/de_depot CS:GO
+models/props/de_dust CS:S,CS:GO
+models/props/de_dust/hr_dust CS:GO
+models/props/de_dust/objects CS:GO
+models/props/de_house CS:GO
+models/props/de_inferno CS:S,CS:GO
+models/props/de_inferno/hr_i CS:GO
+models/props/de_mill CS:GO
+models/props/de_mirage CS:GO
+models/props/de_nuke CS:S,CS:GO,Portal 2
+models/props/de_nuke/hr_nuke CS:GO
+models/props/de_overpass CS:GO
+models/props/de_piranesi CS:S,CS:GO
+models/props/de_port CS:S
+models/props/de_prodigy CS:S,CS:GO,Portal 2
+models/props/de_shacks CS:GO
+models/props/de_tides CS:S,CS:GO
+models/props/de_train CS:S,CS:GO,Portal 2
+models/props/de_train/hr_t CS:GO
+models/props/de_train/vending CS:GO
+models/props/de_tvstation CS:GO
+models/props/de_venice CS:GO
+models/props/de_vertigo CS:GO
+models/props/de_vostok CS:GO
+models/props/dust_massive CS:GO
+models/props/dz_fall CS:GO
+models/props/elevator_caps Portal 2,Portal
+models/props/elevatorshaft_wall Portal 2,Portal
+models/props/food_can Portal 2,Portal
+models/props/gd_crashsite CS:GO
+models/props/gg_handling CS:GO
+models/props/gg_tibet CS:GO
+models/props/gg_vietnam CS:GO
+models/props/glados_ceiling_light Portal 2,Portal
+models/props/glados_pillar Portal 2,Portal
+models/props/holiday_light CS:GO
+models/props/hr_massive CS:GO
+models/props/hr_vertigo CS:GO
+models/props/kb_mouse Portal
+models/props/lab_chair Portal 2,Portal
+models/props/lab_desk01 Portal 2,Portal
+models/props/lab_desk02 Portal 2,Portal
+models/props/lab_desk03 Portal 2,Portal
+models/props/lab_desk04 Portal 2,Portal
+models/props/lab_desk05 Portal 2,Portal
+models/props/lab_monitor_pose01 Portal 2,Portal
+models/props/lab_shelf Portal
+models/props/lab_shelf_small Portal
+models/props/milk_carton Portal
+models/props/pc_case02 Portal 2,Portal
+models/props/pc_case_open Portal 2,Portal
+models/props/props_crates CS:GO
+models/props/props_gameplay CS:GO
+models/props/props_utilities CS:GO
+models/props/rot_door Portal
+models/props/saucepan Portal 2,Portal
+models/props/server_wall Portal
+models/props/shelf128 Portal
+models/props/sign_frame01 Portal 2,Portal
+models/props/sign_frame02 Portal 2,Portal
+models/props/speaker_system01 Portal
+models/props/terror Portal 2
+models/props/vert_door Portal 2,Portal
+models/props/wall_pipes_bend01 Portal 2,Portal
+models/props/wall_pipes_bend02 Portal 2,Portal
+models/props/wall_pipes_bend03 Portal 2,Portal
+models/props/wall_pipes_corner Portal 2,Portal
+models/props/wall_pipes_corner02 Portal 2,Portal
+models/props/wall_pipes_horiz Portal 2,Portal
+models/props/wall_pipes_terminate01 Portal 2,Portal
+models/props/wall_pipes_tjunc01 Portal 2,Portal
+models/props/wall_pipes_wave Portal 2,Portal
+models/props/water_bottle Portal 2,Portal
+models/props_2fort TF2
+models/props_animated_breakable HL2
+models/props_animsigns Portal 2,Portal
+models/props_backstage Portal 2
+models/props_badlands TF2
+models/props_bank CS:GO
+models/props_barnblitz TF2
+models/props_basement Portal 2
+models/props_borealis HL2
+models/props_bts Portal 2,Portal
+models/props_building_details HL2
+models/props_buildings CS:GO,Portal 2,HL2
+models/props_c17 CS:S,CS:GO,HL2
+models/props_canal CS:GO,HL2
+models/props_cemetery CS:GO
+models/props_citizen_tech HL2
+models/props_coalmines TF2
+models/props_coldfront TF2
+models/props_combine CS:GO,HL2
+models/props_crates CS:GO
+models/props_critters CS:GO
+models/props_debris CS:S,CS:GO,Portal 2,HL2
+models/props_decker TF2
+models/props_destruction Portal 2
+models/props_dev HL2
+models/props_diorama Portal 2
+models/props_docks CS:GO,HL2
+models/props_doomsday TF2
+models/props_doors CS:GO,HL2
+models/props_downtown CS:GO,Portal 2
+models/props_equipment CS:GO
+models/props_explosive HL2
+models/props_exteriors CS:GO
+models/props_factory Portal 2
+models/props_fairgrounds CS:GO
+models/props_farm TF2
+models/props_foliage CS:S,CS:GO,TF2,Portal 2,HL2
+models/props_foliage/scenes TF2
+models/props_forest TF2,HL2
+models/props_fortifications CS:GO
+models/props_frontline TF2
+models/props_furniture CS:GO
+models/props_gameplay CS:GO,TF2,Portal 2
+models/props_granary TF2
+models/props_halloween TF2
+models/props_harbor TF2
+models/props_hightower_event TF2
+models/props_highway CS:GO,Portal 2
+models/props_hive HL2
+models/props_holidays CS:GO
+models/props_hub Portal 2
+models/props_hydro TF2
+models/props_industrial CS:S,CS:GO
+models/props_interiors CS:S,CS:GO,HL2
+models/props_island TF2
+models/props_junk CS:S,CS:GO,Portal 2,Portal,HL2
+models/props_lab CS:GO,Portal 2,HL2
+models/props_lakeside TF2
+models/props_lakeside_event TF2
+models/props_lighting CS:GO,Portal 2
+models/props_lights TF2,Portal 2
+models/props_livingwall Portal 2
+models/props_mall CS:GO,Portal 2
+models/props_manor TF2
+models/props_medical TF2
+models/props_medieval TF2
+models/props_mill CS:GO
+models/props_mining TF2,HL2
+models/props_misc CS:GO
+models/props_moon Portal 2
+models/props_moonbase TF2
+models/props_motel Portal 2
+models/props_movies TF2
+models/props_mvm TF2
+models/props_nature TF2
+models/props_nightfall TF2
+models/props_nucleus TF2
+models/props_office CS:GO,Portal 2
+models/props_outland HL2
+models/props_p1_backstage Portal 2
+models/props_pipes CS:S,CS:GO,HL2
+models/props_plants CS:GO
+models/props_powerhouse TF2
+models/props_radiostation HL2
+models/props_recompiled TF2
+models/props_rooftop CS:S,CS:GO,HL2
+models/props_sabotage Portal 2
+models/props_shacks CS:GO
+models/props_signs CS:GO
+models/props_silhouettes TF2
+models/props_silo HL2
+models/props_skybox CS:GO,TF2,HL2
+models/props_skybox/dmx CS:GO
+models/props_soho TF2
+models/props_spytech TF2
+models/props_street CS:GO,Portal 2
+models/props_sunshine TF2
+models/props_survival CS:GO
+models/props_swamp TF2
+models/props_td TF2
+models/props_teaser TF2
+models/props_test_chamber Portal 2
+models/props_trailers CS:GO
+models/props_training TF2
+models/props_trainstation CS:GO,Portal 2,HL2
+models/props_trainyard TF2
+models/props_ui TF2
+models/props_underground CS:GO,Portal 2
+models/props_unique CS:GO,Portal 2
+models/props_unique/airport CS:GO
+models/props_unique/small_town CS:GO
+models/props_unique/spawn_apartment CS:GO
+models/props_urban CS:GO,TF2,Portal 2
+models/props_vac_anim Portal 2
+models/props_vehicles CS:S,CS:GO,TF2,Portal 2,HL2
+models/props_vehicles/parts TF2
+models/props_vents CS:GO,HL2
+models/props_viaduct TF2
+models/props_viaduct_event TF2
+models/props_wasteland CS:S,CS:GO,Portal 2,HL2
+models/props_well TF2
+models/props_windows CS:GO
+models/props_woods TF2
+models/props_yard CS:GO
+models/pyroland TF2
+models/rockslide HL2
+models/seesawbridge HL2
+models/shadertest CS:S,HL2
+models/shells CS:S,CS:GO
+models/skeleton HL2
+models/soldier_statue TF2
+models/sprays CS:GO
+models/stars Portal 2
+models/sticker_preview CS:GO
+models/strider_parts HL2
+models/striderbustervendor1 HL2
+models/tanker HL2
+models/thundermountain_fx TF2
+models/tools CS:GO,HL2
+models/tools/axis CS:GO
+models/tools/green_plane CS:GO
+models/traincar_interior Portal 2
+models/traincars Portal 2
+models/turret TF2
+models/vehicle HL2
+models/vehicles Portal,HL2
+models/vgui TF2
+models/weapons/c_models TF2
+models/weapons/pedestal TF2
+models/weapons/shells TF2
+models/weapons/shield_gibs CS:GO
+models/weapons/stickers CS:GO
+models/weapons/v_models CS:GO,TF2
+models/weapons/v_models/arms CS:GO
+models/weapons/v_models/v_hm_watch TF2
+models/weapons/w_models CS:GO,TF2,Portal 2
+models/weapons/w_models/arms CS:GO
+models/weapons/w_models/w_breadmonster TF2
+models/weapons/w_models/w_portalgun Portal 2
+models/weapons/w_models/w_rocket_airstrike TF2
+models/workshop TF2
+models/workshop_partner TF2
+models/zombie HL2

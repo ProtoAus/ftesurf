@@ -52,6 +52,8 @@ class Sources:
         self.list = []
         for name, rel in SOURCES:
             p = steam / rel
+            if name == 'csgo' and not p.exists():   # P1625: CS2's Source 1 beta or standalone CS:GO Legacy (mapdeps.py)
+                p = steam / 'csgo legacy/csgo/pak01_dir.vpk'
             if p.is_dir():
                 src = DirectorySource(p)
                 keys = set(src.paths())

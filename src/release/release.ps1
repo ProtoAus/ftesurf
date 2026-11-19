@@ -239,6 +239,8 @@ $ShipGameFiles = @(
     'ftesurf/scripts/matcolours.txt'
     # P1560: per map, what no pack supplies (tools/mapdeps.py --unshipped); the hl2 plugin keeps those quiet
     'ftesurf/scripts/unshipped.txt'
+    # P1625: which game ships each materials/ and models/ folder (tools/assetgames.py, tracked); the missing-content warning names it
+    'ftesurf/scripts/assetgames.txt'
     # WITHOUT THIS THE DOWNLOAD BUTTON DOES NOT EXIST.  ui_dl_load reads it to
     # append the maps you do NOT have; with no file the list is built purely
     # from search_begin and every row is already installed, so nothing draws a
