@@ -53,8 +53,10 @@ No restart was performed merely to test authorization, and listing a rule is not
 
 **Actual delivery status:** local environment and repository portability code verified. No public lobby,
 backend/catalogue, updater or release deployment. The remaining rollout work is ordinary fresh transaction/
-payload qualification and owner authentication, not an OS shell dependency. P1622's catalogue must still wait
-for its parser/course gate in the guarded backend generation. See `backend-pending.md` and `../lextest.md`.
+payload qualification and owner authentication, not a missing PowerShell dependency. The retained historical
+fleet caller has old host-local bindings; a fresh Linux-bound preservation transaction has not been constructed
+or executed by this task. That binding/adaptation must be reviewed with the actual deployment packet, not
+replayed from an old receipt. P1622's catalogue must still wait for its parser/course gate in the guarded backend generation. See `backend-pending.md` and `../lextest.md`.
 
 ## Tests, controls and review
 
@@ -79,6 +81,12 @@ for its parser/course gate in the guarded backend generation. See `backend-pendi
 - Real QC output SHA256s: server `e76cb0c28c70a8b9728b51ac6c460e536964065a3b324d25d070c5460270ea66`,
   client `7d3d0dffffc7821e959a87d87516838012503ec5998c4b0c96b71caed4b24149`,
   menu `8ca956bcc81ace34cef09ddfdc21613d6125436877e0441a5a1228f5142eefc0`.
+
+Clean implementation commit `409b01c56916a999aebd68584abb2d9a67c7a6cf` was then checked out independently:
+real PowerShell NoDeploy again produced all three zero-warning VMs, identical to the measured originals;
+focused7 passed again, installed hashes unchanged. Compiler identity was checked before/after from the original
+measured receipt (`6eef0cb43667f93a398798ac46002b7b65ae7cc9d063e7fba3a1f6452a224173`), not inferred from
+prose or current tool availability. This still is not game-runtime or live-transaction qualification.
 
 Private source/probe/review/failed-fixture logs and dependency receipts remain in the owned task root with
 OWNER.md/checkpoint. No private operational designs, credentials, player data or maps were published.
