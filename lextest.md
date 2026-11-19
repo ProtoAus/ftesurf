@@ -18,7 +18,7 @@ Node lacked libsimdjson.so.36; parent source review and tests are recorded separ
 - After the guarded backend + catalogue promotion, inspect Story bronze=finish, silver=G4, gold=G2 and the eight
   new maps (autumn_fix explicitly). Check linear runs and staged retry totals in practice. Nightingale B4/B5 should
   remain unavailable until you publish each bonus's start/end zones, then become available after Story refresh.
-- Audit follow-up: old Voyager/Fiellu route Events lack authored via spots, Events14/15 duplicate kvas,
+- Audit follow-up: old Voyager/Fiellu route Events lack authored via spots, Events77/85 duplicate kvas,
   Story59 still awaits Monkeys2/Whoknows3 clarification, and aircontrol/rookie need group data for timed medals.
   These were reported, not silently rewritten or filled with invented criteria.
 

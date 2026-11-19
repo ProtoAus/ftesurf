@@ -53,4 +53,43 @@ Private operational logs/artifacts are retained under the owned task root
 - Nightingale still needs Lex's B4/B5 zones; availability updates through Story's existing worker/TTL, not instantly.
 - Real rendered cursor/dimming/centering, editor drag/scale/hide and actual stage-finish placement remain owner
   acceptance checks in `../lextest.md`. Headless console checks do not exercise CSQC_UpdateView or prove pixels.
-- Native distribution/release scripts use PowerShell, unavailable on this Linux session; no ad hoc release substitute.
+- Supported fleet deployment is PowerShell-based (`src/build.ps1 -Pi`); `pwsh` is unavailable locally and on
+  the Pi. The read-only SSH probe succeeded but general noninteractive root (`sudo -n /usr/bin/true`) is unavailable;
+  the sealed backend generation needs its privileged stage/seal/systemd steps. No ad hoc deploy path, direct live
+  backend overwrite or root-policy bypass was attempted. Releases are separate and were not requested/performed.
+
+## Final parent build / local install — 19 November 2026, 05:47 UTC
+
+- Implementation source commit: `4cd92390fbf1b963bf879dbc13cd65f3b3f4f21e`, independently checked out clean under
+  the owned task root. All three VMs compiled using the exact Linux wrapper flags, **exit0 / zero warnings**.
+  The first manual compiler invocation used unsupported flags/`-src`; its failure is retained as
+  `artifacts/clean-build/sv_progs.invocation-failed.log`. Corrected to the documented wrapper's `-srcfile` on the
+  same source/tree/artifact cohort; no source defect or new compiler workaround was introduced.
+- `qcframes.py`: server/client **zero frame-global hits**; menu has **three existing hits**. The exact same
+  compiler/options against baseline `163ef4ed` reproduce the identical `(function,global)` set:
+  `ui_dl_cancel_ready/dl_have_cancel`, `MF_PresencePoll/mf_linkstate`, `Sty_AskMe/mf_linkstate`. **Zero new hits**,
+  not a clean scanner exit. This preserves the existing P1617 finding rather than silently repairing peer code.
+- The same clean-baseline control reproduces the navigation PF_CF failure and both social configured-verifier
+  errors; current code adds three navigation checks and one passing social transport check without new failures.
+- Clean implementation tree rerun: Story54, Groups10, focused regressions4 all pass. `story_push.py --check` passes
+  against the live public map roster, **not copied**. It still reports the existing missing route spots and
+  unzoned sinister/fruits2/1998/kismet; those are explicit authored/content follow-ups, not parser failures.
+- Owned native Linux headless engine probe against the exact final artifacts: CSQC loaded, mode/source commands
+  acted (Backwards → Normal, Segmented → Normal), Splits editor commands accepted, end marker reached, exit0,
+  no unknown command/VM error; owned process stopped. This does **not** run CSQC_UpdateView or prove clicks/pixels.
+- Ran the canonical `/home/lex/Projects/WorldofSurf/wos-build.sh`; the installed local three VMs match the
+  clean-checkout artifacts byte-for-byte. Previous local progs preserved in the owned artifacts for rollback.
+
+| Local artifact | SHA256 |
+|---|---|
+| qwprogs.dat | `e76cb0c28c70a8b9728b51ac6c460e536964065a3b324d25d070c5460270ea66` |
+| csprogs.dat | `7d3d0dffffc7821e959a87d87516838012503ec5998c4b0c96b71caed4b24149` |
+| menu.dat | `8ca956bcc81ace34cef09ddfdc21613d6125436877e0441a5a1228f5142eefc0` |
+
+Final parent review additionally found that the first course gate omitted curated/shipped overrides. The follow-up
+adds the full seven-position game-before-Momentum file priority (configurable SURFD_ZONES_CURATED/LIBRARY for the
+game's curated/local library paths). The extended priority test fails on the original three-directory gate,
+then passes with the fix; Story54 passes again. This changes backend Python/tests/docs, not QC source or these
+compiled bytes. The native engine pin/tag and QC Build89 are unchanged. Fleet/backend/catalogue remain pending the supported
+privileged deployment environment; Nightingale additionally awaits Lex's actual bonus zones. See `../lextest.md`
+for the small rendered owner checks; the code is installed in the Linux development game for those checks now.

@@ -269,9 +269,11 @@ class Story(unittest.TestCase):
 
     def test_course_zones_effective_override_and_fail_closed(self):
         with tempfile.TemporaryDirectory(dir=HOME) as scratch:
-            directories = [Path(scratch) / str(i) for i in range(3)]
+            directories = [Path(scratch) / name for name in (
+                'data-local', 'game/curated', 'momentum/curated', 'game/local',
+                'momentum/local', 'game/online', 'momentum/online')]
             for directory in directories:
-                directory.mkdir()
+                directory.mkdir(parents=True)
             region = dict(points=[[0, 0], [8, 0], [8, 8], [0, 8]], bottom=0, height=8)
             course = dict(zones=dict(segments=[dict(checkpoints=[dict(regions=[region])])],
                                      end=dict(regions=[region])))
@@ -279,12 +281,15 @@ class Story(unittest.TestCase):
                 (directory / 'surf_nightingale.json').write_text(json.dumps(dict(
                     formatVersion=1, tracks=dict(main=course, bonuses=[course] * count))))
             with patch.object(S, 'ZONES_LOCAL_DIR', str(directories[0])), \
-                    patch.object(S, 'ZONES_MOMLOCAL_DIR', str(directories[1])), \
-                    patch.object(S, 'ZONES_DIR', str(directories[2])):
+                    patch.object(S, 'ZONES_CURATED_DIR', str(directories[1])), \
+                    patch.object(S, 'ZONES_LIBRARY_DIR', str(directories[3])), \
+                    patch.object(S, 'ZONES_MOMLOCAL_DIR', str(directories[4])), \
+                    patch.object(S, 'ZONES_DIR', str(directories[6])):
                 check = lambda: [S._story_course_zoned('surf_nightingale', t) for t in (4, 5)]
                 self.assertEqual(check(), [False, False])
-                write(directories[2], 5)
-                self.assertEqual(check(), [True, True])
+                for index in reversed(range(len(directories))):
+                    write(directories[index], 4 if index % 2 else 5)
+                    self.assertEqual(check(), [True, index % 2 == 0], directories[index])
                 write(directories[0], 0)  # main-only local overrides both lower bonuses
                 self.assertEqual(check(), [False, False])
                 write(directories[0], 4)

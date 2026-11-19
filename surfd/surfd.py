@@ -233,6 +233,11 @@ ZONES_LOCAL_DIR = os.environ.get(
 # P1109: and Momentum's gamedir's own, which the lobbies read through the same mount
 # (14 on the Pi, surf_blastpit / surf_shape / surf_simple_v3 only there).
 ZONES_MOMLOCAL_DIR = os.environ.get("SURFD_ZONES_MOMLOCAL", os.path.join(MAPS_DIR, "zones", "local"))
+# Story course gates follow SV_ZoneLoad's curated and shipped-library overrides too.
+ZONES_CURATED_DIR = os.environ.get("SURFD_ZONES_CURATED", os.path.join(
+    os.environ.get("SURFD_GAME", "/srv/nvme/ftesurf-server/game"), "ftesurf", "maps", "zones", "curated"))
+ZONES_LIBRARY_DIR = os.environ.get("SURFD_ZONES_LIBRARY", os.path.join(
+    os.environ.get("SURFD_GAME", "/srv/nvme/ftesurf-server/game"), "ftesurf", "maps", "zones", "local"))
 
 # HOW LONG THE DIRECTORY LISTING IS BELIEVED.  1312 entries is a ~2 ms scandir
 # on the NVMe and this is a single-worker process, so the cache is not about
@@ -6036,7 +6041,11 @@ def _story_course_zoned(mapname, track):
     """
     if clean_map(mapname) != mapname or not 0 <= track <= MAX_TRACK:
         return False
-    for directory in (ZONES_LOCAL_DIR, ZONES_MOMLOCAL_DIR, ZONES_DIR):
+    # Resolve each library spelling in game-before-Momentum order, like the server mounts.
+    for directory in (ZONES_LOCAL_DIR, ZONES_CURATED_DIR,
+                      os.path.join(os.path.dirname(ZONES_MOMLOCAL_DIR), "curated"),
+                      ZONES_LIBRARY_DIR, ZONES_MOMLOCAL_DIR,
+                      os.path.join(os.path.dirname(ZONES_CURATED_DIR), "online"), ZONES_DIR):
         try:
             with open(os.path.join(directory, mapname + ".json"), "rb") as fh:
                 body = fh.read(262145)
