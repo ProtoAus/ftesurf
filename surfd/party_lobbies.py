@@ -86,8 +86,13 @@ def turn_clock(m, now):
     who, kind = m['turn_who'], m['turn_kind']
     name = next((p['name'] for p in m['players'] if p['who'] == who), who)
     choices = sorted(c['name'] for c in m['maps'] if c['status'] == 'pool')
+    if kind not in ('ban', 'pick') or not choices:
+        return None
     chosen = random.Random('%s:clock:%d' % (m['_seed'], m['_turn'])).choice(choices)
-    m = rules.transition(m, kind, who, name, dict(map=chosen))
+    try:
+        m = rules.transition(m, kind, who, name, dict(map=chosen))
+    except rules.Refusal:
+        return None  # an odd room must not refuse every member action or break the directory
     m['note'] = '%s ran out of time; a map was %s for them.' % (name, 'banned' if kind == 'ban' else 'picked')
     if m['phase'] == 'draft':
         m['_turn_at'] = [m['_turn'], now]

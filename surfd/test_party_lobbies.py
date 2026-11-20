@@ -310,6 +310,17 @@ class PartyAPI(unittest.TestCase):
         self.assertEqual(self.act('state', 0)['party']['revision'], legacy['revision'])
         self.assertEqual(self.raw()['_turn_at'], [2, self.now])
 
+    def test_p1650_draft_clock_skips_a_room_it_cannot_move(self):
+        m = self.locked()
+        odd = self.raw()
+        odd['turn_who'] = ''
+        self.db.execute('UPDATE tournament_parties SET state=?', (json.dumps(odd),))
+        self.db.commit()
+        self.now += 45
+        self.assertEqual(self.client.get('/api/tournament-lobbies?brief=1').status_code, 200)
+        self.assertEqual(self.act('state', 1)['party']['revision'], m['revision'])
+        self.assertEqual(self.act('leave', 1, m)['party']['phase'], 'lobby')
+
     def test_p1650_join_open_room_as_spectator_any_phase_and_learn_launch(self):
         m = self.act('create')['party']
         m = self.act('join', 1, m)['party']
