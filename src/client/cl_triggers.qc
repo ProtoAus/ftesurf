@@ -203,6 +203,7 @@ float  tg_c_nodest;
 float  tg_c_casefix;                    // P1396: targets/landmarks repaired as SV_RepairTargetCase
 string tg_map;
 float  tg_needload;             // lump was not readable yet; Trig_Frame retries
+float  tg_gs;                   // P1655: the map is a GoldSrc BSP (*bspversion 30); Source maps read 0
 float  tg_hookseen;             // one-shot "hook alive" print, for tests
 
 // skip ledger: WHY each trigger is server-only, for trig_dump and for the
@@ -2356,8 +2357,8 @@ void(float seat, float seq, float msec) CSQC_PredictPlayerMove =
 void() Trig_LoadForMap =
 {
 	local string tok, key, cn, mdl;
-	local string target, landmark, filt, tname, uselm_s, snapv_s, farg, tparent;
-	local vector org, ang, pushdir, ssang, ssdir, cvdir, reloff;
+	local string target, landmark, filt, tname, uselm_s, snapv_s, farg, tparent, master;
+	local vector org, ang, pushdir, ssang, ssdir, cvdir, reloff, gsdir;
 	local float  spawnflags, disabled, vmode, tspeed, speed;
 	local float  hmode, hs, hsmode, vsmode, hsp, vsp, ssstrict;
 	local float  negu, negl, ftype, fi, r;
@@ -2387,6 +2388,7 @@ void() Trig_LoadForMap =
 	tf_clsdyn = tf_ctspawn = tf_tspawn = 0;
 	tg_sk_n = 0;
 	tg_needload = 0;
+	tg_gs = (serverkey("*bspversion") == "30");
 	io_n = 0;
 	io_over = 0;
 	tg_pc_rows = tg_pc_n = tg_pc_now = 0;   // P1211
@@ -2416,7 +2418,7 @@ void() Trig_LoadForMap =
 		opened = TRUE;
 
 		cn = mdl = "";
-		target = landmark = filt = tname = uselm_s = snapv_s = farg = tparent = "";
+		target = landmark = filt = tname = uselm_s = snapv_s = farg = tparent = master = "";
 		org = ang = pushdir = ssang = ssdir = cvdir = reloff = '0 0 0';
 		spawnflags = disabled = vmode = tspeed = speed = 0;
 		hmode = hs = hsmode = vsmode = hsp = vsp = ssstrict = 0;
@@ -2507,6 +2509,34 @@ void() Trig_LoadForMap =
 			else if (key == "interval")               interval = stof(tok);
 			else if (key == "everytick")              everytick = stof(tok);
 			else if (key == "wait")                   waitk    = stof(tok);
+			else if (key == "master")                 master   = tok;
+		}
+
+		// P1655: a GoldSrc map's keys, turned into the ones the mirror reads, as the server's spawns
+		// do (sv_goldsrc.qc GS_SpawnTeleport, GS_SpawnPush, func_conveyor).  A brush's "angles" there
+		// is a direction and never turns it.
+		if (tg_gs)
+		{
+			gsdir = ang;
+			if (ang == '0 -1 0') gsdir = '-90 0 0';         // SetMovedir: up
+			else if (ang == '0 -2 0') gsdir = '90 0 0';     // ...and down
+			if (cn == "trigger_teleport")
+			{
+				if (master != "")
+					cn = "";                // a multisource gates it: the server's alone
+				spawnflags = spawnflags & 2;    // "no clients"
+				vmode = 1;                      // CTriggerTeleport zeroes the velocity
+				ang = '0 0 0';
+			}
+			else if (cn == "trigger_push")
+			{
+				pushdir = gsdir;
+				disabled = (spawnflags & 2) ? 1 : 0;
+				spawnflags = TG_SF_TRIGGER_CLIENTS | ((spawnflags & 1) ? TG_SF_PUSH_ONCE : 0);
+				ang = '0 0 0';
+			}
+			else if (cn == "func_conveyor")
+				cvdir = gsdir;
 		}
 
 		if (!strcmp(cn, "func_conveyor"))
@@ -2836,6 +2866,9 @@ void() Trig_Frame =
 	tg_ctx_live = (serverkey("fs_contexts") != "0");
 	tg_grav_srv = (serverkey("fs_grav") == "1");
 	Trig_IOMapSpawn();
+	// P1655: the lump was read before *bspversion arrived (the race Patch 1037 notes above)
+	if ((serverkey("*bspversion") == "30") != tg_gs)
+		tg_needload = 1;
 	if (!tg_needload)
 		return;
 	Trig_LoadForMap();
