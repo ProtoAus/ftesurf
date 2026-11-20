@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 from email.parser import Parser
 
@@ -23,7 +24,7 @@ SITE = 'https://proto.bar/ftesurf/'
 def get(url, limit, root, name):
     # Same supported transport as release.ps1; the public edge refuses urllib.
     headers = root / (name + '.headers')
-    result = subprocess.run(['curl.exe', '--disable', '--fail', '--silent', '--show-error',
+    result = subprocess.run(['curl.exe' if os.name == 'nt' else 'curl', '--disable', '--fail', '--silent', '--show-error',
         '--proto', '=https', '--max-time', '90', '--max-filesize', str(limit),
         '--header', 'Cache-Control: no-cache', '--dump-header', str(headers), url], capture_output=True, check=True)
     blocks = headers.read_text(encoding='iso8859-1').replace('\r\n', '\n').strip().split('\n\n')
@@ -48,10 +49,26 @@ def expected_receipt(path, sha):
 
 def run_launcher(root, platform, distro):
     binary = root / ('WOS-Launcher.exe' if platform == 'win64' else 'WOS-Launcher')
+    env = None
     if platform == 'win64':
-        if os.name != 'nt':
-            raise ValueError('Windows launcher smoke requires Windows')
         cmd = [str(binary), '--yes', '--no-launch']
+        if os.name != 'nt':
+            # Linux host: the real Windows launcher under Wine, in a prefix owned by this synthetic install.
+            if not shutil.which('wine'):
+                raise ValueError('Windows launcher smoke on Linux requires wine')
+            # Its own drive letter: through Z:\ every mount point on the way (e.g. /home) reads as a link, which
+            # the launcher rightly refuses.
+            prefix = root.parent / '.wine-smoke'
+            env = dict(os.environ, WINEPREFIX=str(prefix), WINEDEBUG='-all', WINEDLLOVERRIDES='mscoree,mshtml=')
+            subprocess.run(['wineboot', '-i'], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180, check=True)
+            drive = prefix / 'dosdevices' / 'w:'
+            if drive.is_symlink() or drive.exists():
+                drive.unlink()
+            drive.symlink_to(root.parent)
+            cmd = ['timeout', '--kill-after=5s', '300s', 'wine', 'W:\\' + root.name + '\\' + binary.name, '--yes', '--no-launch']
+    elif os.name != 'nt':
+        (root / 'WOS-Launcher').chmod(0o755)
+        cmd = ['timeout', '--kill-after=5s', '180s', './WOS-Launcher', '--yes', '--no-launch']
     else:
         mapped = subprocess.check_output(['wsl.exe', '-d', distro, '--exec', 'wslpath', '-a', str(root)], text=True).strip()
         subprocess.run(['wsl.exe', '-d', distro, '--exec', 'chmod', '0755', mapped + '/WOS-Launcher'], check=True)
@@ -59,7 +76,7 @@ def run_launcher(root, platform, distro):
         cmd = ['wsl.exe', '-d', distro, '--cd', mapped, '--exec', 'timeout', '--kill-after=5s', '180s',
                './WOS-Launcher', '--yes', '--no-launch']
     with (root / 'launcher.log').open('wb') as log:
-        subprocess.run(cmd, cwd=root, stdout=log, stderr=subprocess.STDOUT, timeout=195, check=True)
+        subprocess.run(cmd, cwd=root, stdout=log, stderr=subprocess.STDOUT, timeout=320 if env else 195, check=True, env=env)
 
 
 def smoke(receipt, root, distro):
