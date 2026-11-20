@@ -360,7 +360,7 @@ void() MSet_Sky =
 		MSet_Note("Windows output listens to the default playback device; nothing is recorded or replayed.", COL_DIM);
 	}
 	else
-		MSet_Info(cy, "", "Windows output analysis is unavailable in this engine", COL_DIM);
+		MSet_Info(cy, "", "the game's own sound (desktop audio capture is Windows-only)", COL_DIM);
 };
 
 void() MSet_Online =
