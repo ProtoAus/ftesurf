@@ -611,6 +611,7 @@ void() PlayerPreThink =
 	SV_PeCmd(self);                     // P1238: the last command's row, this one's context
 	SV_HeldCheck(self);
 	SV_VsVelPost(self);                 // P1205: the previous command's VScript velocity write
+	GS_KnockPost(self);                 // P1690: the previous command's GoldSrc door knock
 	SV_TASContactsObserve(self);        // previous completed native contact, never this command's intent
 	SV_NoColRestore();                  // P1193: lent again at the end of this function
 	self.svpm_phase_lo = input_cmd_sequence_lo;

@@ -78,6 +78,12 @@
 .float  gs_init;            // game_counter: the count it resets to
 
 float gs_n_ladder, gs_n_liquid, gs_n_door, gs_n_button, gs_n_train, gs_n_trig, gs_n_logic;
+// P1690 (GS_DamageKnock): a rotating door's queued knock on a player; a door's (and that copy's) activator bank context
+.vector gs_knock;
+.float gs_knockon;
+.int gs_knockattempt, gs_kba;
+.entity gs_kbp;
+.float gs_kbb;
 float gs_depth;             // nested GS_FireTargets calls
 float gs_mm_delay[16];
 float gs_mm_used[16];
@@ -483,6 +489,9 @@ float() GS_DoorActivate =
 {
 	if (!GS_MasterOn(self.gs_master))
 		return FALSE;
+	self.gs_kbp = self.gs_act;          // P1690: who moved it, for GS_DamageKnock's bank cause
+	self.gs_kba = (self.gs_act.classname == "player") ? self.gs_act.bank_attempt : 0i;
+	self.gs_kbb = (self.gs_act.classname == "player") ? SV_BankSourceTaint(self.gs_act) : 0;
 	if ((self.spawnflags & GS_SF_DOOR_TOGGLE) && self.gs_state == TS_AT_TOP)
 		GS_DoorGoDown();
 	else
@@ -504,29 +513,65 @@ void() GS_DoorTouch =
 
 // P1690: CBaseDoor::Blocked's TakeDamage(dmg) knockback (CBaseMonster::TakeDamage, DamageForce), AG modes only (Lex);
 // CS 1.6 and Source modes push nothing. DamageForce caps only a positive force, so a "healer" (dmg -10000) throws the
-// player toward the door at sv_maxvelocity -- the Half-Life ports' booster. Recorded like trigger_setspeed.
+// player toward the door at sv_maxvelocity -- the Half-Life ports' booster. A sliding door is moved back and the player
+// restored before .blocked (WPhys_Push), so it applies at once, as HL does; a rotating door calls .blocked before either
+// (WPhys_PushAngles), so its knock waits for the next PlayerPreThink (GS_KnockPost, like SV_VsVelPost). Recorded like
+// trigger_setspeed; the activator's bank context taints like an output's.
+void(entity e, vector add, entity bp, int ba, float bb) GS_KnockApply =
+{
+	local vector v;
+
+	if (SV_MapMoveHeld(e))
+		return;
+	v = e.velocity + add;
+	if (cvar("developer"))
+		dprint(sprintf("goldsrc: knock %s %v -> %v\n", e.netname, e.velocity, v));
+	SV_BankCauseAffect(e, bp, ba, bb);
+	if (v_z > PM_NONJUMP_VEL && v_z > e.velocity_z)
+		e.run_pushed = TRUE;
+	e.velocity = v;
+	SV_RecWarp(e, "speed");
+};
+
 void(entity pl) GS_DamageKnock =
 {
 	local float dmg, vol;
-	local vector dir, v;
+	local vector c, add;
 
 	if (!self.gs_dmg || pl.classname != "player" || pl.movetype != MOVETYPE_WALK)
 		return;
-	if (substring(serverkey("*movementprofile"), 0, 3) != "ag-" || SV_MapMoveHeld(pl))
+	if (substring(serverkey("*movementprofile"), 0, 3) != "ag-")
 		return;
 	dmg = (self.gs_dmg < 0) ? ceil(self.gs_dmg) : floor(self.gs_dmg);    // CBasePlayer::TakeDamage's (int)
 	vol = pl.size_x * pl.size_y * pl.size_z;
 	dmg = dmg * 5 * ((vol > 0) ? (32 * 32 * 72) / vol : 1);
 	if (dmg > 1000)
 		dmg = 1000;
-	dir = normalize((self.absmin + self.absmax) * 0.5 - '0 0 10' - (pl.absmin + pl.absmax) * 0.5);
-	v = pl.velocity - dir * dmg;
-	if (cvar("developer"))
-		dprint(sprintf("goldsrc: %s knocks %s %v -> %v\n", self.targetname, pl.netname, pl.velocity, v));
-	if (v_z > PM_NONJUMP_VEL && v_z > pl.velocity_z)
-		pl.run_pushed = TRUE;
-	pl.velocity = v;
-	SV_RecWarp(pl, "speed");
+	c = (self.gs_kind == GS_K_ROTDOOR) ? self.origin : (self.absmin + self.absmax) * 0.5;  // HL Center(): the hinge
+	add = normalize(c - '0 0 10' - (pl.absmin + pl.absmax) * 0.5) * -dmg;
+	if (self.gs_kind != GS_K_ROTDOOR)
+	{
+		GS_KnockApply(pl, add, self.gs_kbp, self.gs_kba, self.gs_kbb);
+		return;
+	}
+	if (!pl.gs_knockon || pl.gs_knockattempt != pl.bank_attempt)
+		pl.gs_knock = '0 0 0';
+	pl.gs_knock = pl.gs_knock + add;
+	pl.gs_knockon = TRUE;
+	pl.gs_knockattempt = pl.bank_attempt;
+	pl.gs_kbp = self.gs_kbp;
+	pl.gs_kba = self.gs_kba;
+	pl.gs_kbb = self.gs_kbb;
+};
+
+void(entity e) GS_KnockPost =
+{
+	if (!e.gs_knockon)
+		return;
+	e.gs_knockon = FALSE;
+	if (e.gs_knockattempt == e.bank_attempt)    // not queued before !r into the new attempt
+		GS_KnockApply(e, e.gs_knock, e.gs_kbp, e.gs_kba, e.gs_kbb);
+	e.gs_knock = '0 0 0';
 };
 
 // CBaseDoor::Blocked: a door that comes back by itself reverses; one that never does keeps pushing.
