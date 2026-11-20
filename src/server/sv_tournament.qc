@@ -10,7 +10,7 @@
 float tq_allreadyat, tq_startsent, tq_readyscanat, tq_arrivedat, tq_absentwarned, tq_autorefused, tq_emptysince;
 float tq_absentsince, tq_canstart, tq_startnow, tq_waitprev, tq_autofails, tq_startskind, tq_drainat;
 string tq_absentset;
-.float tq_nojournal, tq_speccmd;
+.float tq_nojournal, tq_speccmd, tq_joinat;
 
 float tq_cvreg, tq_booted, tq_pollat, tq_request, tq_sentat, tq_retry;
 float tq_revision, tq_round, tq_roundtotal, tq_seconds, tq_countat, tq_goat;
@@ -139,7 +139,7 @@ void(entity e) Tour_Connected =
 	e.tq_boundwho = "";
 	if (Tour_Owns())
 	{
-		forceinfokey(e, "*spectator", "1");
+		forceinfokey(e, "*spectator", "1"); forceinfokey(e, "*tqspec", "1");
 		e.solid = SOLID_NOT;
 	}
 	// Only a tournament server has a panel to clear: Tour_Clear resets every CSQC panel's click state.
@@ -256,7 +256,7 @@ void(entity e) Tour_RefreshRole =
 	e.tq_seenrev = 0;
 	if (role == 1 && stof(infokey(e, "*spectator")))
 	{
-		forceinfokey(e, "*spectator", "0");
+		forceinfokey(e, "*spectator", "0"); forceinfokey(e, "*tqspec", "");
 		saved = self; self = e; SV_PlayerRespawn(); self = saved;
 	}
 };
@@ -276,14 +276,14 @@ void() Tour_Roles =
 		if (e.tq_role != 1)
 		{
 			Tour_Unhold(e);
-			forceinfokey(e, "*spectator", "1");
+			forceinfokey(e, "*spectator", "1"); forceinfokey(e, "*tqspec", "1");
 			e.solid = SOLID_NOT;
 		}
 		else
 		{
 			if (stof(infokey(e, "*spectator")))
 			{
-				forceinfokey(e, "*spectator", "0");
+				forceinfokey(e, "*spectator", "0"); forceinfokey(e, "*tqspec", "");
 				local entity saved;
 				saved = self; self = e; SV_PlayerRespawn(); self = saved;
 			}
@@ -321,7 +321,7 @@ void(string op, string data, entity actor) Tour_Queue =
 
 void() Tour_Clear =
 {
-	local entity e, saved;
+	local entity e;
 	local float i, kind;
 	for (i = 1; i <= TQ_CLIENT_MAX; i = i + 1)
 	{
@@ -329,10 +329,13 @@ void() Tour_Clear =
 		if (kind == CLIENTTYPE_NOTACLIENT) break;
 		if (kind != CLIENTTYPE_REAL) continue;
 		Tour_Unhold(e);
-		if (stof(infokey(e, "*spectator"))) // forced by Tour_Connected/Tour_Roles (a native spectator joins ordinary play too)
+		// The tournament's forced spectators (only they carry *tqspec) rejoin play through the engine's `join`
+		// (Cmd_Join_f: slot check, SetNewParms, ClientConnect, PutClientInServer). Tour_Clear also runs on
+		// every idle poll, so a refused join (a full server, still connecting) is retried every 10 s.
+		if (infokey(e, "*tqspec") == "1")
 		{
-			forceinfokey(e, "*spectator", "0");
-			saved = self; self = e; SV_PlayerRespawn(); self = saved;
+			if (!stof(infokey(e, "*spectator"))) forceinfokey(e, "*tqspec", "");
+			else if (time >= e.tq_joinat) { e.tq_joinat = time + 10; stuffcmd(e, "cmd join\n"); }
 		}
 		if (e.tq_streambuf) buf_del(e.tq_streambuf);
 		e.tq_streambuf = e.tq_streamcount = 0;
@@ -970,7 +973,7 @@ float(entity e) Tour_PreThink =
 	if (!tq_owned || tq_creating || tq_race) return FALSE;
 	if (e.tq_role != 1)
 	{
-		forceinfokey(e, "*spectator", "1");
+		forceinfokey(e, "*spectator", "1"); forceinfokey(e, "*tqspec", "1");
 		e.solid = SOLID_NOT;
 		return TRUE;
 	}
@@ -1068,7 +1071,7 @@ float(entity e, float argc) Tour_Command =
 	{
 		if (e.tq_role != 1)
 		{
-			if (time < e.tq_speccmd) return TRUE;
+			if (time < e.tq_speccmd && op != "leave") return TRUE;
 			e.tq_speccmd = time + 3;
 		}
 		for (i = tq_qread; i < tq_qwrite; i = i + 1)
@@ -1141,7 +1144,7 @@ void() Tour_AutoReady =
 		who = json_get_string(json_find_object_child(row, "who"));
 		e = Tour_Client(who);
 		if (json_get_float(json_find_object_child(row, "ready")) || (e && e.acct_state == ACCT_LINKED)) { here = here + 1; continue; }
-		if (!SV_RecIsHex(who, FS_WHO_IDLEN) || strlen(who) != FS_WHO_IDLEN) continue;
+		if (!SV_RecIsHex(who, FS_WHO_IDLEN)) continue; // checks the length too (sv_timer.qc SV_RecIsHex)
 		absent = absent + 1;
 		nm = substring(json_get_string(json_find_object_child(row, "name")), 0, 32);
 		gone = strlen(gone) ? strcat(gone, ",", who) : who;
@@ -1151,7 +1154,7 @@ void() Tour_AutoReady =
 	if (gone != tq_absentset) // the missing set changed: a fresh grace; a fresh warning if someone new is missing
 	{
 		for (i = 0; i < strlen(gone); i = i + FS_WHO_IDLEN + 1)
-			if (strstrofs(tq_absentset, substring(gone, i, FS_WHO_IDLEN), 0) < 0) tq_absentwarned = FALSE;
+			if (strstrofs(tq_absentset, substring(gone, i, FS_WHO_IDLEN), 0) < 0) tq_absentwarned = tq_allreadyat = 0;
 		if (strlen(tq_absentset)) strunzone(tq_absentset);
 		tq_absentset = strlen(gone) ? strzone(gone) : "";
 		tq_absentsince = min(time, tq_arrivedat + 240); // capped: leaving and rejoining cannot stall past +300
@@ -1186,9 +1189,10 @@ void() Tour_AutoReady =
 	}
 	if (time < tq_startsent) { tq_startnow = FALSE; return; }
 	if (!tq_startnow && time < tq_allreadyat + delay) return;
-	if (tq_request || tq_qread != tq_qwrite) { tq_drainat = time; return; } // players' requests pause (Tour_Command)
+	if ((tq_request && tq_pendingop != "state") || tq_qread != tq_qwrite) { tq_drainat = time; return; } // players' requests pause (Tour_Command)
 	tq_startsent = time + 15; tq_startnow = FALSE;
 	Tour_Queue("autostart", strcat("&absent=", gone), world);
+	tq_pollat = min(tq_pollat, time);
 };
 
 void() Tour_Frame =
