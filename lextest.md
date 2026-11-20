@@ -27,6 +27,9 @@
 
 ## P1647 + P1653 -- roomier console window, faster Story/Event (worldofsurf-bb)
 
+- P1662: type a few letters in the console (e.g. `con_window_`). The suggestion list should sit a little below the line
+  with its text inset from the box and lined up with what you typed; clicking a suggestion types it. `con_completion_padding
+  12` for more room, `0` for the old list.
 - P1647: open the console. Is there room round the text and above the typing line, a grey title, a small x (red on
   hover), a thin border and a slim scrollbar? Too much or too little: `con_window_padding 8` (or 16), `con_window_alpha
   0.85`; `con_window_clean 0; con_window_padding 0` is the old window. Drag-select in the log and click in the line:

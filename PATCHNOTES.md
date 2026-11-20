@@ -21,6 +21,9 @@
 
 ## next
 
+### P1662 Breathing room for console suggestions
+- The console's suggestion list sits a little below the line you type in, with its text inset from the box edges and lined up with what you typed. con_completion_padding sets the room; 0 is the old list.
+
 ### P1660 Half-Life textures without Half-Life
 - On a Half-Life map, a texture from a Half-Life or Counter-Strike game you do not have installed is drawn in its own colour instead of the pink and black pattern.
 
