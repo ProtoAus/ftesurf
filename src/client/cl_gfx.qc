@@ -252,6 +252,12 @@ void(vector scr) Gfx_DrawMissing =
 		          sz * 0.85, '1.00 0.80 0.45', a * 0.9);
 		y = y + sz * 1.2;
 	}
+	// P1636: a steam_libraries.txt root that is gone or beats Steam's own copy (engines from P1636).
+	if (cvar_string("fs_steamlibs_note") != "")
+	{
+		HUD_TextC([p_x, y], cvar_string("fs_steamlibs_note"), sz * 0.85, '1.00 0.80 0.45', a * 0.9);
+		y = y + sz * 1.2;
+	}
 	// P1625 (Lex, 20 Nov): "<game>: <path>", ten at most -- models first (tokenized above), then the plugin's
 	// materials (hl2_unresolved_list, engines from P1625; hl2_unresolved_first before).
 	shown = 0;
