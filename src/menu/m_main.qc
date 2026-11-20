@@ -6930,7 +6930,10 @@ void(string name, optional float force) ui_dl_start =
 	if (dl_state == DL_ACTIVE)
 		return;                 // the engine does one at a time; so do we
 
-	if (isserver())
+	// P1670: an engine with cl_download_localgame fetches it from the web mirror during a local game, all but the
+	// map that game runs (3); older ones refuse there (P1094). Either way that map waits for the game to end.
+	float r = (isserver() && !cvar("cl_download_localgame")) ? 3 : downloadmap(name, force);
+	if (r == 3)
 	{
 		dl_name  = name;
 		dl_state = DL_ACTIVE;
@@ -6940,7 +6943,6 @@ void(string name, optional float force) ui_dl_start =
 		ui_st_result(sprintf("%s downloads when you leave this game", name), 0);
 		return;
 	}
-	float r = downloadmap(name, force);
 	if (r == 1)
 	{
 		dl_name  = name;
@@ -9463,7 +9465,7 @@ float(string cmd) m_consolecommand =
 			              dl_name));
 			print(sprintf("ui_dlmap: %g%% at %g B/s, %g of %g bytes, after local %g\n",
 			              dl_pct, dl_rate, dl_done, dl_total, dl_afterlocal));
-			print(sprintf("ui_dlmap: dlstate %S\n", serverkey("dlstate")));
+			print(sprintf("ui_dlmap: dlstate %S, constate %s, server %g\n", serverkey("dlstate"), serverkey("constate"), isserver()));
 			ui_dlkb_finish();
 			print(sprintf("ui_dlmap: offerable %g, wrongbuild %g, list %g\n",
 			              ms_dlcount, ms_dlstale, ms_count));

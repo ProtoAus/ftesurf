@@ -13,6 +13,8 @@
     # end <gs + gx rows>
 
   kind: bhop | kz | other.  needs (sum): 1 Half-Life, 2 Counter-Strike, 4 Condition Zero.
+  flags (sum): 1 KZ timer, 2 ladders, 4 water; P1669: 8 sky, 16 textures, 32 models, 64 sounds missing -- the row
+  still downloads and plays, with a red "warning" and a tooltip naming what is missing (Mgs_Warn).
   A package's map is not in the file system until it loads: "installed" is mapfilekb(id).
 */
 #ifndef MGS_URL       // an arm's build names a local stand-in (-DMGS_URL=...), as P1099's did MMM_BASE
@@ -425,7 +427,21 @@ string(string why, float n) Mgs_Why =
 	if (why == "model") return "models missing";
 	if (why == "sound") return "sounds missing";
 	if (why == "kind")  return "not a bhop or kz map";
+	if (why == "bsp")   return "the map file does not read";      // P1669: the two reasons left
+	if (why == "name")  return "its name cannot be used";
 	return "files missing";
+};
+
+// P1669: what a gs row's flags say is missing (8 sky, 16 textures, 32 models, 64 sounds), in words; "" when complete.
+string(float flags) Mgs_Missing =
+{
+	local string s;
+	s = "";
+	if (flags & 8)  s = "its custom sky";
+	if (flags & 16) s = strcat(s, (s == "") ? "" : ", ", "textures");
+	if (flags & 32) s = strcat(s, (s == "") ? "" : ", ", "models");
+	if (flags & 64) s = strcat(s, (s == "") ? "" : ", ", "sounds");
+	return s;
 };
 
 void(string id, float cat, string kb, string need, string why) Mgs_TableAdd =
@@ -506,7 +522,7 @@ void() Mgs_Load =
 			mgs_tgx = mgs_tgx + 1;
 			continue;
 		}
-		Mgs_TableAdd(argv(1), cat, ftos(ceil(stof(argv(3)) / 1024)), argv(6), "");
+		Mgs_TableAdd(argv(1), cat, ftos(ceil(stof(argv(3)) / 1024)), argv(6), Mgs_Missing(stof(argv(7))));
 		if (cat == GC_BHOP) mgs_tnb = mgs_tnb + 1;
 		if (cat == GC_CLIMB) mgs_tnk = mgs_tnk + 1;
 	}
@@ -627,8 +643,25 @@ string(float row) Mgs_Size =
 	return ui_dl_size(stof(bufstr_get(ms_dlkb, row)));
 };
 
-// A gx row's reason; else "needs Half-Life" for each game the row names that Steam does not
-// have (fs_addonstate 0), or nothing.
+// P1669: a playable row whose catalogue flags name missing files: what they are, else "".
+string(float row) Mgs_Warn = { return Mgs_Gx(row) ? "" : bufstr_get(mgs_twhy, row - mgs_row0); };
+#define MGS_WARN_ESC "^xf44"
+// The tooltip names only what this map lacks (Mgs_Missing's words).
+string(float row) Mgs_WarnTip =
+{
+	local string w, s;
+	w = Mgs_Warn(row);
+	s = "";
+	if (strstrofs(w, "sky") >= 0)      s = "the sky draws plain";
+	if (strstrofs(w, "textures") >= 0) s = strcat(s, (s == "") ? "" : ", ", "surfaces without their texture draw dark");
+	if (strstrofs(w, "models") >= 0)   s = strcat(s, (s == "") ? "" : ", ", "some models are left out");
+	if (strstrofs(w, "sounds") >= 0)   s = strcat(s, (s == "") ? "" : ", ", "some sounds are silent");
+	return strcat("Warning: files this map uses were never found, so they are not in its download: ", w,
+	              ". It still downloads and plays; ", s, ".");
+};
+
+// A gx row's reason; else a red "warning" for missing files (P1669) and "needs Half-Life" for each game the row
+// names that Steam does not have (fs_addonstate 0), or nothing.
 string(float row) Mgs_Note =
 {
 	local string s;
@@ -645,7 +678,11 @@ string(float row) Mgs_Note =
 		s = strcat(s, (s == "") ? "needs ^1" : "^7, ^1",
 		           (i == 0) ? "Half-Life" : ((i == 1) ? "Counter-Strike" : "Condition Zero"));
 	}
-	return (s == "") ? "" : strcat(s, "^7");
+	if (s != "")
+		s = strcat(s, "^7");
+	if (Mgs_Warn(row) != "")
+		s = strcat(MGS_WARN_ESC, "warning^7", (s == "") ? "" : " | ", s);
+	return s;
 };
 
 // The detail line: the tag, the kind, the size or "installed", and what is missing.
@@ -662,7 +699,7 @@ string(float row) Mgs_Sub =
 	return s;
 };
 
-#define MGS_GXTIP "Listed so you know why it is missing: the map names files nobody has, or is not a bhop or kz map."
+#define MGS_GXTIP "Listed so you know why it is missing: this map cannot be offered, for the reason on its line."
 
 // A GoldSrc row as a card: no picture and no record cells (no board has these maps).
 void(vector rp, vector rs, float nx, float compact, float real, float lit, string rid) Mgs_Card =
@@ -681,6 +718,8 @@ void(vector rp, vector rs, float nx, float compact, float real, float lit, strin
 	sui_text([rp_x + nx, rp_y + 50], '12 12 0', ui_fit_text(Mgs_Sub(real), cw, '12 12 0'), COL_DIM, a, 0);
 	if (gx)
 		sui_tooltip_for(rid, MGS_GXTIP, 2);
+	else if (Mgs_Warn(real) != "")
+		sui_tooltip_for(rid, Mgs_WarnTip(real), 2);
 };
 
 // The Mode group while the GoldSrc library is picked: its own kinds, not Surf | Bhop.

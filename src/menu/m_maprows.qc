@@ -164,6 +164,8 @@ void(vector rp, vector rs, float idx, float real, float er, float on, float hot)
 		size = Mgs_Size(real);
 		if (gx)
 			sui_tooltip_for(strcat("cs_row", ftos(idx)), MGS_GXTIP, 2);
+		else if (Mgs_Warn(real) != "")
+			sui_tooltip_for(strcat("cs_row", ftos(idx)), Mgs_WarnTip(real), 2);   // P1669
 	}
 	else
 	{

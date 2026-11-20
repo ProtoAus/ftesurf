@@ -17,8 +17,9 @@ that the archive has and Half-Life does not. Custom WADs are cut down to the tex
 them and keep their own name, so the BSP is shipped unmodified. Valve's files (valve/, cstrike/, czero/)
 are never packed: the game mounts them from Steam, and the row's `needs` says which.
 
-A map is kept when it is a bhop or kz map and nothing it names is missing. Every other map gets a `gx`
-row with the reason, so the menu can list it greyed out.
+Every map whose BSP parses and whose name is usable ships (P1669; until then only complete bhop/kz maps did).
+What it names and nobody has is left out of the package and flagged, so the menu can warn; only an unreadable
+BSP or an unusable name gets a `gx` row with the reason.
 
 catalog.txt:
     FTESURF-GOLDSRC 1
@@ -27,8 +28,8 @@ catalog.txt:
     gx <id> <kind> <reason> <count>
     # end <rows>
 kind: bhop | kz | other.  needs: 1 Half-Life, 2 Counter-Strike, 4 Condition Zero (sum).
-flags: 1 KZ timer buttons, 2 ladders, 4 water (sum).
-reason: kind (not a bhop/kz map) | tex (textures in no WAD) | model | sound | sky (files named, found nowhere).
+flags: 1 KZ timer buttons, 2 ladders, 4 water; P1669 missing: 8 sky, 16 textures in no WAD, 32 models, 64 sounds (sum).
+reason (gx only): bsp (unreadable) | name (unusable id).
 """
 import argparse
 import concurrent.futures
@@ -300,13 +301,9 @@ def plan_map(name, bsp_path, arch, stock, wadcache):
     row['files'] = files
     row['cut'] = cut
     row['missing'] = {k: v for k, v in missing.items() if v}
-    if row['kind'] == 'other':
-        row.update(reason='kind', count=1)
-    else:
-        for k in ('tex', 'model', 'sky', 'sound'):
-            if missing[k]:
-                row.update(reason=k, count=len(missing[k]))
-                break
+    for k, bit in (('sky', 8), ('tex', 16), ('model', 32), ('sound', 64)):   # P1669: ships, flagged
+        if missing[k]:
+            row['flags'] |= bit
     return row
 
 
@@ -413,7 +410,8 @@ def main():
         by[(r['kind'], r['reason'])] = by.get((r['kind'], r['reason']), 0) + 1
     for k in sorted(by):
         print('  drop %-5s %-6s %d' % (k[0], k[1], by[k]))
-    print('  keep by kind', {k: sum(1 for r in keep if r['kind'] == k) for k in ('bhop', 'kz')},
+    print('  missing', {k: sum(1 for r in keep if r['flags'] & bit) for k, bit in (('sky', 8), ('tex', 16), ('model', 32), ('sound', 64))})
+    print('  keep by kind', {k: sum(1 for r in keep if r['kind'] == k) for k in ('bhop', 'kz', 'other')},
           'needs', {n: sum(1 for r in keep if r['needs'] == n) for n in sorted({r['needs'] for r in keep})})
     if a.cmd == 'plan':
         return 0
