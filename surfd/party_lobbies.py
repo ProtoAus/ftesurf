@@ -6,6 +6,7 @@ import hmac
 import importlib.util
 import json
 from pathlib import Path
+import random
 import re
 import secrets
 import sqlite3
@@ -19,6 +20,7 @@ import tournament_rules as rules
 
 ONLINE_TTL = 35
 IDLE_TTL = 900
+TURN_SECONDS = 45  # per party draft ban/pick, then a seeded map is chosen for that player
 JOURNAL_KEEP = 64  # request ids per account: retries come seconds apart, and this bounds the table
 FIELDS = ('op', 'id', 'revision', 'request', 'capacity', 'round_seconds', 'target', 'map', 'value', 'kind', 'tiers', 'profile', 'pool', 'text')
 OPS = frozenset(('configure', 'create', 'state', 'join', 'leave', 'cancel', 'seat', 'accept', 'lock', 'ban', 'pick', 'ready', 'start', 'say', 'kick'))
@@ -67,6 +69,32 @@ def parse_payload(payload):
         rules.require(text == '-', 'bad text')
     rules.settings(data)
     return data
+
+
+def turn_clock(m, now):
+    """Party draft clock: stamps each new turn and makes an overdue turn's ban/pick.
+    Returns the new state, or None when nothing changed. Callers hold BEGIN IMMEDIATE."""
+    if m is None or m.get('menu_started'):
+        return None
+    if m['phase'] != 'draft':
+        return {k: v for k, v in m.items() if k != '_turn_at'} if '_turn_at' in m else None
+    at = m.get('_turn_at')  # [turn index, start time]
+    if not (isinstance(at, list) and len(at) == 2 and at[0] == m['_turn']):
+        return dict(m, _turn_at=[m['_turn'], now])
+    if now < at[1] + TURN_SECONDS:
+        return None
+    who, kind = m['turn_who'], m['turn_kind']
+    name = next((p['name'] for p in m['players'] if p['who'] == who), who)
+    choices = sorted(c['name'] for c in m['maps'] if c['status'] == 'pool')
+    chosen = random.Random('%s:clock:%d' % (m['_seed'], m['_turn'])).choice(choices)
+    m = rules.transition(m, kind, who, name, dict(map=chosen))
+    m['note'] = '%s ran out of time; a map was %s for them.' % (name, 'banned' if kind == 'ban' else 'picked')
+    if m['phase'] == 'draft':
+        m['_turn_at'] = [m['_turn'], now]
+    else:
+        m.pop('_turn_at', None)
+        m['menu_phase'] = 'ready'
+    return m
 
 
 def register(app, d):
@@ -118,6 +146,9 @@ def register(app, d):
             sid = m['_accounts'].get(p['who'])
             p['menu_online'] = int(sid in seen and now-ONLINE_TTL < seen[sid] <= now)
             p.setdefault('menu_ready', 0)
+        at = m.get('_turn_at')
+        if m['phase'] == 'draft' and isinstance(at, list):
+            out['turn_left'] = max(0, at[1] + TURN_SECONDS - now)
         return out
 
     def result(db, m, sid, now, status='ok'):
@@ -148,8 +179,12 @@ def register(app, d):
             db.execute('BEGIN IMMEDIATE')
             expire(db, now)
             # Historical rows must not consume the bounded active-directory quota.
-            for row in db.execute('SELECT * FROM tournament_parties ORDER BY id'):
+            for row in db.execute('SELECT * FROM tournament_parties ORDER BY id').fetchall():
                 m = json.loads(row['state'])
+                ticked = turn_clock(m, now)
+                if ticked:
+                    m = ticked
+                    db.execute('UPDATE tournament_parties SET state=? WHERE id=?', (d.game_json(m), m['id']))
                 if m['phase'] not in rules.TERMINAL and (m.get('menu_started') or row['touched'] >= now-IDLE_TTL):
                     if brief:
                         # The menu browser needs no rosters/map pools. Bound its
@@ -213,6 +248,11 @@ def register(app, d):
                 ident = active['party'] if data['id'] == '-' and active else data['id']
                 row = db.execute('SELECT state FROM tournament_parties WHERE id=?', (ident,)).fetchone()
                 m = json.loads(row['state']) if row else None
+                ticked = turn_clock(m, now)
+                if ticked:
+                    # Kept even by a replayed request; a refused action rolls it back and the next poll redoes it.
+                    m = ticked
+                    db.execute('UPDATE tournament_parties SET state=? WHERE id=?', (d.game_json(m), m['id']))
                 op = data['op']
                 if op in ('create', 'configure', 'start'):
                     tournaments.require_hosting(d)
@@ -241,10 +281,11 @@ def register(app, d):
                     rules.require(m is None or active is not None and active['party'] == m['id'], 'not a current member')
                 else:
                     rules.require(m is not None, 'party not found')
-                    # Chat is not a roster/settings mutation: no revision race, no bump.
-                    rules.require(op == 'say' or int(data['revision']) == m['revision'], 'stale revision; resync')
+                    # Chat and joining (always as a spectator) never race roster/settings edits.
+                    rules.require(op in ('say', 'join') or int(data['revision']) == m['revision'], 'stale revision; resync')
                     if op == 'join':
-                        rules.require(active is None and not m.get('menu_started') and m['phase'] == 'lobby', 'party closed or already joined')
+                        # Any open room, even after launch: result() then hands the joiner the launch address.
+                        rules.require(active is None and m['phase'] not in rules.TERMINAL, 'party closed or already joined')
                         rules.require(who not in m['_accounts'] or m['_accounts'][who] == sid, 'ambiguous account handle')
                         rules.require(who not in m.get('_kicked', ()), 'removed from this room')
                         rules.require(who in m['_accounts'] or len(m['_accounts']) < 256, 'account history full')
@@ -325,6 +366,7 @@ def register(app, d):
                         db.execute('DELETE FROM tournament_party_members WHERE party=?', (m['id'],))
                     elif not m.get('menu_started'):
                         m['menu_phase'] = 'draft' if m['phase'] == 'draft' else 'ready' if m['phase'] == 'loading' else 'waiting'
+                m = turn_clock(m, now) or m  # stamps a turn this action began, clears it off the draft
                 if m and m['phase'] in rules.TERMINAL:
                     db.execute('DELETE FROM tournament_parties WHERE id=?', (m['id'],))
                 elif m:

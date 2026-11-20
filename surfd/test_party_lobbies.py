@@ -4,6 +4,7 @@ import importlib
 import json
 import os
 from pathlib import Path
+import random
 import shutil
 import threading
 import unittest
@@ -254,6 +255,82 @@ class PartyAPI(unittest.TestCase):
         self.assertEqual((out['phase'], out['menu_phase']), ('lobby', 'waiting'))
         self.assertTrue(all(p.get('menu_ready', 0) == 0 for p in out['players']))
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM tournament_matches').fetchone()[0], 0)
+
+    def raw(self):
+        return json.loads(self.db.execute('SELECT state FROM tournament_parties').fetchone()[0])
+
+    def test_p1650_draft_turn_clock_bans_then_picks_for_idle_players(self):
+        m = self.locked()
+        self.assertEqual((self.raw()['_turn_at'], m['turn_left']), ([0, self.now], 45))
+        first = m['turn_who']
+        name = next(p['name'] for p in m['players'] if p['who'] == first)
+        self.now += 44
+        self.assertEqual(self.act('state', 2)['party']['revision'], m['revision'])
+        self.now += 1
+        expected = random.Random('%s:clock:0' % self.raw()['_seed']).choice(
+            sorted(c['name'] for c in m['maps'] if c['status'] == 'pool'))
+        out = self.act('state', 2)['party']
+        self.assertEqual([(c['name'], c['by']) for c in out['maps'] if c['status'] == 'banned'], [(expected, first)])
+        self.assertEqual(out['note'], '%s ran out of time; a map was banned for them.' % name)
+        self.assertEqual((out['revision'], out['turn_left']), (m['revision'] + 1, 45))
+        self.assertNotEqual(out['turn_who'], first)
+        self.assertEqual(self.act('state', 0)['party']['revision'], out['revision'])
+        notes = []
+        while out['phase'] == 'draft':
+            self.now += 45
+            out = self.act('state', 2)['party']
+            notes.append(out['note'])
+        self.assertIn('ran out of time; a map was picked for them.', notes[-1])
+        self.assertEqual((out['phase'], out['menu_phase'], len(out['schedule'])), ('loading', 'ready', 1))
+        self.assertEqual(sum(c['status'] == 'banned' for c in out['maps']), 2)
+        self.assertNotIn('_turn_at', self.raw())
+        self.assertNotIn('turn_left', out)
+
+    def test_p1650_draft_turn_clock_applies_once_under_concurrent_polls_and_browse(self):
+        m = self.locked()
+        self.now += 45
+        forms = [self.form('state', 0), self.form('state', 1)]
+        def run(f):
+            with S.app.test_client() as client:
+                return self.send(f, client)['ok']
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            self.assertEqual(list(executor.map(run, forms)), [1, 1])
+        raw = self.raw()
+        self.assertEqual((raw['revision'], raw['_turn'], sum(c['status'] == 'banned' for c in raw['maps'])), (m['revision'] + 1, 1, 1))
+        # The public directory poll drives the clock too.
+        self.now += 45
+        row = self.client.get('/api/tournament-lobbies?brief=1').get_json()['rows'][0]
+        self.assertEqual((row['revision'], self.raw()['_turn']), (m['revision'] + 2, 2))
+        # A room drafted before the clock existed starts its clock on first sight, not with a move.
+        legacy = self.raw()
+        legacy.pop('_turn_at')
+        self.db.execute('UPDATE tournament_parties SET state=?', (json.dumps(legacy),))
+        self.db.commit()
+        self.now += 300
+        self.assertEqual(self.act('state', 0)['party']['revision'], legacy['revision'])
+        self.assertEqual(self.raw()['_turn_at'], [2, self.now])
+
+    def test_p1650_join_open_room_as_spectator_any_phase_and_learn_launch(self):
+        m = self.act('create')['party']
+        m = self.act('join', 1, m)['party']
+        m = self.act('seat', 0, m, target=self.whos[1], value=1)['party']
+        m = self.act('accept', 0, m)['party']
+        m = self.act('accept', 1, m)['party']
+        m = self.act('lock', 0, m)['party']
+        # Joining needs no current revision and never takes a seat.
+        out = self.act('join', 2, dict(m, revision=1))['party']
+        self.assertEqual((out['phase'], out['players'][-1]['who'], out['players'][-1]['role']), ('draft', self.whos[2], 'spectator'))
+        m = self.act('leave', 2, out)['party']
+        while m['phase'] == 'draft':
+            i = self.whos.index(m['turn_who'])
+            m = self.act(m['turn_kind'], i, m, map=next(c['name'] for c in m['maps'] if c['status'] == 'pool'))['party']
+        for i in (0, 1):
+            m = self.act('ready', i, m, value=1)['party']
+        host = self.act('start', 0, m)
+        late = self.act('join', 2, dict(m, revision=1))
+        self.assertEqual(late['party']['players'][-1]['role'], 'spectator')
+        self.assertEqual(late['launch'], host['launch'])
+        self.assertEqual(self.act('state', 2)['launch']['addr'], host['launch']['addr'])
 
     def test_host_kick_removes_and_bars_rejoin(self):
         m = self.act('create')['party']
