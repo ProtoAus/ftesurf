@@ -58,7 +58,7 @@
 ### P1631 All bhop and ahop maps in the finder; ahop rules; speed caps
 - Every bhop_ and ahop_ map now shows under Bhop in the map finder (bhop_canals was hidden).
 - Maps in Momentum's ahop mode play with its ahop movement (gravity 600, slower walking, 66 tick).
-- Maps that raise their speed cap on Momentum or KSF (such as surf_affliction at 10000) now get it automatically.
+- Maps that raise their speed cap on Momentum or KSF now get it automatically.
 
 ### P1630 Displacements collide where you see them
 - About a third of terrain displacements had an invisible layer about 4 units in front of the rock. You no longer fall off ahop_coast's ladder or catch on terrain seams. Times on affected maps are not comparable with older builds.
