@@ -1,5 +1,14 @@
 # BACKLOG.md
 
+## P1671 similarity reader -- what the REC 14 census showed (21 Nov, worldofsurf-6f)
+- With REC 12/14 read, the lobbies' comparable pairs went from 5,147 to 193,303 (census on the Pi, 21 Nov). The pairs
+  run (600 negatives, 556 synthetic replays) no longer separates on move columns: replays 1.0000, honest negatives up to
+  0.9977 -- all one player's `_shadow.rec` files sharing long identical prefixes (one performance stored twice, e.g.
+  14,906 of 15,224 rows), cross-identity max 0.8994. Next (finish item 4): a yaw-delta agreement statistic, and a rule
+  for files that hold the same performance; then surfd stores it (guarded generation).
+- Deploy: surfd/simcheck imports recsim from SURFD_TOOLS on the Pi; it needs the next guarded generation to pin the new
+  recsim (tools/backend-pending.md).
+
 ## P1643 start rest -- what it leaves (20 Nov, worldofsurf-4b)
 - Scope by decision: stage boxes (run_stagecap 0, Lex 21 Sep) are not judged for arrival speed. Bhop-mode maps are
   judged since P1657 (Lex, 20 Nov), ahop maps too. Site: sv_timer.qc SV_StartUnrested, SV_BhopRestOn.
@@ -702,7 +711,7 @@
     with no exit in the procedure (P1569 round 9; accepted then with a launch slot, inherited sequence).
   - Similarity on a helped run is a stored skip: anyone can get TF_HELPED from a second connection's gift,
     so before a playback threshold acts on simcheck, measure the receiver's part (recsim already drops the
-    rows before the last takeover; it needs a mid-map alignment, and recsim does not model REC 12+ yet).
+    rows before the last takeover; it needs a mid-map alignment; recsim reads REC 12/14 since P1671).
 - The sender's client sidecars do not travel: seq.txt (the Segments list for stages already run), trail.txt
   (the run line behind you) and run.view (the replay camera's angles; the receiver's own stale buffer is kept,
   cl_replay.qc Rec_ViewLoaded's rule). Server-authored alternatives: rebuild the trail from the copied run.rec's

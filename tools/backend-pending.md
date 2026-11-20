@@ -1,5 +1,10 @@
 # Backend handoff delivered together — 10 November 2026 UTC
 
+## P1671 pending: simcheck reads current (REC 14) recordings -- NEXT generation (queued 21 Nov, worldofsurf-6f)
+- Pin tools/census/recsim.py at or after the P1671 commit in SURFD_TOOLS. Effect: the stored, never-acted-on
+  similarity scores start covering lobby runs from 10 Nov on (REC 14); no player-visible change. The surfd similarity
+  and admin tests pass with it on the Pi (scratch run 21 Nov). Expect more same-player near-1.0 pairs (BACKLOG P1671).
+
 ## P1659 follow-up pending: lobbies show their movement style (20 Nov 2026, worldofsurf-4a)
 Lex: "is it possible for the Lobbys to state their movement style (Surf/Bhop/AG250) with the map they are playing? and have
 an ability to swap per map?" Since P1659 the style follows the map on any server (a BSP-30 map runs sv_goldsrcprofile,

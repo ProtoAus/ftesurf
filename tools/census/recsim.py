@@ -198,6 +198,13 @@ def _source_limits(max_bytes, max_moves):
         raise ValueError("max_bytes plus one must fit a read size")
 
 
+# P1671: formats whose move rows keep v11's meaning.  v12 (Patch 914) adds the inclusive viewing clock -- held
+# seconds join the run's time while the body records no input ("no invented input"); v14 makes the mouse-command
+# counters recording-relative.  Similarity reads only `in`/`fzin` rows, so the clock model it cannot verify does not
+# apply to it.  An unknown later version is still refused.
+MOVE_ROW_VERSIONS = (12, 14)
+
+
 def parse_rec(path, strict=False, max_bytes=None, max_moves=None):
     """Read move columns; optional limits bound capture and retained move rows."""
     _source_limits(max_bytes, max_moves)
@@ -241,7 +248,7 @@ def _parse_rec(path, max_bytes=None, max_moves=None):
                         r.ver = int(fields[1])
                     except (IndexError, ValueError):
                         r.ver = 0
-                    if r.ver >= 12 and r.ver not in heldmeta.NATIVE_VERSIONS:
+                    if r.ver >= 12 and r.ver not in heldmeta.NATIVE_VERSIONS and r.ver not in MOVE_ROW_VERSIONS:
                         raise UnmodelledRec("inclusive viewing-clock format is not modelled")
                     if r.ver in heldmeta.NATIVE_VERSIONS:
                         if lineno != 1:
@@ -269,8 +276,8 @@ def _parse_rec(path, max_bytes=None, max_moves=None):
             tag = line.split(None, 1)[:1]
             excluded = tag == ["fzin"]
             if tag == ["in"] or excluded:
-                if excluded and r.ver not in (11, 12, *heldmeta.NATIVE_VERSIONS):
-                    raise MalformedRec("excluded-clock input requires format 11 or 12")
+                if excluded and r.ver not in (11, *MOVE_ROW_VERSIONS, *heldmeta.NATIVE_VERSIONS):
+                    raise MalformedRec("excluded-clock input requires format 11 or later")
                 if max_moves is not None and len(r.moves) >= max_moves:
                     raise SourceLimit("source move limit reached")
                 f = line.split()

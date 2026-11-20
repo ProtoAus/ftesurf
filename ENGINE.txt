@@ -1,4 +1,8 @@
 # The engine build this QuakeC requires.
+# P1671 (game tools/census/recsim.py; Lex's anti-cheat finish list, worldofsurf-6f): the similarity reader reads
+# REC 12 and 14 move rows (the inclusive viewing clock adds held seconds, not input); every lobby run since 10 Nov is
+# REC 14, which it refused, so surfd/simcheck compared none of them. Reaches surfd with a guarded generation (not yet).
+# No engine change. Record: ENGINE_PATCHES P1671.
 # P1668 (game tools updatefeed.py, release.ps1, release_smoke.py; Quakers-Launcher 0.1.7 tag wos-launcher-0.1.7; Lex:
 # "fix it all up", worldofsurf-75): the Linux ui_imgui plugin is signed in payload "files_ext" (old readers ignore it),
 # Linux launcher 0.1.7 installs it, P1666 engines install that launcher. No engine change. Record: ENGINE_PATCHES P1668.

@@ -115,6 +115,9 @@ class Similarity(Fixture):
         self.assert_unavailable(mutate(base.splitlines(), 0, 4,
                                        lambda s: "0_" + s, tag="fzin"), 65536)
         self.a.write_text(base.replace("FTESURF-REC 11", "FTESURF-REC 14"), encoding="utf-8")
+        verdict, detail = self.pair()       # P1671: v14 keeps v11's rows, fzin included
+        self.assertEqual((verdict, detail["match"], detail["compared"]), ("compared", 1.0, 80))
+        self.a.write_text(base.replace("FTESURF-REC 11", "FTESURF-REC 16"), encoding="utf-8")
         self.assertEqual(self.pair(),
                          ("unmodelled recording", "recording clock model unavailable"))
 
@@ -213,7 +216,13 @@ class Header(Fixture):
                 "FTESURF-REC 9", "FTESURF-REC " + token, 1).encode("utf-8"))
             self.assertEqual((report.faults, report.info["version"], report.info["inputs"]),
                              ([], 9, 80))
-        for token in ("12", "14", "16", "+0016"):
+        # P1671: v12/v14 move rows are read (the viewing clock adds no input); a later version is still refused.
+        for token in ("12", "14", "+0014"):
+            self.a.write_text(recording().replace("FTESURF-REC 9",
+                                                  "FTESURF-REC " + token, 1), encoding="utf-8")
+            verdict, detail = self.pair()
+            self.assertEqual((verdict, detail["match"], detail["compared"]), ("compared", 1.0, 80))
+        for token in ("16", "+0016"):
             self.a.write_text(recording().replace("FTESURF-REC 9",
                                                   "FTESURF-REC " + token, 1), encoding="utf-8")
             self.assertEqual(self.pair(),

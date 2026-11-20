@@ -294,8 +294,24 @@ class Parsing(Fixture):
         self.a.write_text(base.replace(original, 'fzin\t' + original[3:]).replace('FTESURF-REC 11', 'FTESURF-REC 9'))
         self.assertIsNone(rs.parse_rec(str(self.a)))
 
+    def test_viewclock_move_rows_are_read(self):
+        # P1671: v12/v14 keep v11's move rows; the viewing clock adds held seconds, never input rows.
+        base = recording()
+        first_in = next(l for l in base.splitlines() if l.startswith('in '))
+        for version in rs.MOVE_ROW_VERSIONS:
+            with self.subTest(version=version):
+                text = base.replace('FTESURF-REC 9', 'FTESURF-REC %d' % version)
+                text = text.replace(first_in, 'viewclock spec 1 100.5 0\n' + 'fzin' + first_in[2:], 1)
+                self.a.write_text(text)
+                r = rs.parse_rec(str(self.a), strict=True)
+                self.assertIsNotNone(r)
+                self.assertEqual(r.ver, version)
+                self.b.write_text(text)
+                verdict, detail = rs.compare_paths(str(self.a), str(self.b), max_bytes=1 << 20, max_moves=100000)
+                self.assertNotEqual(verdict, 'unmodelled recording')
+
     def test_sv_timer_viewclock_format_is_explicitly_unsupported(self):
-        for version in (12, 13, 14, 16):
+        for version in (13, 16):
             with self.subTest(version=version):
                 self.a.write_text(recording().replace('FTESURF-REC 9',
                                                       'FTESURF-REC %d' % version))
