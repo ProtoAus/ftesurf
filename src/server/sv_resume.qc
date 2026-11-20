@@ -460,6 +460,8 @@ float(entity e) SV_MsEligible =
 	// would be a file no reader accepts.  One packet wide.
 	if (e.rec_rec_sesspend)
 		return FALSE;
+	if (e.run_t_retryat)        // P1692 review 1: a retry's time away not yet charged (an unrecorded run has no session)
+		return FALSE;
 	if (SV_MsKey(e) == "")
 		return FALSE;
 	if (SV_TimerElapsed(e) < cvar("run_resume_min"))

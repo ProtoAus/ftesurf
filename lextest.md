@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## P1692 -- a retry adds its time away (worldofsurf-6f) -- after the next lobby deploy / on your dev install
+1. In a local game (or alone on a lobby), start a run, wait a few seconds, then retry. When the run comes back the
+   chat says "N s away added to the clock" (usually 1-3 s), and the clock carries on from the higher time.
+2. The run is still a normal run: no practice line.
+
 ## P1646 -- the script guard (anti-cheat finish list; worldofsurf-6f) -- on your dev install after its next rebuild
 1. Play a few minutes the way you normally do: keyboard, mouse-wheel jump, a gamepad if you have one. Then open the
    console and type `in_script_lapses`: it should still read 0. If it went up, tell me what you pressed.

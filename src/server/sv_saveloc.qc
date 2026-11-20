@@ -5710,6 +5710,13 @@ void(entity e, float on) SV_WatchHold =
 		       "^3replay: let go of the save-lock key first\n");
 		return;
 	}
+	// P1692 review 2: not while a retry's time away is still owed -- its `parkclock` must not land with a viewing
+	// window open (reccheck), and the window is the first packet after the restore (spectate refuses it too).
+	if (e.run_t_retryat)
+	{
+		sprint(e, PRINT_HIGH, "^3replay: the run is still resuming\n");
+		return;
+	}
 	// Switching viewers is one server command: restore the spectator's body
 	// before the replay takes its own pin, without a countdown between owners.
 	if (e.run_pmhold)
@@ -7050,6 +7057,23 @@ void(entity e) SV_RetryPoint =
 		       "^3retry: restarts the map for everyone -- not while others are connected\n");
 		return;
 	}
+	// P1692 review 1: not while the last retry or load is still resuming -- a second state written before the first
+	// charge landed would lack it, and the first gap would never be charged (spectate refuses the same window).
+	if (e.run_t_retryat || e.rec_rec_sesspend || e.run_t_starttick == -2)
+	{
+		sprint(e, PRINT_HIGH, "^3retry: the run is still resuming\n");
+		return;
+	}
+	// P1692: the time away is charged by `parkclock` (SV_RetryCharge), which only formats 13 and 14 can state;
+	// a running recorded run in another would make it practice, so refuse before anything is written.
+	if (e.run_t_state == TS_RUNNING)
+	if (SV_RecLive(e))
+	if (e.rec_rec_ver != 13)
+	if (e.rec_rec_ver != FS_REC_VERSION)
+	{
+		sprint(e, PRINT_HIGH, "^3retry: this recording cannot carry the time away; map not restarted\n");
+		return;
+	}
 
 	/*
 	  LET GO FIRST, and this is not politeness.
@@ -7102,6 +7126,7 @@ void(entity e) SV_RetryPoint =
 
 	rec_retry_sent = TRUE;
 	cvar_set("rec_retry_armed", "1");
+	cvar_set("rec_retry_at", sprintf("%.3f", gettime(1)));   // P1692: the time away starts at the state write
 	localcmd("map_restart\n");
 };
 
@@ -7152,6 +7177,21 @@ void(entity e) SV_RetryApply =
 	if (SV_TimerFast(e))
 	if (SV_ZoneInBox(e.run_t_armzone, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e)))
 		SV_TimerPractice(e);
+
+	// P1692: a running run owes the time away, charged at its first live packet (SV_RetryCharge).  A stamp that
+	// is missing or in the future (review 1: a local cvar edit) cannot be measured: practice, never a free pause.
+	e.run_t_retryat = 0;
+	if (e.run_t_state == TS_RUNNING)
+	{
+		if (rec_retry_at > 0 && rec_retry_at <= gettime(1))
+			e.run_t_retryat = rec_retry_at;
+		else
+		{
+			sprint(e, PRINT_HIGH, "^3retry^7 -- the time away could not be counted: practice\n");
+			SV_TimerPractice(e);
+		}
+	}
+	rec_retry_at = 0;
 
 	SV_SaveLocEvent(e, SLOP_RETRY, FS_RETRY_SLOT);
 

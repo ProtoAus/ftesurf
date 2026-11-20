@@ -1110,6 +1110,7 @@ void(entity e) SV_TimerCheat;
   SV_TimerMapInit is where the cvar is latched into it.
 */
 float rec_retry_armed;
+float rec_retry_at;     // P1692: gettime(1) when SV_RetryPoint wrote the state; latched and cleared with the arm
 
 /*
   1 while the move clipped a ramp plane.  ENGINE-WRITTEN, by name, from inside
@@ -1323,6 +1324,7 @@ void(entity e) SV_SourcePhaseClear =
   land whole rather than in pieces.  See TF_NOCLOCK.
 */
 .float  run_t_starttick;         // run_movetick at the start; -1 = never latched
+.float run_t_retryat;           // P1692: gettime(1) at the retry's state write while its time away is owed; 0 = none
 .float run_t_viewsec;           // authoritative closed viewing seconds, separate from mover
 .float run_t_viewwall;          // opening sv_ck_frame
 .float run_t_viewbase;          // physical elapsed at spectator entry (sampled fallback too)
@@ -3982,7 +3984,9 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             in build 81; the writer long predates it.  ONE field,
                             not two -- the only record in this grammar with a
                             bare tick and no index, which is exactly the shape a
-                            checker written from a stale block gets wrong
+                            checker written from a stale block gets wrong.
+                            P1692: a running run's retry then charges its time
+                            away by a `parkclock` after the next `session`
     resume <slot> <ticks>   the run was resumed from save state <slot>, and
                             everything after this line is a fresh attempt at the
                             same section.  Build 17.
@@ -4147,7 +4151,9 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
     parkclock <gapSeconds> <totalSeconds>
                             After a matched pause/session, no viewing owner open.
                             gapSeconds is integral UTC elapsed seconds, including
-                            copy/countdown. totalSeconds = float32(previous closed
+                            copy/countdown. P1692: also after a retry's session --
+                            the server's real seconds from the state write to the
+                            first live packet after the restore, rounded up. totalSeconds = float32(previous closed
                             shared carry + gapSeconds); %.9g round-trips float32.
                             Same inclusive tick projection as v12; no physical
                             input, mover ticks or frozen exclusions are invented.
@@ -4717,6 +4723,87 @@ void(entity e) SV_RecSeed =
 };
 
 /*
+  P1692: A RETRY IS NEVER A FREE PAUSE (Lex, 20 Nov: "stays clean; record a cut marker; add the away time").
+
+  SV_RetryPoint writes the state and restarts the map; SV_RetryApply restores the run at the ticks it had, so the
+  restart itself -- the server's reload and the client's -- stood outside the clock.  The time away is the server's
+  real seconds (gettime(1)) from the state write to the first live packet after the restore, rounded UP to whole
+  seconds, and joins the clock exactly as Multi-Session's offline gap does (sv_resume.qc): run_t_viewsec, which
+  SV_TimerTicks and SV_TimerElapsed already carry, stated by `parkclock <gap> <total>` after the session line.  A
+  player can only lengthen it (a slow load is theirs to pay); moves after the state write are thrown away by the
+  restore, so nothing is gained inside it.  Not a fixed charge: the arm has no timeout, so a reconnect minutes
+  later must cost minutes.  A gap that cannot be measured or stated makes the run practice instead.
+  session: TRUE from SV_RecSession, which has just written the session line `parkclock` must follow.
+*/
+void(entity e, float session) SV_RetryCharge =
+{
+	local float gap, old, total, counted, was, ok, live;
+
+	if (!e.run_t_retryat)
+		return;
+	live = SV_RecLive(e);
+	if (live)
+	if (!session)
+	if (e.rec_rec_sesspend)
+		return;                         // the session line first: SV_RecSession calls back
+	gap = ceil(gettime(1) - e.run_t_retryat);
+	if (gap >= 0)
+	if (gap < 1)
+		gap = 1;                        // review 2: an honest restart always takes some time; never a 0 s charge
+	e.run_t_retryat = 0;
+	if (e.run_t_state != TS_RUNNING)
+		return;
+	ok = TRUE;
+	if (!(gap >= 0))
+		ok = FALSE;                     // gettime(1) wraps at 49.7 days of uptime
+	if (!(gap <= 86400))
+		ok = FALSE;
+	old = e.run_t_viewsec;
+	if (ok)
+	{
+		e.run_t_viewsec = old + gap;
+		counted = e.run_t_tickcarry + SV_ViewTicks(e);
+		// review 1: before the restart latch (starttick -2) SV_TimerTicks reads the sampled clock against a start
+		// rebased on the new map's `time`, which can be negative in the first second -- the carry alone is the clock.
+		if (e.run_t_starttick != -2)
+		{
+			total = SV_TimerTicks(e);
+			if (!(total >= 0 && total <= 16777215))
+				ok = FALSE;
+		}
+		if (!(counted >= 0 && counted <= 16777215))
+			ok = FALSE;
+		if (!ok)
+			e.run_t_viewsec = old;
+	}
+	if (ok)
+	if (live)
+	{
+		ok = FALSE;                     // a recorded clock moves only where its file says so
+		if (session)
+		if (e.rec_rec_ver == 13 || e.rec_rec_ver == FS_REC_VERSION)
+		{
+			was = e.rec_rec_lines;
+			SV_RecPut(e, sprintf("parkclock %.9g %.9g", gap, e.run_t_viewsec));
+			if (e.rec_rec_lines != was)
+			{
+				e.rec_rec_parks = e.rec_rec_parks + 1;
+				ok = TRUE;
+			}
+		}
+		if (!ok)
+			e.run_t_viewsec = old;
+	}
+	if (ok)
+		sprint(e, PRINT_HIGH, sprintf("^5retry^7 -- %g s away added to the clock\n", gap));
+	else
+	{
+		sprint(e, PRINT_HIGH, "^3retry^7 -- the time away could not be counted: practice\n");
+		SV_TimerPractice(e);
+	}
+};
+
+/*
   Patch 364: open the session a `pause` left owed (SV_RecPause), before the first
   line that stamps the mover counter.  <ticks> is read at this instant, so reccheck's
   "pause ticks == session ticks" tests that the clock stood still; while a retry's
@@ -4742,6 +4829,7 @@ void(entity e) SV_RecSession =
 	if (e.rec_rec_sesspend > 1)
 		SV_RecSeed(e);
 	e.rec_rec_sesspend = 0;
+	SV_RetryCharge(e, TRUE);            // P1692: a retry's time away, right after the session it follows
 };
 
 /*
@@ -10928,6 +11016,8 @@ void(entity e) SV_TimerFreezeFrame =
 		e.run_t_ckwall  = time;
 		e.run_t_ckskip  = time + 1;     // the spawn's zero-time usercmds
 	}
+	if (e.run_t_retryat)                // P1692: an unrecorded run's time away (a recorded one: SV_RecSession)
+		SV_RetryCharge(e, FALSE);
 
 	now = SV_ClockSec(e);
 	SV_ClockFrame(e, now - e.run_t_lastsec);    // Patch 840: before lastsec moves
@@ -17229,6 +17319,8 @@ void() SV_TimerMapInit =
 	*/
 	rec_retry_armed = cvar("rec_retry_armed");
 	cvar_set("rec_retry_armed", "0");
+	rec_retry_at = cvar("rec_retry_at");    // P1692: the same breath, the same one-map scope
+	cvar_set("rec_retry_at", "0");
 
 	/*
 	  ONE NUMBER FOR THE RULE AND THE ASSIST.  Build 19.

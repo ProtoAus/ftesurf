@@ -21,6 +21,9 @@
 
 ## next
 
+### P1692 A retry is not a free pause
+- Retrying in the middle of a run (the map restarts and your run comes back) now adds the time the restart took to your clock, and the chat says how much. The run stays a normal ranked run.
+
 ### P1646 Scripts and waits do not rank
 - In ranked runs one key press makes one button press: a press made by a script, an alias, a wait or another program makes the run unranked, and the game says why. Normal keys, wheel and gamepad are fine. Comes with the next update.
 

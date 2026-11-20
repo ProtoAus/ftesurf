@@ -1,5 +1,12 @@
 # AGENT_NOTES.md
 
+## P1692 retry: driving it from a test arm (21 Nov 2026)
+
+- A client connected to a dedicated server answers its own `retry` with the engine's reconnect: CSQC handles `retry`
+  only when the client's own rec_retry cvar is set (a listen server shares the server's). Send `cmd rec_retry` to
+  reach SV_RetryPoint. After the restore the chat says "<n> s away added to the clock" for a running run.
+- A second retry, a replay or spectate in the first packet after the restore is refused ("still resuming").
+
 ## P1646 script guard: what it does to test arms (21 Nov 2026)
 
 - An engine with P1646 counts in the read-only in_script_lapses every button press its key's own bare bind did not

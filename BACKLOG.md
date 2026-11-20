@@ -1,5 +1,21 @@
 # BACKLOG.md
 
+## P1692 retry away time -- what it leaves (21 Nov, worldofsurf-6f)
+- The away time is the server's own gettime(1) (whole ms as a float): about 8 ms steps after a day of uptime, 0.25 s
+  after 30 days; a retry across the 49.7-day wrap goes practice. The stamp rides the cvar rec_retry_at, which a local
+  listen-server console can lower (to the 1 s floor); state.txt is unsigned locally anyway.
+- reccheck does not require a `parkclock` after a retry's session, and the format was not bumped: a retry recorded by
+  a pre-P1692 build looks valid. Enforcement is the server build (a board minimum-build gate would close it).
+- SV_RecDiscard leaves rec_rec_sesspend set: a run voided between the restore and its session line refuses retry
+  ("still resuming") until `!r` or a new run.
+- A refused plain replay in the first packet after a restore leaves the client's replay window open over an unpinned
+  body (no client notice; SV_ViewAllowed's refusal behaves the same). Not reachable from the UI.
+- A charged retry makes run_t_viewsec > 0: later stage files in that run read `clock sampled` and TAS legal-start
+  saves are refused with a viewing-window message. A stage reopened at a retry may qualify after a ground jump with a
+  duration counted from the retry (older behaviour; its own look).
+- Owner defaults taken (tell me to change them): a stage spanning a retry still qualifies with the away seconds inside
+  it; TAS and segmented runs are charged the same way.
+
 ## P1646 script guard -- what it leaves (21 Nov, worldofsurf-6f)
 - Owner rulings pending: are `rotate`, `impulse` and cvar-changing binds (toggle, cycle, inc) scripts? They are not
   button presses and are not counted. Is the engine's cl_iDrive (on by default: releasing the newer of two opposite

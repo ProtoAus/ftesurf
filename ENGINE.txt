@@ -1,4 +1,8 @@
 # The engine build this QuakeC requires.
+# P1692 (QC server only: sv_saveloc.qc sv_timer.qc sv_resume.qc sv_main.qc; Lex's 20 Nov retry ruling, worldofsurf-6f):
+# a mid-run `retry` (map restart, run restored) charges its time away -- the server's real seconds from the state
+# write to the first live packet after the restore, rounded up, at least 1 -- through Multi-Session's viewing carry
+# and `parkclock`; unmeasurable or unstateable makes the run practice. No engine change. Record: ENGINE_PATCHES P1692.
 # P1646 (engine cl_input.c keys.c cl_main.c client.h in_generic.c cmd.c common.c plugin.c; QC cl_replay.qc
 # sv_timer.qc sh_defs.qc, tools/reccheck.py; Lex's 20 Nov ruling "1 button per key, no waits", worldofsurf-6f): the
 # read-only in_script_lapses counts a button press its key's own bare bind did not make (one-frame note), a wait,
@@ -643,7 +647,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   d4d6ffd38
+commit   f8c7d4613
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary

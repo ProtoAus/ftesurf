@@ -998,6 +998,7 @@ void() worldspawn =
 	  the process.  See SV_TimerMapInit.
 	*/
 	registercvar("rec_retry_armed", "0");
+	registercvar("rec_retry_at", "0");      // P1692: gettime(1) at the retry's state write; latched with the arm
 	registercvar("rec_serial", "0");        // Patch 364: SV_RecNextSerial; not archived
 
 	// Multi-Session (sv_resume.qc).  Registered before the sweep reads them.
