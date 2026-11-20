@@ -33,7 +33,7 @@ import time
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / 'surfd'))
-from tournament_rules import PROFILES, MAP_NAME, HEX8, HEX64  # noqa: E402
+from tournament_rules import PROFILES, MAP_NAME, HEX8, HEX64, tick_for  # noqa: E402
 
 PIN_FIELDS = ('mapcrc', 'zonepin', 'gamemode', 'sha256', 'map_stamp')
 DEFAULT_LIVE = '/srv/nvme/ftesurf-server/game'
@@ -94,7 +94,7 @@ def parse_observation(line, name, profile, mode):
         why.append('gamemode %s, list says %s' % (gamemode, mode))
     if movement != want['movement']:
         why.append('movement ' + movement)
-    if tick != str(want['tick_us']) or clock != str(want['tick_us']):
+    if tick != str(tick_for(profile, mode)) or clock != str(tick_for(profile, mode)):
         why.append('tick %s/%s' % (tick, clock))
     if not re.fullmatch(r'[1-9][0-9]{0,9}', generation):
         why.append('zone generation ' + generation)

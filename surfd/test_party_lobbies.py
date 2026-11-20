@@ -530,6 +530,16 @@ class PartyAPI(unittest.TestCase):
         # Frozen stamp differs; restoring content alone must not revive this draft.
         self.assertEqual(self.send(self.form('start', 0, m))['ok'], 0)
 
+    def test_default_node_at_either_kind_tick_is_selected_p1639(self):
+        m = self.ready()
+        # A default-profile node that last loaded a bhop map (100 Hz) still hosts; a split tick/clock does not.
+        self.post('state', enabled=1, occupants=0, movement='default', tick_us=10000, clock_us=15000)
+        self.assertEqual(self.send(self.form('start', 0, m))['ok'], 0)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM tournament_reservations').fetchone()[0], 0)
+        self.post('state', enabled=1, occupants=0, movement='default', tick_us=10000, clock_us=10000)
+        self.assertTrue(self.act('start', 0, m)['launch'])
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM tournament_reservations').fetchone()[0], 1)
+
     def test_preconfigured_profile_empty_node_selection_and_frozen_pins_copy(self):
         path = fixture.HOME / 'qualifications.json'
         registry = json.loads(path.read_text())

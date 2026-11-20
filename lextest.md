@@ -13,6 +13,11 @@
   through the menu's own commands): drag the sensitivity slider, flip a few options, MAPS then SETTINGS keeps the
   section, Esc goes to Lobbies. "Muffle game in menu" came back from the retired Music screen -- keep it or drop it?
 
+## P1639 -- bhop tournaments (worldofsurf-ed)
+
+Once tournaments are on: host a room, set Map kind to Bhop -- the movement line reads "Default, 100 tick" and the
+pool has bhop maps; the round plays at the lobby's normal bhop feel (100 Hz), not 66.
+
 ## P1635 -- tournament pre-enable fixes (worldofsurf-ed)
 
 Rides the tournament rollout (lobbies first; nothing changes on a server with tournament_enable 0).

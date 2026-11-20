@@ -47,9 +47,17 @@ class Observation(unittest.TestCase):
         o = Q.parse_observation(GOOD, 'surf_a', 'default', 'surf')
         self.assertEqual((o['mapcrc'], o['gamemode'], o['zone_generation']), ('ad801abe', 'surf', 8))
 
+    def test_bhop_keeps_its_own_tick(self):
+        bhop = GOOD.replace('surf_A', 'bhop_A').replace('|surf|8|', '|bhop|8|')
+        o = Q.parse_observation(bhop.replace('|15000|15000|', '|10000|10000|'), 'bhop_A', 'default', 'bhop')
+        self.assertEqual((o['gamemode'], o['tick_us']), ('bhop', 10000))
+        with self.assertRaises(ValueError):    # a bhop map observed at 66 tick is not the lobby's bhop
+            Q.parse_observation(bhop, 'bhop_A', 'default', 'bhop')
+
     def test_each_field_refuses(self):
         bad = {
             'zero crc': GOOD.replace('ad801abe', '00000000'),
+            'surf at bhop tick': GOOD.replace('|15000|15000|', '|10000|10000|'),
             'short crc': GOOD.replace('ad801abe', 'ad801ab'),
             'no zone pin': GOOD.replace('b' * 64, ''),
             'movement': GOOD.replace('|default|', '|unqualified|'),
@@ -129,7 +137,10 @@ class RegistryAcceptance(unittest.TestCase):
             for name, mode in maps.items():
                 p = t / (name + '.bsp')
                 p.write_bytes(b'VBSP' + name.encode())
-                o = Q.parse_observation(GOOD.replace('surf_A', name).replace('|surf|8|', '|%s|8|' % mode), name, 'default', mode)
+                line = GOOD.replace('surf_A', name).replace('|surf|8|', '|%s|8|' % mode)
+                if mode == 'bhop':      # P1639: the default profile keeps bhop's own 100 Hz
+                    line = line.replace('|15000|15000|', '|10000|10000|')
+                o = Q.parse_observation(line, name, 'default', mode)
                 records[name] = {'default': Q.record(o, Q.sha256_file(p), Q.stamp(p))}
             reg = t / 'q.json'
             reg.write_text(json.dumps(dict(v=1, maps=records), separators=(',', ':')))

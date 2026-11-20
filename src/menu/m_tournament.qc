@@ -66,11 +66,13 @@ float(string id) MT_ProfileIndex =
 	for (i = 0; i < 7; i += 1) if (!strcmp(id, MT_ProfileID(i))) return i;
 	return -1;
 };
-float(string id) MT_ProfileTick =
+// Default keeps each map kind's own tick: surf 66.7 Hz, bhop 100 Hz (P1639; tournament_rules.tick_for).
+float(string id, string kind) MT_ProfileTick =
 {
 	if (id == "ag-1000") return 1000;
 	if (id == "ag-250") return 4000;
 	if (id == "ag-100" || id == "cs16") return 10000;
+	if (id == "default" && kind == "bhop") return 10000;
 	return 15000;
 };
 string(string id) MT_ProfileName =
@@ -83,10 +85,10 @@ string(string id) MT_ProfileName =
 	if (id == "cs16") return "CS 1.6";
 	return "Default";
 };
-string(string id) MT_ProfileLabel =
+string(string id, string kind) MT_ProfileLabel =
 {
 	local float tick;
-	tick = MT_ProfileTick(id);
+	tick = MT_ProfileTick(id, kind);
 	return sprintf("%s, %s tick", MT_ProfileName(id), (tick == 15000) ? "66" : ftos(1000000 / tick));
 };
 string(string kind) MT_KindLabel = { return (kind == "bhop") ? "Bhop" : "Surf"; };
@@ -524,7 +526,7 @@ float(int party) MT_Snapshot =
 	tiers = json_get_float(json_find_object_child(settings, "tiers"));
 	tick = json_get_float(json_find_object_child(settings, "tick_us"));
 	ruleset = json_get_string(json_find_object_child(party, "ruleset_id"));
-	if ((kind != "surf" && kind != "bhop") || MT_ProfileIndex(profile) < 0 || tiers < 1 || tiers > 2097151 || tiers != floor(tiers) || tick != MT_ProfileTick(profile)) return FALSE;
+	if ((kind != "surf" && kind != "bhop") || MT_ProfileIndex(profile) < 0 || tiers < 1 || tiers > 2097151 || tiers != floor(tiers) || tick != MT_ProfileTick(profile, kind)) return FALSE;
 	if ((phase == "draft" || phase == "loading" || phase == "starting" || phase == "in-game") && !MT_Hex(ruleset, 64)) return FALSE;
 	if (ruleset != "" && !MT_Hex(ruleset, 64)) return FALSE;
 	pool = json_find_object_child(settings, "pool"); selected = "-";
@@ -773,7 +775,7 @@ void(int root) MT_CatalogReply =
 		|| json_get_float(json_find_object_child(filters, "tiers")) != mt_tiers
 		|| json_get_float(json_find_object_child(root, "offset")) != mt_catalogoffset
 		|| json_get_float(json_find_object_child(root, "limit")) != mt_cataloglimit
-		|| json_get_float(json_find_object_child(root, "tick_us")) != MT_ProfileTick(mt_profile)
+		|| json_get_float(json_find_object_child(root, "tick_us")) != MT_ProfileTick(mt_profile, mt_kind)
 		|| json_get_string(json_find_object_child(root, "policy")) != "free_beta") return;
 	db = buf_create(); good = TRUE; previous = "";
 	for (i = 0; i < n; i += 1)
@@ -1190,7 +1192,7 @@ string(string name) MT_RoomTitle = { return (name != "") ? strcat(name, "'s tour
 string() MT_Summary =
 {
 	return sprintf("%s  |  %s  |  %s  |  %s rounds", MT_KindLabel(mt_actualkind), MT_TierLabel(mt_actualtiers),
-		MT_ProfileLabel(mt_actualprofile), MT_Minutes(mt_seconds));
+		MT_ProfileLabel(mt_actualprofile, mt_actualkind), MT_Minutes(mt_seconds));
 };
 float() MT_PhaseStep =
 {
@@ -1422,7 +1424,7 @@ void(vector size) MT_DrawSettings =
 	cy = MT_RowLabel("Movement", y, stacked, cx, ch);
 	if (edit)
 	{
-		r = MT_Stepper("mt_movement", [cx, cy], [cw, ch], MT_ProfileLabel(mt_profile), (mt_profile == "default") ? SUI_THEME_TEXT : SUI_THEME_WARN, TRUE, TRUE, FALSE);
+		r = MT_Stepper("mt_movement", [cx, cy], [cw, ch], MT_ProfileLabel(mt_profile, mt_kind), (mt_profile == "default") ? SUI_THEME_TEXT : SUI_THEME_WARN, TRUE, TRUE, FALSE);
 		if (r)
 		{
 			idx = MT_ProfileIndex(mt_profile) + r;
@@ -1431,7 +1433,7 @@ void(vector size) MT_DrawSettings =
 			MT_Set(MT_ProfileID(idx), mt_profile); MT_FilterChanged(); MT_Edit();
 		}
 	}
-	else MT_Value([cx, cy], [cw, ch], MT_ProfileLabel(mt_actualprofile), (mt_actualprofile == "default") ? SUI_THEME_TEXT : SUI_THEME_WARN);
+	else MT_Value([cx, cy], [cw, ch], MT_ProfileLabel(mt_actualprofile, mt_actualkind), (mt_actualprofile == "default") ? SUI_THEME_TEXT : SUI_THEME_WARN);
 	y = cy + ch + gap;
 
 	cy = MT_RowLabel("Round time", y, stacked, cx, ch);
@@ -2006,7 +2008,7 @@ void(vector scr) MT_DrawPool =
 		if (MT_Button("mt_pool_cancel", [size_x - 216, 12], '96 32 0', "Cancel")) { mt_modal = 0; mt_catalogoffset = 0; }
 	}
 	else if (MT_Button("mt_pool_done", [size_x - 112, 12], '96 32 0', "Close")) { mt_modal = 0; mt_catalogoffset = 0; }
-	MT_Place('16 48 0', [size_x - 32, 18], sprintf("%s  |  %s  |  %s", MT_KindLabel(mt_kind), MT_TierLabel(mt_tiers), MT_ProfileLabel(mt_profile)), 12, SUI_THEME_DIM);
+	MT_Place('16 48 0', [size_x - 32, 18], sprintf("%s  |  %s  |  %s", MT_KindLabel(mt_kind), MT_TierLabel(mt_tiers), MT_ProfileLabel(mt_profile, mt_kind)), 12, SUI_THEME_DIM);
 	segw = floor((size_x - 38) / 2);
 	if (MT_Button("mt_pool_auto", '16 74 0', [segw, 36], "Auto: every matching map", 0, edit, mt_editpool == "-")) MT_Set("-", mt_editpool);
 	if (MT_Button("mt_pool_manual", [22 + segw, 74], [segw, 36], "Manual: up to 24", 0, edit, mt_editpool != "-"))

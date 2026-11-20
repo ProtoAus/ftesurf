@@ -801,20 +801,24 @@ def run(args, rig, manifest):
                         else:
                             if run_dir:
                                 player.send('-'+RUN_DIRS[run_dir-1])
+                            else:
+                                player.send('+jump')    # hopping clears a big start zone faster (surf_aircontrol)
                             player.send('+'+RUN_DIRS[run_dir])
                             run_dir += 1
-                            run_at = time.monotonic() + 3
+                            run_at = time.monotonic() + 6
                     elif args.round_end and run_step == 3 and time.monotonic() > run_at:
                         mark = len(console_text(rig, player))
                         player.send('cmd timer')
                         time.sleep(1.2)
                         state = re.search(r'timer: (\w+) on', console_text(rig, player)[mark:])
                         run_at = time.monotonic() + 3
-                        if not (state and state[1] == 'running') and time.monotonic() - live_at < 48:
+                        if not (state and state[1] == 'running') and time.monotonic() - live_at < 25:
                             player.send('-'+RUN_DIRS[run_dir-1])
+                            player.send('-jump')
                             run_step, run_dir = 1, 0
                 if args.round_end and run_step == 3 and m['phase'] in ('results', 'finished', 'aborted'):
                     player.send('-'+RUN_DIRS[run_dir-1])
+                    player.send('-jump')
                     time.sleep(2)
                     text = console_text(rig, player)
                     checks['round_end_hold_voids_run'] = 'run cancelled (tournament hold)' in text

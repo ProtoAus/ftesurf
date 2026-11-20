@@ -256,6 +256,32 @@ class Rules(unittest.TestCase):
             R.transition(drafted, 'configure', 'host', '', data)
         self.assertEqual(m['settings']['profile'], 'default')
 
+    def test_default_profile_keeps_each_kind_tick_p1639(self):
+        data = dict(kind='bhop', tiers='7', profile='default', pool='-', capacity=8, round_seconds=60)
+        bhop = R.transition(self.lobby(3), 'configure', 'host', '', data)
+        self.assertEqual(bhop['settings']['tick_us'], 10000)
+        surf = R.transition(self.lobby(3), 'configure', 'host', '', dict(data, kind='surf'))
+        self.assertEqual(surf['settings']['tick_us'], 15000)
+        fixed = R.transition(self.lobby(3), 'configure', 'host', '', dict(data, profile='ag-100', kind='surf'))
+        self.assertEqual(fixed['settings']['tick_us'], 10000)
+        # A default node between matches may sit at either kind's tick; other profiles only at their own.
+        for tick in (10000, 15000):
+            row = dict(movement='default', tick_us=tick, clock_us=tick)
+            self.assertTrue(T.compatible(row, bhop['settings']) and T.compatible(row, surf['settings']))
+        self.assertFalse(T.compatible(dict(movement='default', tick_us=10000, clock_us=15000), bhop['settings']))
+        self.assertFalse(T.compatible(dict(movement='ag100-v1', tick_us=15000, clock_us=15000), fixed['settings']))
+        # Arrival on a bhop round needs bhop's tick; the surf tick is refused.
+        m = self.drafted(2)
+        m['settings'] = dict(m['settings'], kind='bhop', tick_us=10000)
+        good = dict(observation(m), gamemode='bhop', tick_us=10000, clock_us=10000)
+        for key in ('tick_us', 'clock_us'):
+            with self.assertRaisesRegex(R.Refusal, 'wrong ' + key):
+                R.observe(m, dict(good, **{key: 15000}), latched=False)
+        # A room persisted with the pre-P1639 bhop tick is refused rather than locked at 66 tick.
+        with self.assertRaisesRegex(R.Refusal, 'Pre-Beta'):
+            R.require_current_settings(dict(settings=dict(bhop['settings'], tick_us=15000)))
+        R.require_current_settings(bhop)
+
     def test_auto_candidates_more_than_24_but_only_3_actual_competitors_drafted(self):
         pool = {('surf_fixture%d' % i): dict(name='surf_fixture%d' % i, kind='surf', tier=1, pin=pin_for(MAPS[0])) for i in range(30)}
         m = R.transition(self.lobby(2), 'lock', 'host', '', {}, pool)

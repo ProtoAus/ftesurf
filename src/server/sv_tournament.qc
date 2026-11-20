@@ -341,8 +341,10 @@ string(string profile) Tour_ProfileMovement =
 	if (profile == "cs16") return "cs16-v1";
 	return "";
 };
-float(string profile) Tour_ProfileTick =
+// Default keeps each map kind's own tick (P1639): bhop runs 100 Hz under mode_bhop.cfg.
+float(string profile, string kind) Tour_ProfileTick =
 {
+	if (profile == "default" && kind == "bhop") return 10000;
 	if (profile == "default" || profile == "hl2-pre" || profile == "hl2-post") return 15000;
 	if (profile == "ag-100" || profile == "cs16") return 10000;
 	if (profile == "ag-250") return 4000;
@@ -457,7 +459,7 @@ void(int match, string envelope) Tour_Adopt =
 		json_get_value_type(json_find_object_child(match, "round_total")) == 1 &&
 		json_get_float(json_find_object_child(match, "round_total")) == 0 &&
 		json_get_value_type(schedule) == 3 && json_get_length(schedule) == 0);
-	if ((kind != "surf" && kind != "bhop") || tick != Tour_ProfileTick(profile) || tick <= 0 ||
+	if ((kind != "surf" && kind != "bhop") || tick != Tour_ProfileTick(profile, kind) || tick <= 0 ||
 		((phase != "lobby") && !unfrozenend && !SV_RecIsHex(ruleset, 64)) ||
 		(strlen(tq_ruleset) && ruleset != tq_ruleset && tq_phase != "lobby"))
 	{
