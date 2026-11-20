@@ -889,6 +889,7 @@ void(entity t, float ut) GS_WallToggleUse =
 	{
 		t.solid = SOLID_BSP;
 		t.effects = t.effects - (t.effects & EF_NODRAW);
+		SV_BrushRenderState(t);     // a rendermode that hides it still does
 	}
 	setorigin(t, t.origin);
 };
@@ -1232,9 +1233,13 @@ void(entity t, entity act, entity caller, float ut, float val) GS_Use =
 	k = t.gs_kind;
 	if (!k)
 	{
-		// re-created after the lump by the shared code, so it carries no kind
+		// re-created after the lump by the shared code, so they carry no kind
 		if (t.classname == "game_text")
 			SV_MapText(t, act);
+		else if (t.classname == "env_fade")
+			SV_MapFade(t, act, FALSE);
+		else if (t.classname == "env_shake")
+			SV_MapShake(t, t.amplitude);
 		return;
 	}
 	if (k == GS_K_RELAY)
