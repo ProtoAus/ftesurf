@@ -528,11 +528,11 @@ if (-not $SetupSite) {
     $frozenWinBootstrap = if ($WindowsLauncherRoot) { Get-BootstrapSource $WindowsLauncherRoot } else { $frozenBootstrap }
     $releaseHasDirtyInputs = ($frozenQc.Dirty -or $frozenEngine.Dirty -or $frozenBootstrap.dirty_source.Count -or $frozenWinBootstrap.dirty_source.Count)
     # P1668 review: a Linux launcher without files_ext would leave a shipped plugin behind every newer engine.
-    if ($LinuxShipImgui -and -not (Select-String -LiteralPath (Join-Path $frozenBootstrap.root 'src/manifest.rs') -Pattern 'pub files_ext' -SimpleMatch -Quiet)) {
-        Fail '-LauncherRoot has no files_ext support (launcher 0.1.7+, P1668); the Linux ui_imgui plugin would go stale'
+    if ($LinuxShipImgui -and -not (Select-String -LiteralPath (Join-Path $frozenBootstrap.root 'src/manifest.rs') -Pattern 'pub ext: bool' -SimpleMatch -Quiet)) {
+        Fail '-LauncherRoot has no files_ext support with its recovery fix (launcher 0.1.7 13e7327+, P1668); the Linux ui_imgui plugin would go stale'
     }
     if ($WindowsLauncherRoot) {   # notices/bootstrap.txt comes from -LauncherRoot's Cargo.lock for both launchers
-        $lockSet = { param($r) [IO.File]::ReadAllText((Join-Path $r 'Cargo.lock')) -replace '(?m)(name = "quakers-launcher"\r?\nversion = )"[^"]*"', '$1"x"' }
+        $lockSet = { param($r) [IO.File]::ReadAllText((Join-Path $r 'Cargo.lock')).Replace("`r`n", "`n") -replace '(?m)(name = "quakers-launcher"\nversion = )"[^"]*"', '$1"x"' }
         if ((& $lockSet $frozenBootstrap.root) -cne (& $lockSet $frozenWinBootstrap.root)) {
             Fail 'the Windows and Linux launcher sources have different dependency sets; their shared notices would misdescribe one'
         }

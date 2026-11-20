@@ -432,8 +432,8 @@ def check_publication(feed: Path, receipt: Path, version: str, previous: Path,
             raise ValueError("update version must advance (no rollback or same-version replacement)")
         if not platforms(old) <= platforms(payload):
             raise ValueError("update dropped a supported platform")
-        if old["game"] == payload["game"] and not ({(f["path"], f["platform"]) for f in old.get("files_ext", [])}
-                                                   <= {(f["path"], f["platform"]) for f in payload.get("files_ext", [])}):
+        if not ({(f["path"], f["platform"]) for f in old.get("files_ext", [])}
+                <= {(f["path"], f["platform"]) for f in payload.get("files_ext", [])}):
             raise ValueError("update dropped a files_ext path the previous release shipped")
 
 
@@ -534,7 +534,7 @@ def build(stages: dict[str, Path], output: Path, version: str, mirrors: list[str
                "exec_by_platform": executables, "removed": []}
     if launcher:
         payload["launcher"] = dict(sorted(launcher.items()))
-    if same:
+    if old is not None:  # also across a P1593 identity change: these paths sit in the install root under both
         dropped = {(f["path"], f["platform"]) for f in old.get("files_ext", [])} - {(f["path"], f["platform"]) for f in ext}
         if dropped:  # P1668: nothing deletes it, so a plugin left from the last release would load into a newer engine
             raise ValueError(f"release drops a files_ext path the previous release shipped: {sorted(dropped)}")
