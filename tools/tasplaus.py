@@ -40,6 +40,12 @@ Review 3: a jump needs vz 0 reached by a clip (landing, even rising: the engine 
 or standing, not by gravity alone; a landing on a slope may keep up to the 3D speed (slope fix);
 the precision is the coarser of positions and velocities; steps of 2+ ticks count with off-tick
 ones and their turns are bounded by k x 2 asin(30/|v|) unless a wall or ramp took the speed.
+Review 4: the engine also lands at the next tick's start and jumps from vz up to 140 (riding up a
+slope); the jump tick is held to air control's |v'|^2 <= |v|^2 + 900, not a flat +30; a 6-digit
+printer's coarser deep z widens only the height term; at most one 2+ tick step after t=0 (a lost
+packet: 2 in 301 honest files), moving at most half its velocity change off the mean (3.04 of 3.15
+measured) -- one such step can still hide ~2 ticks, ~0.03 s; the off-tick allowance counts samples
+from t=0. Unknown too: trigger_gravity (low gravity reads as push/booster).
 Bounds, measured on 117 KSF + Momentum replays of surf_sandtrap2 bonus 4
 (20 Nov 2026, 2-6 decimal files):
   free flight / ramps  d(|v|^2 + 2 g z) per tick  max 921; theory 900 = 30^2, the
@@ -105,6 +111,7 @@ GROUND_DV2 = 10000.0     # d(|v_h|^2) a ground tick: 2 A W - A^2, A = 19.5, W = 
 MIN_DECIMALS = 2         # every position/velocity printed to 0.01 or finer (all 281 real files)
 FRICTION, STOPSPEED = 4.0, 75.0    # cfg/default.cfg sv_friction / sv_stopspeed (mode_ahop's 100 only takes more)
 OPEN_CAP = 1500.0        # |v| a recording may open with on a course with no start limit (measured 1209: falling in)
+LAND_VZ = 140.5          # the engine lands rising up to vz 140 (pm_source.c:2350)
 STEP = 18.0              # u a ground move steps up or down (sv_stepheight)
 DRIFT_SECOND = 24.0      # u: unexplained horizontal travel summed over 66 ticks (corpus max 0.3; check())
 START_HEIGHT = 128.0     # u above the start box floor at t=0 (measured max 73.8, a 528 u box)
@@ -139,9 +146,27 @@ class Run:
         self.end = None
         self.decimals = 0    # the coarser of positions and velocities, each its most decimals (at most 6)
         self._dec = [0, 0]
+        # Rounding of a 6-significant-digit printer (%g): z at -15123.4 is 0.05 coarse beside x, y at
+        # 0.01. Per group, the coarsest such number (6+ significant digits, fewer decimals).
+        self.sig_q = [0.0, 0.0]
         self.short = 0       # sample lines with fewer than 14 columns (dropped)
         self.records = set()
         self.yaw = []        # view yaw per sample (runcompare reads it)
+
+
+def _lines(text):
+    """Lines split on \n only, like the game; slices of `text`, no 4-bytes-a-char StringIO buffer."""
+    pos, n = 0, len(text)
+    while pos < n:
+        j = text.find("\n", pos)
+        j = n if j < 0 else j + 1
+        yield text[pos:j]
+        pos = j
+
+
+def _sig_digits(x):
+    m = x.lstrip("+-").split("e")[0].split("E")[0].replace(".", "").lstrip("0")
+    return len(m)
 
 
 def read(path=None, text=None, header_only=False):
@@ -152,7 +177,7 @@ def read(path=None, text=None, header_only=False):
             text = f.read()
     run.odd_breaks = bool(ODD_BREAK.search(text))
     body = False
-    for line in io.StringIO(text):   # newline="\n": splits on \n only, like the game
+    for line in _lines(text):
         tok = line.split()
         if not tok:
             continue
@@ -187,8 +212,12 @@ def read(path=None, text=None, header_only=False):
         # energy jumps rather than as the precision HOLD.
         for col, x in enumerate(tok[1:7]):
             dot = x.find(".")
-            if dot >= 0 and x[dot + 1:].isdigit():
-                run._dec[col // 3] = min(6, max(run._dec[col // 3], len(x) - dot - 1))
+            d = len(x) - dot - 1 if dot >= 0 and x[dot + 1:].isdigit() else 0
+            g = col // 3
+            if d:
+                run._dec[g] = min(6, max(run._dec[g], d))
+            if d < 6 and "e" not in x and "E" not in x and _sig_digits(x) >= 6:
+                run.sig_q[g] = max(run.sig_q[g], 0.5 * 10.0 ** -d)
         run.decimals = min(run._dec)
         run.samples.append((nums[0], tuple(nums[1:4]), tuple(nums[4:7])))
         try:
@@ -333,8 +362,11 @@ def check(run, zones=None, maxvel=None):
         maxvel = float((zones or {}).get("maxVelocity") or DEFAULT_MAXVEL)
 
     if run.decimals < MIN_DECIMALS:
-        note(HOLD, None, f"no number printed with more than {run.decimals} decimals: the bounds need {MIN_DECIMALS} or more")
-    q = 0.5 * 10.0 ** (-max(run.decimals, MIN_DECIMALS))
+        note(HOLD, None, f"{'positions' if run._dec[0] <= run._dec[1] else 'velocities'} printed with at most"
+             f" {run.decimals} decimals: the bounds need {MIN_DECIMALS} or more")
+    # Velocity rules use q; the energy test's height term uses q_pos (a %g printer rounds deep z coarser).
+    q = max(0.5 * 10.0 ** (-max(run._dec[1], MIN_DECIMALS)), min(run.sig_q[1], 0.05))
+    q_pos = max(0.5 * 10.0 ** (-max(run._dec[0], MIN_DECIMALS)), min(run.sig_q[0], 0.05))
     # Teleport destinations: stage starts, numbered (the main start is stage 1 and a teleport into it
     # is a reset, into the end a skip). Back to the stage being ridden is a fall; on to the next one
     # is the map's stage-end teleporter, which the checker cannot see, so a person looks.
@@ -372,7 +404,7 @@ def check(run, zones=None, maxvel=None):
             i0 = i
     win = [x for x in s[i0:] if x[0] <= fin + rate + 1e-6]
     worst_air = worst_ground = worst_turn = worst_drift = 0.0
-    nchk = njump = ntele = nduck = offtick = 0
+    nchk = njump = ntele = nduck = offtick = gaps = 0
     duck_net = 0.0
     drift = []          # horizontal residuals of the last second (aligned single ticks after t=0)
     drift_said = False
@@ -430,14 +462,18 @@ def check(run, zones=None, maxvel=None):
         r = resid(a, b)
         dvz = vb[2] - va[2]
         free = abs(dvz + GRAVITY * rate * k) < 0.05
-        # From the ground: standing (vz 0 before too) or landed (the tick into it is a clip, not free
-        # flight: the engine lands rising at vz <= 140). An arc's top reaches 0 by gravity alone.
+        # From the ground: standing (vz 0 before too), or landed -- the tick into it a clip, not free
+        # flight. The engine lands rising at vz <= 140 (pm_source.c:2350): at the tick's end (vz 0), or
+        # at the next tick's start with jump held, the jump firing from vz up to 140 (riding up a slope).
+        # An arc's top reaches its vz by gravity alone. A faked clip in mid-air is collision, unknown.
         if i > 0:
             pv, pdt = win[i - 1][2][2], a[0] - win[i - 1][0]
-            landed = abs(pv) < 0.01 or abs(va[2] - pv + GRAVITY * pdt) >= 0.05
+            clipped = abs(va[2] - pv + GRAVITY * pdt) >= 0.05
+            standing = abs(pv) < 0.01 and abs(va[2]) < 0.01
         else:
-            landed = True
-        jump = abs(va[2]) < 0.01 and landed and JUMP_VZ[0] <= vb[2] <= JUMP_VZ[1]
+            clipped, standing = True, abs(va[2]) < 0.01
+        jump = (JUMP_VZ[0] <= vb[2] <= JUMP_VZ[1] and -0.01 < va[2] <= LAND_VZ
+                and (standing or clipped))
         ground = abs(va[2]) < 0.01 and abs(vb[2]) < 0.01
         shift = 0.0
         if math.hypot(r[0], r[1]) < 2.0 * kk and DUCK_SHIFT[0] <= abs(r[2]) <= DUCK_SHIFT[1] and not ground:
@@ -466,6 +502,26 @@ def check(run, zones=None, maxvel=None):
                 f" onto stage {dest}'s start, gaining {gained:.0f} u/s" if dest == reached[0] else
                 f" onto stage {dest}'s start from stage {reached[0]}: a stage-end teleporter? (not known to the checker)"))
             continue
+        if aligned and round(k) >= 2 and a[0] >= 0:
+            # A step of k ticks (a lost packet: honest files have at most one, 2 in 301): it moves at most
+            # half its velocity change x its time off the mean velocity (measured 3.04 of 3.15), and what
+            # that cannot explain counts toward the second too, standing for k ticks of it.
+            gaps += 1
+            dvk = math.sqrt(sum((vb[c] - va[c]) ** 2 for c in range(3))) * (b[0] - a[0])
+            if d > dvk / 2 + FREE_TOL:
+                note(HOLD, t, f"moves {d:.1f} u off its velocities in {round(k)} ticks, more than their change explains:"
+                     " skipped or edited ticks")
+            rh = math.hypot(r[0], r[1])
+            room = math.sqrt(sum((vb[c] - va[c]) ** 2 for c in range(3))) * (b[0] - a[0])
+            f = max(0.0, rh - room) / rh if rh > 1e-9 else 0.0
+            drift.extend([(r[0] * f, r[1] * f)] + [(0.0, 0.0)] * (round(k) - 1))
+            del drift[:-66]
+            if len(drift) == 66:
+                dsum = math.hypot(sum(x for x, _ in drift), sum(y for _, y in drift))
+                worst_drift = max(worst_drift, dsum)
+                if dsum > DRIFT_SECOND and not drift_said:
+                    drift_said = True
+                    note(HOLD, t, f"positions drift {dsum:.0f} u off the velocities within one second: edited positions?")
         if aligned and round(k) == 1 and a[0] >= 0:
             # In the air the mover accelerates, then moves the whole tick on the new velocity: against that
             # the window sum is <= 0.3 u on all 117 corpus runs (against the mean of the two, 8 u; summing
@@ -522,14 +578,15 @@ def check(run, zones=None, maxvel=None):
             continue
         if jump:
             njump += 1
-            # The jump tick moves in the air (jump comes before friction): horizontal gain is air control's.
-            if hb - ha > AIR_CAP * kk + 4 * q + 0.5:
-                note(HOLD, t, f"speed +{hb - ha:.1f} u/s on the jump tick (air control adds {AIR_CAP * kk:.0f})")
+            # The jump tick moves in the air (jump comes before friction): air control's |v'|^2 <= |v|^2
+            # + 900, so +30 from rest but ~0 at speed (a flat +30 let fabricated hops pump speed).
+            if hb * hb - ha * ha > AIR_DV2 * kk + 4 * math.sqrt(2) * hb * q + 1.0:
+                note(HOLD, t, f"speed {ha:.0f} -> {hb:.0f} u/s on the jump tick: air control adds |v|^2 + 900 at most")
             continue
         ea = va[0] ** 2 + va[1] ** 2 + va[2] ** 2 + 2 * GRAVITY * a[1][2]
         eb = vb[0] ** 2 + vb[1] ** 2 + vb[2] ** 2 + 2 * GRAVITY * (b[1][2] - shift)
         spd = max(math.sqrt(ea - 2 * GRAVITY * a[1][2]), 1.0)
-        tol = 4 * math.sqrt(3) * spd * q + 4 * GRAVITY * q + 30.0
+        tol = 4 * math.sqrt(3) * spd * q + 4 * GRAVITY * q_pos + 30.0
         gain = eb - ea
         worst_air = max(worst_air, gain / (AIR_DV2 * kk))
         if gain > AIR_DV2 * kk + tol:
@@ -540,7 +597,9 @@ def check(run, zones=None, maxvel=None):
             # by taking speed.
             turn = turn_deg(va, vb, 2)
             most = math.degrees(2 * math.asin(min(1.0, AIR_CAP / min(ha, hb)))) * round(k) + 1.0
-            if turn > most and not clip_ok(va, vb, 2, AIR_CAP * kk + GRAVITY * rate * kk + 4 * q):
+            extra = AIR_CAP * kk + GRAVITY * rate * kk + 4 * q
+            landing = va[2] < -1.0 and abs(vb[2]) < 0.01 and hb <= math.sqrt(sum(c * c for c in va)) + extra
+            if turn > most and not landing and not clip_ok(va, vb, 2, extra):
                 note(HOLD, t, f"{ha:.0f} -> {hb:.0f} u/s turning {turn:.1f} deg in {round(k)} ticks: air control"
                      f" turns at most {most:.1f}, and a wall or ramp would have taken speed")
         elif aligned and round(k) == 1 and t >= 0:
@@ -574,7 +633,10 @@ def check(run, zones=None, maxvel=None):
         note(HOLD, None, "too little movement to check the clock")
     elif not CLOCK_RATIO[0] <= clock <= CLOCK_RATIO[1]:
         note(HOLD, None, f"the body moves {clock:.4f}x what its speed and clock allow: clock edited?")
-    if offtick > 2 + len(win) // 500:   # packet timing: 1-2 in 3 of 164 of our own recordings
+    if gaps > 1:
+        note(HOLD, None, f"{gaps} sample steps skip ticks after the start: one sample a tick, please")
+    # The allowance counts samples from t=0: padding the pre-start must not buy skipped ticks (review 4).
+    if offtick > 2 + sum(1 for x in win if x[0] >= 0) // 500:   # packet timing: 1-2 in 3 of 164 of ours
         note(HOLD, None, f"{offtick} sample steps are not one whole tick: the per-tick bounds cannot be applied"
              " (one sample a tick, please; native recordings need the exact verifier)")
 

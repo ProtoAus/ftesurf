@@ -23,6 +23,7 @@ best upload shown here), or the first on a course, is held: the checker cannot s
   POST /tasup/signout
 """
 import argparse
+import bisect
 import hashlib
 import hmac
 import html
@@ -65,7 +66,10 @@ REASONS_MAX = 40                    # kept and shown per run; a bad file can giv
 ROW = ('id, sha, steamid, map, track, ticks, verdict, state, reasons, stats, tool, size, uploaded_at,'
        ' reviewed_at, note')
 LIST = 'id, steamid, map, track, ticks, verdict, state, tool, uploaded_at, note'
-COPY_CANDIDATES = 40                # nearest in length on the course, compared per upload
+COPY_CANDIDATES, COPY_PER_PLAYER = 60, 3   # course candidates compared per upload; per other account
+COPY_TICKS, COPY_FULL = 3000, 5     # ticks compared per pass; full passes per upload before a person looks
+HEADER_MAX = 65536                  # the header (up to `begin`) is read from this prefix
+PEER_STEAM = 3                      # Steam confirmations a minute per address
 HITS_MAX = 50000                    # rate-limit keys a minute; past it new addresses go uncounted
 # The course record a PASS must not reach: trusted tiers' clean runs only. Community rows are demoted,
 # banned:* hidden, and surfd marks any TF_TAS run style tas (cheat or practice history too).
@@ -158,42 +162,61 @@ def samples_digest(run):
 
 
 def motion_series(run, mask=None, pos=None):
-    """Velocity on the tick grid from the start to the finish, flat [vx, vy, vz, ...], interpolated by
-    time: the run's motion whatever its position offset, header, or samples added, dropped or spaced
-    out. At most 2 ticks a sample plus 600 (a sparser file HOLDs for its gaps). `mask` (a bytearray)
-    gets 1 for the ticks a sample sits on: only those are compared (interpolation across a ramp hit
-    misses: r_34061 at every 2nd sample, 32 of 523 ticks). `pos` (an array) gets the positions on
-    the same grid, relative to the first: the path itself, whatever the recorded velocities say."""
+    """Velocity on the tick grid from the start to the finish, flat [vx, vy, vz, ...]: a sample is taken
+    as it is at its nearest tick, ticks between samples are interpolated by time. So the run's motion
+    whatever its position offset, header, or samples added, dropped, spaced out or all moved by part
+    of a tick (P1640 review 4). At most 2 ticks a sample plus 600 (a sparser file HOLDs for its gaps).
+    `mask` (a bytearray) gets 1 for the ticks a sample sits on: only those are compared (interpolation
+    across a ramp hit misses: r_34061 at every 2nd sample, 32 of 523 ticks). `pos` (an array) gets
+    the positions on the same grid, relative to the first sample: the path itself."""
     s, out, j = run.samples, array('f'), 0
-    for n in range(min(run.end, 2 * len(s) + 600) + 1):
-        t = n * TICK
-        while j + 1 < len(s) and s[j + 1][0] <= t + 1e-6:
-            j += 1
-        a = s[j]
-        b = s[j + 1] if j + 1 < len(s) else a
-        w = min(1.0, (t - a[0]) / (b[0] - a[0])) if b[0] > a[0] and a[0] <= t else 0.0
-        out.extend(a[2][c] + (b[2][c] - a[2][c]) * w for c in range(3))
+    last = min(run.end, 2 * len(s) + 600)
+    near = {}
+    for x in s:
+        n = math.floor(x[0] / TICK + 0.5 - 1e-7)
+        if 0 <= n <= last and n not in near:
+            near[n] = x
+    o0 = s[0][1]
+    for n in range(last + 1):
+        t, x = n * TICK, near.get(n)
+        if x is not None:
+            v, o = x[2], x[1]
+        else:
+            while j + 1 < len(s) and s[j + 1][0] <= t + 1e-6:
+                j += 1
+            a = s[j]
+            b = s[j + 1] if j + 1 < len(s) else a
+            w = min(1.0, (t - a[0]) / (b[0] - a[0])) if b[0] > a[0] and a[0] <= t else 0.0
+            v = [a[2][c] + (b[2][c] - a[2][c]) * w for c in range(3)]
+            o = [a[1][c] + (b[1][c] - a[1][c]) * w for c in range(3)]
+        out.extend(v)
         if pos is not None:
-            pos.extend(a[1][c] + (b[1][c] - a[1][c]) * w - s[0][1][c] for c in range(3))
+            pos.extend(o[c] - o0[c] for c in range(3))
         if mask is not None:
-            mask.append(1 if abs(a[0] - t) < 1e-4 else 0)
+            mask.append(1 if x is not None else 0)
     return out
 
 
-def same_motion(a, b, shifts=8, stride=1, share=0.95, mask=None):
+def _thin(seq, stride, cap):
+    step = max(stride, -(-len(seq) // cap)) if cap else stride
+    return seq[::step] if step > 1 else seq
+
+
+def same_motion(a, b, shifts=8, stride=1, share=0.95, mask=None, sampled=None, cap=COPY_TICKS):
     """b is a's motion, give or take a few ticks: velocity within 2 u/s + 1% on `share` of the overlap,
-    every `stride`th tick (8 with share 0.85 is the cheap first pass), on a's sampled ticks (`mask`)."""
+    on a's sampled ticks (`mask`, or `sampled` built once by the caller), every `stride`th and at most
+    `cap` of them (8 with share 0.85 is the cheap first pass)."""
     na, nb = len(a) // 3, len(b) // 3
-    sampled = [i for i in range(na) if mask is None or mask[i]]
+    if sampled is None:
+        sampled = [i for i in range(na) if mask is None or mask[i]]
     for sh in range(-shifts, shifts + 1):
         lo, hi = max(0, sh), min(na, nb + sh)
         if hi - lo < 20 or hi - lo < 0.9 * min(na, nb):
             continue
-        ticks = [i for i in sampled if lo <= i < hi]
+        ticks = sampled[bisect.bisect_left(sampled, lo):bisect.bisect_left(sampled, hi)]
         if len(ticks) < 10:
             continue
-        if len(ticks) >= 10 * stride:
-            ticks = ticks[::stride]
+        ticks = _thin(ticks, stride if len(ticks) >= 10 * stride else 1, cap)
         allowed, bad = int(len(ticks) * (1 - share)), 0
         for i in ticks:
             j = 3 * (i - sh)
@@ -218,22 +241,27 @@ def clean_tool(s):
     return ' '.join(s.split())[:TOOL_MAX]
 
 
-def same_path(a, b, shifts=8, stride=1, share=0.95, mask=None):
+def path_steps(sampled):
+    """Steps between consecutive sampled ticks at most 8 apart: what same_path compares."""
+    return [(i, j) for i, j in zip(sampled, sampled[1:]) if j - i <= 8]
+
+
+def same_path(a, b, shifts=8, stride=1, share=0.95, mask=None, steps=None, cap=COPY_TICKS):
     """b travels a's path, give or take a few ticks: each step between a's sampled ticks moves within
     (2 u/s + 1%) x its time of b's, on `share` of them. Positions only: velocities edited on their own
     (P1640 review 3: 1 deg on 6% of ticks) do not hide it, nor does a constant offset."""
     na, nb = len(a) // 3, len(b) // 3
-    sampled = [i for i in range(na) if mask is None or mask[i]]
-    steps = [(i, j) for i, j in zip(sampled, sampled[1:]) if j - i <= 8]
+    if steps is None:
+        steps = path_steps([i for i in range(na) if mask is None or mask[i]])
+    starts = [i for i, _ in steps]
     for sh in range(-shifts, shifts + 1):
         lo, hi = max(0, sh), min(na, nb + sh)
         if hi - lo < 20 or hi - lo < 0.9 * min(na, nb):
             continue
-        use = [(i, j) for i, j in steps if lo <= i and j < hi]
+        use = [st for st in steps[bisect.bisect_left(starts, lo):bisect.bisect_left(starts, hi)] if st[1] < hi]
         if len(use) < 10:
             continue
-        if len(use) >= 10 * stride:
-            use = use[::stride]
+        use = _thin(use, stride if len(use) >= 10 * stride else 1, cap)
         allowed, bad = int(len(use) * (1 - share)), 0
         for i, j in use:
             g = (j - i) * TICK
@@ -257,15 +285,23 @@ def unpack_sig(blob):
 
 
 def copy_of(series, path, mask, rows):
-    """The first row (id, steamid, state, sig) whose motion `series` or path `path` is, or None; rows may
-    be a cursor. Either matching is a copy: an edit must hide both the velocities and the path."""
+    """(row, why) for the first row (id, steamid, state, sig) whose motion `series` or path `path` is,
+    (None, why) when more candidates than COPY_FULL passed the cheap pass and failed the full one (a
+    person looks), (None, None) otherwise. Rows may be a cursor. Either matching is a copy."""
+    sampled = [i for i in range(len(mask)) if mask[i]]
+    steps, full = path_steps(sampled), 0
     for r in rows:
         vel, pos = unpack_sig(r['sig'])
-        if same_motion(series, vel, stride=8, share=0.85, mask=mask) and same_motion(series, vel, mask=mask):
-            return r
-        if same_path(path, pos, stride=8, share=0.85, mask=mask) and same_path(path, pos, mask=mask):
-            return r
-    return None
+        for same, mine, theirs, kw in ((same_motion, series, vel, dict(sampled=sampled)),
+                                       (same_path, path, pos, dict(steps=steps))):
+            if not same(mine, theirs, stride=8, share=0.85, cap=400, **kw):
+                continue
+            if same(mine, theirs, **kw):
+                return r, None
+            full += 1
+            if full > COPY_FULL:
+                return None, 'close to more than %d runs on this course: the owner compares them' % COPY_FULL
+    return None, None
 
 
 _MAXVEL = re.compile(r'^\s*(?:seta?\s+)?sv_maxvelocity\s+"?([0-9]+(?:\.[0-9]+)?)"?', re.M)
@@ -696,6 +732,8 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                 db.execute('DELETE FROM nonces WHERE seen_at < ?', (now - 4 * steam.NONCE_SKEW,))
                 try: db.execute('INSERT INTO nonces(nonce, seen_at) VALUES (?, ?)', (nonce, now))
                 except sqlite3.IntegrityError: raise steam.Refused('nonce seen')
+            if limited('steampeer', PEER_STEAM):   # one address cannot spend everyone's minute
+                return refuse('Too many sign-ins; try again in a minute.', 429)
             if limited('steam', STEAM_MINUTE, who='everyone'):
                 return refuse('Too many sign-ins right now; try again in a minute.', 429)
             if not steam_slots.acquire(blocking=False):
@@ -774,10 +812,16 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         with spend_lock, connect(store) as db, writing(db):
             over = spend(db, sid, now)
         if over: return refuse(over, 429)
-        try: text = body.decode('utf-8')
+        if b'\x00' in body or not body.startswith(b'FTESURF-REC '): return refuse('That is not a FTESURF-REC recording.', 400)
+        # The header from a bounded prefix, the samples plain ASCII: one wide character would otherwise
+        # make the whole 8 MB text 4 bytes a character (review 4: four at once past MemoryMax).
+        cut = body.find(b'\nbegin', 0, HEADER_MAX)
+        if cut < 0: return refuse('The recording has no header (no begin line in its first %d KB).' % (HEADER_MAX // 1024), 400)
+        try: head = body[:cut + 1].decode('utf-8')
         except UnicodeDecodeError: return refuse('That is not a text .rec file.', 400)
-        if '\x00' in text or not text.startswith('FTESURF-REC '): return refuse('That is not a FTESURF-REC recording.', 400)
-        pre = tp.read(text=text, header_only=True)   # the checker's own header reader: one reading of it
+        if not body[cut + 1:].isascii(): return refuse('After the header a .rec is plain ASCII.', 400)
+        pre = tp.read(text=head + 'begin\n', header_only=True)   # the checker's own header reader
+        text = head.encode('ascii', 'replace').decode('ascii') + body[cut + 1:].decode('ascii')
         if not pre.has_body: return refuse('The recording has no header (no begin line).', 400)
         if pre.dups: return refuse('The header gives %s twice.' % ', '.join(sorted(pre.dups)), 400)
         if pre.odd_breaks: return refuse('The file has line breaks or spaces other than newline, space and tab.', 400)
@@ -840,18 +884,29 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         series, trail = unpack_sig(sig)
         state = 'shown' if res['verdict'] == tp.PASS else 'held'
         lo, hi = end - max(30, end // 10), end + max(30, end // 10)
-        course_sql = ('SELECT id, steamid, state, sig FROM runs WHERE map = ? AND track = ? AND ticks BETWEEN ? AND ?'
-                      " AND (steamid != ? OR state = 'removed') AND id > ? ORDER BY ABS(ticks - ?), id LIMIT %d" % COPY_CANDIDATES)
+        # At most COPY_PER_PLAYER nearest in length per other account, shown and removed ones first: a few
+        # accounts' parked runs cannot push the run being copied out of the candidates (review 4).
+        course_sql = ('SELECT r.id, r.steamid, r.state, r.sig FROM (SELECT id, ticks, state, ROW_NUMBER() OVER'
+                      ' (PARTITION BY steamid ORDER BY ABS(ticks - ?), id) AS rk FROM runs WHERE map = ? AND track = ?'
+                      " AND ticks BETWEEN ? AND ? AND (steamid != ? OR state = 'removed') AND id > ?) c"
+                      ' JOIN runs r ON r.id = c.id WHERE c.rk <= %d'
+                      " ORDER BY c.state IN ('shown', 'removed') DESC, ABS(c.ticks - ?), c.id LIMIT %d"
+                      % (COPY_PER_PLAYER, COPY_CANDIDATES))
 
         def copied(db, after):
-            # Another player's motion (any state), or one the owner removed (anyone's): own runs are the
-            # uploader's to improve or re-export.
-            r = db.execute("SELECT id, steamid FROM runs WHERE samples_sha = ? AND (steamid != ? OR state = 'removed')"
-                           ' AND id > ? LIMIT 1', (digest, sid, after)).fetchone()
-            r = r or copy_of(series, trail, mask, db.execute(course_sql, (mapname, track, lo, hi, sid, after, end)))
-            if r is None: return None
-            whose = ' (another player\'s)' if r['steamid'] != sid else ''
-            return refuse('That is the motion of run %d%s, with small changes.' % (r['id'], whose), 409)
+            """A refusal (motion the owner removed), a reason to hold it (another player's motion, or too
+            close to too many runs to tell), or None. Own runs are the uploader's to improve or re-export.
+            A match is held, not refused: two bots on one course may converge, and the owner decides."""
+            r = db.execute("SELECT id, steamid, state FROM runs WHERE samples_sha = ? AND (steamid != ? OR state = 'removed')"
+                           " AND id > ? ORDER BY state = 'removed' DESC LIMIT 1", (digest, sid, after)).fetchone()
+            why = None
+            if r is None:
+                r, why = copy_of(series, trail, mask, db.execute(course_sql, (end, mapname, track, lo, hi, sid, after, end)))
+            if r is not None and r['state'] == 'removed':
+                return refuse('That is the motion of run %d, which the owner removed.' % r['id'], 409)
+            if r is not None:
+                return 'the motion of run %d (another player\'s), with small changes: the owner decides whose it is' % r['id']
+            return why
 
         # Compared before the write lock (P1640 review: a long course could hold it past SQLite's
         # timeout) and in the checker's slot (four at once took 1 GB); inside the lock only the rows
@@ -862,10 +917,10 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         try:
             with connect(store) as db:
                 seen = db.execute('SELECT COALESCE(MAX(id), 0) FROM runs').fetchone()[0]
-                gone = copied(db, 0)
+                copy = copied(db, 0)
         finally:
             heavy.release()
-        if gone is not None: return gone
+        if copy is not None and not isinstance(copy, str): return copy
         record, record_why = None, None
         try: record = course_record(mapname, track)
         except Unavailable as e: record_why = str(e)
@@ -874,8 +929,12 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         committed = placed = False
         try:
             with connect(store) as db, writing(db):
-                gone = copied(db, seen)
-                if gone is not None: return gone
+                again = copied(db, seen)
+                if again is not None and not isinstance(again, str): return again
+                for why in (copy, again):
+                    if isinstance(why, str):
+                        state = 'held'
+                        reasons = reasons + [{'level': tp.HOLD, 't': None, 'what': why}]
                 # Without the map's walls a made-up path can pass the physics: a time that reaches the best
                 # known (surfd's record, or the best upload shown here) waits for the owner. A run held for
                 # physics carries the note too, so an approval knows it makes a record.
@@ -884,6 +943,9 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                                    (mapname, track)).fetchone()[0]
                 known = [x for x in (record, shown * TICK * 1000 if shown else None) if x]
                 best = min(known) if known else None
+                if db.execute("SELECT 1 FROM runs WHERE steamid = ? AND samples_sha = ? AND state = 'shown'",
+                              (sid, digest)).fetchone():
+                    record_why, best = None, mine - 1   # the uploader's own shown run again: not a new time
                 why = ('the course record could not be read (%s)' % record_why if record_why else
                        'no other time on this course to compare with: the first upload waits for the owner' if best is None else
                        '%s the best known time on this course (%s): a new record waits for the owner'
@@ -893,6 +955,7 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                     reasons = reasons + [{'level': tp.HOLD, 't': None, 'what': why}]
                 if state == 'held' and db.execute("SELECT COUNT(*) FROM runs WHERE steamid = ? AND state = 'held'",
                                                   (sid,)).fetchone()[0] >= HELD_CAP:
+                    db.execute('UPDATE spend SET n = MAX(0, n - 1) WHERE who = ? AND day = ?', (sid, int(now // 86400)))
                     return refuse('You have %d runs waiting for review; wait for those first.' % HELD_CAP, 429)
                 if stored(db) + len(body) + len(sig) > STORE_CAP:   # the motion blob is on the same disk
                     app.logger.warning('tasupd store full (%d bytes): uploads refused until runs are removed', STORE_CAP)
@@ -955,7 +1018,7 @@ def main(argv=None):
                     r['id'], r['state'], r['verdict'], day_of(r['uploaded_at']), r['map'], course(r['track']),
                     fmt_time(r['ticks'] * TICK), r['steamid'], r['tool']))
             return 0
-        r = db.execute('SELECT * FROM runs WHERE id = ?', (a.id,)).fetchone()
+        r = db.execute('SELECT ' + ROW + ', samples_sha FROM runs WHERE id = ?', (a.id,)).fetchone()
         if r is None: print('no run', a.id); return 1
         if a.cmd == 'show':
             for k in r.keys():
@@ -979,6 +1042,11 @@ def main(argv=None):
                 try: rec_path(a.store, r['sha']).unlink()
                 except FileNotFoundError: pass
         print('run %d: %s -> %s' % (a.id, r['state'], to))
+        if to == 'removed':
+            # Remove is for good (the file is gone; reject keeps it). Other uploads of the same motion stay.
+            same = [x[0] for x in db.execute("SELECT id FROM runs WHERE samples_sha = ? AND id != ? AND state != 'removed'",
+                                             (r['samples_sha'], a.id))]
+            if same: print('the same motion is also run(s) %s: remove those too if they should go' % ', '.join(map(str, same)))
         return 0
 
 

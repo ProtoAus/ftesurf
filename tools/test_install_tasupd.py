@@ -32,10 +32,11 @@ REAL_EUID = os.geteuid()
 class Upgrade(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); d = Path(self.tmp.name)
-        self.saved = {k: getattr(t, k) for k in ('ROOT', 'RELEASES', 'STATE', 'UNIT', 'SNIPPET', 'run', 'probe_app',
+        self.saved = {k: getattr(t, k) for k in ('ROOT', 'RELEASES', 'STATE', 'UNIT', 'SNIPPET', 'ZONES', 'root_only', 'run', 'probe_app',
                                                  'check_accounts', 'check_chain', 'write_release', 'replace_unit')}
         t.ROOT, t.RELEASES, t.STATE = d / 'srv-ops/tasupd', d / 'opt/ftesurf-tasupd', d / 'srv-ops/tasupd-state'
-        t.UNIT, t.SNIPPET = d / 'ftesurf-tasupd.service', d / 'ftesurf-tasupd.conf'
+        t.UNIT, t.SNIPPET, t.ZONES = d / 'ftesurf-tasupd.service', d / 'ftesurf-tasupd.conf', d / 'tasupd-zones.conf'
+        t.root_only = lambda p: None
         (d / 'opt').mkdir()
         self.src = d / 'src'; (self.src / '.git').mkdir(parents=True)
         self.fail_reload_after_switch = False
@@ -43,7 +44,7 @@ class Upgrade(unittest.TestCase):
             (self.src / rel).parent.mkdir(parents=True, exist_ok=True); (self.src / rel).write_bytes(b'# edited, not committed\n')
         self.install_old(t.ROOT)
         t.STATE.mkdir(); (t.STATE / 'tasup.sqlite3').write_bytes(b'db')
-        t.SNIPPET.write_text(t.NGINX)
+        t.SNIPPET.write_text(t.NGINX); t.ZONES.write_text(t.NGINX_ZONES)
         self.calls, self.envs, self.probes, self.held, self.chains, self.imports = [], [], [], [], [], []
         self.active, self.dropins, self.loaded, self.serving = 'active', '', OLD, OLD
         self.fail_new = self.fail_old_after = False
@@ -182,8 +183,12 @@ class Upgrade(unittest.TestCase):
 
     def test_a_changed_snippet_is_refused(self):
         t.SNIPPET.write_text(t.NGINX + '# edited\n')
-        with self.assertRaisesRegex(RuntimeError, 'snippet changed'): self.main('--apply')
+        with self.assertRaisesRegex(RuntimeError, 'snippet or its zones changed'): self.main('--apply')
 
+
+    def test_changed_zones_are_refused(self):
+        t.ZONES.write_text(t.NGINX_ZONES + '# edited\n')
+        with self.assertRaisesRegex(RuntimeError, 'snippet or its zones changed'): self.main('--apply')
     def test_an_existing_new_release_is_refused(self):
         for where in (t.RELEASES, t.ROOT):
             (where / NEW).mkdir(parents=True)
@@ -265,13 +270,14 @@ class Fresh(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); d = Path(self.tmp.name)
-        names = ('ROOT', 'RELEASES', 'STATE', 'UNIT', 'SNIPPET', 'SITE', 'BACKUPS', 'run', 'probe_app', 'check_accounts',
-                 'check_port', 'pwd', 'check_chain')
+        names = ('ROOT', 'RELEASES', 'STATE', 'UNIT', 'SNIPPET', 'ZONES', 'SITE', 'BACKUPS', 'run', 'probe_app', 'check_accounts',
+                 'check_port', 'pwd', 'check_chain', 'root_only')
         self.saved = {k: getattr(t, k) for k in names}
         t.ROOT, t.STATE, t.RELEASES = d / 'srv-ops/tasupd', d / 'srv-ops/tasupd-state', d / 'opt-tasupd'
         t.check_chain = lambda p: None
         self.pending = 'Id=surfd.service\nNeedDaemonReload=no'
         t.UNIT, t.SNIPPET, t.SITE, t.BACKUPS = d / 'unit.service', d / 'snippet.conf', d / 'site.conf', d
+        t.ZONES = d / 'zones.conf'; t.root_only = lambda p: None
         (d / 'srv-ops').mkdir()
         t.SITE.write_bytes(SITE)
         self.src = d / 'src'; (self.src / '.git').mkdir(parents=True)
@@ -343,7 +349,10 @@ class Fresh(unittest.TestCase):
         self.assertEqual(t.SITE.read_bytes(), SITE.replace(b'include snippets/surfd.conf;',
                                                            b'include snippets/surfd.conf;\n    include snippets/ftesurf-tasupd.conf;'))
         self.assertEqual(t.SNIPPET.read_text(), t.NGINX)
+        self.assertEqual(t.ZONES.read_text(), t.NGINX_ZONES)
         self.assertIn('client_max_body_size 8300k', t.NGINX)
+        self.assertIn('limit_conn tasupd_addr', t.NGINX)
+        self.assertIn('zone=tasupd_addr', t.NGINX_ZONES)
         unit = t.UNIT.read_text()
         self.assertIn('TASUPD_SOURCE=%s' % NEW, unit)
         self.assertIn('TASUPD_URL=https://play.proto.bar/tasup', unit)
@@ -404,6 +413,16 @@ class Fresh(unittest.TestCase):
         self.assertEqual(t.SITE.read_bytes(), SITE)
         self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service'), self.calls)
 
+    def test_a_site_someone_else_changed_is_not_put_back(self):
+        real = self.fake_probe
+        def probe(commit, url=None):
+            if url: t.SITE.write_bytes(SITE + b'# a peer\n'); raise RuntimeError('public route does not answer')
+            return real(commit, url)
+        self.fake_probe = probe; t.probe_app = probe
+        with self.assertRaisesRegex(RuntimeError, 'the site changed meanwhile: not put back'): self.main('--apply')
+        self.assertEqual(t.SITE.read_bytes(), SITE + b'# a peer\n')
+        self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service'), self.calls)
+
     def test_pending_unit_edits_are_refused(self):
         self.pending = 'Id=surfd.service\nNeedDaemonReload=yes\n\nId=nginx.service\nNeedDaemonReload=no'
         with self.assertRaisesRegex(RuntimeError, 'surfd.service'): self.main('--apply')
@@ -412,6 +431,30 @@ class Fresh(unittest.TestCase):
     def test_another_installer_is_refused(self):
         self.installer_blob = lambda: b'# some other installer\n'
         with self.assertRaisesRegex(RuntimeError, 'not tools/install_tasupd.py'): self.main()
+
+    def test_a_non_root_dry_run_leaves_nginx_t_to_the_apply(self):
+        os.geteuid = lambda: 1000
+        out = self.main()
+        self.assertIn('DRY RUN', out)
+        self.assertNotIn(('/usr/sbin/nginx', '-t'), [c[1:3] for c in self.calls])
+
+    def test_pending_reloads_include_stopped_units(self):
+        self.main()
+        show = [c for c in self.calls if '--property=Id,NeedDaemonReload' in c]
+        self.assertTrue(show and all('--all' in c for c in show))
+
+    def test_the_state_directory_is_made_through_descriptors(self):
+        real = t.STATE.parent
+        real.mkdir(parents=True, exist_ok=True)
+        elsewhere = Path(self.tmp.name) / 'elsewhere'; elsewhere.mkdir()
+        moved = real.with_name('srv-ops-real'); real.rename(moved); real.symlink_to(elsewhere)
+        try:
+            with self.assertRaises(OSError): t.make_state()           # a symlink on the way: refused
+            self.assertEqual(list(elsewhere.iterdir()), [])
+        finally:
+            real.unlink(); moved.rename(real)
+        t.make_state()
+        self.assertTrue(t.STATE.is_dir() and not t.STATE.is_symlink())
 
     def test_the_flask_check_runs_as_proto(self):
         self.main()
@@ -430,6 +473,13 @@ class Fresh(unittest.TestCase):
     def test_a_loaded_unit_is_refused(self):
         self.loadstate = 'loaded'
         with self.assertRaisesRegex(RuntimeError, 'owner inspection'): self.main('--apply')
+
+
+class RootOnly(unittest.TestCase):
+    def test_a_file_root_does_not_own_is_refused(self):
+        with tempfile.NamedTemporaryFile() as f:
+            if os.geteuid() == 0: self.skipTest('as root the file is root-owned')
+            with self.assertRaisesRegex(RuntimeError, 'someone other than root'): t.root_only(Path(f.name))
 
 
 class Probe(unittest.TestCase):

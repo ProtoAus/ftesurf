@@ -618,7 +618,7 @@ class Review1640Round2(unittest.TestCase):
             if tok and tp.is_sample(tok[0]):
                 tok[1:4] = ["%.1f" % float(x) for x in tok[1:4]]   # positions at 0.1, velocities as written
                 lines[i] = " ".join(tok)
-        self.assertIn("more than 1 decimals", self.why(tp.check(tp.read(text="\n".join(lines)), ZONES)))
+        self.assertIn("positions printed with at most 1 decimals", self.why(tp.check(tp.read(text="\n".join(lines)), ZONES)))
 
     def test_a_jump_straight_after_a_rising_landing_passes(self):
         # The engine lands rising (vz <= 140, floor within 1 u): vz +30 -> 0 is a clip, then autobunny.
@@ -655,12 +655,84 @@ class Review1640Round2(unittest.TestCase):
         r = verdict(self.rows, self.fin, zones=None)
         self.assertIn("ticks: air control turns at most", self.why(r))
 
+    def test_ticks_cut_out_of_a_step_hold(self):
+        # Two ticks cut from the middle of the run, the clock closed up: one 3-tick step that moves 5
+        # ticks' worth (review 4's compression).
+        k = self.at(0.6)
+        rows = self.rows[:k + 1] + [(round(t - 2 * RATE, 6), o, v) for t, o, v in self.rows[k + 5:]]
+        r = verdict(rows, self.fin - 2, zones=None)
+        self.assertIn("more than their change explains", self.why(r))
+
+    def test_one_lost_packet_passes_two_hold(self):
+        k = self.at(0.4)
+        one = self.rows[:k] + self.rows[k + 1:]
+        self.assertNotIn("skip ticks", self.why(verdict(one, self.fin)))
+        two = [r for i, r in enumerate(self.rows) if i not in (k, k + 20)]
+        self.assertIn("2 sample steps skip ticks", self.why(verdict(two, self.fin)))
+
+    def test_pre_start_padding_buys_no_allowance(self):
+        # Three samples after t=0 moved off the tick (six off-tick steps): over the allowance of 2 from
+        # t=0, under the 8 that 3000 padding samples before it would have bought.
+        t0, o0, v0 = self.rows[0]
+        pad = [(round(t0 - RATE * (n + 1), 6), list(o0), [0.0, 0.0, 0.0]) for n in range(3000)][::-1]
+        i0 = self.at(0.0)
+        rows = [(t + 0.005, o, v) if i in (i0 + 10, i0 + 30, i0 + 50) else (t, o, v)
+                for i, (t, o, v) in enumerate(self.rows)]
+        self.assertIn("6 sample steps are not one whole tick", self.why(verdict(pad + rows, self.fin, zones=None)))
+
+    def test_a_slope_landing_inside_a_lost_packet_passes(self):
+        rows = [(round(-0.3 + n * RATE, 6), [0.0, 0.0, 0.0], [300.0, 0.0, -790.0 - 12.0 * n]) for n in range(30)]
+        rows += [(round(-0.3 + n * RATE, 6), [0.0, 0.0, 0.0], [300.0 * 0.7, 300.0, 0.0]) for n in range(31, 140)]
+        for j in range(1, len(rows)):
+            a, b = rows[j - 1], rows[j]
+            for c in range(3):
+                b[1][c] = a[1][c] + (a[2][c] + b[2][c]) * 0.5 * (b[0] - a[0])
+        r = verdict(rows, 100, zones=None)
+        self.assertNotIn("air control turns at most", self.why(r))
+
     def test_strafing_on_the_jump_tick_passes(self):
         k = next(i for i, r in enumerate(self.rows) if r[2][2] > 250)
         for j in range(k, len(self.rows)):
-            self.rows[j][2][0] += 25.0              # air control on the jump tick: up to 30
+            self.rows[j][2][1] += 25.0              # air control on the jump tick: 25 sideways at 250 u/s
         self.refly_from(k)
         self.assertNotIn("jump tick", self.why(verdict(self.rows, self.fin)))
+
+    def test_pumping_speed_on_jump_ticks_holds(self):
+        # A flat +25 straight ahead at 250 u/s needs v.w < 5: air control cannot (review 4's pogo).
+        k = next(i for i, r in enumerate(self.rows) if r[2][2] > 250)
+        for j in range(k, len(self.rows)):
+            self.rows[j][2][0] += 25.0
+        self.refly_from(k)
+        self.assertIn("on the jump tick", self.why(verdict(self.rows, self.fin)))
+
+    def test_a_hop_off_an_up_slope_passes(self):
+        # Riding up a slope airborne: the end-of-move check refuses to land at vz > 140, gravity takes 6,
+        # the next tick lands and jumps at once (autobunny): the sample before the jump has vz ~137.
+        j0 = next(i for i, r in enumerate(self.rows) if r[2][2] > 250)
+        k = next(i for i, r in enumerate(self.rows) if i > j0 + 3 and r[0] > 0)
+        self.rows[k][2][2] = 137.0                  # a clip onto the slope, not free flight
+        for j in range(k + 1, len(self.rows)):
+            self.rows[j][2][2] = 289.99 - tp.GRAVITY * RATE * (j - k - 1)
+        self.refly_from(k - 1)
+        r = verdict(self.rows, self.fin, zones=None)
+        self.assertEqual(r["stats"]["jumps"], 2, self.why(r))
+        self.assertNotIn("energy", self.why(r))
+
+    def test_g_format_deep_maps_pass(self):
+        # A 6-significant-digit printer: z at -5xxx.xx and below -10000 one decimal fewer than x, y.
+        body = text([(t, [o[0], o[1], o[2] - 15000.0], v) for t, o, v in self.rows], self.fin)
+        lines = body.split("\n")
+        for i, line in enumerate(lines):
+            tok = line.split()
+            if tok and tp.is_sample(tok[0]):
+                tok[1:7] = ["%g" % float(x) for x in tok[1:7]]
+                lines[i] = " ".join(tok)
+        z = json.loads(json.dumps(ZONES))
+        for reg in (z["tracks"]["main"]["zones"]["segments"][0]["checkpoints"][0]["regions"]
+                    + z["tracks"]["main"]["zones"]["end"]["regions"]):
+            reg["bottom"] -= 15000.0
+        r = tp.check(tp.read(text="\n".join(lines)), z)
+        self.assertNotIn("energy", self.why(r))
 
     def test_the_end_counts_from_the_start(self):
         z = json.loads(json.dumps(ZONES))

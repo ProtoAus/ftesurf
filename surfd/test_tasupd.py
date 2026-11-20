@@ -152,6 +152,12 @@ class Service(unittest.TestCase):
         if json_reply: h['Accept'] = 'application/json'
         return c.post('/tasup/upload', data=data, content_type='multipart/form-data', headers=h)
 
+    def assertCopyHeld(self, r, rid):
+        """Another player's motion is kept for the owner, never shown (review 4: held, not refused)."""
+        j = r.get_json()
+        self.assertEqual((r.status_code, j.get('state')), (200, 'held'), j)
+        self.assertIn("the motion of run %d (another player's)" % rid, json.dumps(j['reasons']))
+
     def cli(self, *args):
         out = io.StringIO()
         with contextlib.redirect_stdout(out): code = svc.main(['--store', str(self.store)] + list(args))
@@ -295,7 +301,7 @@ class Service(unittest.TestCase):
         self.assertEqual(r.status_code, 409)
         self.assertIn('That file has already', r.get_json()['error'])   # refused before the checker runs
         c2, _ = self.sign_in(BOB)   # the same motion under another header, by somebody else
-        self.assertEqual(self.upload(c2, body.replace(b'track 0\n', b'track 0\nowner bob\n')).status_code, 409)
+        self.assertCopyHeld(self.upload(c2, body.replace(b'track 0\n', b'track 0\nowner bob\n')), 1)
 
     def test_header_refusals(self):
         c, _ = self.sign_in(ALICE)
@@ -311,7 +317,10 @@ class Service(unittest.TestCase):
                  (rec().replace(b'track 0', b'track -1'), 'no usable track'),
                  (b'MZ\x00' + rec(), 'not a FTESURF-REC'),
                  (rec().replace(b'begin\n', b''), 'no header'),
-                 (b'\xff\xfe' + rec(), 'not a text')]
+                 (b'\xff\xfe' + rec(), 'not a FTESURF-REC'),
+                 (rec().replace(b'map synth', b'map synth\nplayer \xff\xfe'), 'not a text'),
+                 (rec().replace(b'\nend ', '\n0.5 1 2 3 4 5 6 7 8 9 10 11 12 13 \u00e9\nend '.encode(), 1), 'plain ASCII'),
+                 (b'FTESURF-REC 9\n' + b'x' * 70000 + b'\nbegin\n', 'no begin line in its first')]
         for body, why in cases:
             r = self.upload(c, body)
             self.assertEqual(r.status_code, 400, why)
@@ -333,11 +342,9 @@ class Service(unittest.TestCase):
         late = rec([(round(t + fx.RATE, 6), o, v) for t, o, v in rows], fin + 1)
         noisy = rec([(t, [x + 0.3 for x in o], [x + 0.4 for x in v]) for t, o, v in rows], fin)
         for body in (extra, moved, late, noisy):
-            r = self.upload(b, body)
-            self.assertEqual(r.status_code, 409, r.get_json())
-            self.assertIn("motion of run %d (another player's)" % a['id'], r.get_json()['error'])
-        files = list((self.store.parent / 'recs').rglob('*.rec'))
-        self.assertEqual(len(files), 1)   # refused copies leave nothing behind
+            self.assertCopyHeld(self.upload(b, body), a['id'])
+        board = self.app.test_client().get('/tasup/api/board?map=synth&track=0').get_json()
+        self.assertEqual([x['id'] for x in board['runs']], [a['id']])   # none of them shown
         other, ofin = variant(14.0)
         self.assertEqual(self.upload(b, rec(other, ofin)).get_json()['state'], 'shown')
 
@@ -481,9 +488,12 @@ class Service(unittest.TestCase):
             held += r.get('state') == 'held'
         self.assertEqual(held, svc.HELD_CAP)
         self.assertEqual(self.upload(c, rec()).get_json()['state'], 'shown')   # the cap is on the owner's queue only
+        spent = lambda: sqlite3.connect(self.store).execute('SELECT n FROM spend WHERE who = ?', (ALICE,)).fetchone()[0]
+        before = spent()
         r = self.upload(c, edited_speed())
         self.assertEqual(r.status_code, 429)
         self.assertIn('waiting for review', r.get_json()['error'])
+        self.assertEqual(spent(), before)   # refused at the held cap: the attempt is given back
         for _ in range(svc.USER_DAY):
             last = self.upload(c, b'not a rec')
         self.assertEqual(last.status_code, 429)
@@ -610,9 +620,11 @@ class Service(unittest.TestCase):
         j = self.upload(b, rec(faster, ffin)).get_json()
         self.assertEqual(j['state'], 'held')
         self.assertIn('faster than the best known time on this course (1.200)', j['reasons'][-1]['what'])
-        tie = self.upload(c, rec() + b'\n').get_json()                  # Alice's own 1.2 s, re-exported
-        self.assertEqual(tie['state'], 'held', tie)                      # 1.2 s again: a tie with the best waits too
+        tie = self.upload(b, rec(*variant(6.0, cap=240.0))).get_json()   # another 1.2 s, Bob's own
+        self.assertEqual(tie['state'], 'held', tie)                      # a tie with the best waits too
         self.assertIn('matches the best known time', tie['reasons'][-1]['what'])
+        again = self.upload(c, rec() + b'\n').get_json()               # Alice's own 1.2 s, re-exported
+        self.assertEqual(again['state'], 'shown', again)                 # her own shown run again: no new time
 
     def test_the_first_upload_on_a_course_waits(self):
         self.surfd('DELETE FROM runs')
@@ -637,11 +649,11 @@ class Service(unittest.TestCase):
         again = self.upload(c, sharper)                                  # a re-export: same motion, new bytes
         self.assertEqual(again.status_code, 200, again.get_json())
         b, _ = self.sign_in(BOB)
-        self.assertEqual(self.upload(b, sharper + b'\n').status_code, 409)   # someone else's motion
+        self.assertCopyHeld(self.upload(b, sharper + b'\n'), first['id'])   # someone else's motion
         self.cli('remove', str(first['id'])); self.cli('remove', str(again.get_json()['id']))
         r = self.upload(c, sharper + b'\n\n')
         self.assertEqual(r.status_code, 409)                             # removed by the owner: not even its uploader
-        self.assertIn('motion of run', r.get_json()['error'])
+        self.assertIn('which the owner removed', r.get_json()['error'])
 
     def test_thinned_and_gapped_copies_refused(self):
         c, _ = self.sign_in(ALICE)
@@ -653,8 +665,7 @@ class Service(unittest.TestCase):
         i0 = next(i for i, r in enumerate(rows) if r[0] >= 0.3)
         gaps = [r for i, r in enumerate(rows) if not i0 <= i < i0 + 3]   # 3 of 76 ticks (a5: 15 of ~520)
         for body in (rec(thin, fin), rec(gaps, fin)):
-            r = self.upload(b, body)
-            self.assertEqual(r.status_code, 409, r.get_json())
+            self.assertCopyHeld(self.upload(b, body), a['id'])
 
     def test_kicked_copies_compare_on_their_own_samples(self):
         # Velocity kicks every 4 ticks (ramp hits): interpolating a thinned copy across them misses
@@ -666,16 +677,14 @@ class Service(unittest.TestCase):
         self.assertIn(a['state'], ('shown', 'held'), a)
         b, _ = self.sign_in(BOB)
         thin = [r for i, r in enumerate(kicked) if i % 2 == 0]
-        r = self.upload(b, rec(thin, fin))
-        self.assertEqual(r.status_code, 409, r.get_json())
+        self.assertCopyHeld(self.upload(b, rec(thin, fin)), a['id'])
 
     def test_a_copy_that_claims_a_later_finish_is_compared(self):
         c, _ = self.sign_in(ALICE)
         rows, fin = variant(9.0)
         self.assertEqual(self.upload(c, rec(rows, fin)).get_json()['state'], 'shown')
         b, _ = self.sign_in(BOB)
-        r = self.upload(b, rec([(t, [o[0], o[1] + 3.0, o[2]], v) for t, o, v in rows], fin + 6))   # not the same digest
-        self.assertEqual(r.status_code, 409, r.get_json())
+        self.assertCopyHeld(self.upload(b, rec([(t, [o[0], o[1] + 3.0, o[2]], v) for t, o, v in rows], fin + 6)), 1)
 
     def test_a_sparse_file_has_a_bounded_series(self):
         tp = svc.load_tasplaus()
@@ -693,8 +702,7 @@ class Service(unittest.TestCase):
         mine, theirs = (svc.motion_series(tp.read(text=rec(x, fin).decode())) for x in (bent, rows))
         self.assertFalse(svc.same_motion(mine, theirs))                  # the velocities alone no longer match
         b, _ = self.sign_in(BOB)
-        r = self.upload(b, rec(bent, fin))
-        self.assertEqual(r.status_code, 409, r.get_json())
+        self.assertCopyHeld(self.upload(b, rec(bent, fin)), 1)
 
     def test_a_record_held_for_physics_says_so(self):
         self.surfd('UPDATE runs SET millis = 5000')
@@ -737,6 +745,54 @@ class Service(unittest.TestCase):
         finally:
             svc.STORE_CAP = saved
         self.assertTrue(path.exists())
+
+    def test_a_copy_moved_by_part_of_a_tick_is_seen(self):
+        # Every sample's time moved by less than a tick (review 4): samples count at their nearest tick.
+        c, _ = self.sign_in(ALICE)
+        rows, fin = variant(9.0)
+        self.assertEqual(self.upload(c, rec(rows, fin)).get_json()['state'], 'shown')
+        b, _ = self.sign_in(BOB)
+        for k, dt in enumerate((0.0006, -0.0075)):
+            moved = [(round(t + dt, 6), [o[0], o[1] + k, o[2]], v) for t, o, v in rows]
+            self.assertCopyHeld(self.upload(b, rec(moved, fin)), 1)
+
+    def test_parked_runs_cannot_push_the_original_out(self):
+        # The original is held (a new record), and another account parks four runs nearer in length to the
+        # copy: at most 3 per account keeps the original among 4 candidates.
+        self.surfd('UPDATE runs SET millis = 5000')
+        c, _ = self.sign_in(ALICE)
+        rows, fin = variant(9.0)
+        self.assertEqual(self.upload(c, rec(rows, fin)).get_json()['state'], 'held')
+        self.surfd("INSERT INTO accounts (steamid, name, created_at, banned_at) VALUES ('76561198000000009', 'Carol', 1, 0)")
+        carol, _ = self.sign_in('76561198000000009')
+        for vw in (12.0, 14.0, 17.0, 20.0):
+            self.assertEqual(self.upload(carol, rec(variant(vw)[0], fin + 6)).status_code, 200)
+        saved, svc.COPY_CANDIDATES = svc.COPY_CANDIDATES, 4
+        try:
+            b, _ = self.sign_in(BOB)
+            self.assertCopyHeld(self.upload(b, rec([(t, [o[0], o[1] + 2.0, o[2]], v) for t, o, v in rows], fin + 6)), 1)
+        finally:
+            svc.COPY_CANDIDATES = saved
+
+    def test_too_many_near_misses_hold_for_a_person(self):
+        a = svc.array('f', [float(i % 7) * 40.0 for i in range(3 * 400)])
+        rows = []
+        for n in range(3):
+            b = svc.array('f', a)
+            for i in range(0, len(b), 30): b[i] += 50.0 + n   # a tenth of the ticks off: cheap pass yes, full no
+            rows.append({'id': n + 1, 'steamid': BOB, 'state': 'held',
+                         'sig': svc.zlib.compress(b.tobytes() + svc.array('f', [float(i) for i in range(len(b))]).tobytes())})
+        saved, svc.COPY_FULL = svc.COPY_FULL, 1
+        try:
+            r, why = svc.copy_of(a, svc.array('f', [float(i) * 3.0 for i in range(len(a))]), bytearray([1]) * 400, rows)
+        finally:
+            svc.COPY_FULL = saved
+        self.assertIsNone(r)
+        self.assertIn('close to more than 1 runs', why)
+
+    def test_one_address_cannot_spend_everyones_steam_minute(self):
+        codes = [self.sign_in(sid)[1].status_code for sid in (ALICE, BOB, ALICE, BOB)]
+        self.assertEqual(codes, [303, 303, 303, 429])
 
     def test_the_map_cfg_speed_cap_counts(self):
         cfgdir = Path(self.tmp.name) / 'cfgmaps'; cfgdir.mkdir()

@@ -43,6 +43,7 @@ ENABLED = Path('/etc/nginx/sites-enabled/play.proto.bar.conf')
 SITE = ENABLED.resolve() if ENABLED.is_symlink() else ENABLED
 BACKUPS = Path('/etc/nginx')   # never sites-enabled: a backup there would be loaded as config
 SNIPPET = Path('/etc/nginx/snippets/ftesurf-tasupd.conf')
+ZONES = Path('/etc/nginx/conf.d/ftesurf-tasupd-zones.conf')   # http{} scope: limit_conn_zone is not valid lower
 UNIT = Path('/etc/systemd/system/ftesurf-tasupd.service')
 PORT = 8091
 PUBLIC_URL = 'https://play.proto.bar/tasup'
@@ -63,9 +64,15 @@ location ^~ /tasup/ {
     proxy_read_timeout 90s;       # one checker slot: an upload can wait 30 s for it, then check
     proxy_send_timeout 60s;
     limit_rate 1m;                # maps.nginx's; the app budgets .rec bytes a minute (tasupd.REC_*_BYTES)
+    limit_conn tasupd_addr 4;     # nginx spools an 8.3 MB body before the app sees the session (surfd: P774)
+    limit_conn tasupd_all 16;
     access_log off;
 }
 ''' % PORT
+NGINX_ZONES = '''# ftesurf-tasupd (tools/install_tasupd.py): the snippet's connection limits.
+limit_conn_zone $binary_remote_addr zone=tasupd_addr:2m;
+limit_conn_zone $server_name zone=tasupd_all:64k;
+'''
 FILES = {'surfd/tasupd.py': 'tasupd.py', 'surfd/tasupd_wsgi.py': 'tasupd_wsgi.py', 'surfd/steam.py': 'steam.py',
          'tools/tasplaus.py': 'tools/tasplaus.py'}
 
@@ -92,9 +99,9 @@ def write_site(body):
     # renamed over the site file, keeping its mode and owner.
     st = SITE.stat()
     tmp = BACKUPS / ('.tasupd-site-%d.tmp' % os.getpid())
-    with open(tmp, 'xb') as f:
-        f.write(body); f.flush(); os.fsync(f.fileno())
     try:
+        with open(tmp, 'xb') as f:
+            f.write(body); f.flush(); os.fsync(f.fileno())
         os.chmod(tmp, stat.S_IMODE(st.st_mode)); os.chown(tmp, st.st_uid, st.st_gid)
         os.replace(tmp, SITE)
     finally:
@@ -103,7 +110,8 @@ def write_site(body):
 
 def pending_reloads():
     # daemon-reload loads every unit's staged edits (a peer's surfd drop-in too): refused while any waits.
-    out = run('/usr/bin/systemctl', 'show', '--property=Id,NeedDaemonReload', '*').stdout.decode()
+    # --all: without it systemctl shows only active units, and a stopped one's staged edit would load too.
+    out = run('/usr/bin/systemctl', 'show', '--all', '--property=Id,NeedDaemonReload', '*').stdout.decode()
     units, cur = [], None
     for line in out.splitlines():
         if line.startswith('Id='): cur = line[3:]
@@ -112,18 +120,37 @@ def pending_reloads():
 
 
 def check_self(source, commit):
-    # The installer that runs as root must be the inspected commit's own (run it as `sudo python3 -I`).
-    if Path(__file__).resolve().read_bytes() != git(source, 'cat-file', 'blob', '%s:tools/install_tasupd.py' % commit):
+    # The installer that runs as root must be the inspected commit's own, in a file only root can change
+    # (taken out of git into /root and run as `sudo python3 -I`).
+    me = Path(__file__).resolve()
+    if me.read_bytes() != git(source, 'cat-file', 'blob', '%s:tools/install_tasupd.py' % commit):
         raise RuntimeError('This installer is not tools/install_tasupd.py of %s; run that one' % commit[:12])
+    if os.geteuid() == 0:
+        root_only(me)
+
+
+def root_only(path):
+    for q in [path] + list(path.parents):
+        st = os.lstat(q)
+        if st.st_uid != 0 or st.st_mode & 0o022:
+            raise RuntimeError('%s can be changed by someone other than root: copy the installer to /root' % q)
 
 
 def make_state():
-    # Root in a directory proto owns: no path-based chown a symlink swap could redirect.
+    # Root in directories proto owns (/srv/nvme is proto's on the Pi): every step from / by descriptor
+    # with O_NOFOLLOW, so no symlink swap can redirect the mkdir or the chown.
     owner = pwd.getpwnam('proto')
-    STATE.mkdir(mode=0o700)
-    fd = os.open(STATE, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    try: os.fchown(fd, owner.pw_uid, owner.pw_gid)
-    finally: os.close(fd)
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    fd = os.open('/', flags)
+    try:
+        for part in STATE.parent.parts[1:]:
+            nxt = os.open(part, flags, dir_fd=fd); os.close(fd); fd = nxt
+        os.mkdir(STATE.name, 0o700, dir_fd=fd)
+        st = os.open(STATE.name, flags, dir_fd=fd)
+        try: os.fchown(st, owner.pw_uid, owner.pw_gid)
+        finally: os.close(st)
+    finally:
+        os.close(fd)
 
 
 def check_port():
@@ -251,7 +278,8 @@ def upgrade(a, blobs):
         raise RuntimeError('The old release directory is not that commit')
     oldunit = unit_text(old, service_env(old, a.account_db, a.upgrade_from)).encode()
     if UNIT.read_bytes() != oldunit: raise RuntimeError('The unit is not the one this installer wrote for that release; owner inspection')
-    if SNIPPET.read_bytes() != NGINX.encode(): raise RuntimeError('The nginx snippet changed; owner inspection')
+    if SNIPPET.read_bytes() != NGINX.encode() or ZONES.read_bytes() != NGINX_ZONES.encode():
+        raise RuntimeError('The nginx snippet or its zones changed; owner inspection')
     if not (STATE / 'tasup.sqlite3').is_file(): raise RuntimeError('Service state missing')
     if unit_property('ActiveState') != 'active': raise RuntimeError('The service is not running; owner inspection')
     if unit_property('DropInPaths') or unit_property('NeedDaemonReload') != 'no' or unit_property('FragmentPath') != str(UNIT):
@@ -343,7 +371,7 @@ def main():
     if sha(before) != a.expected_nginx_sha256: raise RuntimeError('nginx changed; inspect again')
     anchor = b'include snippets/surfd.conf;'
     if before.count(anchor) != 1: raise RuntimeError('Expected one existing public surfd include')
-    if any(p.exists() or p.is_symlink() for p in (SNIPPET, UNIT, STATE, ROOT / a.commit, RELEASES / a.commit)):
+    if any(p.exists() or p.is_symlink() for p in (SNIPPET, ZONES, UNIT, STATE, ROOT / a.commit, RELEASES / a.commit)):
         raise RuntimeError('Destination already exists; do not overwrite a peer/previous installation')
     if not a.account_db.is_file(): raise RuntimeError('Configured accounts DB absent')
     check_accounts(a.account_db)
@@ -355,7 +383,10 @@ def main():
     backup = BACKUPS / (SITE.name + '.pre-tasupd-' + a.commit[:12])
     if backup.exists(): raise RuntimeError('nginx backup collision; nothing overwritten')
     run(*as_user('proto', '/usr/bin/python3', '-I', '-c', 'import flask,gunicorn'), cwd='/')   # as the service will
-    run('/usr/sbin/nginx', '-t')   # a config that fails already would also fail the rollback's test
+    if os.geteuid() == 0:
+        run('/usr/sbin/nginx', '-t')   # a config that fails already would also fail the rollback's test
+    else:
+        print('(not root: nginx -t is left to the --apply run; it reads root-only keys and logs)')
     pending_reloads()
     missing = [d for d in ZONE_DIRS if not Path(d).is_dir()]
     print('Preflight: the files of that commit, exact nginx predecessor, separate new service/state; zone directories'
@@ -373,12 +404,14 @@ def main():
     unit = unit_text(release, service_env(release, a.account_db, a.commit))
     wanted = before.replace(anchor, anchor + b'\n    include snippets/ftesurf-tasupd.conf;')
     backup.write_bytes(before); backup.chmod(0o600)
-    written = unit_written = False
+    written = unit_written = zones_written = False
     # As in upgrade: Ctrl-C or a dropped session must not leave the include on disk for the next reload.
     held = {n: signal.signal(n, signal.SIG_IGN) for n in (signal.SIGINT, signal.SIGHUP)}
     try:
         with UNIT.open('x') as f: f.write(unit)
         unit_written = True
+        with ZONES.open('xb') as f: f.write(NGINX_ZONES.encode())
+        zones_written = True
         with SNIPPET.open('xb') as f: f.write(NGINX.encode())
         run('/usr/bin/systemctl', 'daemon-reload')
         run('/usr/bin/systemctl', 'enable', '--now', 'ftesurf-tasupd.service')
@@ -406,6 +439,8 @@ def main():
             try:
                 if wanted.startswith(SITE.read_bytes()):
                     write_site(before); run('/usr/sbin/nginx', '-t'); run('/usr/bin/systemctl', 'reload', 'nginx')
+                elif SITE.read_bytes() != before:
+                    failed.append('the site changed meanwhile: not put back')
             except BaseException as e: failed.append('nginx put back but not reloaded (%r)' % e)
         if unit_written:
             try:
