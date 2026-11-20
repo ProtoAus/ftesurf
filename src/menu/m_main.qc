@@ -4440,8 +4440,8 @@ float(string a) ui_host_allowed =
 */
 // P1653: one lowercase name -> first row table, built on the first lookup after a reload or a count
 // change, instead of a scan of every row (two builtins a row, ~1650 rows) per lookup -- Story's first
-// visit spent ~11 ms (profiled) here. strcasecmp-equal names have equal strtolower, so a miss is a miss;
-// a hit is checked against ms_name and an unexpected one falls back to the scan.
+// visit spent ~11 ms (profiled) here. Every ms_name/ms_count writer is in ui_load_maps, which drops the
+// table. strcasecmp-equal names have equal strtolower, so a miss is a miss; a hit is checked with strcasecmp.
 void() ui_map_ixbuild =
 {
 	local float i;
@@ -4466,8 +4466,7 @@ float(string nm) ui_map_index =
 	if (i < ms_count)
 		if (!strcasecmp(bufstr_get(ms_name, i), nm))
 			return i;
-	ms_ixok = FALSE;            // a writer that did not drop the table: rebuilt next time
-	for (i = 0; i < ms_count; i = i + 1)
+	for (i = 0; i < ms_count; i = i + 1)        // same key, not strcasecmp-equal (non-ASCII case): the scan decides
 		if (!strcasecmp(bufstr_get(ms_name, i), nm))
 			return i;
 	return -1;
