@@ -28,7 +28,11 @@ FORMATS = {
     "ramp_geometry": (r"[a-z0-9_-]{1,64}\.txt", "ftesurf/media/rampwear/", "text/plain"),
     "ramp_atlas": (r"[a-z0-9_-]{1,64}\.[0-9a-f]{64}\.png", "ftesurf/media/rampwear/", "image/png"),
     "ramp_encoded": (r"[a-z0-9_-]{1,64}\.[0-9a-f]{64}\.png\.b64", "ftesurf/media/rampwear/", "text/plain"),
+    # P1656: GoldSrc map packages (tools/gsrcpack.py); the game asks for objects/goldsrc/<sha256>.xz itself.
+    "goldsrc": (r"[a-z0-9_-]{1,64}\.pk3\.xz", "goldsrc/pk/", "application/x-xz"),
 }
+# P1656: small text tables the game reads at a fixed address, replaced in place once every body is verified.
+TABLE_KEY = r"goldsrc/[a-z0-9_-]{1,32}\.txt"
 
 
 class TransferError(Exception):
@@ -69,6 +73,10 @@ def load_config(path):
         if name not in FORMATS:
             raise ValueError("Only allowlisted public asset groups are accepted")
         check_directory(directory)
+    for key, source in c.get("tables", {}).items():
+        if not re.fullmatch(TABLE_KEY, key) or not ordinary(Path(source)) or not Path(source).is_file():
+            raise ValueError("Expected an allowlisted table key and an ordinary file")
+        check_directory(Path(source).absolute().parent)
     return c
 
 
@@ -368,6 +376,18 @@ def publish(db, work, transport, manifest="manifests/public.json"):
         path.unlink(missing_ok=True)
 
 
+def publish_tables(config, transport):
+    """Fixed-address tables go last: a row must never name a body that is not there yet."""
+    for key, source in sorted(config.get("tables", {}).items()):
+        raw = Path(source).read_bytes()
+        if len(raw) > 4 * 1024 * 1024:
+            raise ValueError("Table too large")
+        sha = hashlib.sha256(raw).hexdigest()
+        transport.put(Path(source), key, sha, "text/plain; charset=utf-8", immutable=False)
+        if transport.digest(key) != (sha, len(raw)):
+            raise TransferError("Table body mismatch")
+
+
 def audit(db, transport):
     failed = 0
     for row in db.execute("SELECT * FROM assets WHERE present=1 AND state='verified'").fetchall():
@@ -413,7 +433,9 @@ def main():
                 scan(db, config)
                 if a.command == "run":
                     _, failed = copy_pending(db, work, transport, a.group, a.limit, a.workers)
-                    publish(db, work, transport, config.get("manifest", "manifests/public.json"))
+                    doc = publish(db, work, transport, config.get("manifest", "manifests/public.json"))
+                    if doc["complete"]:
+                        publish_tables(config, transport)
                     print(json.dumps({"utc": utc(), "event": "catalogue", **status(db)}), flush=True)
                 else:
                     failed = 0
