@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P1664 / P1665 -- your bkz_goldbhop_gs report: crouch jump and eye height (worldofsurf-75, 20 Nov)
+Cause of the failed jump: the pre-strafe assist (run_prestrafe, on by default) lets go of W for the whole jump when you
+jump after standing still, so you went straight up. It is now off on every Half-Life map. The eye was Half-Life's
+(64 above the feet); bkz_goldbhop is a Counter-Strike 1.6 map and now uses CS's (53). Movement is unchanged.
+1. bkz_goldbhop_gs, your save 1: hold W and crouch-jump into the ledge. You land on it.
+2. Same spot: the ledge top is now just above your eyes (before, you looked over it).
+3. ag_bhop_master_gs (a Half-Life/AG map): the eye is as before (console on map load says nothing about Counter-Strike).
+4. A Source map: walk, jump, pre-strafe jump (W is still let go there, as before).
+Override if a map is misfiled: `sv_goldsrcview hl` (Half-Life eye) or `cs`, then reload the map.
+
 ## P1643 / P1645 / P1652 / P1657 -- anti-cheat start rules, LIVE on the lobbies 20 Nov 10:18Z (worldofsurf-4b)
 
 - Surf (P1643): stand in the start and go -- counts as always. Fall or fly into a start without landing and leave it:

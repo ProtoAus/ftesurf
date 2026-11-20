@@ -21,6 +21,12 @@
 
 ## next
 
+### P1665 Counter-Strike eye height on CS 1.6 maps
+- Half-Life maps made for Counter-Strike 1.6 (most kz and bhop ones, bkz_goldbhop among them) put your eyes at Counter-Strike's height, not Half-Life's, so ledges look the way the mapper built them. Movement is unchanged.
+
+### P1664 Crouch jumps onto ledges on Half-Life maps
+- On a Half-Life map the pre-strafe assist no longer lets go of W when you jump from standing, so a crouch jump onto a ledge with W held works.
+
 ### P1657 Bhop and ahop runs start from a run-up
 - On bhop and ahop maps a run counts only if it starts from the ground at running speed: stand or run in the start, then jump or walk out. Hopping or flying out of the start faster than a run, or jumping while still fast from a landing, makes it a practice run.
 
