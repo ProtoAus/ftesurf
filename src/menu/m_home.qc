@@ -24,6 +24,10 @@ float mh_shots, mh_shot_keys, mh_shots_ready, mh_roster_rows;
 float mh_shot_seen[MH_SHOT_MAX], mh_shot_remotev[MH_SHOT_MAX];
 float mh_shot_ready, mh_shot_remote, mh_shot_local, mh_shot_pixels;
 float mh_shot_shaderid, mh_shot_decodew, mh_shot_decodeh;
+// P1684: open tournament rooms head the lobby grid, at most MH_TOUR_MAX, in the tournament colour.
+#define MH_TOUR_MAX 3
+#define MH_TOUR_COL '1 0.72 0.3'
+float mh_tour_next;
 
 string() MH_Me =
 {
@@ -348,12 +352,77 @@ float(float slot, string mapname, float row, vector pos, vector size) MH_Shot =
 	return TRUE;
 };
 
+// The tournament directory is m_tournament.qc's (MT_Directory, 10 s floor); from Home it is asked every 30 s.
+float() MH_TourCount =
+{
+	if (ms_consent < FS_TERMS_ONLINE) return 0;
+	if (mt_id == "" && time >= mh_tour_next)
+	{
+		mh_tour_next = time + 30;
+		MT_Directory();
+	}
+	if (!mt_dirloaded || mt_enabled != 1) return 0;
+	return min(mt_nd, MH_TOUR_MAX);
+};
+
+void(float i, vector lp, vector cell) MH_TourTile =
+{
+	local string id, phase, label, s;
+	local float tx, texty;
+	local vector pic, f;
+	id = strcat("home_tour", substring(MT_Dir(i, 0), 0, 12));     // the room, not the row: a refresh may reorder
+	phase = MT_Dir(i, 4);
+	label = "In game";
+	if (phase == "lobby") label = "Open";
+	if (phase == "draft") label = "Drafting";
+	if (phase == "loading") label = "Ready check";
+	sui_action_element(lp, cell, id, sui_noop);
+	sui_roundbox(lp, cell, 7, sui_is_hovered(id) ? COL_ROW_HOVER : COL_ROW, 0.95);
+	sui_tooltip_for(id, (phase == "lobby") ? "Join this tournament room." : "This tournament has started: open the Tournament tab.", 2);
+	s = sprintf("%s/%s players", MT_Dir(i, 3), MT_Dir(i, 2));
+	tx = 10;
+	// Where a lobby has its map picture (MH_Lobbies' size rule): the tournament plate.
+	if (mh_lheight >= 42 && cell_x >= 140)
+	{
+		pic = '0 0 0';
+		pic_y = min(cell_y - 12, floor(min(192, cell_x * 0.46) * 9 / 16));
+		pic_x = floor(pic_y * 16 / 9);
+		sui_style_box(lp + [6, floor((cell_y - pic_y) * 0.5)], pic, 6, MH_TOUR_COL * 0.22, MH_TOUR_COL, 1);
+		Font_Set(ui_font_display);
+		f = (pic_x >= 150) ? '24 24 0' : '16 16 0';
+		sui_text(lp + [6 + floor((pic_x - stringwidth("TOURNAMENT", TRUE, f)) * 0.5), floor((cell_y - f_y) * 0.5)], f, "TOURNAMENT", MH_TOUR_COL, 1, 0);
+		Font_Set(ui_font_ui);
+		tx = pic_x + 16;
+	}
+	if (mh_lheight >= 74 && tx > 10)
+	{
+		texty = max(6, floor((cell_y - 56) * 0.5));
+		sui_text(lp + [tx, texty], '16 16 0', ui_fit_text(MT_RoomTitle(MT_Dir(i, 6)), cell_x - tx - 8, '16 16 0'), MH_TOUR_COL, 1, 0);
+		sui_text(lp + [tx, texty + 20], '16 16 0', ui_fit_text(label, cell_x - tx - 8, '16 16 0'), (phase == "lobby") ? SUI_THEME_GOOD : COL_TEXT, 1, 0);
+		sui_text(lp + [tx, texty + 40], '16 16 0', ui_fit_text(s, cell_x - tx - 8, '16 16 0'), COL_DIM, 1, 0);
+	}
+	else
+	{
+		texty = max(3, floor((cell_y - 32) * 0.5));
+		sui_text(lp + [tx, texty], '16 16 0', ui_fit_text(MT_RoomTitle(MT_Dir(i, 6)), cell_x - tx - 8, '16 16 0'), MH_TOUR_COL, 1, 0);
+		if (cell_y >= 34)
+			sui_text(lp + [tx, texty + 20], '12 12 0', ui_fit_text(strcat(label, "  ", s), cell_x - tx - 8, '12 12 0'), (phase == "lobby") ? SUI_THEME_GOOD : COL_DIM, 1, 0);
+	}
+	// A started room only opens the tab: surfd refuses a join once it has started (MT_Connect's Watch).
+	if (sui_is_released(id))
+	{
+		menu_screen = SCREEN_TOURNAMENT;
+		if (phase == "lobby") MT_Connect(i);
+	}
+};
+
 void(vector p, vector size) MH_Lobbies =
 {
 	local vector lp, cell, picture, titlefont, mapfont;
-	local float li, cw, row, page, tile, gr, gc, tx, thumb, countw, texty, grouped;
+	local float li, cw, row, page, tile, gr, gc, tx, thumb, countw, texty, grouped, tn, k;
 	local string id, s;
 	mh_lsize = size; mh_lshown = mh_lbottom = 0;
+	tn = MH_TourCount();
 	mh_thumb_width = mh_thumb_height = 0;
 	mh_shot_ready = mh_shot_remote = mh_shot_local = mh_shot_pixels = 0;
 	if (mh_roster_rows != ms_count)
@@ -368,14 +437,22 @@ void(vector p, vector size) MH_Lobbies =
 	{
 		if (ui_button("home_terms", '16 48 0', [size_x - 32, 34], "Online is off - click to choose your terms")) menu_screen = SCREEN_TERMS;
 	}
-	else if (!Lob_Count())
+	else if (!Lob_Count() && !tn)
 		sui_text('16 54 0', SZ_LABEL, "Waiting for the lobby directory...", COL_DIM, 1, 0);
 	else
 	{
 		cw = floor((size_x - 32 - 6 * (mh_lcols - 1)) / mh_lcols);
+		for (k = 0; k < tn; k = k + 1)
+		{
+			gr = floor(k / mh_lcols); gc = k - gr * mh_lcols;
+			lp = [16 + gc * (cw + 6), 44 + gr * (mh_lheight + 6)]; cell = [cw, mh_lheight];
+			MH_TourTile(k, lp, cell);
+			mh_lbottom = max(mh_lbottom, lp_y + cell_y);
+		}
 		for (li = 0; li < Lob_Count(); li = li + 1)
 		{
-			gr = floor(li / mh_lcols); gc = li - gr * mh_lcols;
+			k = li + tn;
+			gr = floor(k / mh_lcols); gc = k - gr * mh_lcols;
 			lp = [16 + gc * (cw + 6), 44 + gr * (mh_lheight + 6)]; cell = [cw, mh_lheight];
 			id = strcat("home_lob", ftos(li));
 			sui_action_element(lp, cell, id, sui_noop);
@@ -613,7 +690,7 @@ void(vector screensize) screen_home =
 	p = '0 0 0';
 	mh_canvas = size;
 	content = MH_ContentSize(size); left = content_x;
-	count = Lob_Count(); if (count < 1) count = 12;
+	count = Lob_Count() + MH_TourCount(); if (count < 1) count = 12;
 	sh = min(252, max(210, floor(size_y * 0.27)));
 	lh = size_y - sh - 12;
 	grid = MH_LobbyGrid(left, lh, count);
