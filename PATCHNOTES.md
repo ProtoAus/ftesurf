@@ -21,6 +21,25 @@
 
 ## next
 
+### P1651 A friendlier Tournament tab
+- Leaving a tournament room takes a second click, and the warning says what leaving does.
+- If you drop out of a running tournament, a Rejoin button takes you back to its server. Started rooms have a Watch button.
+- You can link Steam from the Tournament tab. Errors read in plain words, the rules fit in one line, the room code is in the room header and draft turns show their clock.
+
+### P1650 Fairer tournament rules
+- Each round, everyone who doesn't finish, or who ties for the slowest time, is out. If nobody finishes, everyone goes through. The last one standing wins.
+- Leaving after the tournament has started counts as dropping out, and leaving before it sends the room back to the lobby. It no longer ends the tournament for everyone.
+- Draft turns have a 45-second clock, after which a map is chosen for you. Viewers can join a room to watch at any time.
+
+### P1649 Clearer tournaments in game
+- During a tournament a banner shows the round, the map and the clock with the standings underneath, and big messages mark GO, the end of a round and the winner. F6 opens the tournament panel.
+- Chat announces each round, every new best time with its place, who is out and who wins.
+- If a finish doesn't count (a bonus, a single stage, or a practice or segmented run), you're told why.
+
+### P1648 Tournaments that run themselves
+- A round starts by itself once everyone is on the server, and the host can start it early. Someone who doesn't arrive is left out after a grace period instead of everyone waiting.
+- Lobby servers restart themselves while empty, before many map changes can make them unstable.
+
 ### P1644 Undo in the console
 - The console's typing line has Ctrl+Z to undo and Ctrl+Y (or Ctrl+Shift+Z) to redo, a word at a time.
 - The ] in front of the typing line is gone; commands you type show in blue in the console log.

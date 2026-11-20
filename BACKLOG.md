@@ -15,10 +15,19 @@
   tournament_rules and Tour_ProfileMovement expect `ag100-v1`, so surfd stores an AG node's movement as '' and no
   non-default profile can host (fails closed). A menu without P1639 (no player has one: the tab is new in 0.1.49) loops
   on "Incomplete lobby snapshot" in a 100-tick bhop room and cannot Leave; keep the minimum client at 0.1.49+.
-- Tournament log noise (live since 06:11Z): sv_tournament.qc Tour_Reply calls find(world, social_token,
-  tq_pendingtoken) before testing strlen(tq_pendingtoken), so every state-poll reply on lobbies 9-11 prints
-  "PF_FindString: empty string" plus a 3-line trace (developer 1). Behaviour is right (actor = world next line).
-  Fix: test the token first; rides the next lobby deploy (worldofsurf-ed owns it; not in P1643/P1645).
+- P1648-P1651 (Lex's stream request, 20 Nov) fixed: the Tour_Reply log noise, the AG movement spelling (QC side),
+  a lobby's MAX_MOD_KNOWN crash (an empty lobby restarts past lobby_maploads_max 12 / _tour 4; the ENGINE fix -- reuse
+  freed mod_known slots in gl_model.c -- is still open), the F6 panel nobody could open, no-contest on ordinary events.
+  Open after them: a forfeited or departed host keeps host powers (server ops cover start/advance); the hold's 90 s TTL;
+  strangers connecting as spectators use client slots a dropped competitor needs to rejoin; per-map movement styles
+  (worldofsurf-4a) must skip tournament_enable lobbies.
+- Tournament spectators (forced *spectator) skip PlayerPreThink/PostThink, so SV_NoclipWatch never taints them, while
+  sv_player.qc's `noclip` and `sl_save` branches check only classname/run_inserver (worldofsurf-4b review note). Gate
+  both on *spectator in the P1643 lane. P1648 releases forced spectators at match end (they used to stay engine
+  spectators until reconnecting).
+- Input journal (Lex 20 Nov): a TF_NOJOURNAL tournament finish scores, is noted to the player only (and the server
+  log), and is not ranked (surfd community tier). Open, anti-cheat lane: rec_hid_upload 0 runs still rank although
+  their journal is never uploaded (the server is not told). A mandatory journal would need a new online-terms tier.
 - P1634 surfd.py writes lobby_handoffs on every ordinary join, with tournaments on or off (gen1635 reviewer note:
   additive, in scope; the brief's accepted limits did not name it).
 - Qualification upkeep: a registry pin binds the BSP's size/mtime/ctime and the map's zone pin. A zone republish, a
@@ -32,9 +41,6 @@
   Live registry: /srv/nvme/surfd/data/tournament-qualifications.json (1509 maps on 20 Nov). Refresh: `run` with
   --previous/--previous-state/--keep-previous on the last run, check it with the live primary's
   tournament_pool.registry(), then install + mv into place; surfd reads it per request (no restart).
-- Lex's call (P1635): a tournament finish with TF_NOJOURNAL (the player opted out of the input journal) still scores,
-  although the ranked board treats it as uncertified; every other TF_UNCERT bit, TF_SPEC and TF_MULTISESSION refuse.
-  To require journals in tournaments, drop the `- TF_NOJOURNAL` in Tour_Finished (the fixture's last check flips).
 - P1635 review leads (P3, not fixed): Tour_Hold voids without first releasing a save-lock hold / replay pin as the
   other void callers do (run_t_freeze stays until the key is released; no harm found); bodies with tq_role != 1 skip
   PlayerPreThink (Tour_PreThink returns TRUE) but still run PlayerPostThink's SV_TimerFrame -- unverified whether a

@@ -1,4 +1,10 @@
 # The engine build this QuakeC requires.
+# P1648-P1651 (QC sv_tournament.qc cl_tournament.qc cl_main.qc m_tournament.qc + surfd tournament_rules.py party_lobbies.py
+# tournaments.py surfd.py; Lex's stream request, worldofsurf-ed): tournaments run themselves (server-only autostart; a
+# competitor still missing after a capped grace is forfeited), fairer rules (every non-finisher / tied slowest out, early
+# finish, forfeit on leave after launch, 45 s draft clock, late spectators, plain abort reasons, tournament servers last
+# for ordinary joins), in-game guidance (F6 owns the panel during a match, banner + standings + centre lines, chat), menu
+# fixes, and an empty lobby restarts before MAX_MOD_KNOWN. No engine change. Record: engine ENGINE_PATCHES.md P1648-P1651.
 # P1644 (engine keys.c console.c; Lex's request, worldofsurf-bb): the console line gets Ctrl+Z undo / Ctrl+Y redo
 # (word-grouped, 100 steps) and no "]" prompt; typed commands echo in blue. Record: engine ENGINE_PATCHES.md P1644.
 # P1641-P1642 (engine cvar.c console.c keys.c + QC cl_hud.qc; Lex's request, worldofsurf-bb): on a remote server the
