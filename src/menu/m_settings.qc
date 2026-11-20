@@ -332,8 +332,10 @@ void() MSet_Sky =
 	if (hit >= 0)
 	{
 		MM_Seta("milk_sky", ftos(hit));
-		// r_skybox is not archived: csprogs re-applies milk_sky at every map.
-		localcmd(hit ? "r_skybox milk\n" : "r_skybox \"\"\n");
+		// r_skybox is not archived: csprogs re-applies milk_sky at every map. P1683: so with no map there is
+		// no sky to change (each change re-parsed every shader before the engine's P1683: a menu hitch).
+		if (clientstate() == 2)
+			localcmd(hit ? "r_skybox milk\n" : "r_skybox \"\"\n");
 	}
 	cy = MSet_Row("Sky perspective", "Spatial gives the sky depth");
 	hit = MSet_Seg("mv_depth", cy, "fixed|spatial", cvar("milk_sky_parallax") ? 1 : 0);
