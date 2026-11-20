@@ -6812,6 +6812,8 @@ float  dl_t0;           // when it started (time), for the status strip
 // the game is gone. Engines before P1670 refuse every download while hosting; P1670 ones only the map being hosted (3).
 float  dl_afterlocal;
 float  dl_reload;       // P1670: a download landed with no menu open; the list reloads when one does (2: a GoldSrc row)
+float  dl_moved;        // P1670: when dl_done last grew
+#define DL_HOLD_STALL 60    // as PJ_STALL: a transfer silent this long is dead, and nothing can cancel a web one
 
 /*
   THE MAP MIRROR, AND WHY THIS FUNCTION HAS TO EXIST.
@@ -6955,7 +6957,7 @@ void(string name, optional float force) ui_dl_start =
 		dl_name  = name;
 		dl_state = DL_ACTIVE;
 		dl_pct = dl_rate = dl_done = dl_total = 0;
-		dl_t0 = time;
+		dl_t0 = dl_moved = time;
 		if (Mgs_Find(name) < 0)     // P1658: no zone file exists for a GoldSrc id
 			Mzd_Fetch(name);
 	}
@@ -6967,10 +6969,7 @@ void(string name, optional float force) ui_dl_start =
 		if (!menu_active)
 			dl_reload = (Mgs_Find(name) >= 0) ? 2 : 1;   // P1670: Dl_Tick's after-game start can land here in a game
 		else
-		{
-			ui_load_maps();
-			ui_refilter();
-		}
+			ui_maplist_changed();   // P1670 review 3: keeps the picked map (a plain reload shifts the rows under it)
 	}
 	else
 	{
@@ -6981,11 +6980,16 @@ void(string name, optional float force) ui_dl_start =
 	}
 };
 
-// P1670: the engine refuses `map` while that map's download is queued or running (sv_ccmds.c SV_Map_f).
+// P1670: the engine refuses `map` while that map's download is running and alive (sv_ccmds.c SV_Map_f).
 float(string mapname) ui_dl_holds =
 {
-	if (dl_state != DL_ACTIVE || dl_afterlocal || dl_name != mapname)
+	local string s;
+	if (dl_state != DL_ACTIVE || dl_afterlocal || dl_name != mapname || time - dl_moved > DL_HOLD_STALL)
 		return FALSE;
+	s = serverkey("dlstate");
+	if (s != "" && tokenize(s) >= 4)
+	if (argv(3) != strcat("maps/", mapname, ".bsp") && argv(3) != strcat("goldsrc/", strtolower(mapname), ".pk3"))
+		return FALSE;               // the engine is fetching something else: this one has landed
 	ui_st_result(sprintf("%s is still downloading: play it when it finishes", mapname), 0);
 	return TRUE;
 };
@@ -7078,6 +7082,8 @@ void() Dl_Tick =
 
 	dl_pct   = stof(argv(5));
 	dl_rate  = stof(argv(6));
+	if (stof(argv(7)) != dl_done)
+		dl_moved = time;
 	dl_done  = stof(argv(7));
 	dl_total = stof(argv(8));
 };
