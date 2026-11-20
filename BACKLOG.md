@@ -58,11 +58,10 @@
 - Pre-existing, seen while testing: tools/qcframes.py over main's csprogs.dat prints FRAME lines for Line_Alloc
   (ln_nath, ln_nat); qwprogs is clean. Not P1643's (csprogs is byte-identical with and without it).
 ## P1666-P1667 launcher auto-update and the Wayland start -- open items (21 Nov, worldofsurf-75)
-- Linux ImGui for players (Lex's goal behind P1666): a Linux launcher that reads a new payload list (e.g. "files_ext",
-  ignored by old readers) whose entries may hold fteplug_ui_imgui_amd64.so; ship it in the feed's "launcher" entry so
-  P1666 engines install it; turn $LinuxShipImgui on for files_ext only. Blocker: release.ps1 reuses the Windows
-  bootstrap only for identical launcher source (bootstrap.ps1 Use-PublishedBootstrap), so either build the Windows
-  launcher from this PC (x86_64-pc-windows-gnu; the pinned toolchain has the std) or let the two launchers' sources differ.
+- DONE in 0.1.53 (P1668): Linux ImGui via "files_ext" and Linux launcher 0.1.7. Follow-ups: the engine should refuse a
+  plugin whose build id differs from its own (the interface check is a struct size; a stale plugin "corrupts memory at
+  map load"); release.ps1 needs -WindowsLauncherRoot <8de1339 checkout> for as long as the Windows launcher is the
+  published MSVC build, and every Windows-side launcher change still needs a Windows host (or a gnu cross-build).
 - P1666 runs its copies, flush and test run on the main thread (one ~5 s pause at worst per hash, or per start for a
   hash with .ran that keeps timing out); a worker or frame-polled child would remove it. posix_spawn would drop the
   SIGCHLD swap. Every future launcher must keep --ui-preview (the test run) or it will never install through P1666.
@@ -70,8 +69,8 @@
   published content) or a test-key copy of the engine; not in the repo.
 - P1667: nothing tested the released Linux binary on a Wayland session; 0.1.49-0.1.51 aborted there (a friend's
   stderr.log, 20 Nov). The release smoke should start the Linux stage's ftesurf64 under a headless compositor.
-- A friend's 0.1.48 log (19 Nov): "menu.dat: temp-string table full at 16907264 slots" then "no font found", 4 of 6
-  starts. Not investigated yet.
+- A friend's 0.1.48 log (19 Nov, "menu.dat: temp-string table full at 16907264 slots", "no font found"): the crash P1629
+  fixed (same player, metalgio) in 0.1.49; he then hit P1667 instead. Nothing open.
 
 ## P1654-P1660 GoldSrc maps and Linux ImGui -- open items (20 Nov, worldofsurf-4a)
 - P1665 (worldofsurf-75): on a CS-eye map, during the 0.4 s duck blend, PMAg_WaterEye recovers the profile's eye by

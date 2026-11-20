@@ -1,5 +1,9 @@
 # lextest.md — things waiting on a human
 
+## 0.1.53 release -- PUBLISHED 21 Nov 15:01Z (record: tools/release-0.1.53.md); owner check PENDING
+- P1668 only (the Linux run-graph plugin through launcher 0.1.7). Production check passed from the live feed: a 0.1.52
+  Linux install got 0.1.53, then launcher 0.1.7 from the game, then the plugin, which the engine loads.
+
 ## P1668 -- run graphs on Linux for players (worldofsurf-75, 21 Nov)
 - A Linux player on 0.1.52 or older: start the launcher (it updates to 0.1.53), play once (the game replaces the
   launcher with 0.1.7: console "update: launcher updated WOS-Launcher"), quit, start the launcher again: it fetches

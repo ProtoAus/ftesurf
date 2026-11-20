@@ -21,6 +21,8 @@
 
 ## next
 
+## 0.1.53 2026-11-21
+
 ### P1668 Run graphs on Linux
 - Linux: the run graphs now come with the game. The game fetches an updated launcher by itself, and that launcher installs the graph plugin; nothing to download by hand.
 
