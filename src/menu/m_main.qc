@@ -4032,8 +4032,12 @@ void(string mapname) ui_launch_local =
 	Mzd_Play(mapname);
 };
 
+float(string mapname) ui_dl_holds;    // below the download state: TRUE while this map's own download runs
+
 void(string mapname) ui_playlocal_now =
 {
+	if (ui_dl_holds(mapname))
+		return;
 	// The name field went in build 57 (Lex).  This is a private, unlisted
 	// practice game, so a name had nowhere to be read.  Still SET rather than
 	// left alone, because the engine's own default is "unnamed".
@@ -6807,7 +6811,7 @@ float  dl_t0;           // when it started (time), for the status strip
 // P1094: 1 (2 = force) while a download waits for this client's local game to end, and Dl_Tick asks for it once
 // the game is gone. Engines before P1670 refuse every download while hosting; P1670 ones only the map being hosted (3).
 float  dl_afterlocal;
-float  dl_reload;       // P1670: a download finished while no menu was open; the list reloads when one opens
+float  dl_reload;       // P1670: a download landed with no menu open; the list reloads when one does (2: a GoldSrc row)
 
 /*
   THE MAP MIRROR, AND WHY THIS FUNCTION HAS TO EXIST.
@@ -6960,8 +6964,13 @@ void(string name, optional float force) ui_dl_start =
 		// Already present -- the list is stale rather than the map missing.
 		if (Mgs_Find(name) < 0)
 			Mzd_Fetch(name);
-		ui_load_maps();
-		ui_refilter();
+		if (!menu_active)
+			dl_reload = (Mgs_Find(name) >= 0) ? 2 : 1;   // P1670: Dl_Tick's after-game start can land here in a game
+		else
+		{
+			ui_load_maps();
+			ui_refilter();
+		}
 	}
 	else
 	{
@@ -6970,6 +6979,15 @@ void(string name, optional float force) ui_dl_start =
 		dl_until = time + DL_HOLD;
 		ui_st_result(sprintf("Download of %s failed", name), -1);
 	}
+};
+
+// P1670: the engine refuses `map` while that map's download is queued or running (sv_ccmds.c SV_Map_f).
+float(string mapname) ui_dl_holds =
+{
+	if (dl_state != DL_ACTIVE || dl_afterlocal || dl_name != mapname)
+		return FALSE;
+	ui_st_result(sprintf("%s is still downloading: play it when it finishes", mapname), 0);
+	return TRUE;
 };
 
 /*
@@ -6985,9 +7003,11 @@ void() Dl_Tick =
 {
 	if (dl_reload && menu_active)
 	{
-		dl_reload = FALSE;
-		ui_load_maps();
-		ui_refilter();
+		vector keepscroll = ms_scroll;
+		ui_maplist_changed();       // keeps the picked map; the lobbies' row caches were indexes into the old list
+		if (dl_reload == 2)
+			ms_scroll = keepscroll; // as below: a GoldSrc row keeps its place
+		dl_reload = 0;
 	}
 	if (dl_state == DL_OK || dl_state == DL_FAIL)
 	{
@@ -7039,11 +7059,10 @@ void() Dl_Tick =
 			// It is on the disk now, so it is no longer a downloadable row. Not mid-game (P1670: a local game's download
 			// lands in play): the reload waits for the menu, as the catalogues' does (Mgs_Ask).
 			if (!menu_active)
-				dl_reload = TRUE;
+				dl_reload = (gsi > 0) ? 2 : 1;
 			else
 			{
-				ui_load_maps();
-				ui_refilter();
+				ui_maplist_changed();
 				if (gsi > 0)
 					ms_scroll = keep;   // a GoldSrc row keeps its place in the list: stay on it
 			}
