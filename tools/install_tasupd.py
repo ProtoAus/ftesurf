@@ -429,7 +429,7 @@ def main():
     write_release(release, a.commit, blobs)
     make_state()
     try: init_store(release)
-    except subprocess.CalledProcessError as e:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
         raise RuntimeError('the store could not be prepared (%s); %s and %s stay: remove them before a retry'
                            % (why(e), release, STATE)) from e
     unit = unit_text(release, service_env(release, a.account_db, a.commit))
@@ -441,8 +441,8 @@ def main():
     try:
         with UNIT.open('x') as f: f.write(unit)
         unit_written = True
+        zones_written = True   # before the write: a half-written file is taken back too (review 9)
         with ZONES.open('xb') as f: f.write(NGINX_ZONES.encode())
-        zones_written = True
         # conf.d is always loaded: test the zones before anything else can reload them (review 5)
         try: run('/usr/sbin/nginx', '-t')
         except Exception as e:
@@ -485,7 +485,7 @@ def main():
         if zones_written and site_back:
             for f, body in ((SNIPPET, NGINX), (ZONES, NGINX_ZONES)):
                 try:
-                    if f.read_bytes() == body.encode(): f.unlink()
+                    if body.encode().startswith(f.read_bytes()): f.unlink()   # ours, whole or cut short
                 except FileNotFoundError: pass
                 except BaseException as e: failed.append('%s not removed (%s)' % (f, why(e)))
         if written and site_back:
@@ -496,7 +496,9 @@ def main():
                 if UNIT.read_text() != unit: failed.append('the unit changed meanwhile: not stopped')
                 else: run('/usr/bin/systemctl', 'disable', '--now', '--no-reload', 'ftesurf-tasupd.service', timeout=120)   # gunicorn: up to 30 s
             except BaseException as e: failed.append('unit not disabled (%s)' % why(e))
-        if failed: raise RuntimeError('install failed (%s); rollback: %s' % (why(first), '; '.join(failed))) from first
+        hint = (' -- before a retry remove %s and the release/state left, then run systemctl daemon-reload' % UNIT) if unit_written else ''
+        if failed: raise RuntimeError('install failed (%s); rollback: %s%s' % (why(first), '; '.join(failed), hint)) from first
+        if hint: say('rolled back' + hint)
         if isinstance(first, subprocess.CalledProcessError): raise RuntimeError('install failed: %s' % why(first)) from first
         raise   # source, state, unit and backup stay for inspection (the snippet and zones go once the site is back)
     finally:

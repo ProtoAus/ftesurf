@@ -70,7 +70,7 @@ ROW = ('id, sha, steamid, map, track, ticks, verdict, state, reasons, stats, too
        ' reviewed_at, note')
 LIST = 'id, steamid, map, track, ticks, verdict, state, tool, uploaded_at, note'
 COPY_CANDIDATES, COPY_PER_PLAYER = 60, 10   # per upload; per other account (review 8: 3 of a victim's own nearer runs hid the copied one)
-COPY_BUDGET = 20.0                  # s of comparisons per upload, then a person looks (review 7: ~60-100 s on the Pi worst case)
+COPY_BUDGET = 20.0                  # s per copy_of call (up to four an upload), then a person looks (review 7: ~60-100 s on the Pi worst case)
 COPY_TICKS, COPY_FULL = 3000, 5     # ticks compared per pass; full passes per upload before a person looks
 COPY_SHIFTS = 16                    # ticks either way: past the start-zone leave the checker allows (review 7: +9 hid a copy)
 HEADER_MAX = 65536                  # the header (up to `begin`) is read from this prefix
@@ -869,9 +869,10 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
             return refuse('This board is 66.67 tick: the header must say tickrate %s.' % TICK, 400)
         sha = hashlib.sha256(body).hexdigest()
         with connect(store) as db:
-            dup = db.execute('SELECT id, steamid FROM runs WHERE sha = ?', (sha,)).fetchone()
+            dup = db.execute('SELECT id, steamid, state FROM runs WHERE sha = ?', (sha,)).fetchone()
             if dup:   # review 8: the usual duplicate is the uploader's own double submit or retry
-                return refuse('You uploaded this file already: run %d.' % dup['id'] if dup['steamid'] == sid else DUPLICATE, 409)
+                return refuse(('You uploaded this file already: run %d%s.' % (dup['id'], ', which the owner removed' if dup['state'] == 'removed'
+                               else '')) if dup['steamid'] == sid else DUPLICATE, 409)
         if not heavy.acquire(timeout=HEAVY_WAIT):
             unspend(sid, now)   # not the uploader's attempt
             return refuse('The checker is busy; try again in a minute.', 503)
@@ -926,10 +927,11 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                 x = db.execute('SELECT id, steamid, state, sig FROM runs WHERE id = ?', (r[0],)).fetchone()
                 if x is not None: yield x
 
-        def own_rows(db, states, after=0):
+        def own_rows(db, states, after=0, earliest=False):
+            order = 'id' if earliest else 'ABS(ticks - ?), id'   # earliest: the first match is the oldest (review 9)
             return with_sigs(db, db.execute('SELECT id FROM runs WHERE steamid = ? AND map = ? AND track = ? AND ticks BETWEEN ? AND ?'
-                                            ' AND state IN (%s) AND id > ? ORDER BY ABS(ticks - ?), id LIMIT ?' % ','.join('?' * len(states)),
-                                            (sid, mapname, track, lo, hi) + states + (after, end, COPY_PER_PLAYER)))
+                                            ' AND state IN (%s) AND id > ? ORDER BY %s LIMIT ?' % (','.join('?' * len(states)), order),
+                                            (sid, mapname, track, lo, hi) + states + (after,) + (() if earliest else (end,)) + (COPY_PER_PLAYER,)))
 
         def owns_motion(db):
             """(shown, held id): whether the uploader has a SHOWN run of this motion (the same samples, or a copy match
@@ -943,7 +945,7 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                 return True, None
             h = db.execute("SELECT MIN(id) FROM runs WHERE samples_sha = ? AND steamid = ? AND state = 'held'", (digest, sid)).fetchone()[0]
             if h is None:
-                m = copy_of(series, trail, mask, own_rows(db, ('held',)))[0]
+                m = copy_of(series, trail, mask, own_rows(db, ('held',), earliest=True))[0]
                 h = m['id'] if m is not None else None
             return False, h
 

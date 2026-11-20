@@ -93,6 +93,11 @@
   mode for velocities or far positions (no hold; no slack past %g's own); an own removed run that is unblocked reads
   "the owner rejected"; a cp1252 header is refused as not text; the 429 "other upload" message does not say where
   its result appears.
+- Round 9 (21 Nov) left: the fast-pair allowance (2 + 1% of moving steps over 1.15x, also trimmed from the mean)
+  can be spent on fabricated steps for 3-4 ticks (99 of 117 replays; a 4th block holds): excuse only steps that
+  lose speed as a wall hit does. COPY_BUDGET is per copy_of call (four an upload); ten held junk runs add ~1 s to
+  each later upload of their account; six accounts fill the 60 candidates at 10 each. HL2 profiles' jump boost
+  would hold honest jumps (not built).
 - tools/install_tasrevd.py FILES lacks surfd/fetchq.py, which ksfprofile.py imports since P1448 (f959eaac),
   so its next `--upgrade-from` refuses at check_imports (test_install_tasrevd CurrentClosure fails with
   "No module named 'fetchq'"). Refuses safely; the live release is unaffected. Fix: add it to FILES.

@@ -332,9 +332,13 @@ class Review1640(unittest.TestCase):
         for i, line in enumerate(lines):
             tok = line.split()
             if tok and tp.is_sample(tok[0]):
-                tok[1:7] = ["%de-6" % round(float(x) * 1e6) for x in tok[1:7]]
+                tok[1:7] = ["%de-1" % round(float(x) * 10) for x in tok[1:7]]   # 0.1 steps in exponent form
                 lines[i] = " ".join(tok)
         self.assertHeld(tp.check(tp.read(text="\n".join(lines)), ZONES), "decimals")
+        # review 9: numpy's %.18e is full precision, not 0 decimals
+        full = [" ".join(t[:1] + ["%.18e" % float(x) for x in t[1:7]] + t[7:]) if t and tp.is_sample(t[0]) else " ".join(t)
+                for t in (line.split() for line in text(self.rows, self.fin).split("\n"))]
+        self.assertNotIn("decimals", self.why(tp.check(tp.read(text="\n".join(full)), ZONES)))
 
     def test_shortest_form_numbers_pass(self):
         # Python's repr: "0.0" beside "123.456789" loses nothing; the fewest decimals is not the precision.
@@ -866,7 +870,7 @@ class Review1640Round7(unittest.TestCase):
         keep, tp.MAX_SAMPLES = tp.MAX_SAMPLES, 50
         try: r = verdict(self.rows, self.fin)
         finally: tp.MAX_SAMPLES = keep
-        self.assertEqual(r["verdict"], "FAIL"); self.assertIn("samples: at most 50", self.why(r))
+        self.assertEqual(r["verdict"], "FAIL"); self.assertIn("more than 50 samples", self.why(r))
 
     def test_g_printed_deep_coordinates_pass(self):
         # %g's six digits: z at -14941.976 prints -14942 (0.05 coarse) beside x, y with three decimals.

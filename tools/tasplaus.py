@@ -190,6 +190,19 @@ def _sig_digits(x):
     return len(m)
 
 
+def _decimals(x):
+    # digits after the point less an exponent's power: numpy's %.18e is full precision, not 0 decimals (review 9)
+    m, _, e = x.lower().partition("e")
+    dot = m.find(".")
+    d = len(m) - dot - 1 if dot >= 0 and m[dot + 1:].isdigit() else 0
+    if e:
+        try:
+            d -= int(e)
+        except ValueError:
+            return 0
+    return max(0, d)
+
+
 def read(path=None, text=None, header_only=False):
     """One reader for the header and the samples (surfd/tasupd.py reads the header through it too)."""
     run = Run()
@@ -219,7 +232,8 @@ def read(path=None, text=None, header_only=False):
                 run.end = None
             continue
         if not is_sample(tok[0]):
-            run.records.add(tok[0])
+            if tok[0] in NATIVE_STATE or len(run.records) < 64:   # not a million distinct words (review 9)
+                run.records.add(tok[0])
             continue
         if len(tok) < 14:
             run.short += 1
@@ -234,8 +248,7 @@ def read(path=None, text=None, header_only=False):
         # energy jumps rather than as the precision HOLD.
         pd, pq, pm = [0, 0], [0.0, 0.0], [0.0, 0.0]
         for col, x in enumerate(tok[1:7]):
-            dot = x.find(".")
-            d = len(x) - dot - 1 if dot >= 0 and x[dot + 1:].isdigit() else 0
+            d = _decimals(x)
             g = col // 3
             if d:
                 pd[g] = min(6, max(pd[g], d))
@@ -247,8 +260,7 @@ def read(path=None, text=None, header_only=False):
             run.prec[2 + g].append(round(-math.log10(2 * pq[g])) + 1 if pq[g] else 0)
             run.prec[4 + g].append(min(20, int(math.floor(math.log10(pm[g]))) + 1) if pm[g] >= 1 else 0)
         # z alone: the energy test's height term (review 7: x, y at 1 decimal on a map far from the origin widened it)
-        zx = tok[3]; zdot = zx.find(".")
-        zd = len(zx) - zdot - 1 if zdot >= 0 and zx[zdot + 1:].isdigit() else 0
+        zx = tok[3]; zd = _decimals(zx)
         run.prec[6].append(min(6, zd))
         run.prec[7].append(zd + 1 if zd < 6 and "e" not in zx and "E" not in zx and _sig_digits(zx) >= 6 else 0)
         run.prec[8].append(min(20, int(math.floor(math.log10(abs(nums[3])))) + 1) if abs(nums[3]) >= 1 else 0)
@@ -381,7 +393,7 @@ def check(run, zones=None, maxvel=None):
         note(FAIL, None, f"{run.badnum} sample lines have a number that is not plain decimal (digits, '.', '-', an exponent)")
         return out
     if len(s) > MAX_SAMPLES:
-        note(FAIL, None, f"{len(s)} samples: at most {MAX_SAMPLES} (one a tick for 25 minutes)")
+        note(FAIL, None, f"more than {MAX_SAMPLES} samples (one a tick for 25 minutes)")
         return out
     if not s or len(s) < 3:
         note(FAIL, None, f"no samples ({run.short} sample lines have fewer than the 14 columns the format needs)"
@@ -697,20 +709,32 @@ def check(run, zones=None, maxvel=None):
                 note(HOLD, t, f"{ha:.0f} -> {hb:.0f} u/s turning {turn_deg(va, vb, n):.1f} deg in one tick: air control"
                      " cannot, and a wall or ramp would have taken speed")
 
-    # The clock against the motion: distance over speed x claimed time, median of moving samples. In free flight the
-    # engine moves the whole tick on the new velocity, so a ratio over 1 is first discounted by |vb| / |mean| (review 8:
-    # perfect strafing read sqrt(h^2+900)/sqrt(h^2+225), past 1.002 below ~410 u/s); a compressed tick stays ~1.25.
-    ratios = []
+    # The clock against the motion: distance over speed x claimed time, median of moving samples. The engine moves each
+    # tick on the new velocity (air and ramp contact alike; FinishGravity changes only vz), so a ratio over 1 is first
+    # discounted by |vb| / |mean| (review 8: slow perfect strafing; review 9: ramp descents on short courses); a
+    # compressed tick stays ~1.25. The same in 3D (review 9: velocities tilted toward horizontal on ramp ticks kept the
+    # horizontal ratio at 1.000), less an air duck's origin shift.
+    ratios, ratios3 = [], []
     for a, b in zip(win, win[1:]):
         dt = b[0] - a[0]
+        kq = max(1, round(dt / rate))
         vh = math.hypot((a[2][0] + b[2][0]) * 0.5, (a[2][1] + b[2][1]) * 0.5)
         if a[0] >= 0 and vh >= 200 and dt / rate <= MAX_GAP:
             dh = math.hypot(b[1][0] - a[1][0], b[1][1] - a[1][1])
-            if dh - vh * dt <= POS_TOL * max(1, round(dt / rate)):   # a teleport (the position test's) is no clock
+            if dh - vh * dt <= POS_TOL * kq:   # a teleport (the position test's) is no clock
                 x = dh / (vh * dt)
-                if x > 1.0 and abs(b[2][2] - a[2][2] + GRAVITY * dt) < 0.05:
+                if x > 1.0:
                     x = max(1.0, x / max(1.0, math.hypot(b[2][0], b[2][1]) / vh))
                 ratios.append(x)
+                r3 = resid(a, b)
+                dz = b[1][2] - a[1][2]
+                if math.hypot(r3[0], r3[1]) < 2.0 * kq and DUCK_SHIFT[0] <= abs(r3[2]) <= DUCK_SHIFT[1]:
+                    dz -= r3[2]
+                vm3 = math.sqrt(vh * vh + ((a[2][2] + b[2][2]) * 0.5) ** 2)
+                x3 = math.hypot(dh, dz) / (vm3 * dt)
+                if x3 > 1.0:
+                    x3 = max(1.0, x3 / max(1.0, math.sqrt(sum(c * c for c in b[2])) / vm3))
+                ratios3.append(x3)
     clock = sorted(ratios)[len(ratios) // 2] if len(ratios) >= 20 else None
     if clock is None:
         note(HOLD, None, "too little movement to check the clock")
@@ -718,12 +742,13 @@ def check(run, zones=None, maxvel=None):
         note(HOLD, None, f"the body moves {clock:.4f}x what its speed and clock allow: clock edited?")
     else:
         # the mean less the largest few: one honest wall hit is a single large pair (review 8 round 2: it read 1.0044)
-        kept = sorted(ratios)[:len(ratios) - CLOCK_PAIRS - len(ratios) // 100]
-        mean, fast = sum(kept) / len(kept), sum(1 for x in ratios if x > CLOCK_PAIR)
-        if mean > CLOCK_RATIO[1]:
-            note(HOLD, None, f"the body moves {mean:.4f}x what its speed and clock allow on average: clock edited?")
-        if fast > CLOCK_PAIRS + len(ratios) // 100:   # long honest runs meet a few walls (tensor2's 3:19 WR: 3 of ~13k)
-            note(HOLD, None, f"{fast} steps cover more than {CLOCK_PAIR}x the ground their speed allows: ticks dropped?")
+        for rs, word in ((ratios, "ground"), (ratios3, "distance")):
+            kept = sorted(rs)[:len(rs) - CLOCK_PAIRS - len(rs) // 100]
+            mean, fast = sum(kept) / max(1, len(kept)), sum(1 for x in rs if x > CLOCK_PAIR)
+            if mean > CLOCK_RATIO[1]:
+                note(HOLD, None, f"the body covers {mean:.4f}x the {word} its speed and clock allow on average: clock edited?")
+            if fast > CLOCK_PAIRS + len(rs) // 100:   # long honest runs meet a few walls (tensor2's 3:19 WR: 3 of ~13k)
+                note(HOLD, None, f"{fast} steps cover more than {CLOCK_PAIR}x the {word} their speed allows: ticks dropped?")
     if gaps > 1:
         note(HOLD, None, f"{gaps} lost packets after the start (each could hide a tick or two): the owner reviews it;"
              " a recording with a sample every tick is checked by itself")

@@ -109,7 +109,10 @@ generation change, 127.0.0.1:8091).
   Review 8: beside the median, the clock's trimmed mean (largest 2 + 1% dropped) must stay <= 1.002 and at most
   2 + 1% of moving steps may cover over 1.15x their speed x time (a clock compressed on a minority of ticks);
   in free flight a ratio over 1 is first discounted by |vb|/|mean| (slow perfect strafing); an air wall hit gets
-  the contact allowance in the drift test.
+  the contact allowance in the drift test. Review 9: the clock tests also run in 3D (a velocity tilted toward
+  horizontal on ramp ticks had kept the horizontal ratio at 1.000) and the |vb|/|mean| discount applies on every
+  tick, contact included (short courses that gain speed on a ramp); exponent-form numbers count their real
+  decimals (numpy's %.18e is full precision).
 - **Board**: `/tasup/board?map=&track=` best per player; `/tasup/run/<id>` reasons and numbers;
   `/tasup/run/<id>.rec` the file (shown runs only); JSON under `/tasup/api/`.
 - **Caps**: 30 uploads per account a day (refusals count), 1000 uploads / 1 GiB of kept runs for
