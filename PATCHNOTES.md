@@ -58,25 +58,6 @@
 ### P1653 Faster Story and Event screens
 - The Story and Event screens draw about four times faster, and screens that look up maps by name (Story, lobbies, tournaments) no longer search the whole map list each time.
 
-### P1651 A friendlier Tournament tab
-- Leaving a tournament room takes a second click, and the warning says what leaving does.
-- If you drop out of a running tournament, a Rejoin button takes you back to its server. Started rooms have a Watch button.
-- You can link Steam from the Tournament tab. Errors read in plain words, the rules fit in one line, the room code is in the room header and draft turns show their clock.
-
-### P1650 Fairer tournament rules
-- Each round, everyone who doesn't finish, or who ties for the slowest time, is out. If nobody finishes, everyone goes through. The last one standing wins.
-- Leaving after the tournament has started counts as dropping out, and leaving before it sends the room back to the lobby. It no longer ends the tournament for everyone.
-- Draft turns have a 45-second clock, after which a map is chosen for you. Viewers can join a room to watch at any time.
-
-### P1649 Clearer tournaments in game
-- During a tournament a banner shows the round, the map and the clock with the standings underneath, and big messages mark GO, the end of a round and the winner. F6 opens the tournament panel.
-- Chat announces each round, every new best time with its place, who is out and who wins.
-- If a finish doesn't count (a bonus, a single stage, or a practice or segmented run), you're told why.
-
-### P1648 Tournaments that run themselves
-- A round starts by itself once everyone is on the server, and the host can start it early. Someone who doesn't arrive is left out after a grace period instead of everyone waiting.
-- Lobby servers restart themselves while empty, before many map changes can make them unstable.
-
 ### P1647 Roomier console window
 - The console window has room round the text, a thin line above the typing line, a quieter grey title, a small x to close, a slimmer scroll bar and a more solid background.
 - con_window_padding, con_window_alpha and con_window_clean set the padding, the background and the new look; 0 for padding and clean brings back the old window.
@@ -109,6 +90,27 @@
 ### P1636 Warning for an old Steam library
 - If steam_libraries.txt points at a Steam library that is missing (a drive not mounted), or one that supplies a game while Steam's own library has another copy, the console says so and the missing-content warning names it.
 - `fs_steamlibs remove <path>` takes the line out.
+
+## 0.1.50 2026-11-20
+
+### P1651 A friendlier Tournament tab
+- Leaving a tournament room takes a second click, and the warning says what leaving does.
+- If you drop out of a running tournament, a Rejoin button takes you back to its server. Started rooms have a Watch button.
+- You can link Steam from the Tournament tab. Errors read in plain words, the rules fit in one line, the room code is in the room header and draft turns show their clock.
+
+### P1650 Fairer tournament rules
+- Each round, everyone who doesn't finish, or who ties for the slowest time, is out. If nobody finishes, everyone goes through. The last one standing wins.
+- Leaving after the tournament has started counts as dropping out, and leaving before it sends the room back to the lobby. It no longer ends the tournament for everyone.
+- Draft turns have a 45-second clock, after which a map is chosen for you. Viewers can join a room to watch at any time.
+
+### P1649 Clearer tournaments in game
+- During a tournament a banner shows the round, the map and the clock with the standings underneath, and big messages mark GO, the end of a round and the winner. F6 opens the tournament panel.
+- Chat announces each round, every new best time with its place, who is out and who wins.
+- If a finish doesn't count (a bonus, a single stage, or a practice or segmented run), you're told why.
+
+### P1648 Tournaments that run themselves
+- A round starts by itself once everyone is on the server, and the host can start it early. Someone who doesn't arrive is left out after a grace period instead of everyone waiting.
+- Lobby servers restart themselves while empty, before many map changes can make them unstable.
 
 ## 0.1.49 2026-11-20
 

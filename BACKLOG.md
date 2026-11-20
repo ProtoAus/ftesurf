@@ -117,6 +117,9 @@
   tournament_rules and Tour_ProfileMovement expect `ag100-v1`, so surfd stores an AG node's movement as '' and no
   non-default profile can host (fails closed). A menu without P1639 (no player has one: the tab is new in 0.1.49) loops
   on "Incomplete lobby snapshot" in a 100-tick bhop room and cannot Leave; keep the minimum client at 0.1.49+.
+- surfd guarded startup (20 Nov, gen1650 HOLD): the drop-in's ExecStartPre chain is 16 preflights x ~15.5 s = ~252 s and
+  grows one block per generation; the retained successor's `systemctl start` waits 250 s. Next generation: raise it (the
+  gen1650 recovery used 900 s) or have the owner prune retired blocks. tools/p1650-delivery.md.
 - P1648-P1651 (Lex's stream request, 20 Nov) fixed: the Tour_Reply log noise, the AG movement spelling (QC side),
   a lobby's MAX_MOD_KNOWN crash (an empty lobby restarts past lobby_maploads_max 12 / _tour 4; the ENGINE fix -- reuse
   freed mod_known slots in gl_model.c -- is still open), the F6 panel nobody could open, no-contest on ordinary events.

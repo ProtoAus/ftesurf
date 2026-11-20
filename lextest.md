@@ -13,6 +13,13 @@
 - Windows (P1645), one check: in the console `set sys_platform Linux`, join a lobby, `cmd timer` -- the `inguard`
   line should still show `have` with the raw-input bit (the game is still read as Windows).
 
+## Stream tournament (P1648-P1651) -- LIVE 20 Nov 10:18Z; 0.1.50 PUBLISHED; owner check PENDING
+- Update through the launcher; the menu should say 0.1.50 (the Tournament tab: rules line, room code, draft clock,
+  Watch/Rejoin, Link Steam). Before a stream: `python3 -B tools/tournament_preflight.py` should read ALL GO.
+- Two accounts: host a room, join, draft, Launch. On the lobby: a top-left banner (phase, round, clock, what happens
+  next), chat lines per phase/best/out/winner, F6 standings. Nobody presses Ready: the round starts ~20 s after all are
+  in; someone missing ~2 min after the map loads is forfeited. Anything wrong: what you saw, the room and the time.
+
 ## 0.1.49 release -- PUBLISHED 20 Nov 05:12Z; owner check PENDING (record: tools/release-0.1.49.md)
 - Update through the launcher (Windows and Linux); the menu should say 0.1.49.
 - Tournaments are ON since 20 Nov 06:11Z (tools/p1639-delivery.md): a TOURNAMENT tab in the main menu; Open Lobby
