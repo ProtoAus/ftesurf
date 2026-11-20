@@ -8,6 +8,8 @@
 #define TQ_LOAD_LIMIT 600
 #define TQ_HOST_LIMIT 180
 float tq_allreadyat, tq_startsent, tq_readyscanat, tq_arrivedat, tq_absentwarned, tq_autorefused, tq_emptysince;
+float tq_absentsince, tq_canstart, tq_startnow;
+string tq_absentset;
 .float tq_nojournal;
 
 float tq_cvreg, tq_booted, tq_pollat, tq_request, tq_sentat, tq_retry;
@@ -40,7 +42,8 @@ void() Tour_Cvars =
 	registercvar("tournament_enable", "0");
 	registercvar("tournament_reserved", "");
 	registercvar("tournament_revision", "0");
-	registercvar("tournament_autostart", "20"); // P1648: seconds after everyone is ready; 0 = host only
+	registercvar("tournament_autostart", "20"); // P1648: seconds after everyone is here; 0 = host only
+	registercvar("tournament_noauto", "");      // the match id an older surfd refused autostart for
 };
 
 float() Tour_Owns =
@@ -72,8 +75,7 @@ float() Tour_Occupants =
 	return n;
 };
 
-// A connected client by account id. find(world, acct_who, ..) can return a disconnected slot:
-// Account_Disconnect leaves acct_who set (P1648 review).
+// A connected client by account id: only live slots, never a freed one's leftover fields.
 entity(string who) Tour_Client =
 {
 	local float i;
@@ -353,6 +355,10 @@ void() Tour_Clear =
 	cvar_set("tournament_revision", "0");
 	forceinfokey(world, "tournament", "");
 	forceinfokey(world, "tournament_auto", ""); forceinfokey(world, "tournament_starts", "");
+	tq_autorefused = tq_allreadyat = tq_startsent = tq_arrivedat = tq_absentwarned = tq_absentsince = tq_canstart = tq_startnow = 0;
+	if (strlen(tq_absentset)) strunzone(tq_absentset);
+	tq_absentset = "";
+	cvar_set("tournament_noauto", "");
 	if (cvar("lobby_cycle") > 0) lobby_cyc_next = time + max(60, cvar("lobby_cycle"));
 	// Empty state is polled repeatedly. Don't announce a nonexistent cancelled vote.
 	if (vote_on || lobby_vt_kind) Vote_Cancel();
@@ -693,8 +699,10 @@ void(int match, string envelope) Tour_Adopt =
 	if (phasechanged)
 	{
 		tq_phaseat = time;
-		tq_allreadyat = tq_startsent = tq_absentwarned = 0;
+		tq_allreadyat = tq_startsent = tq_absentwarned = tq_absentsince = tq_canstart = tq_startnow = 0;
 		forceinfokey(world, "tournament_starts", "");
+		tq_autorefused = (cvar_string("tournament_noauto") == id); // an older surfd refused it earlier in this match
+		forceinfokey(world, "tournament_auto", (tq_autorefused || cvar("tournament_autostart") <= 0) ? "0" : "");
 		if (phase == "countdown")
 		{
 			tq_countat = time + 5;
@@ -805,13 +813,15 @@ float(float reqid, float code, string body) Tour_Reply =
 	// to the manual buttons, and clients are told (serverinfo tournament_auto 0).
 	if (tq_pendingop == "autostart")
 	{
-		if (!ok && !tq_autorefused)
+		if (!ok && !tq_autorefused && strstrofs(json_get_string(json_find_object_child(root, "error")), "token required", 0) >= 0)
 		{
 			tq_autorefused = TRUE;
+			cvar_set("tournament_noauto", tq_id);
 			forceinfokey(world, "tournament_auto", "0"); forceinfokey(world, "tournament_starts", "");
 			bprint(PRINT_CHAT, strcat(TQ_SAY, "Automatic start isn't available here: each player presses F6 and clicks Ready on map, then the host clicks Start round.\n"));
 		}
 		else if (ok) forceinfokey(world, "tournament_auto", "1");
+		else if (!ok) print(strcat("tournament: autostart refused: ", json_get_string(json_find_object_child(root, "error")), "\n"));
 	}
 	if (tq_pendingop == "create") tq_creating = FALSE;
 	if (tq_pendingop != "state")
@@ -927,8 +937,7 @@ void(entity e) Tour_Finished =
 	{
 		// Lex 20 Nov: allowed, noted, not ranked. Privately: the bit is also set when a client never reported.
 		Tour_Tell(e, "Your time counts for the tournament. Input recording was off, so it won't be ranked on the leaderboard.");
-		if (Tour_Client(tq_host) && Tour_Client(tq_host) != e)
-			Tour_Tell(Tour_Client(tq_host), sprintf("%s's time counts, but input recording was off for it (not ranked).", substring(e.netname, 0, 32)));
+		print(sprintf("tournament: %s scored with input recording off (TF_NOJOURNAL; not ranked)\n", e.acct_who));
 	}
 	data = sprintf("&who=%s&ticks=%d&tickrate=%.9g&elapsed_ms=%d&start_elapsed_ms=%d",
 		e.acct_who, e.run_t_finticks, rate, floor((time - tq_goat) * 1000), floor(e.tq_runstart * 1000));
@@ -1023,7 +1032,16 @@ float(entity e, float argc) Tour_Command =
 		}
 		else if (op != "enter" && op != "accept" && op != "lock" && op != "start" &&
 		         op != "next" && op != "leave" && op != "cancel") return TRUE;
+		// Nobody is ready in surfd before autostart, so the host's Start means "start now" through it.
+		if (op == "start" && e.acct_who == tq_host && tq_phase == "loading" && !tq_autorefused && cvar("tournament_autostart") > 0)
+		{
+			if (tq_canstart) { tq_startnow = TRUE; Tour_Tell(e, "Starting now."); }
+			else Tour_Tell(e, "Waiting for everyone to arrive; the round then starts by itself.");
+			return TRUE;
+		}
 	}
+	// A full queue breaks the match (Tour_Queue): players' own requests stop well short of it.
+	if (tq_qwrite - tq_qread > 32) { Tour_Tell(e, "The tournament is busy; try again in a moment."); return TRUE; }
 	Tour_Queue(op, data, e);
 	return TRUE;
 };
@@ -1061,18 +1079,25 @@ void() Tour_Recycle =
 
 // P1648: players had no way to reach the in-game Ready/Start buttons (F6 was bound only in the playtest).
 // The server starts the round itself, tournament_autostart seconds after every competitor is on the arrived
-// map (P1650 surfd's server-only autostart readies those present). A competitor still missing 90 s after
-// arrival is named in `absent` and forfeited instead of everyone waiting out the loading limit. Players'
-// and the host's own Ready/Start buttons still work; an older surfd refuses autostart (Tour_Reply).
+// map (P1650 surfd's server-only autostart readies those present). A competitor missing for 60 s on end, at
+// least 120 s after arrival, is named in `absent` and forfeited -- but not while anyone on the server is still
+// connecting or being verified (a map download, an account check), unless that drags past 300 s. Players' and
+// the host's own Ready/Start still work (the host's Start in auto mode means start now).
 void() Tour_AutoReady =
 {
 	local int root, players, row;
-	local float i, n, here, absent, late, delay;
+	local float i, n, here, absent, delay, waiting, forfeit;
 	local entity e;
 	local string who, gone, names, nm;
-	if (time < tq_readyscanat) return;
+	if (time < tq_readyscanat && !tq_startnow) return;
 	tq_readyscanat = time + 1;
-	late = (time > tq_arrivedat + 90);
+	waiting = 0; // connected clients not yet known (downloading, connecting, unverified)
+	for (i = 1; i <= TQ_CLIENT_MAX; i = i + 1)
+	{
+		e = edict_num(i);
+		if (clienttype(e) == CLIENTTYPE_NOTACLIENT) break;
+		if (clienttype(e) == CLIENTTYPE_REAL && (!strlen(e.acct_who) || e.acct_state != ACCT_LINKED)) waiting = waiting + 1;
+	}
 	root = json_parse(tq_json);
 	players = json_find_object_child(json_find_object_child(root, "match"), "players");
 	n = here = absent = 0; gone = names = "";
@@ -1092,27 +1117,35 @@ void() Tour_AutoReady =
 		names = strlen(names) ? strcat(names, ", ", nm) : nm;
 	}
 	if (root) json_free(root);
-	if (absent && !tq_absentwarned && time > tq_arrivedat + 30)
+	if (gone != tq_absentset) // the missing set changed: a fresh grace and a fresh warning
+	{
+		if (strlen(tq_absentset)) strunzone(tq_absentset);
+		tq_absentset = strlen(gone) ? strzone(gone) : "";
+		tq_absentsince = time; tq_absentwarned = FALSE;
+	}
+	forfeit = (absent && time >= tq_arrivedat + 120 && time >= tq_absentsince + 60 && (!waiting || time >= tq_arrivedat + 300));
+	delay = cvar("tournament_autostart");
+	if (absent && !tq_absentwarned && time > tq_arrivedat + 30 && delay > 0 && !tq_autorefused)
 	{
 		tq_absentwarned = TRUE;
-		bprint(PRINT_CHAT, sprintf("%sWaiting for ^3%s^7 to connect. The round starts without them in %g seconds.\n",
-			TQ_SAY, names, ceil(max(0, tq_arrivedat + 90 - time))));
+		bprint(PRINT_CHAT, sprintf("%sWaiting for ^3%s^7 to arrive. If they are not here in about a minute, the round starts without them.\n", TQ_SAY, names));
 	}
-	delay = cvar("tournament_autostart");
-	if (!n || here + absent < n || (absent && !late) || delay <= 0 || tq_autorefused)
+	tq_canstart = (n && here + absent == n && (!absent || forfeit));
+	if (!tq_canstart || delay <= 0 || tq_autorefused)
 	{
 		if (tq_allreadyat) forceinfokey(world, "tournament_starts", "");
-		tq_allreadyat = 0;
+		tq_allreadyat = 0; tq_startnow = FALSE;
 		return;
 	}
 	if (!tq_allreadyat)
 	{
 		tq_allreadyat = time;
 		forceinfokey(world, "tournament_starts", "1");
-		bprint(PRINT_CHAT, sprintf("%s^5Everyone is here.^7 Round %g starts in %g seconds.\n", TQ_SAY, tq_round, delay));
+		if (absent) bprint(PRINT_CHAT, sprintf("%s^5Starting without ^3%s^5 in %g seconds.^7\n", TQ_SAY, names, delay));
+		else bprint(PRINT_CHAT, sprintf("%s^5Everyone is here.^7 Round %g starts in %g seconds.\n", TQ_SAY, tq_round, delay));
 	}
-	if (time < tq_startsent || time < tq_allreadyat + delay || tq_request || tq_qread != tq_qwrite) return;
-	tq_startsent = time + 15;
+	if (time < tq_startsent || (!tq_startnow && time < tq_allreadyat + delay) || tq_request || tq_qread != tq_qwrite) return;
+	tq_startsent = time + 15; tq_startnow = FALSE;
 	Tour_Queue("autostart", strcat("&absent=", gone), world);
 };
 
@@ -1164,7 +1197,7 @@ void() Tour_Frame =
 				tq_broken = TRUE;
 				Tour_Queue("abort", "&reason=loading_timeout", world);
 			}
-			else if (tq_hostgone && time - tq_hostgone > ((tq_phase == "loading") ? (tq_autorefused ? 120 : TQ_LOAD_LIMIT) : TQ_HOST_LIMIT))
+			else if (tq_hostgone && time - tq_hostgone > ((tq_phase == "loading") ? ((tq_autorefused || cvar("tournament_autostart") <= 0) ? 120 : TQ_LOAD_LIMIT) : TQ_HOST_LIMIT))
 			{
 				tq_broken = TRUE;
 				Tour_Queue("abort", "&reason=host_gone", world);

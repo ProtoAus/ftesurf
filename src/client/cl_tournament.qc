@@ -363,7 +363,7 @@ float(float evtype, float x, float y, float devid) Tour_Input =
 		if (chat_rep) return TRUE;
 		Tour_Took(x, TRUE);
 		// Esc, F6 during a match (Tour_Key), or the key bound to `tournament` closes it again.
-		if (x == K_ESCAPE || ((getkeybind(x) == "tournament" || (x == K_F6 && tour_id != "")) && cltime - tour_openat > 0.3)) { Tour_Close(); return TRUE; }
+		if (x == K_ESCAPE || ((getkeybind(x) == "tournament" || (x == K_F6 && (tour_id != "" || serverkey("tournament") != ""))) && cltime - tour_openat > 0.3)) { Tour_Close(); return TRUE; }
 		sui_input_event(evtype, x, y, devid);
 		return TRUE;
 	}
@@ -604,7 +604,7 @@ void(vector scr) Tour_Draw =
 	if (phase == "live" || phase == "countdown")
 		Tour_Place(at + [size_x - 40 - 216, 8], '200 80 0', Tour_Clock(remaining), 64, (remaining <= 30) ? SUI_THEME_BAD : SUI_THEME_TEXT, 2, 1);
 	else if (phase == "loading")
-		Tour_Place(at + [size_x - 40 - 216, 8], '200 80 0', myplayer ? (ready ? "You are ready" : "Marking you ready...") : "Players are loading", 16, SUI_THEME_DIM, 2);
+		Tour_Place(at + [size_x - 40 - 216, 8], '200 80 0', myplayer ? (ready ? "You are ready" : ((serverkey("tournament_auto") == "0") ? "Click Ready on map" : "Starts once everyone is here")) : "Players are loading", 16, SUI_THEME_DIM, 2);
 	else if (phase == "results" || phase == "finished" || phase == "aborted" || phase == "cancelled")
 		Tour_Place(at + [size_x - 40 - 216, 8], '200 80 0', sprintf((phase == "results") ? "Next round in %s" : "Back to normal play in %s", Tour_Clock(remaining)), 16, SUI_THEME_DIM, 2);
 
@@ -703,7 +703,7 @@ void(vector scr) Tour_Draw =
 		else
 		{
 			tour_leaveat = cltime + 4;
-			tour_note = myplayer ? "Leaving takes you out of the tournament (it may end it for everyone). Click again to leave." : "Click again to leave.";
+			tour_note = myplayer ? "Leaving drops you out of the tournament. Click again to leave." : "Click again to leave.";
 		}
 	}
 	if (host && (phase == "lobby" || phase == "draft"))
@@ -802,7 +802,7 @@ string(float remaining) Tour_NextStep =
 	if (tour_phase == "countdown") return mine ? "Get ready: you're held at the start until GO" : "The round is about to start";
 	if (tour_phase == "live")
 	{
-		if (!mine) return "Watching: best times so far on the right";
+		if (!mine) return "Watching: best times so far below";
 		if (mytime != "") return sprintf("Your best: %s (%g of %g). Restart any time to beat it", mytime, myrank, n);
 		return "No time yet: finish a clean run before the clock runs out";
 	}
