@@ -509,11 +509,14 @@ void(float mode) ZoneEdit_SettingMode =
 	if (!ze_settings || (mode != 1 && mode != 2 && mode != 9)) return;
 	ze_field = -1; sui_text_unfocus();
 	if (mode != ze_mode)            // P1381: re-clicking the selected mode keeps a custom air accel
-		ze_values[2] = mode == 2 ? 1000 : (mode == 9 ? 10 : 150);   // P1637: cfg/lobby/mode_ahop.cfg's 10
+	{
+		ze_values[2] = mode == 2 ? 1000 : (mode == 9 ? 10 : 150);
+		if (mode == 9 || ze_mode == 9) ze_values[1] = mode == 9 ? 600 : 800;   // P1637: mode_ahop.cfg's gravity
+	}
 	ze_mode = mode;
 	ze_mode_stage = TRUE;           // P1371: a click is the only way the zone file's mode changes
-	ZoneEdit_Note(sprintf("%s staged, lobbies too (%s Hz, its preset); local air accel %g; save & reload",
-	                      ZoneEdit_ModeName(mode), mode == 2 ? "100" : "66.67", ze_values[2]));
+	ZoneEdit_Note(sprintf("%s staged, lobbies too (%s Hz, its preset); local air accel %g, gravity %g; save & reload",
+	                      ZoneEdit_ModeName(mode), mode == 2 ? "100" : "66.67", ze_values[2], ze_values[1]));
 };
 
 void() ZoneEdit_SettingsOpen =
@@ -716,7 +719,7 @@ void(vector p, float w, float y, float rowh, float tsz) ZoneEdit_SettingsDraw =
 	if (ZoneEdit_Button([p_x + 16 + bw * 2, y], [bw, rowh], "ze_mode_ahop", "Ahop", tsz, ze_mode == 9 ? ZEC_SEL : ZEC_TEXT)) ZoneEdit_SettingMode(9);
 	y = y + rowh;
 	ZoneEdit_Text([p_x + 8, y + 4], tsz, ze_mode == 2 ? "100 Hz  /  air accel 1000  /  timer on the jump"
-		: (ze_mode == 9 ? "66.67 Hz  /  air accel 10  /  HL2 hull, 190 speed  /  timer on the jump"
+		: (ze_mode == 9 ? "66.67 Hz  /  air accel 10, gravity 600  /  HL2 hull, 190 speed"
 		: "66.67 Hz  /  air accel 150  /  timer leaving the start"), ZEC_DIM);
 	y = y + rowh;
 	ZoneEdit_Text([p_x + 8, y + 4], tsz, strcat("Lobbies (zone file): ",
