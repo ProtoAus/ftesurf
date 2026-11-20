@@ -398,6 +398,7 @@ class PartyAPI(unittest.TestCase):
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM tournament_parties').fetchone()[0], 1)
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM tournament_matches').fetchone()[0], 0)
 
+    @patch.dict(os.environ, SURFD_TOURNAMENT_HOLD='0')  # ordinary joins may reach the tournament node
     def test_concurrent_start_ordinary_allocator_exclusion(self):
         m = self.ready()
         form = self.form('start', 0, m)
@@ -413,6 +414,7 @@ class PartyAPI(unittest.TestCase):
         assignments = self.db.execute('SELECT COUNT(*) FROM assignments').fetchone()[0]
         self.assertEqual(reservations+assignments, 1)
 
+    @patch.dict(os.environ, SURFD_TOURNAMENT_HOLD='0')  # ordinary joins may reach the tournament node
     def test_same_map_handoff_blocks_start_across_empty_heartbeat(self):
         m = self.ready()
         ordinary = self.client.get('/api/join?map=surf_alpha')
@@ -433,6 +435,7 @@ class PartyAPI(unittest.TestCase):
             m = self.act('state', i)['party']
         self.assertTrue(self.act('start', 0, m)['launch'])
 
+    @patch.dict(os.environ, SURFD_TOURNAMENT_HOLD='0')  # ordinary joins may reach the tournament node
     def test_map_change_handoff_survives_assignment_ack(self):
         m = self.ready()
         first = self.client.get('/api/join?map=surf_b')
@@ -486,9 +489,11 @@ class PartyAPI(unittest.TestCase):
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM tournament_reservations').fetchone()[0], int(first == 'start'))
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM lobby_handoffs').fetchone()[0], int(first == 'join'))
 
+    @patch.dict(os.environ, SURFD_TOURNAMENT_HOLD='0')  # ordinary joins may reach the tournament node
     def test_concurrent_same_map_join_transaction_first(self):
         self.same_map_concurrent_order('join')
 
+    @patch.dict(os.environ, SURFD_TOURNAMENT_HOLD='0')  # ordinary joins may reach the tournament node
     def test_concurrent_same_map_start_transaction_first(self):
         self.same_map_concurrent_order('start')
 

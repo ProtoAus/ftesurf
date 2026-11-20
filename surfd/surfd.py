@@ -2823,10 +2823,21 @@ def _ordinary_handoff(db, node, now):
                " DO UPDATE SET until=MAX(until,excluded.until)", (node, now + ASSIGN_TTL))
 
 
+def _tournament_held(db, now):
+    # P1650: an unreserved server advertising tournament capability waits for tournaments, not
+    # ordinary map requests. /lobbies.json still lists it for anyone joining on purpose.
+    if setting("SURFD_TOURNAMENTS", "0") != "1" or setting("SURFD_TOURNAMENT_HOLD", "1") != "1":
+        return frozenset()
+    return frozenset(r[0] for r in db.execute(
+        "SELECT node FROM tournament_nodes WHERE seen > ? AND seen <= ?",
+        (now - tournaments.CAP_TTL, now)))
+
+
 def _join_lobby(db, now, src, mapname, map_dir, timed):
     """Read/select/claim under join_map's single write transaction."""
     db.execute("DELETE FROM assignments WHERE asked_at < ?", (now - ASSIGN_TTL,))
-    rows = live_rows(now)
+    held = _tournament_held(db, now)
+    rows = [r for r in live_rows(now) if r["node"] not in held]
     claims = {r["node"]: r for r in db.execute(
         "SELECT node, map, map_dir, asked_at FROM assignments").fetchall()}
 

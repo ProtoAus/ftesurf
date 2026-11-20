@@ -579,6 +579,25 @@ class API(unittest.TestCase):
         self.assertNotIn('76561198', body)
         self.assertNotIn('_accounts', body)
 
+    def test_hold_p1650_capable_idle_node_skips_ordinary_joins_but_stays_listed(self):
+        # setUp advertised n1 with an enabled=1 state poll.
+        for name in ('surf_b', 'surf_alpha'):
+            self.assertEqual(self.client.get('/api/join?map=' + name).status_code, 503, name)
+        self.assertEqual(len(self.client.get('/lobbies.json').get_json()['lobbies']), 1)
+        self.heartbeat(node='n2', mapname='surf_c')
+        self.assertEqual(self.client.get('/api/join?map=surf_b').status_code, 200)
+        self.assertEqual([r[0] for r in self.db.execute('SELECT node FROM assignments')], ['n2'])
+        self.db.execute('DELETE FROM assignments')
+        self.db.execute("DELETE FROM lobbies WHERE node='n2'")
+        self.db.commit()
+        for env in (dict(SURFD_TOURNAMENT_HOLD='0'), dict(SURFD_TOURNAMENTS='0')):
+            with patch.dict(os.environ, env):
+                self.assertEqual(self.client.get('/api/join?map=surf_alpha').get_json()['why'], 'already running', env)
+        # A capability poll older than CAP_TTL no longer holds the node.
+        self.now += T.CAP_TTL + 1
+        self.heartbeat()
+        self.assertEqual(self.client.get('/api/join?map=surf_alpha').status_code, 200)
+
     def test_auth_ban_unlink_wrong_node_and_host_permissions(self):
         m = self.create()
         self.assertEqual(self.action(m, 'cancel', 1)['ok'], 0)
