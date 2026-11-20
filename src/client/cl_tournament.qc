@@ -139,12 +139,12 @@ void(string action) Tour_Ask =
 {
 	if (action != "resync" && action != "open" && substring(action, 0, 7) != "create ")
 	if (tour_id == "" || cltime - tour_received > 20)
-	{ tour_note = "Snapshot is stale. Refresh before acting."; return; }
+	{ tour_note = "This view is out of date. Click Refresh first."; return; }
 	if (cltime < tour_next_action) return;
 	tour_next_action = cltime + 0.75;
 	localcmd(strcat("cmd tour ", action, "\n"));
 	tour_request_at = cltime + 8;
-	tour_note = "Request sent; awaiting server confirmation.";
+	tour_note = "Sent. Waiting for the server...";
 };
 
 // P1649: the big centre line for a phase change, read from the staged snapshot before it is swapped
@@ -289,8 +289,8 @@ void() Tour_Frame =
 	local float n, i, page, cell;
 	local string ln, who;
 	if (tour_request_at && cltime > tour_request_at)
-	{ tour_request_at = 0; tour_note = "No confirmation received. Refresh to check the server state."; }
-	if (tour_stage && cltime - tour_stage_at > 15) { tour_stage = FALSE; tour_note = "Incomplete snapshot; click Refresh."; }
+	{ tour_request_at = 0; tour_note = "The server did not answer. Click Refresh."; }
+	if (tour_stage && cltime - tour_stage_at > 15) { tour_stage = FALSE; tour_note = "Could not load the tournament state. Click Refresh."; }
 	if (cvar("cl_tourney_create") != 0)
 	{
 		if (!tour_create_at) tour_create_at = gettime(0) + 30;
@@ -736,10 +736,11 @@ void(vector scr) Tour_Draw =
 // ---------------------------------------------------------------------------
 
 // F6 belongs to the tournament while this server has a match: no bind needed (nothing shipped one).
-// With no match, F6 keeps its bind and the report boxes keep their F6.
+// With no match, F6 keeps its bind; a report box on screen (it reads "F6 Send report") keeps its F6.
 float(float scanx) Tour_Key =
 {
 	if (scanx != K_F6 || (tour_id == "" && serverkey("tournament") == "")) return FALSE;
+	if (PE_BoxUp() || CR_BoxUp()) return FALSE;
 	if (tour_open) Tour_Close();
 	else { Tour_Open(); Tour_Ask("open"); }
 	return TRUE;
@@ -826,9 +827,9 @@ void(vector scr) Tour_Hud =
 
 	sui_begin(scr_x, scr_y);
 	Font_Set(ui_font_ui);
-	// Side by side when the screen is wide enough, else the standings sit under the banner.
-	sw = 250; w = min(680, scr_x - 32 - ((scr_x >= 1200) ? sw + 16 : 0)); h = 60;
-	p = [floor((scr_x - w - ((scr_x >= 1200) ? sw + 16 : 0)) / 2), 8];
+	// Top-left: the run timer owns the top centre and the map card the top right (first playtest shots).
+	w = min(460, scr_x - 32); sw = w; h = 60;
+	p = '16 8 0';
 	sui_style_box(p, [w, h], 10, SUI_THEME_PANEL, SUI_THEME_EDGE, 0.9);
 	x = 12 + Tour_Pill(p + '12 9 0', line, colour) + 10;
 	Tour_Place(p + [x, 3], [w - x - 104, 30], title, 18, SUI_THEME_TEXT, 0, 1);
@@ -849,7 +850,7 @@ void(vector scr) Tour_Hud =
 		Tour_Place(p + [w - 104, 2], '92 32 0', Tour_Clock(remaining), 24, (tour_phase == "live" && remaining <= 30) ? SUI_THEME_BAD : SUI_THEME_TEXT, 2, 1);
 	Tour_Place(p + [12, 34], [w - 24, 22], Tour_NextStep(remaining), 12, SUI_THEME_DIM);
 	rows = min(tour_hn, 8); rh = 22;
-	at = (scr_x >= 1200) ? [p_x + w + 16, 8] : [p_x, p_y + h + 6];
+	at = [p_x, p_y + h + 6];
 	if (rows > 0)
 	{
 		sui_style_box(at, [sw, rows * rh + 12], 10, SUI_THEME_PANEL, SUI_THEME_EDGE, 0.85);
