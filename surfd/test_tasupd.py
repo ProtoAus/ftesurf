@@ -299,7 +299,7 @@ class Service(unittest.TestCase):
         self.assertEqual(self.upload(c, body).status_code, 200)
         r = self.upload(c, body)
         self.assertEqual(r.status_code, 409)
-        self.assertIn('That file has already', r.get_json()['error'])   # refused before the checker runs
+        self.assertIn('That exact file has been uploaded before', r.get_json()['error'])   # refused before the checker runs
         c2, _ = self.sign_in(BOB)   # the same motion under another header, by somebody else
         self.assertCopyHeld(self.upload(c2, body.replace(b'track 0\n', b'track 0\nowner bob\n')), 1)
 
@@ -493,7 +493,7 @@ class Service(unittest.TestCase):
         r = self.upload(c, edited_speed())
         self.assertEqual(r.status_code, 429)
         self.assertIn('waiting for review', r.get_json()['error'])
-        self.assertEqual(spent(), before)   # refused at the held cap: the attempt is given back
+        self.assertEqual(spent(), before + 1)   # refused at the held cap after a full check: the attempt counts (review 7)
         for _ in range(svc.USER_DAY):
             last = self.upload(c, b'not a rec')
         self.assertEqual(last.status_code, 429)
@@ -979,6 +979,52 @@ class Service(unittest.TestCase):
         c, _ = self.sign_in(ALICE)
         r = self.upload(c, rec().replace(b'track 0', 'track ٤'.encode()))
         self.assertEqual(r.status_code, 400); self.assertIn('no usable track', r.get_json()['error'])
+
+    # review 7
+    def test_unblock_restores_the_author_with_the_same_bytes(self):
+        rows, fin = fx.simulate()
+        body = rec(rows, fin)
+        b, _ = self.sign_in(BOB)
+        stolen = self.upload(b, body).get_json()                         # Alice's file, unchanged
+        self.cli('remove', str(stolen['id'])); code, out = self.cli('unblock', str(stolen['id']))
+        self.assertIn('approve the real author', out)
+        c, _ = self.sign_in(ALICE)
+        same = self.upload(c, body)
+        self.assertEqual(same.status_code, 409); self.assertIn('add any line to its header', same.get_json()['error'])
+        mine = self.upload(c, rec(rows, fin, extra='comment mine'))
+        self.assertCopyHeld(mine, stolen['id'])
+        self.cli('approve', str(mine.get_json()['id']))
+        later = self.upload(c, rec(rows, fin, extra='comment again')).get_json()   # no longer "another player's"
+        self.assertEqual(later['state'], 'shown', later)
+
+    def test_approve_drops_the_reject_note(self):
+        c, _ = self.sign_in(ALICE)
+        j = self.upload(c, rec()).get_json()
+        self.cli('reject', str(j['id']), '--note', 'looks like a copy')
+        self.cli('approve', str(j['id']))
+        self.assertNotIn('looks like a copy', self.app.test_client().get('/tasup/run/%d' % j['id']).get_data(as_text=True))
+
+    def test_the_copy_check_has_a_time_budget(self):
+        c, _ = self.sign_in(ALICE)
+        self.assertEqual(self.upload(c, rec(*variant(14.0))).get_json()['state'], 'shown')
+        b, _ = self.sign_in(BOB)
+        keep, svc.COPY_BUDGET = svc.COPY_BUDGET, -1.0
+        try: j = self.upload(b, rec()).get_json()
+        finally: svc.COPY_BUDGET = keep
+        self.assertEqual(j['state'], 'held', j)
+        self.assertIn('ran out of time', json.dumps(j['reasons']))
+
+    def test_a_held_copy_does_not_unlock_removed_motion(self):
+        # Review 7: a held offset copy counted as owning the motion, and the exact removed samples came back shown.
+        rows, fin = fx.simulate()
+        c, _ = self.sign_in(ALICE)
+        m = self.upload(c, rec(rows, fin)).get_json()
+        self.cli('remove', str(m['id']))
+        b, _ = self.sign_in(BOB)
+        late = self.upload(b, rec([(round(t + 12 * fx.RATE, 6), o, v) for t, o, v in rows], fin + 12))
+        self.assertIn((late.status_code, late.get_json().get('state')), ((409, None), (200, 'held')), late.get_json())
+        r = self.upload(b, rec(rows, fin, extra='comment 7'))
+        self.assertEqual(r.status_code, 409, r.get_json())
 
 if __name__ == '__main__':
     unittest.main()

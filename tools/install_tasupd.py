@@ -284,6 +284,11 @@ def record(release, outcome):
     except OSError as e: say('(could not write %s: %s)' % (release / 'UPGRADE.txt', e))
 
 
+def record_install(release, outcome):
+    try: (release / 'INSTALL.txt').write_text(outcome + '\n')
+    except OSError as e: say('(could not write %s: %s)' % (release / 'INSTALL.txt', e))
+
+
 def upgrade(a, blobs):
     """The installed release `a.upgrade_from` -> `a.commit`; see the module doc."""
     old = RELEASES / a.upgrade_from if (RELEASES / a.upgrade_from).is_dir() else ROOT / a.upgrade_from
@@ -481,14 +486,15 @@ def main():
         if unit_written:
             try:
                 if UNIT.read_text() != unit: failed.append('the unit changed meanwhile: not stopped')
-                else: run('/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service')
+                else: run('/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service', timeout=120)   # gunicorn: up to 30 s
             except BaseException as e: failed.append('unit not disabled (%s)' % why(e))
         if failed: raise RuntimeError('install failed (%s); rollback: %s' % (why(first), '; '.join(failed))) from first
         if isinstance(first, subprocess.CalledProcessError): raise RuntimeError('install failed: %s' % why(first)) from first
         raise   # source, state, unit and backup stay for inspection (the snippet and zones go once the site is back)
     finally:
         for n, h in held.items(): signal.signal(n, h)
-    print('Installed the TAS upload service at %s/' % PUBLIC_URL)
+    outcome = 'Installed the TAS upload service at %s/ (release %s)' % (PUBLIC_URL, release)
+    record_install(release, outcome); say(outcome)   # a dropped session's terminal must not turn success into exit 1
 
 
 if __name__ == '__main__': main()

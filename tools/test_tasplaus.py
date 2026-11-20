@@ -843,6 +843,42 @@ class Review1640Round6(unittest.TestCase):
         self.assertEqual(r["verdict"], "HOLD")
         self.assertGreaterEqual(energy(r), energy(held) - 2, self.why(r))
 
+class Review1640Round7(unittest.TestCase):
+    setUp, why = Review1640.setUp, Review1640.why
+
+    def test_a_long_digit_string_is_refused_fast(self):
+        import time
+        t0 = time.time()
+        for tok in ("1" * 30000 + "x", "1" * 41):
+            with self.assertRaises(ValueError): tp.file_float(tok)
+        self.assertLess(time.time() - t0, 0.5)
+        for ok in ("0", "-1", "1.", ".5", "+2.25", "1e-05", "-12345.6"):
+            tp.file_float(ok)
+
+    def test_a_clock_relabelled_early_holds(self):
+        # Review 7: +9 ticks on every sample put another player's run past the copy check's shifts; the body is then
+        # still in the start zone ticks after its clock started.
+        late = [(round(t + 9 * RATE, 6), o, v) for t, o, v in self.rows]
+        self.assertIn("still in the start zone", self.why(verdict(late, self.fin + 9)))
+        self.assertNotIn("still in the start zone", self.why(verdict(self.rows, self.fin)))
+
+    def test_too_many_samples_fail(self):
+        keep, tp.MAX_SAMPLES = tp.MAX_SAMPLES, 50
+        try: r = verdict(self.rows, self.fin)
+        finally: tp.MAX_SAMPLES = keep
+        self.assertEqual(r["verdict"], "FAIL"); self.assertIn("samples: at most 50", self.why(r))
+
+    def test_g_printed_deep_coordinates_pass(self):
+        # %g's six digits: z at -14941.976 prints -14942 (0.05 coarse) beside x, y with three decimals.
+        rows = [(t, [o[0] + 1000.0, o[1] + 1000.0, o[2] - 15000.0], v) for t, o, v in self.rows]
+        zones = zones_for(rows)
+        out = ["FTESURF-REC 5", "map synth", "track 0", f"tickrate {RATE}", f"movetickrate {RATE}", "begin"]
+        for t, o, v in rows:
+            out.append("%.4f %s 0 0 0 0 0 0 0 0 0 0" % (t, " ".join("%g" % x for x in list(o) + list(v))))
+        out.append(f"end {self.fin} {len(rows)} 0 0")
+        r = tp.check(tp.read(text="\n".join(out) + "\n"), zones)
+        self.assertNotIn("energy", self.why(r))
+
 @unittest.skipUnless(os.environ.get("TASPLAUS_CORPUS"), "set TASPLAUS_CORPUS (+ TASPLAUS_ZONES) to real .rec files")
 class Corpus(unittest.TestCase):
     def test_honest_runs_pass(self):

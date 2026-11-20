@@ -58,7 +58,9 @@ REC_PEER_BYTES, REC_ALL_BYTES = 32 * 1024 ** 2, 128 * 1024 ** 2   # .rec downloa
 STEAM_ATONCE, STEAM_MINUTE = 2, 30  # Steam confirmations in flight / a minute, everyone (surfd: OUT_ATONCE 2)
 FORM_PARTS = 8                      # multipart boundaries in an upload: Werkzeug 2.2.2 does not cap parts
 SIGNOUT_BODY = 4096
-HEAVY_WAIT = 15                     # s an upload waits for the one checker slot
+HEAVY_WAIT = 30                     # s an upload waits for the one checker slot (a long course's copy phase: 15-25 s)
+DUPLICATE = ('That exact file has been uploaded before. If it is your own run, add any line to its header'
+             ' (for example `comment mine`) and upload it again.')   # review 7: the author of a removed copy's file
 UPLOADS_AT_ONCE = 2                 # gunicorn has 4 threads: pages and sign-in keep the other two (review 6)
 NAME_TTL = 300
 TOOL_MAX = 64
@@ -68,7 +70,9 @@ ROW = ('id, sha, steamid, map, track, ticks, verdict, state, reasons, stats, too
        ' reviewed_at, note')
 LIST = 'id, steamid, map, track, ticks, verdict, state, tool, uploaded_at, note'
 COPY_CANDIDATES, COPY_PER_PLAYER = 60, 3   # course candidates compared per upload; per other account
+COPY_BUDGET = 20.0                  # s of comparisons per upload, then a person looks (review 7: ~60-100 s on the Pi worst case)
 COPY_TICKS, COPY_FULL = 3000, 5     # ticks compared per pass; full passes per upload before a person looks
+COPY_SHIFTS = 16                    # ticks either way: past the start-zone leave the checker allows (review 7: +9 hid a copy)
 HEADER_MAX = 65536                  # the header (up to `begin`) is read from this prefix
 BEGIN_LINE = re.compile(rb'\n[ \t]*begin(?=[ \t\r\n])')   # review 5: find(b'\nbegin') also cut at `begintick`
 PEER_STEAM = 3                      # Steam confirmations a minute per address
@@ -291,14 +295,17 @@ def copy_of(series, path, mask, rows):
     (None, why) when more candidates than COPY_FULL passed the cheap pass and failed the full one (a
     person looks), (None, None) otherwise. Rows may be a cursor. Either matching is a copy."""
     sampled = [i for i in range(len(mask)) if mask[i]]
-    steps, full = path_steps(sampled), 0
+    steps, full, t0 = path_steps(sampled), 0, time.monotonic()
     for r in rows:
+        if time.monotonic() - t0 > COPY_BUDGET:
+            return None, 'the copy check ran out of time on this course: the owner compares it'
+
         vel, pos = unpack_sig(r['sig'])
         for same, mine, theirs, kw in ((same_motion, series, vel, dict(sampled=sampled)),
                                        (same_path, path, pos, dict(steps=steps))):
-            if not same(mine, theirs, stride=8, share=0.85, cap=400, **kw):
+            if not same(mine, theirs, shifts=COPY_SHIFTS, stride=8, share=0.85, cap=400, **kw):
                 continue
-            if same(mine, theirs, **kw):
+            if same(mine, theirs, shifts=COPY_SHIFTS, **kw):
                 return r, None
             full += 1
             if full > COPY_FULL:
@@ -799,15 +806,22 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         db.execute('UPDATE spend SET bytes = bytes + ? WHERE who = ? AND day = ?', (size, sid, int(now // 86400)))
 
     uploading = threading.BoundedSemaphore(UPLOADS_AT_ONCE) if UPLOADS_AT_ONCE else None
+    inflight, inflight_lock = set(), threading.Lock()   # one upload at a time per account (review 7: two held both slots)
 
     @app.post(base + '/upload')
     def upload():
         sid = session()
         if not sid: return refuse('Sign in with Steam first.', 401)
-        if uploading is None or not uploading.acquire(blocking=False):
-            return refuse('Two uploads are being checked; try again in a minute.', 503)
-        try: return upload_signed_in(sid)
-        finally: uploading.release()
+        with inflight_lock:
+            if sid in inflight: return refuse('Your other upload is still being checked; wait for it.', 429)
+            inflight.add(sid)
+        try:
+            if uploading is None or not uploading.acquire(blocking=False):
+                return refuse('Two uploads are being checked; try again in a minute.', 503)
+            try: return upload_signed_in(sid)
+            finally: uploading.release()
+        finally:
+            with inflight_lock: inflight.discard(sid)
 
     def upload_signed_in(sid):
         if not post_ok(): return refuse('That form is out of date; reload the page.', 403)
@@ -856,7 +870,7 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         sha = hashlib.sha256(body).hexdigest()
         with connect(store) as db:
             if db.execute('SELECT 1 FROM runs WHERE sha = ?', (sha,)).fetchone():
-                return refuse('That file has already been uploaded.', 409)
+                return refuse(DUPLICATE, 409)
         if not heavy.acquire(timeout=HEAVY_WAIT):
             unspend(sid, now)   # not the uploader's attempt
             return refuse('The checker is busy; try again in a minute.', 503)
@@ -917,13 +931,14 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                                             (sid, mapname, track, lo, hi) + states + (after, end, COPY_PER_PLAYER)))
 
         def owns_motion(db):
-            """The uploader has a standing run of this motion (the same samples, or a copy match among their nearest
-            runs on the course), whatever the upload order: another account's removed copy of it does not refuse them
-            (review 6: an id-order test locked out the author the owner approved, and let others through)."""
-            if db.execute("SELECT 1 FROM runs WHERE samples_sha = ? AND steamid = ? AND state IN ('shown', 'held')",
+            """The uploader has a shown run of this motion (the same samples, or a copy match among their nearest runs
+            on the course), whatever the upload order: another account's removed copy of it does not refuse them
+            (review 6: an id-order test locked out the author the owner approved). Shown only: a held run is not
+            yet anyone's (review 7: a held offset copy unlocked the exact samples of the removed run)."""
+            if db.execute("SELECT 1 FROM runs WHERE samples_sha = ? AND steamid = ? AND state = 'shown'",
                           (digest, sid)).fetchone():
                 return True
-            return copy_of(series, trail, mask, own_rows(db, ('shown', 'held')))[0] is not None
+            return copy_of(series, trail, mask, own_rows(db, ('shown',)))[0] is not None
 
         def copied(db, after, owns):
             """A refusal (motion the owner removed), a reason to hold it (another player's motion, the uploader's own
@@ -935,14 +950,16 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                 rej = copy_of(series, trail, mask, own_rows(db, ('rejected',), after))[0]
             if rej is not None:
                 return 'the same motion as your run %d, which the owner rejected' % rej['id']
-            theirs_removed = lambda x: x['state'] == 'removed' and x['steamid'] != sid   # noqa: E731
+            # another account's removed or rejected run of motion the uploader owns is no claim on it (review 7: after an
+            # unblock the copier's rejected row held every later upload of the approved author)
+            theirs_removed = lambda x: x['state'] in ('removed', 'rejected') and x['steamid'] != sid   # noqa: E731
             r = next((x for x in db.execute("SELECT id, steamid, state FROM runs WHERE samples_sha = ? AND (steamid != ? OR"
                                             " state = 'removed') AND id > ? ORDER BY state = 'removed' DESC", (digest, sid, after))
                       if not (owns and theirs_removed(x))), None)
             why = None
             if r is None:
                 cand = [tuple(x) for x in db.execute(course_sql, (end, mapname, track, lo, hi, sid, after, end))]
-                if owns: cand = [x for x in cand if not (x[2] == 'removed' and x[1] != sid)]
+                if owns: cand = [x for x in cand if not (x[2] in ('removed', 'rejected') and x[1] != sid)]
                 r, why = copy_of(series, trail, mask, with_sigs(db, cand))
             if r is not None and r['state'] == 'removed':
                 return refuse('That is the motion of run %d, which the owner removed: if it is your own run, ask the owner.'
@@ -1002,7 +1019,7 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                     reasons = reasons + [{'level': tp.HOLD, 't': None, 'what': why}]
                 if state == 'held' and db.execute("SELECT COUNT(*) FROM runs WHERE steamid = ? AND state = 'held'",
                                                   (sid,)).fetchone()[0] >= HELD_CAP:
-                    db.execute('UPDATE spend SET n = MAX(0, n - 1) WHERE who = ? AND day = ?', (sid, int(now // 86400)))
+                    # the attempt counts (review 7: refunded, an account at the cap looped full checks past the day's 30)
                     return refuse('You have %d runs waiting for review; wait for those first.' % HELD_CAP, 429)
                 if stored(db) + len(body) + len(sig) > STORE_CAP:   # the motion blob is on the same disk
                     app.logger.warning('tasupd store full (%d bytes): uploads refused until runs are removed', STORE_CAP)
@@ -1026,7 +1043,7 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                     if tmp.exists(): tmp.unlink()
             committed = True
         except sqlite3.IntegrityError:
-            return refuse('That file has already been uploaded.', 409)
+            return refuse(DUPLICATE, 409)
         except OSError:
             app.logger.exception('tasupd could not store an upload')
             return refuse('The file could not be stored; try again later.', 503)
@@ -1082,8 +1099,11 @@ def main(argv=None):
         if r['state'] not in allowed: print('run %d is %s; %s needs %s' % (a.id, r['state'], a.cmd, '/'.join(allowed))); return 1
         if a.cmd == 'approve' and not r['size']: print('run %d has no file (it was removed): it cannot be shown' % a.id); return 1
         with writing(db):
-            changed = db.execute("UPDATE runs SET state = ?, reviewed_at = ?, note = COALESCE(NULLIF(?, ''), note) WHERE id = ?"
-                                 ' AND state = ?', (to, int(time.time()), a.note[:200], a.id, r['state'])).rowcount
+            # approve shows the run with only its own note (a reject's note was public after approval: review 7);
+            # reject and unblock keep an earlier note without --note
+            changed = db.execute("UPDATE runs SET state = ?, reviewed_at = ?, note = CASE WHEN ? THEN ? ELSE COALESCE(NULLIF(?, ''),"
+                                 ' note) END WHERE id = ? AND state = ?',
+                                 (to, int(time.time()), a.cmd == 'approve', a.note[:200], a.note[:200], a.id, r['state'])).rowcount
             if changed == 1 and to == 'removed':
                 db.execute('UPDATE runs SET size = 0 WHERE id = ?', (a.id,))   # the store cap counts kept files
         if changed != 1: print('run %d changed meanwhile; nothing done' % a.id); return 1
@@ -1093,6 +1113,9 @@ def main(argv=None):
                 try: rec_path(a.store, r['sha']).unlink()
                 except FileNotFoundError: pass
         print('run %d: %s -> %s' % (a.id, r['state'], to))
+        if a.cmd == 'unblock':
+            print('its motion is held as another player\'s now, not refused: approve the real author\'s upload of it'
+                  ' (an identical file needs one more header line)')
         if to == 'removed':
             # Remove is for good (the file is gone; reject keeps it). Other uploads of the same motion stay.
             same = [x[0] for x in db.execute("SELECT id FROM runs WHERE samples_sha = ? AND id != ? AND state != 'removed'",

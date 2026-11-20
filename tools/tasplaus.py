@@ -87,7 +87,8 @@ def is_sample(tok):
     return bool(tok) and (tok[0].isdigit() or (tok[0] == "-" and len(tok) > 1 and tok[1].isdigit()))
 
 
-NUMBER = re.compile(r"[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
+NUMBER = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")   # no two runs over one digit (review 7)
+NUMBER_MAX = 40          # characters: no printer writes longer, and the regex never sees a megabyte
 
 
 def file_float(tok):
@@ -95,7 +96,7 @@ def file_float(tok):
     service (surfd/tasupd.py) ships this file alone; reccheck imports heldmeta. Plain decimal
     or exponent forms only: Python's float() also takes `3_4_8.4`, `inf`, Unicode digits, which
     other readers do not, and an underscore hid a number's precision (review 6)."""
-    if not NUMBER.fullmatch(tok):
+    if len(tok) > NUMBER_MAX or not NUMBER.fullmatch(tok):
         raise ValueError("not a plain number")
     x = float(tok)
     if not math.isfinite(x) or abs(x) > F32_MAX:
@@ -111,6 +112,9 @@ FREE_TOL = 3.0           # u per tick in free flight (vz fell exactly g dt): mea
 DUCK_SHIFT = (7.5, 19.0) # |z| an air duck/unduck moves the origin: 8.5 measured (CS:S); 18 = a full hull
 DUCK_NET = 19.0          # the shifts must undo each other: running sum stays inside +-this
 MAX_GAP = 8              # ticks between samples before the checker says it cannot see
+START_LEAVE = 2.5        # ticks after t=0 the body may still be inside the start zone (honest max 1.73 of 197); START_LEAVE_U
+START_LEAVE_U = 8.0      # ...or the time this many units take at the start speed, for slow starts
+MAX_SAMPLES = 100000     # a 25-minute run at one a tick; bounds the checker and the copy check (review 7: 241k short lines)
 ZONE_PAD = 48.0          # u around a checkpoint/stage box, plus one tick of travel
 EDGE_PAD = 16.0          # u at the start and the end: the hull's half-width, plus one tick of travel
 START_CAP = 380.0        # horizontal u/s at t=0 under limitStartGroundSpeed (measured max 306)
@@ -121,7 +125,7 @@ FRICTION, STOPSPEED = 4.0, 75.0    # cfg/default.cfg sv_friction / sv_stopspeed 
 OPEN_CAP = 1500.0        # |v| a recording may open with on a course with no start limit (measured 1209: falling in)
 LAND_VZ = 140.5          # the engine lands rising up to vz 140 (pm_source.c:2350)
 STEP = 18.0              # u a ground move steps up or down (sv_stepheight)
-DRIFT_SECOND = 24.0      # u: unexplained horizontal travel summed over 66 ticks (corpus max 0.3; check())
+DRIFT_SECOND = 6.0       # u: unexplained horizontal travel summed over 66 ticks (PASS max 0.33 of 274; 24 let a position push pass: review 7)
 START_HEIGHT = 128.0     # u above the start box floor at t=0 (measured max 73.8, a 528 u box)
 CLIP_SLACK = 0.1         # a wall or ramp turn keeps at most |v| cos(turn) + this |v| (+ air control)
 REASON_KEEP = 200        # reasons listed per run; the rest only counted ("unlisted"): a crafted file gives ~2 a tick
@@ -158,8 +162,8 @@ class Run:
         # 0.01. Per group, the coarsest such number (6+ significant digits, fewer decimals).
         self.sig_q = [0.0, 0.0]
         # per sample, as bytes (review 6: tuples cost ~80 B a sample): pos/vel decimals, pos/vel sig_q as 0 or d + 1
-        # for 0.5e-d; check() reads its window's
-        self.prec = (array.array("B"), array.array("B"), array.array("B"), array.array("B"))
+        # for 0.5e-d, pos/vel magnitude as floor(log10 |x|) + 1 (0 under 1); check() reads its window's
+        self.prec = tuple(array.array("B") for _ in range(9))   # 6-8: z alone (decimals, sig code, magnitude)
         self.short = 0       # sample lines with fewer than 14 columns (dropped)
         self.badnum = 0      # sample lines with a number that is not a plain decimal (FAIL)
         self.records = set()
@@ -224,7 +228,7 @@ def read(path=None, text=None, header_only=False):
         # The most a group shows, not the fewest: a shortest-form printer writes 0.0 beside 123.456789.
         # The coarser group sets the precision: positions at 0.1 under velocities' 0.01 would read as
         # energy jumps rather than as the precision HOLD.
-        pd, pq = [0, 0], [0.0, 0.0]
+        pd, pq, pm = [0, 0], [0.0, 0.0], [0.0, 0.0]
         for col, x in enumerate(tok[1:7]):
             dot = x.find(".")
             d = len(x) - dot - 1 if dot >= 0 and x[dot + 1:].isdigit() else 0
@@ -233,9 +237,17 @@ def read(path=None, text=None, header_only=False):
                 pd[g] = min(6, max(pd[g], d))
             if d < 6 and "e" not in x and "E" not in x and _sig_digits(x) >= 6:
                 pq[g] = max(pq[g], 0.5 * 10.0 ** -d)
+            pm[g] = max(pm[g], abs(nums[col + 1]))
         for g in (0, 1):
             run.prec[g].append(pd[g])
             run.prec[2 + g].append(round(-math.log10(2 * pq[g])) + 1 if pq[g] else 0)
+            run.prec[4 + g].append(min(20, int(math.floor(math.log10(pm[g]))) + 1) if pm[g] >= 1 else 0)
+        # z alone: the energy test's height term (review 7: x, y at 1 decimal on a map far from the origin widened it)
+        zx = tok[3]; zdot = zx.find(".")
+        zd = len(zx) - zdot - 1 if zdot >= 0 and zx[zdot + 1:].isdigit() else 0
+        run.prec[6].append(min(6, zd))
+        run.prec[7].append(zd + 1 if zd < 6 and "e" not in zx and "E" not in zx and _sig_digits(zx) >= 6 else 0)
+        run.prec[8].append(min(20, int(math.floor(math.log10(abs(nums[3])))) + 1) if abs(nums[3]) >= 1 else 0)
         for g in (0, 1):
             run._dec[g] = max(run._dec[g], pd[g])
             run.sig_q[g] = max(run.sig_q[g], pq[g])
@@ -362,6 +374,9 @@ def check(run, zones=None, maxvel=None):
     if run.badnum:
         note(FAIL, None, f"{run.badnum} sample lines have a number that is not plain decimal (digits, '.', '-', an exponent)")
         return out
+    if len(s) > MAX_SAMPLES:
+        note(FAIL, None, f"{len(s)} samples: at most {MAX_SAMPLES} (one a tick for 25 minutes)")
+        return out
     if not s or len(s) < 3:
         note(FAIL, None, f"no samples ({run.short} sample lines have fewer than the 14 columns the format needs)"
              if run.short else "no samples")
@@ -434,10 +449,21 @@ def check(run, zones=None, maxvel=None):
              f" {run.decimals} decimals: the bounds need {MIN_DECIMALS} or more")
     # Velocity rules use q; the energy test's height term uses q_pos (a %g printer rounds deep z coarser). Each
     # pair's from its own two samples (review 6: one coarse number anywhere in the window widened every pair).
+    # A 6-significant-digit printer (%g) shows itself on some number of the group in the window; then every number's
+    # rounding follows its size, 0.5e(floor(log10|x|) - 5), whatever it shows: %g prints z -14941.976 as -14942, five
+    # digits, still 0.05 coarse (review 7: per-pair precision held 49 of 117 replays printed so). No slack past %g's own.
+    gmode = [any(run.prec[2 + g][i0:i0 + len(win)]) for g in (0, 1)] + [any(run.prec[7][i0:i0 + len(win)])]
+
     def qof(g, pa, pb):
-        d = max(run.prec[g][pa], run.prec[g][pb], MIN_DECIMALS)
-        code = min((c for c in (run.prec[2 + g][pa], run.prec[2 + g][pb]) if c), default=0)
-        return max(0.5 * 10.0 ** -d, min(0.5 * 10.0 ** -(code - 1) if code else 0.0, 0.05))
+        # g 0 positions, 1 velocities, 2 z alone (arrays 6-8)
+        dec_a, sig_a, mag_a = (run.prec[g], run.prec[2 + g], run.prec[4 + g]) if g < 2 else run.prec[6:9]
+        d = max(dec_a[pa], dec_a[pb], MIN_DECIMALS)
+        code = min((c for c in (sig_a[pa], sig_a[pb]) if c), default=0)
+        sq = 0.5 * 10.0 ** -(code - 1) if code else 0.0
+        if gmode[g]:
+            m = max(mag_a[pa], mag_a[pb])
+            if m: sq = max(sq, 0.5 * 10.0 ** (m - 1 - 5))
+        return max(0.5 * 10.0 ** -d, min(sq, 0.05))
     worst_air = worst_ground = worst_turn = worst_drift = 0.0
     nchk = njump = ntele = nduck = offtick = gaps = 0
     duck_net = 0.0
@@ -476,7 +502,7 @@ def check(run, zones=None, maxvel=None):
                 break
     for i, (a, b) in enumerate(zip(win, win[1:])):
         t = a[0]
-        q, q_pos = qof(1, i0 + i, i0 + i + 1), qof(0, i0 + i, i0 + i + 1)
+        q, q_pos = qof(1, i0 + i, i0 + i + 1), qof(2, i0 + i, i0 + i + 1)   # q_pos: only the height term reads it
         k = (b[0] - a[0]) / rate
         aligned = abs(k - round(k)) < 0.02
         kk = max(1, math.ceil(k - 0.02))   # mover steps: the air cap and the tolerances are per step
@@ -702,6 +728,12 @@ def check(run, zones=None, maxvel=None):
             floor = min(floors) if floors else t0s[1][2]
             if t0s[1][2] - floor > START_HEIGHT:
                 note(HOLD, 0.0, f"the clock starts {t0s[1][2] - floor:.0f} u above the start zone's floor")
+        # The timer starts as the body leaves the start zone: still inside it ticks later is a clock relabelled to
+        # start early (review 7: +9 ticks on every sample hid another player's run from the copy check's +-8).
+        leave = next((x[0] for x in win if x[0] > 1e-6 and not any(_inside(x[1], rg, 0.0) for rg in start_regs)), None)
+        allow = max(START_LEAVE * rate, START_LEAVE_U / max(h0, 50.0))
+        if leave is not None and leave > allow + 1e-6:
+            note(HOLD, leave, f"still in the start zone {leave / rate:.0f} ticks after the clock started: the clock starts as you leave it")
         v0 = math.sqrt(sum(c * c for c in t0s[2]))
         if limit_start and h0 > START_CAP:
             note(HOLD, 0.0, f"leaves the start at {h0:.0f} u/s (cap {START_CAP:.0f})")
@@ -733,7 +765,7 @@ def check(run, zones=None, maxvel=None):
     out["stats"] = {"finish": round(fin, 4), "ticks_checked": nchk, "jumps": njump,
                     "teleports": ntele, "duck_shifts": nduck, "clock_ratio": round(clock, 5) if clock else None, "start_speed": round(h0, 1),
                     "worst_air_ratio": round(worst_air, 3), "worst_ground_ratio": round(worst_ground, 3),
-                    "worst_turn_excess": round(worst_turn, 1),
+                    "worst_turn_excess": round(worst_turn, 1), "worst_drift": round(worst_drift, 2),
                     "decimals": run.decimals, "window_from": round(win[0][0], 4) if win else None}
     return out
 
