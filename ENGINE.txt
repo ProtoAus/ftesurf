@@ -1,4 +1,8 @@
 # The engine build this QuakeC requires.
+# P1645 (QC client only; Lex's anti-cheat finish list, worldofsurf-4b): the ranked input report decides "Windows"
+# from the engine's read-only in_guard_live as well as from sys_platform, which a player can set; a Windows game
+# (engine 1576+) whose sys_platform was changed still reports its raw-input and guard settings. No Linux change.
+# Record: engine ENGINE_PATCHES.md P1645; tools/p1645-platform.md.
 # P1643 (QC server only; Lex's anti-cheat finish list, worldofsurf-4b): a full or bonus run on a start-on-leave map
 # starts clean only from rest in its start box -- placed there by a restart, a spawn or a map teleport, or seen on the
 # ground under run_rearmspeed; a body the server placed and then held (the tournament countdown) keeps that to the packet

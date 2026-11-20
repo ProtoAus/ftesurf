@@ -1,5 +1,13 @@
 # AGENT_NOTES.md
 
+## P1645 the input report's platform (20 Nov 2026)
+
+- cl_replay.qc Rec_IsWin: Windows if sys_platform says so OR in_guard_live is read-only. sys_platform is a plain
+  cvar until an engine makes it read-only (a launch `+set sys_platform Win` on Linux reads back "Win"), so it can
+  only say yes. `set` cannot make a read-only cvar and Cvar_Register replaces a pre-set name with the engine's flags.
+- Linux arm (rig): the report is `ev "14 0 0 0 1 0"`, wouldplat 1, with and without the patch and with sys_platform
+  set to Win. The Windows half is not runnable on this PC; see tools/p1645-platform.md for what it rests on.
+
 ## P1643 start rest: what it does to test arms (20 Nov 2026)
 
 - A full or bonus run on a start-on-leave map is practice unless its arm saw the body at rest: a restart placement

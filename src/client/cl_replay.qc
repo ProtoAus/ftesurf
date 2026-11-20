@@ -585,11 +585,24 @@ float(string name, float bit, __inout float have) Rec_InputCvar =
 	return cvar(name);
 };
 
-// P1603: in_rawinput and the guard cvars (in_win.c only) count only on sys_platform "Win", which no config
-// saves (a copied Windows cfg can describe them on Linux), and with the engine's description (cmd.c:4462).
+// P1645: is this the Windows game?  sys_platform is a plain cvar a player can set, so it can only say yes.
+// in_guard_live is the Windows engine's own read-only cvar (in_win.c, 1576+): `set` cannot make one, and
+// Cvar_Register replaces a `+set` of the name with the engine's flags, so read-only means Windows.
+float() Rec_IsWin =
+{
+	if (!strcmp(cvar_string("sys_platform"), "Win"))
+		return TRUE;
+	if (cvar_type("in_guard_live") & CVAR_TYPEFLAG_READONLY)
+		return TRUE;
+	return FALSE;
+};
+
+// P1603: in_rawinput and the guard cvars (in_win.c only) count only on the Windows game (a copied Windows
+// cfg can describe them on Linux, and no config saves what Rec_IsWin reads), and with the engine's
+// description (cmd.c:4462).
 float(string name, float bit, __inout float have) Rec_InputCvarWin =
 {
-	if (strcmp(cvar_string("sys_platform"), "Win"))
+	if (!Rec_IsWin())
 		return 0;
 	if (!(cvar_type(name) & CVAR_TYPEFLAG_HASDESCRIPTION))
 		return 0;
