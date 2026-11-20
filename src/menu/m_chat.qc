@@ -445,7 +445,7 @@ void() MC_Probe =
 // Message i of mc_view at rp (draw), or only measured. -> its height, gap included.
 float(float i, vector rp, float width, float draw) MC_Row =
 {
-	local string msgid, who, name, text, id;
+	local string msgid, who, name, text, id, ini;
 	if (tokenize(bufstr_get(mc_view, i)) != 6) return 0;
 	msgid = argv(4);
 	who = argv(1); name = uri_unescape(argv(2)); text = uri_unescape(argv(3));
@@ -460,15 +460,24 @@ float(float i, vector rp, float width, float draw) MC_Row =
 		return MC_GAP + ui_para(rp + [MC_PITCH + 4, 0], width - 24 - MC_PITCH, SZ_LABEL, MC_PITCH,
 		       MC_Plain(strcat(name, " ", substring(text, 2, -1))), SUI_THEME_GOOD, draw);
 	}
+	// P1685: the sender's picture before the name (a chip with the initial until it loads); both open Stats.
 	if (draw)
 	{
-		sui_text(rp, SZ_LABEL, ui_fit_text(MC_Plain(name), width - 20, SZ_LABEL), COL_ACCENT, 1, 0);
+		if (!MP_Draw(rp, MC_PITCH, who, 1))
+		{
+			sui_roundbox(rp, [MC_PITCH, MC_PITCH], 5, SUI_THEME_HOVER, 1);
+			ini = strtoupper(substring(strdecolorize(name), 0, 1));
+			sui_text(rp + [(MC_PITCH - stringwidth(ini, FALSE, '12 12 0')) * 0.5, 3], '12 12 0', MC_Plain(ini), COL_DIM, 1, 0);
+		}
+		sui_text(rp + [MC_PITCH + 6, 0], SZ_LABEL, ui_fit_text(MC_Plain(name), width - 26 - MC_PITCH, SZ_LABEL), COL_ACCENT, 1, 0);
 		// P1198: the sender's name opens their Stats page.
 		id = strcat("mc_who", msgid);          // P1206: the line's id, not its row (a snapshot can land mid-click)
-		sui_action_element(rp, [min(width - 20, stringwidth(ui_fit_text(MC_Plain(name), width - 20, SZ_LABEL), TRUE, SZ_LABEL)), 20], id, sui_noop);
+		sui_action_element(rp, [min(width - 20, MC_PITCH + 6 + stringwidth(ui_fit_text(MC_Plain(name), width - 26 - MC_PITCH, SZ_LABEL), TRUE, SZ_LABEL)), 20], id, sui_noop);
+		if (sui_is_hovered(id))
+			sui_fill(rp + [MC_PITCH + 6, 18], [stringwidth(ui_fit_text(MC_Plain(name), width - 26 - MC_PITCH, SZ_LABEL), TRUE, SZ_LABEL), 1], COL_ACCENT, 1, 0);
 		if (sui_is_released(id)) MStats_Player(who);
 	}
-	return MC_NAME_H + MC_GAP + ui_para(rp + [0, MC_NAME_H], width - 20, SZ_LABEL, MC_PITCH, MC_Plain(text), COL_TEXT, draw);
+	return MC_NAME_H + MC_GAP + ui_para(rp + [MC_PITCH + 6, MC_NAME_H], width - 26 - MC_PITCH, SZ_LABEL, MC_PITCH, MC_Plain(text), COL_TEXT, draw);
 };
 
 void(float width) MC_Layout =

@@ -53,6 +53,16 @@
 string chat_ring[CHAT_RING];    // built display lines, strzone'd
 string chat_mark[CHAT_RING];    // Patch 789: the speaker's picture mark, strzone'd or ""
 string chat_push_mark;          // set just before Chat_Push by a caller that knows one
+// P1685: a player's line keeps who to open (their account mark, else the board's guid digest) and how much of the
+// line is its speaker prefix ("* name", "(name", "name"); a click on the picture or that prefix opens the profile.
+// Every player's line gets the picture's square: the picture, or a chip with the name's initial until one loads.
+string chat_who[CHAT_RING];     // strzone'd or ""
+float  chat_npre[CHAT_RING];    // bytes of speaker prefix; 0 = not a player's line
+float  chat_init[CHAT_RING];    // the name's initial (a char code), 0 none
+string chat_push_who;
+float  chat_push_npre, chat_push_init, chat_bl_npre;
+string(string s) Chat_Plain;
+void(string who) Av_OpenAt;     // cl_avatar.qc
 float  chat_stamp[CHAT_RING];   // time of arrival; 0 = slot empty
 float  chat_write;              // next ring slot
 
@@ -375,11 +385,65 @@ string() Chat_BuildLine =
 
 	col = (strstrofs(nm, "^", 0) >= 0) ? "" : strcat("^", Chat_ColourOf(chat_ps_slot));
 
+	chat_bl_npre = strlen(col) + strlen(nm) + ((chat_ps_me) ? 2 : (chat_ps_team ? 1 : 0));
 	if (chat_ps_me)
 		return strcat("* ", col, nm, "^7 ", chat_ps_text);
 	if (chat_ps_team)
 		return strcat("(", col, nm, "^7): ", chat_ps_text);
 	return strcat(col, nm, "^7: ", chat_ps_text);
+};
+
+// P1685: the picture's square comes before every player's line and every line with a picture.
+float(float j) Chat_HasFace = { return chat_mark[j] != "" || chat_npre[j] > 0; };
+
+// The picture's square at p: the picture once loaded, else a chip with the initial.
+void(float j, vector p, float sz, float a) Chat_DrawFace =
+{
+	local string img, c;
+	img = (chat_mark[j] != "") ? SteamPic_Of(chat_mark[j]) : "";
+	if (img != "")
+	{
+		drawpic(p, img, [sz, sz], '1 1 1', a, 0);
+		return;
+	}
+	if (!chat_npre[j]) return;          // a Friends line's picture still loading: nothing, as before
+	_sui_round_draw(p, [sz, sz], ceil(sz * 0.25), SUI_THEME_HOVER, a * 0.9);
+	if (chat_init[j] > 32)
+	{
+		c = chr2str(chat_init[j]);
+		drawstring(p + [(sz - stringwidth(c, FALSE, [sz, sz] * 0.7)) * 0.5, sz * 0.15], c, [sz, sz] * 0.7, SUI_THEME_DIM, a, 0);
+	}
+};
+
+// The picture and speaker prefix of line j's first row, from the row's left edge -> its width (0: nothing to open).
+// In ui_font_ui, as drawn (the caller sets it).
+float(float j, float sz) Chat_NameW =
+{
+	if (chat_who[j] == "") return 0;
+	return (sz + 3) + ((chat_npre[j] > 0) ? stringwidth(substring(chat_ring[j], 0, chat_npre[j]), TRUE, [sz, sz]) : 0);
+};
+
+// The drawn line whose picture or name is under m (the open history's rows, as last drawn), else -1.
+// The same rectangle the hover underline uses: x from chat_dr_x, the first row from chat_ordy.
+float(vector m) Chat_NameAt =
+{
+	local float i, j, sz, w;
+	sz = chat_wkey_y;
+	if (sz <= 0) return -1;
+	Font_Set(ui_font_ui);
+	for (i = 0; i < chat_ordn; i = i + 1)
+	{
+		j = chat_ord[i];
+		w = Chat_HasFace(j) ? Chat_NameW(j, sz) : 0;     // as the underline: no square drawn, nothing to click
+		if (w > 0)
+		if (m_x >= chat_dr_x && m_x < chat_dr_x + w && m_y >= chat_ordy[i] && m_y < chat_ordy[i] + sz * 1.35)
+		{
+			Font_Reset();
+			return j;
+		}
+	}
+	Font_Reset();
+	return -1;
 };
 
 void(string line) Chat_Push =
@@ -390,7 +454,14 @@ void(string line) Chat_Push =
 	if (chat_mark[chat_write] != "")
 		strunzone(chat_mark[chat_write]);
 	chat_mark[chat_write]  = (chat_push_mark != "") ? strzone(chat_push_mark) : "";
-	chat_push_mark = "";
+	if (chat_who[chat_write] != "")
+		strunzone(chat_who[chat_write]);
+	if (chat_push_who == "") chat_push_who = chat_push_mark;     // a Friends line: its picture opens them
+	chat_who[chat_write]   = (chat_push_who != "") ? strzone(chat_push_who) : "";
+	chat_npre[chat_write]  = chat_push_npre;
+	chat_init[chat_write]  = chat_push_init;
+	chat_push_mark = chat_push_who = "";
+	chat_push_npre = chat_push_init = 0;
 	chat_stamp[chat_write] = time;
 	chat_wrapn[chat_write] = 0;
 	if (chat_scroll > 0)
@@ -426,11 +497,17 @@ void(string msg, float level) CSQC_Parse_Print =
 		if (Chat_Silenced(getplayerkeyvalue(chat_ps_slot, "name")))
 			return;                      // silenced: neither drawn nor echoed
 
+	chat_bl_npre = 0;
 	line = Chat_BuildLine();
 	print(strcat(line, "\n"));
 	// The account's mark only: a board's guid digest (*phash) has no picture.
 	if (chat_ps_slot >= 0)
+	{
 		chat_push_mark = getplayerkeyvalue(chat_ps_slot, "*ahash");
+		chat_push_who = (chat_push_mark != "") ? chat_push_mark : getplayerkeyvalue(chat_ps_slot, "*phash");
+		chat_push_npre = chat_bl_npre;
+		chat_push_init = str2chr(strtoupper(substring(Chat_Plain(getplayerkeyvalue(chat_ps_slot, "name")), 0, 1)), 0);
+	}
 	Chat_Push(line);
 };
 
@@ -697,7 +774,7 @@ float(float j, float maxw, float sz) Chat_RowsOf =
 	if (chat_wrap[j] != "")
 		strunzone(chat_wrap[j]);
 	// A line with a picture wraps narrower, by the face (Chat_Draw).
-	chat_wrap[j]  = Chat_Wrap(chat_ring[j], maxw - ((chat_mark[j] != "") ? sz + 3 : 0), sz);
+	chat_wrap[j]  = Chat_Wrap(chat_ring[j], maxw - (Chat_HasFace(j) ? sz + 3 : 0), sz);
 	if (chat_wrap[j] != "")             // a zoned "" would read as unset and never be freed
 		chat_wrap[j] = strzone(chat_wrap[j]);
 	chat_wrapn[j] = chat_wr_n;
@@ -989,7 +1066,7 @@ float(vector m) Chat_HistHit =
 			chat_hh_o = strlen(Chat_Plain(chat_ring[j]));
 		else
 		{
-			ind = (chat_mark[j] != "") ? sz + 3 : 0;
+			ind = Chat_HasFace(j) ? sz + 3 : 0;
 			t = Chat_Row(chat_wrap[j], r);
 			chat_hh_o = Chat_RowAt(j, r) + Chat_RowHit(t, m_x - chat_dr_x - ind, sz);
 		}
@@ -1181,7 +1258,6 @@ void(vector scr) Chat_Draw =
 	local float life, fade, lines, szu, sz, lh, x, yb, maxw;
 	local float i, j, age, a, n, used, cap, room, ind, ba, dt, pad, fh, hb, top, total, y, cn, cr, cdone, ca, r, w;
 	local float bg;
-	local string img;
 	local vector key, bp, bs;
 
 	// Patch 821: the panel fades in while a draft is open, and out after.  Patch 824:
@@ -1348,12 +1424,15 @@ void(vector scr) Chat_Draw =
 			chat_ordn = chat_ordn + 1;
 			a = max(ca, ba);
 			ind = 0;
-			if (chat_mark[j] != "")
+			if (Chat_HasFace(j))
 			{
 				ind = sz + 3;
-				img = SteamPic_Of(chat_mark[j]);
-				if (img != "")
-					drawpic([x, y, 0], img, [sz, sz], '1 1 1', a, 0);
+				Chat_DrawFace(j, [x, y], sz, a);
+				// P1685: under the cursor the picture and name read as a link to the profile (Chat_NameAt's rectangle)
+				w = Chat_NameW(j, sz);
+				if (w > 0 && chat_ms_ok)
+				if (chat_ms_x >= x && chat_ms_x < x + w && chat_ms_y >= y && chat_ms_y < y + sz * 1.35)
+					drawfill([x + ind, y + sz + 1], [max(1, w - ind), 1], SUI_THEME_TEXT, a, 0);
 			}
 			Chat_SelDraw(j, [x + ind, y], n, sz, lh, ba);
 			Chat_DrawRows(chat_wrap[j], n, FALSE, [x + ind, y], sz, lh, a, maxw - ind);
@@ -1424,12 +1503,10 @@ void(vector scr) Chat_Draw =
 		// and shadow for the mono face are opt-in (hud_font_outline).
 		// Patch 789: the speaker's picture at the message's first row.
 		ind = 0;
-		if (chat_mark[j] != "")
+		if (Chat_HasFace(j))
 		{
 			ind = sz + 3;
-			img = SteamPic_Of(chat_mark[j]);
-			if (img != "")
-				drawpic([x, yb, 0], img, [sz, sz], '1 1 1', a, 0);
+			Chat_DrawFace(j, [x, yb], sz, a);
 		}
 		Chat_DrawRows(chat_wrap[j], n, chat_wrapn[j] > n, [x + ind, yb], sz, lh, a, maxw - ind);
 		chat_ordy[i] = chat_dr_y0;
@@ -1819,6 +1896,19 @@ void() Chat_Press =
 		if (chat_anchor == chat_caret)
 			chat_anchor = -1;
 		return;
+	}
+	// P1685: a click on a speaker's picture or name opens their profile (the draft goes, as with Esc).
+	if (chat_clk_n == 1 && !shift)
+	if (Chat_In(chat_ms, [chat_box_p_x, chat_his_y0], [chat_box_s_x, chat_his_y1 - chat_his_y0]))
+	{
+		at = Chat_NameAt(chat_ms);
+		if (at >= 0)
+		{
+			p = chat_who[at];
+			Chat_Close();
+			Av_OpenAt(p);
+			return;
+		}
 	}
 	if (Chat_In(chat_ms, [chat_box_p_x, chat_his_y0], [chat_box_s_x, chat_his_y1 - chat_his_y0]))
 	if (Chat_HistHit(chat_ms))
