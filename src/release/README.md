@@ -33,13 +33,15 @@ packs thumbnails fetched since the last release into a new atlas page and copies
 ship set reads them from. Exit 2 means a table was refused: read the names it lost,
 and `--accept` only if they are right.
 
-Two more generated tables ship and the Gates step refuses without them: `scripts/matcolours.txt`
-(P1548, `tools/matcolours.py`) and `scripts/unshipped.txt` (P1560,
+Three more generated tables ship and the Gates step refuses without them: `scripts/matcolours.txt`
+(P1548, `tools/matcolours.py`), `scripts/unshipped.txt` (P1560,
 `python tools/mapdeps.py --dry --unshipped <release worktree>/ftesurf/scripts/unshipped.txt`, which
-refuses unless every pack mapdeps.py knows, mounted and addon, is installed and indexes files).
+refuses unless every pack mapdeps.py knows, mounted and addon, is installed and indexes files) and
+`scripts/wadcolours.txt` (P1660, `python3 -I tools/wadcolours.py <out.txt> <Half-Life dir>`, on a
+machine with Half-Life installed).
 P1571 keeps these authored assets under the already-managed `scripts/` namespace so existing
 0.1.45 updaters accept the feed; do not add player-data exceptions to updater policies. Copy only
-these two current generated outputs from `C:\FTESurf\ftesurf\scripts`, or regenerate them after
+these three current generated outputs from `C:\FTESurf\ftesurf\scripts`, or regenerate them after
 a game or library change. For a pre-P1571 developer install, copy the two named old `data/`
 outputs to the new staging names after checking their hashes; leave the original files untouched.
 Never bulk-copy `data/`. The format is unchanged and `.txt` tables are not executable scripts.
@@ -52,6 +54,16 @@ Use the existing Linux builder for the engine pin when needed:
 pwsh -NoProfile -File tools/linux/build-linux.ps1 -Commit <engine-sha> -FteRoot <engine-worktree> -ExpectSonames
 pwsh -NoProfile -File src/release/release.ps1 -Bump patch -DryRun -BuildNumber <current-qcbuild> -FteRoot <engine-worktree> -LauncherRoot <launcher-worktree> -Linux dist/linux-build -PreviousUpdateFeed <saved-live-update.json> -MaxTotalMB 128
 ```
+
+The Linux drop also holds `fteplug_ui_imgui_amd64.so` (P1654; `build.sh` now needs an engine
+commit that has Patch 1654) and its gates cover it, but no release ships it yet: `$LinuxShipImgui`
+in `release.ps1` is off. Every installed launcher and engine refuses a whole feed, on both
+platforms, when one entry is outside its own disk policy, and no feed updates a launcher (see
+`ROOT` in `tools/updatefeed.py`). Turn it on only for a feed whose readers were all built with
+the name -- the first worldofsurf-identity feed (P1593 stage 3) at the earliest, never
+`update.json` -- in the change that adds the name to `qkupdate.c`, the launcher's
+`ftesurf_update.rs` and `updatefeed.py`. The Linux archive then carries the plugin and its own
+`THIRD-PARTY.txt`.
 
 The 128 MiB stage budget is the normal published 0.1.45/0.1.46 budget, not a
 bypass: their Windows stages are 125.72/126.87 MiB, already above the 80 MiB

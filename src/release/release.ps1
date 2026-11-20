@@ -138,7 +138,8 @@ param(
     [string] $Prefix   = 'ftesurf',
     [string] $DlBase   = 'https://dl.proto.bar',
 
-    # A tools\linux build drop: fteqw64, fteplug_hl2_amd64.so, BUILDINFO.txt.
+    # A tools\linux build drop: fteqw64, fteplug_hl2_amd64.so, BUILDINFO.txt (and fteplug_ui_imgui_amd64.so,
+    # read only under $LinuxShipImgui).
     [string]   $Linux,
     [string]   $LinuxDistro = $(if ($env:FTESURF_WSL_DISTRO) { $env:FTESURF_WSL_DISTRO } else { 'Ubuntu-22.04' }),
     [string]   $LinuxBuildChroot = '/srv/ftebuild-bullseye',
@@ -258,6 +259,8 @@ $ShipGameFiles = @(
     'ftesurf/scripts/matcolours.txt'
     # P1560: per map, what no pack supplies (tools/mapdeps.py --unshipped); the hl2 plugin keeps those quiet
     'ftesurf/scripts/unshipped.txt'
+    # P1660: each Valve GoldSrc texture's average colour (tools/wadcolours.py), drawn where its WAD is missing
+    'ftesurf/scripts/wadcolours.txt'
     # P1625: which game ships each materials/ and models/ folder (tools/assetgames.py, tracked); the missing-content warning names it
     'ftesurf/scripts/assetgames.txt'
     # WITHOUT THIS THE DOWNLOAD BUTTON DOES NOT EXIST.  ui_dl_load reads it to
@@ -438,6 +441,15 @@ $LinuxExec = @('ftesurf64', 'ftesurf.sh', 'WOS-Launcher')
 $LinuxRequired = @('ftesurf64', 'fteplug_hl2_amd64.so', 'ftesurf.sh', 'WOS-Launcher', 'notices/bootstrap.txt', 'default.fmf', 'LICENSE',
     'INSTALL.txt', 'VERSION.txt', 'SOURCE.txt', 'ftesurf/csprogs.dat', 'ftesurf/qwprogs.dat', 'ftesurf/menu.dat',
     'ftesurf/fs_addons.default.txt', 'ftesurf/fs_addons.txt', 'ftesurf/cfg/default.cfg')
+# P1654: the Linux ui_imgui plugin is in every drop (tools\linux\build.sh) and in NO release yet.
+# Installed launchers and engines refuse a WHOLE feed naming a path their own policy lacks, on both
+# platforms, and no feed updates a launcher (tools\updatefeed.py ROOT has the citations). Set this only
+# for a feed whose readers all manage the name; until then the signed-feed step refuses a stage holding it.
+# $LinuxRequired stays a literal: tools\test_bootstrap_linux_archive.ps1 reads it from the AST.
+$LinuxShipImgui = $false
+$LinuxImguiName = 'fteplug_ui_imgui_amd64.so'
+$LinuxImguiFiles = @(if ($LinuxShipImgui) { $LinuxImguiName })                        # added to the drop lists
+$LinuxImguiRequired = @(if ($LinuxShipImgui) { $LinuxImguiName; 'THIRD-PARTY.txt' })  # added to $LinuxRequired
 # Template keys come from the same Get-ReceiptTokens renderer used below.
 $LinuxDeny = @(
     '\.(exe|dll|bat|cmd|lnk|pdb)$'
@@ -547,9 +559,9 @@ Good "7-Zip, git, rclone, curl, ssh, scp present; VERSION is tracked"
 if ($Linux) {
     if (-not (Test-Path -LiteralPath $Linux -PathType Container)) { Fail "-Linux: no drop directory at $Linux" }
     $LinuxDrop = (Resolve-Path -LiteralPath $Linux).Path
-    foreach ($f in @('fteqw64', 'fteplug_hl2_amd64.so', 'BUILDINFO.txt')) {
+    foreach ($f in @('fteqw64', 'fteplug_hl2_amd64.so', 'BUILDINFO.txt') + $LinuxImguiFiles) {
         if (-not (Test-Path -LiteralPath (Join-Path $LinuxDrop $f) -PathType Leaf)) {
-            Fail "-Linux: the drop $LinuxDrop has no $f (tools\linux\build.sh writes all three)"
+            Fail "-Linux: the drop $LinuxDrop has no $f (tools\linux\build.sh writes it)"
         }
     }
     $LinuxPack = Join-Path $RelDir 'linux-pack.sh'
@@ -941,6 +953,7 @@ if ($Linux) {
     $lxHard = @(); $lxSkew = @()
     $lxExe  = Join-Path $LinuxDrop 'fteqw64'
     $lxPlug = Join-Path $LinuxDrop 'fteplug_hl2_amd64.so'
+    $lxImg  = Join-Path $LinuxDrop $LinuxImguiName   # read only under $LinuxShipImgui
 
     & git -C $SurfDir ls-files --error-unmatch -- ftesurf.sh 2>$null | Out-Null
     if ($LASTEXITCODE -ne 0) { $lxHard += 'ftesurf.sh is not tracked by git (.gitignore needs !/ftesurf.sh)' }
@@ -957,15 +970,23 @@ if ($Linux) {
     $lxHard += @(Test-ByteStrings $lxPlug -MustNot $LinuxPluginMustNot)
     $hLxExe   = (Get-FileHash -LiteralPath $lxExe -Algorithm SHA256).Hash
     $hLxPlug  = (Get-FileHash -LiteralPath $lxPlug -Algorithm SHA256).Hash
+    $hLxImg   = $null
+    if ($LinuxShipImgui) {
+        if (-not (Test-ElfX64 $lxImg)) { $lxHard += "$LinuxImguiName is not an x86-64 ELF file" }
+        $hLxImg = (Get-FileHash -LiteralPath $lxImg -Algorithm SHA256).Hash
+    }
     $lxBinRev = @(Get-BinaryRevisions $lxExe)
     $winRevs  = @(Get-BinaryRevisions $exeLocal)
     $lxPatch = 0; $lxCmpTo = $null; $lxPinEq = $null
     $bi = $null
-    try { $bi = Read-LinuxBuildInfo (Join-Path $LinuxDrop 'BUILDINFO.txt') } catch { $lxHard += $_.Exception.Message }
+    try { $bi = Read-LinuxBuildInfo (Join-Path $LinuxDrop 'BUILDINFO.txt') (@('fteqw64', 'fteplug_hl2_amd64.so') + $LinuxImguiFiles) } catch { $lxHard += $_.Exception.Message }
     if ($bi) {
         if ($bi.Gates -cne 'all PASS') { $lxHard += "BUILDINFO gates: $($bi.Gates)" }
         foreach ($p in @(@('fteqw64', $hLxExe), @('fteplug_hl2_amd64.so', $hLxPlug))) {
             if ($bi.Sha256[$p[0]] -ne $p[1]) { $lxHard += "$($p[0]) sha256 $($p[1].Substring(0, 12)) != BUILDINFO $($bi.Sha256[$p[0]].Substring(0, 12))" }
+        }
+        if ($LinuxShipImgui -and $bi.Sha256[$LinuxImguiName] -ne $hLxImg) {
+            $lxHard += "$LinuxImguiName sha256 $($hLxImg.Substring(0, 12)) != BUILDINFO $($bi.Sha256[$LinuxImguiName].Substring(0, 12))"
         }
         & git -C $FteRoot cat-file -e "$($bi.Commit)^{commit}" 2>$null
         if ($LASTEXITCODE -ne 0) { $lxHard += "BUILDINFO commit $($bi.Commit) is not in $FteRoot" }
@@ -1011,7 +1032,8 @@ if ($Linux) {
     }
 
     $lxNeeded = [ordered]@{}; $lxGlibcs = @(); $lxHostGlibc = $null; $lxHostOs = $null
-    foreach ($l in (Invoke-Wsl @('sh', $LinuxPackWsl, 'inspect', "$LinuxDropWsl/fteqw64", "$LinuxDropWsl/fteplug_hl2_amd64.so") 'linux-pack.sh inspect')) {
+    $lxInspect = @("$LinuxDropWsl/fteqw64", "$LinuxDropWsl/fteplug_hl2_amd64.so") + @($LinuxImguiFiles | ForEach-Object { "$LinuxDropWsl/$_" })
+    foreach ($l in (Invoke-Wsl (@('sh', $LinuxPackWsl, 'inspect') + $lxInspect) 'linux-pack.sh inspect')) {
         if ($l -cmatch '^N (\S+) (\S+)$') { if (-not $lxNeeded.Contains($Matches[1])) { $lxNeeded[$Matches[1]] = @() }; $lxNeeded[$Matches[1]] += $Matches[2] }
         elseif ($l -cmatch '^G \S+ GLIBC_([0-9.]+)$') { $lxGlibcs += $Matches[1] }
         elseif ($l -cmatch '^HOST ([0-9.]+)$') { $lxHostGlibc = $Matches[1] }
@@ -1513,6 +1535,12 @@ if ($Linux) {
     }
     Copy-Item -LiteralPath $lxExe  -Destination (Join-Path $LxTree 'ftesurf64')
     Copy-Item -LiteralPath $lxPlug -Destination (Join-Path $LxTree 'fteplug_hl2_amd64.so')
+    if ($LinuxShipImgui) {
+        Copy-Item -LiteralPath $lxImg -Destination (Join-Path $LxTree $LinuxImguiName)
+        # The Windows notices minus winpthreads; gate L2 compared the drop's commit with the tree they were read from.
+        try { $lxTp = ConvertTo-LinuxImguiNotice $tp.Replace("`r`n", "`n") } catch { Fail $_.Exception.Message }
+        [System.IO.File]::WriteAllText((Join-Path $LxTree 'THIRD-PARTY.txt'), $lxTp, (New-Object System.Text.UTF8Encoding $false))
+    }
     # A CR after the shebang is "bad interpreter: /bin/sh^M".
     $sh = [System.IO.File]::ReadAllText((Join-Path $SurfDir 'ftesurf.sh')).Replace("`r`n", "`n")
     if (-not $sh.StartsWith('#!') -or $sh.Contains("`r")) { Fail 'ftesurf.sh must start with #! and contain no CR' }
@@ -1520,6 +1548,10 @@ if ($Linux) {
     foreach ($p in @(@('ftesurf64', $hLxExe), @('fteplug_hl2_amd64.so', $hLxPlug))) {
         if ((Get-FileHash -LiteralPath (Join-Path $LxTree $p[0]) -Algorithm SHA256).Hash -ne $p[1]) { Fail "staged $($p[0]) does not hash to the drop's" }
     }
+    if ($LinuxShipImgui -and (Get-FileHash -LiteralPath (Join-Path $LxTree $LinuxImguiName) -Algorithm SHA256).Hash -ne $hLxImg) { Fail "staged $LinuxImguiName does not hash to the drop's" }
+    # Both '' unless the plugin ships, so VERSION.txt and INSTALL.txt are byte-identical without it.
+    $lxImgVersion = if ($LinuxShipImgui) { "$LinuxImguiName  sha256 $hLxImg`n" } else { '' }
+    $lxImgInstall = if ($LinuxShipImgui) { "`n$LinuxImguiName is built with Dear ImGui and ImPlot (MIT): see`nTHIRD-PARTY.txt." } else { '' }
     $lxDat = @{}
     foreach ($d in @('csprogs.dat', 'qwprogs.dat', 'menu.dat')) { $lxDat[$d] = (Get-FileHash -LiteralPath (Join-Path $LxTree "ftesurf\$d") -Algorithm SHA256).Hash }
 
@@ -1538,7 +1570,7 @@ bootstrap source sha256 $($linuxBootstrap.provenance.source_sha256)
 WOS-Launcher      sha256 $($linuxBootstrap.provenance.sha256)
 ftesurf64             sha256 $hLxExe
 fteplug_hl2_amd64.so  sha256 $hLxPlug
-csprogs.dat           sha256 $($lxDat['csprogs.dat'])
+${lxImgVersion}csprogs.dat           sha256 $($lxDat['csprogs.dat'])
 qwprogs.dat           sha256 $($lxDat['qwprogs.dat'])
 menu.dat              sha256 $($lxDat['menu.dat'])
 
@@ -1610,7 +1642,7 @@ ftesurf/logs/qconsole.log.
 Alpha software: physics fixes between builds can invalidate recorded times.
 Licence: GPLv2 or later, see LICENSE.  The three fonts in ftesurf/gfx/fonts are
 SIL OFL 1.1, see ftesurf/gfx/fonts/FONTS.md. The Rust bootstrap is MIT;
-its full license and dependency notices are in notices/bootstrap.txt.
+its full license and dependency notices are in notices/bootstrap.txt.${lxImgInstall}
 "@.Replace("`r`n", "`n"), (New-Object System.Text.UTF8Encoding $false))
 
     $lxFiles = @(Get-ChildItem -LiteralPath $LxTree -Recurse -File)
@@ -1649,7 +1681,7 @@ its full license and dependency notices are in notices/bootstrap.txt.
     $arcRel = @($lxEntries | Where-Object { $_.Type -eq '-' -and $_.Path.StartsWith("$LinuxTop/") } | ForEach-Object { $_.Path.Substring($LinuxTop.Length + 1) })
     Test-Deny $arcRel 'the packed Linux archive' $LinuxDeny
     Assert-BootstrapEntries $arcRel 'linux64'
-    foreach ($must in $LinuxRequired) { if ($arcRel -cnotcontains $must) { $prob += "missing required file $LinuxTop/$must" } }
+    foreach ($must in @($LinuxRequired) + $LinuxImguiRequired) { if ($arcRel -cnotcontains $must) { $prob += "missing required file $LinuxTop/$must" } }
     foreach ($l in @($vr | Where-Object { $_.StartsWith('L ') })) { $prob += "ldd: $($l.Substring(2))" }
     if ($prob.Count) { Fail ("the Linux archive does not match its stage:`n" + (($prob | ForEach-Object { "      $_" }) -join "`n")) }
     Good "$($arcRel.Count) files: owner 0/0, 0755 only $($LinuxExec -join ' and '), sha256 = stage, ldd resolves both binaries"
@@ -1739,6 +1771,10 @@ if ($Linux) {
                 'ftesurf/menu.dat'     = $lxDat['menu.dat']
             }
         }
+    }
+    if ($LinuxShipImgui) {   # appended, like this whole section
+        $receipt['linux']['engine']['imgui_sha256'] = $hLxImg
+        $receipt['linux']['content']['hashes'][$LinuxImguiName] = $hLxImg
     }
 }
 # The bootstrap is intentionally not self-managed: alpha upgrades may require
