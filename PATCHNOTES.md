@@ -21,6 +21,12 @@
 
 ## next
 
+### P1667 Linux: the game starts on newer Wayland desktops
+- The Linux download no longer closes straight after starting on newer Wayland desktops (recent KDE Plasma, GNOME and wlroots-based ones such as Hyprland, sway or labwc).
+
+### P1666 The launcher keeps itself up to date
+- When the game checks for updates it now also replaces an outdated WOS-Launcher with the current one, so you never need to download a new launcher by hand. The old one is kept in .ftesurf-updater/launcher-previous.
+
 ## 0.1.51 2026-11-20
 
 ### P1665 Counter-Strike eye height on CS 1.6 maps

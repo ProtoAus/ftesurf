@@ -1,5 +1,20 @@
 # lextest.md — things waiting on a human
 
+## P1666 / P1667 -- the game keeps the launcher current; Linux starts on newer Wayland (worldofsurf-75, 21 Nov)
+P1666 is the launcher auto-updater you asked for. The launcher itself is still never in the update list (every installed
+launcher would refuse the whole update over a name it does not know); instead the signed update names it separately,
+and the GAME replaces an outdated WOS-Launcher after its update check. Existing players get it with no download: their
+launcher installs the new game, and the game's next check (main menu) replaces the launcher.
+1. Windows and Linux installs that are up to date: open the main menu with updates on; the console says nothing about
+   the launcher (it is current). `update_launcher_state` reads `current`.
+2. An old launcher (e.g. ftesurf-launcher from an early install, or a WOS-Launcher from before 0.1.48): after one start
+   of 0.1.52 the console says `update: launcher updated WOS-Launcher...`; the old one is in .ftesurf-updater/launcher-previous/.
+3. While on a server nothing is replaced (it waits for the next start). `update_launcher 0` turns it off.
+P1667: on Linux under a Wayland session (KDE, GNOME, Hyprland, sway...), the released ftesurf64 no longer closes at start
+("listener function for opcode 2 of wl_surface is NULL" in the terminal was the old crash). Your own Linux build never had it.
+Next (not in this release): ImGui run graphs for Linux players -- the new Linux launcher that installs the plugin now
+reaches everyone through P1666; it needs the launcher change and a way to build the Windows launcher from this PC.
+
 ## 0.1.51 release -- PUBLISHED 20 Nov 11:24Z; owner check PENDING (record: tools/release-0.1.51.md)
 - Update through the launcher (Windows or Linux); the menu corner should say World of Surf 0.1.51.
 - It carries everything that was under "next": the GoldSrc/Half-Life maps (P1654-P1660), P1664/P1665 below, the
