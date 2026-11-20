@@ -15,7 +15,7 @@ MAP_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z')
 HEX8 = re.compile(r'[0-9a-f]{8}\Z')
 HEX64 = re.compile(r'[0-9a-f]{64}\Z')
 PROFILES = {
-    'default': dict(movement='default', tick_us=15000, label='Default / 66 tick', unranked=0),
+    'default': dict(movement='default', tick_us=15000, label='Default / map tick', unranked=0),
     'hl2-pre': dict(movement='hl2-pre-v1', tick_us=15000, label='HL2 pre', unranked=1),
     'hl2-post': dict(movement='hl2-post-v1', tick_us=15000, label='HL2 post', unranked=1),
     'ag-100': dict(movement='ag100-v1', tick_us=10000, label='AG 100', unranked=1),
@@ -23,6 +23,17 @@ PROFILES = {
     'ag-1000': dict(movement='ag1000-v1', tick_us=1000, label='AG 1000', unranked=1),
     'cs16': dict(movement='cs16-v1', tick_us=10000, label='CS 1.6', unranked=1),
 }
+# The default profile keeps each map kind's own tick (P1639): surf 66.7 Hz, bhop 100 Hz (mode_bhop.cfg). A node running
+# the default profile reports either between matches and reaches the round's tick when it loads the drafted map.
+KIND_TICK = {'surf': 15000, 'bhop': 10000}
+
+
+def tick_for(profile, kind):
+    return KIND_TICK[kind] if profile == 'default' else PROFILES[profile]['tick_us']
+
+
+def node_ticks(profile):
+    return tuple(sorted(set(KIND_TICK.values()))) if profile == 'default' else (PROFILES[profile]['tick_us'],)
 
 
 def settings(data, legacy=False):
@@ -45,7 +56,7 @@ def settings(data, legacy=False):
                 all(MAP_NAME.fullmatch(n) for n in pool), 'bad pool')
         pool = sorted(pool)
     return dict(kind=data['kind'], tiers=tiers, profile=data['profile'],
-                tick_us=PROFILES[data['profile']]['tick_us'], pool=pool)
+                tick_us=tick_for(data['profile'], data['kind']), pool=pool)
 
 
 def observe(match, data, latched=True):
@@ -58,7 +69,7 @@ def observe(match, data, latched=True):
     profile = PROFILES[match['settings']['profile']]
     require(data.get('movement') == profile['movement'], 'wrong movement')
     for key in ('tick_us', 'clock_us'):
-        require(integer(data, key, 1000, 15000) == profile['tick_us'], 'wrong ' + key)
+        require(integer(data, key, 1000, 15000) == match['settings'].get('tick_us'), 'wrong ' + key)
     pin = match['_pins'].get(match['current_map'])
     require(pin is not None, 'missing frozen qualification')
     for key in ('mapcrc', 'zonepin', 'gamemode'):
@@ -125,7 +136,9 @@ def require_current_settings(match):
     # State/leave/cancel/abort/restoration-gated release stay available.
     configured = match.get('settings')
     require(type(configured) is dict and
-            set(configured) == {'kind', 'tiers', 'profile', 'tick_us', 'pool'},
+            set(configured) == {'kind', 'tiers', 'profile', 'tick_us', 'pool'} and
+            configured.get('profile') in PROFILES and configured.get('kind') in KIND_TICK and
+            configured.get('tick_us') == tick_for(configured['profile'], configured['kind']),
             'Pre-Beta tournament: cancel and create a new tournament.')
 
 

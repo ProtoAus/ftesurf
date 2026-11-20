@@ -21,6 +21,9 @@
 
 ## next
 
+### P1639 Bhop tournaments at 100 tick
+- Bhop tournaments play at bhop's normal 100 tick.
+
 ### P1635 Tournament rounds start and end cleanly
 - In a tournament the F6 panel closes when the countdown starts, and a run still going when the round ends is cancelled rather than posted to the leaderboards.
 

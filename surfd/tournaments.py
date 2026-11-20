@@ -60,7 +60,7 @@ def map_pool(db, d, settings):
 def compatible(row, settings):
     profile = rules.PROFILES[settings['profile']]
     return (row['movement'] == profile['movement'] and
-            row['tick_us'] == row['clock_us'] == profile['tick_us'])
+            row['tick_us'] == row['clock_us'] and row['tick_us'] in rules.node_ticks(settings['profile']))
 
 
 def drift(match, data):
@@ -105,7 +105,7 @@ def register(app, d):
             return response(dict(ok=1, v=1, enabled=1, policy='free_beta', hosting=int(hosting_allowed(d)),
                                  rows=rows[offset:offset+limit], total=len(rows), unqualified=unqualified,
                                  offset=offset, limit=limit, filters={k: settings[k] for k in ('kind', 'tiers', 'profile')},
-                                 tick_us=settings['tick_us'], profiles=[dict(id=k, **v) for k, v in rules.PROFILES.items()]))
+                                 tick_us=settings['tick_us'], profiles=[dict(v, id=k, tick_us=rules.tick_for(k, settings['kind'])) for k, v in rules.PROFILES.items()]))
         except rules.Refusal as exc:
             return response(dict(ok=0, v=1, enabled=1, error=str(exc)), 400)
 
@@ -122,14 +122,15 @@ def register(app, d):
                 rows.append(dict(id=m['id'], node=m['node'], name=m['name'], addr=m['addr'],
                                  phase=m['phase'], players=len(rules.competitors(m)),
                                  capacity=m['capacity'], map=m['current_map']))
+        ticks = rules.node_ticks('default')
         slots = [dict(node=r['node'], name=r['name'][:64], addr=r['addr'], map=r['map'])
-                 for r in db.execute('SELECT l.* FROM lobbies l JOIN tournament_nodes t ON t.node=l.node'
+                 for r in db.execute(('SELECT l.* FROM lobbies l JOIN tournament_nodes t ON t.node=l.node'
                                      ' WHERE l.last_seen>? AND l.last_seen<=? AND t.seen>? AND t.seen<=?'
-                                     " AND l.players=0 AND t.native_occupants=0 AND t.movement='default' AND t.tick_us=15000 AND t.clock_us=15000 AND NOT EXISTS"
+                                     " AND l.players=0 AND t.native_occupants=0 AND t.movement='default' AND t.tick_us=t.clock_us AND t.tick_us IN (%s) AND NOT EXISTS"
                                      ' (SELECT 1 FROM tournament_reservations r WHERE r.node=l.node)'
                                      ' AND NOT EXISTS (SELECT 1 FROM assignments a WHERE a.node=l.node AND a.asked_at>=?)'
-                                     ' ORDER BY l.node LIMIT 200',
-                                     (now-d.lobby_ttl, now, now-CAP_TTL, now, now-d.assign_ttl))]
+                                     ' ORDER BY l.node LIMIT 200') % ','.join('?' * len(ticks)),
+                                     (now-d.lobby_ttl, now, now-CAP_TTL, now, *ticks, now-d.assign_ttl))]
         return response(dict(v=1, enabled=1, rows=rows, slots=slots))
 
     @app.post('/api/tournaments/game')

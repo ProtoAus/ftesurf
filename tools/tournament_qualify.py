@@ -17,7 +17,7 @@ import time
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / 'surfd'))
-from tournament_rules import PROFILES
+from tournament_rules import PROFILES, tick_for
 from seed_csprogs import md4, fold_md4
 
 MAP_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z')
@@ -97,7 +97,7 @@ def parse_observation(line, name, profile, expected_crc):
         raise ValueError('Malformed or unexpected native qualification observation')
     _, _, crc, zonepin, movement, tick, clock, mode, generation, valid = parts
     expected_movement = PROFILES[profile]['movement']
-    expected_tick = PROFILES[profile]['tick_us']
+    expected_tick = tick_for(profile, mode) if mode in ('surf', 'bhop') else -1
     if (not HEX8.fullmatch(crc) or crc == '00000000' or crc != expected_crc
             or not HEX64.fullmatch(zonepin) or mode not in ('surf', 'bhop')
             or movement != expected_movement
