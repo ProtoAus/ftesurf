@@ -1049,7 +1049,9 @@ void() PreStrafe_InputFrame =
 {
 	local float onground, jump;
 
-	if (!cvar("run_prestrafe"))
+	// P1664: never on a GoldSrc (BSP 30) map. A KZ climb is a standing jump with W held onto a ledge, and the
+	// assist took W for the whole flight, so the body went straight up (Lex on bkz_goldbhop_gs).
+	if (!cvar("run_prestrafe") || serverkey("*bspversion") == "30")
 	{
 		run_ps_release = FALSE;
 		return;
