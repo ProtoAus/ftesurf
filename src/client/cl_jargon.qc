@@ -104,7 +104,7 @@ float jg_hcn;
 string jg_hcmap;
 float(string p) TASJargon_Head =
 {
-	local float i, h, fh, c;
+	local float i, h, fh, c, mtr;
 	local string line;
 	if (jg_hcmap != zone_mapname)
 	{
@@ -118,7 +118,7 @@ float(string p) TASJargon_Head =
 	if (fh < 0) return -1;
 	if (jg_hcn >= JG_HC) { strunzone(jg_hcp[0]); for (i = 1; i < JG_HC; i = i + 1) { jg_hcp[i-1] = jg_hcp[i]; jg_hct[i-1] = jg_hct[i]; jg_hcl[i-1] = jg_hcl[i]; jg_hcs[i-1] = jg_hcs[i]; jg_hcok[i-1] = jg_hcok[i]; jg_hctr[i-1] = jg_hctr[i]; jg_hcf[i-1] = jg_hcf[i]; } jg_hcn = JG_HC - 1; }
 	h = jg_hcn; jg_hcn = jg_hcn + 1;
-	jg_hcp[h] = strzone(p); jg_hct[h] = jg_hcl[h] = -1; jg_hcs[h] = 0; jg_hcok[h] = TRUE; jg_hctr[h] = 0.015; jg_hcf[h] = 0;
+	jg_hcp[h] = strzone(p); jg_hct[h] = jg_hcl[h] = -1; jg_hcs[h] = 0; jg_hcok[h] = TRUE; jg_hctr[h] = 0.015; jg_hcf[h] = -1; mtr = 0;
 	for (i = 0; i < 48; i = i + 1)
 	{
 		line = fgets(fh);
@@ -129,7 +129,8 @@ float(string p) TASJargon_Head =
 		else if (argv(0) == "track" && c == 2) jg_hct[h] = stof(argv(1));
 		else if (argv(0) == "leg" && c == 2) jg_hcl[h] = stof(argv(1));
 		else if (argv(0) == "ksftime" && c == 2) jg_hcs[h] = stof(argv(1));
-		else if (argv(0) == "tickrate" && c == 2 && stof(argv(1)) > 0) jg_hctr[h] = stof(argv(1));
+		else if (argv(0) == "tickrate" && c == 2 && stof(argv(1)) > 0) { if (!mtr) jg_hctr[h] = stof(argv(1)); }
+		else if (argv(0) == "movetickrate" && c == 2 && stof(argv(1)) > 0) { jg_hctr[h] = stof(argv(1)); mtr = TRUE; }   // the ticks' own rate
 		else if (argv(0) == "flags" && c == 2) jg_hcf[h] = stof(argv(1));
 	}
 	fclose(fh);
@@ -234,8 +235,8 @@ void(float track, float leg, float want) TASJargon_Own =
 		if (tg != RT_PB) if (tg != RT_RUN) continue;
 		hd = TASJargon_Head(f);
 		if (hd < 0) continue;
-		if (FS_RunClass(jg_hcf[hd]) != RC_CLEAN) continue;
-		t = stof(substring(b, 0, strstrofs(b, "_"))) * jg_hctr[hd];
+		if (jg_hcf[hd] < 0 || FS_RunClass(jg_hcf[hd]) != RC_CLEAN) continue;   // no flags line: unknown, not clean
+		t = rint(stof(substring(b, 0, strstrofs(b, "_"))) * jg_hctr[hd] * 100) / 100;
 		g = jg_gn;
 		TASJargon_Add(f, (t >= 60) ? sprintf("my run %g:%s%.2f", floor(t / 60), (t - 60 * floor(t / 60) < 10) ? "0" : "", t - 60 * floor(t / 60))
 			: sprintf("my run %.2fs", t), want);
@@ -303,8 +304,13 @@ void() TASJargon_Guides =
 // the folder scan above finds them. Boards in turn until one has recordings: KSF (CS:S, our tick), ours, Momentum.
 #define JGDL_TOP 3
 float jgdl_state;               // 0 idle, 1 board asked, 2 fetching its replays, 3 done, 4 gave up (jgdl_note)
-float jgdl_tier, jgdl_track, jgdl_leg, jgdl_c, jgdl_row, jgdl_tried, jgdl_got, jgdl_wait, jgdl_until, jgdl_rep;
+float jgdl_tier, jgdl_track, jgdl_leg, jgdl_row, jgdl_tried, jgdl_got, jgdl_wait, jgdl_until, jgdl_rep;
 string jgdl_note, jgdl_map;
+string(float track, float leg) TASJargon_DlLabel =
+{
+	if (track > 0) return sprintf("Bonus %g", track);
+	return (leg > 0) ? sprintf("Stage %g", leg) : (jg_cn ? "Main" : "this map");
+};
 string(float i) TASJargon_DlTier = { return (i == 0) ? "ksf" : ((i == 1) ? "ranked" : "momentum"); };
 void(string why) TASJargon_DlStop =
 {
@@ -323,14 +329,13 @@ void(float tier) TASJargon_DlAsk =
 void() TASJargon_DlStart =
 {
 	if (jgdl_state == 1 || jgdl_state == 2) return;
-	jgdl_c = jg_cpick;
 	jgdl_track = (jg_cpick < jg_cn) ? jg_ct[jg_cpick] : 0;
 	jgdl_leg = (jg_cpick < jg_cn) ? jg_cl[jg_cpick] : 0;
 	jgdl_got = 0;
 	if (jgdl_map != "") strunzone(jgdl_map);
 	jgdl_map = strzone(zone_mapname);
 	if (ob_name != "") { TASJargon_DlStop("clear the leaderboard's name search first"); return; }   // Online_FetchAt sends it
-	print(sprintf("tas jargon: downloading the top runs of %s\n", TASJargon_CourseLabel(jg_cpick)));
+	print(sprintf("tas jargon: downloading the top runs of %s\n", TASJargon_DlLabel(jgdl_track, jgdl_leg)));
 	TASJargon_DlAsk(0);
 };
 // one step a frame while the panel is open
@@ -344,7 +349,8 @@ void() TASJargon_DlPump =
 		if (ob_state != OBS_OK || !Online_Shows(jgdl_track, jgdl_leg, TASJargon_DlTier(jgdl_tier), "clean"))
 		{
 			TASJargon_DlStop((ob_state == OBS_FETCH) ? "the leaderboard did not answer: try again in a moment"
-				: sprintf("the leaderboard answered %g: try again in a moment", ob_code));
+				: ((ob_state == OBS_OK) ? "the leaderboard was asked for another board meanwhile: try again"
+				: sprintf("the leaderboard answered %g: try again in a moment", ob_code)));
 			return;
 		}
 		jgdl_state = 2;
@@ -356,9 +362,10 @@ void() TASJargon_DlPump =
 		if (Online_ReplayRep() == jgdl_rep && or_state == ORS_READY) { jgdl_got = jgdl_got + 1; print(sprintf("tas jargon: got %s\n", or_path)); }
 		else if (Online_ReplayFind(jgdl_rep, "") != "") { jgdl_got = jgdl_got + 1; print(sprintf("tas jargon: got %s\n", Online_ReplayFind(jgdl_rep, ""))); }
 		if (Online_ReplayRep() == jgdl_rep && !sb_ln_fetch && !rec_sb_wantrep) Online_ReplayClear();
-		jgdl_wait = FALSE; jgdl_row = jgdl_row + 1;
+		jgdl_wait = FALSE; jgdl_row = jgdl_row + 1; jgdl_until = cltime;   // a busy wait is timed from here
 		jg_gat = jg_grt = 0;    // the folders again now
 	}
+	Online_ReplayPoll();        // another consumer's fetch past its deadline is freed, not waited on forever
 	if (sb_ln_fetch || rec_sb_wantrep || or_state == ORS_FETCH)
 	{	// a leaderboard line or replay is downloading: wait for it
 		if (cltime > jgdl_until + 60) TASJargon_DlStop("the leaderboard is busy downloading: try again in a moment");
@@ -375,9 +382,14 @@ void() TASJargon_DlPump =
 		if (!jgdl_wait) jgdl_row = jgdl_row + 1;
 		return;
 	}
-	if (jgdl_got) { jgdl_state = 3; jg_gat = jg_grt = 0; return; }
+	if (jgdl_got)
+	{	// a variant or port map's board can hold the base map's replays: they fit no course here (review 2)
+		jg_gat = jg_grt = 0; TASJargon_Guides();
+		if (jg_gn) { jgdl_state = 3; return; }
+		jgdl_got = 0;
+	}
 	if (jgdl_tier < 2) { TASJargon_DlAsk(jgdl_tier + 1); return; }
-	TASJargon_DlStop(sprintf("no leaderboard has a recording of %s yet", TASJargon_CourseLabel(jgdl_c)));
+	TASJargon_DlStop(sprintf("no leaderboard has a recording of %s that fits this map yet", TASJargon_DlLabel(jgdl_track, jgdl_leg)));
 };
 
 // The picked course's Continue, if one is saved (sv_tasautosurf.qc SV_TASAutoSave): its stretch and of, read every 2 s

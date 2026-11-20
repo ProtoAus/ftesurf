@@ -1177,6 +1177,7 @@ void() TASOptUI_Reset =
 };
 // `tas jargon start | download | mode 0|1|2|3 | set N x|y|z V | field N x|y|z | air N | del N | undo | redo | list`: the panel's own
 // functions, for binds and the harness that tests them (N counts from 1, as the list does; field opens one as a click)
+void() TASOptUI_FollowCourse;
 void(float argc) TASOptUI_Verb =
 {
 	local float i, ax;
@@ -1189,7 +1190,7 @@ void(float argc) TASOptUI_Verb =
 	if (w == "redo") { TASOptUI_WpUndo(FALSE); return; }
 	if (w == "guide") { if (argc == 4) TASOptUI_GuidePick(stof(argv(3)) - 1); return; }
 	if (w == "takeover") { TASOptUI_Takeover(); return; }
-	if (w == "download") { TASJargon_DlStart(); return; }     // P1693: the panel's "Download the top runs" (pumped while it is open)
+	if (w == "download") { TASOptUI_FollowCourse(); TASJargon_DlStart(); return; }   // the course you are on, as the panel would     // P1693: the panel's "Download the top runs" (pumped while it is open)
 	if (w == "redofrom")
 	{
 		i = floor(stof(argv(3))) - 1;
@@ -1407,12 +1408,13 @@ void(vector at, float width, float tsz, float hint, float row, float running, st
 		sui_text(at, [hint, hint], sprintf("Jargon follows a run of %s, and there is none on this computer yet.", cn), SUI_THEME_DIM, 1, 0);
 		at_y = at_y + hint * 1.6;
 		q = (jgdl_state == 1 || jgdl_state == 2);
-		if (Profile_Chip("jgd_get", at, [width, row * 1.4, 0], q ? sprintf("Downloading the top runs of %s...", TASJargon_CourseLabel(jgdl_c))
+		if (Profile_Chip("jgd_get", at, [width, row * 1.4, 0], q ? sprintf("Downloading the top runs of %s...", TASJargon_DlLabel(jgdl_track, jgdl_leg))
 			: sprintf("Download the top runs of %s", cn), tsz, q))
 			TASJargon_DlStart();
 		sui_tooltip_for("jgd_get", "Up to three of the course's fastest recordings from the leaderboards (KSF first, then World of Surf, then Momentum), listed here as guide runs.", max(1, hint / 7));
 		at_y = at_y + row * 1.4 + 3;
-		if (jgdl_state == 4 && jgdl_note != "" && jgdl_c == jg_cpick && !strcmp(jgdl_map, zone_mapname))
+		if (jgdl_state == 4 && jgdl_note != "" && !strcmp(jgdl_map, zone_mapname) && jg_cpick < jg_cn)
+		if (jg_ct[jg_cpick] == jgdl_track && jg_cl[jg_cpick] == jgdl_leg)
 		{
 			sui_text(at, [hint, hint], strcat("Could not download: ", jgdl_note, "."), SUI_THEME_WARN, 1, 0);
 			at_y = at_y + hint * 1.6;
@@ -1554,15 +1556,16 @@ void(vector at, float width, float tsz, float hint, float row, float running, st
 	TASOptUI_DropList(tsz, hint, row);
 };
 // P1693: the course you are on (Lex's surf_sandtrap2 b4 opened on Main), re-picked when that changes, not each frame, so a
-// dropdown pick stays: the leg being recorded (STAT_FS_RUNLEG, `!s 1` included), else the timer's track and start stage.
-// While Jargon surfs or is armed the key is kept but not applied, so its own run does not move the pick afterwards.
+// dropdown pick stays: the leg being recorded (STAT_FS_RUNLEG, only while TF_RECORDING: it outlives the run), else the
+// timer's track and start stage. Main and Stage 1 start in one box and are not re-picked between (review 2). While Jargon
+// surfs or is armed the key is kept but not applied, so its own run does not move the pick afterwards.
 string jg_autokey;
 void() TASOptUI_FollowCourse =
 {
 	local float track, leg, c, i, ss, rl;
 	local string key;
 	TASJargon_Courses();
-	rl = getstatf(STAT_FS_RUNLEG);
+	rl = (Timer_Stat(STAT_FS_TIMERFLAGS) & TF_RECORDING) ? getstatf(STAT_FS_RUNLEG) : 0;
 	if (rl >= 1) { rl = rl - 1; track = floor(rl / 100); leg = rl - track * 100; }
 	else
 	{
@@ -1574,6 +1577,7 @@ void() TASOptUI_FollowCourse =
 	if (jg_autokey != "") strunzone(jg_autokey);
 	jg_autokey = strzone(key);
 	if (taso_state == 1) return;
+	if (leg <= 1 && jg_cpick < jg_cn) if (jg_ct[jg_cpick] == track && jg_cl[jg_cpick] <= 1) return;
 	c = -1;
 	for (i = 0; i < jg_cn; i = i + 1) if (jg_ct[i] == track && jg_cl[i] == leg) c = i;
 	if (c < 0) for (i = 0; i < jg_cn; i = i + 1) if (jg_ct[i] == track && jg_cl[i] == 0) c = i;
