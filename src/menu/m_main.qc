@@ -235,6 +235,8 @@ float(float row) Mgs_Keep;
 float(string id) Mgs_Find;
 float(string id) Mgs_Installed;
 string(float row) Mgs_Kind;
+string(float row) Mgs_Warn;     // P1669: what a playable row lacks, in words; "" when complete
+#define MGS_WARN_ESC "^xf44"
 void() Mgs_Append;
 void() Mgs_Ask;
 void() Mgs_Shutdown;
@@ -2497,7 +2499,8 @@ void(float row) ui_load_card =
 	if (bonus > 0) s = sprintf("%s, %g bonus", s, bonus);
 	au = MapAuthor_Text(bufstr_get(ms_author, row));
 	if (au != "") s = strcat("by ", au, " | ", s);
-	if (Mgs_Row(row)) s = strcat("GoldSrc | ", Mgs_Kind(row));      // P1658: it has no tiers; its kind
+	if (Mgs_Row(row)) s = strcat("GoldSrc | ", Mgs_Kind(row),       // P1658: it has no tiers; its kind
+	                              (Mgs_Warn(row) != "") ? strcat(" | ", MGS_WARN_ESC, "warning: ", Mgs_Warn(row), " missing^7") : "");
 	ls_cardinfo = strzone(s);
 };
 
@@ -6801,10 +6804,10 @@ float  dl_done;
 float  dl_total;
 float  dl_until;
 float  dl_t0;           // when it started (time), for the status strip
-// P1094: 1 (2 = force) while a download waits for this client's local game to
-// end -- the engine refuses every download while it hosts one (sv.state in
-// CL_CheckOrEnqueDownloadFile) -- and Dl_Tick asks for it once the game is gone.
+// P1094: 1 (2 = force) while a download waits for this client's local game to end, and Dl_Tick asks for it once
+// the game is gone. Engines before P1670 refuse every download while hosting; P1670 ones only the map being hosted (3).
 float  dl_afterlocal;
+float  dl_reload;       // P1670: a download finished while no menu was open; the list reloads when one opens
 
 /*
   THE MAP MIRROR, AND WHY THIS FUNCTION HAS TO EXIST.
@@ -6980,6 +6983,12 @@ void(string name, optional float force) ui_dl_start =
 */
 void() Dl_Tick =
 {
+	if (dl_reload && menu_active)
+	{
+		dl_reload = FALSE;
+		ui_load_maps();
+		ui_refilter();
+	}
 	if (dl_state == DL_OK || dl_state == DL_FAIL)
 	{
 		if (time > dl_until)
@@ -7027,11 +7036,17 @@ void() Dl_Tick =
 		{
 			vector keep = ms_scroll;
 			ui_st_result(sprintf("Installed %s", dl_name), 1);
-			// It is on the disk now, so it is no longer a downloadable row.
-			ui_load_maps();
-			ui_refilter();
-			if (gsi > 0)
-				ms_scroll = keep;   // a GoldSrc row keeps its place in the list: stay on it
+			// It is on the disk now, so it is no longer a downloadable row. Not mid-game (P1670: a local game's download
+			// lands in play): the reload waits for the menu, as the catalogues' does (Mgs_Ask).
+			if (!menu_active)
+				dl_reload = TRUE;
+			else
+			{
+				ui_load_maps();
+				ui_refilter();
+				if (gsi > 0)
+					ms_scroll = keep;   // a GoldSrc row keeps its place in the list: stay on it
+			}
 		}
 		else
 			ui_st_result(sprintf("Download of %s failed", dl_name), -1);

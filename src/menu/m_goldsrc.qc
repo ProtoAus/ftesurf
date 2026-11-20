@@ -51,7 +51,7 @@ var float mgs_tshow = -1;       // the name shown (no "_gs")
 var float mgs_tcat = -1;        // GC_BHOP | GC_CLIMB | GC_OTHER
 var float mgs_tkb = -1;         // gs: the download in KB, as mapdl.txt sizes are (a float holds 2^24 exactly)
 var float mgs_tneed = -1;       // gs: the needs sum
-var float mgs_twhy = -1;        // gx: why not, in words
+var float mgs_twhy = -1;        // gx: why not; gs: what it lacks (P1669, Mgs_Warn); in words
 float  mgs_tn, mgs_tgx;         // rows; how many of them are gx
 float  mgs_tnb, mgs_tnk;        // gs rows that are bhop, kz
 string mgs_tkey;                // strzoned
@@ -618,8 +618,9 @@ void() Mgs_Append =
 	mgs_rows = mgs_tn;
 	hash_destroytab(inst);
 	mgs_loadms = (gettime(1) - t0) * 1000;
-	print(sprintf("WOS: goldsrc -- %g maps (%g bhop, %g kz), %g installed, %g not available; %.1f ms (%.1f reading)\n",
-	              ngs, mgs_tnb, mgs_tnk, mgs_ninst, mgs_tgx, mgs_loadms, mgs_parsems));
+	print(sprintf("WOS: goldsrc -- %g maps (%s), %g installed, %g not available; %.1f ms (%.1f reading)\n",
+	              ngs, sprintf("%g bhop, %g kz, %g other", mgs_tnb, mgs_tnk, ngs - mgs_tnb - mgs_tnk),
+	              mgs_ninst, mgs_tgx, mgs_loadms, mgs_parsems));
 };
 
 // ---- what the finder draws: read for the visible rows only ------------------------------
@@ -645,7 +646,6 @@ string(float row) Mgs_Size =
 
 // P1669: a playable row whose catalogue flags name missing files: what they are, else "".
 string(float row) Mgs_Warn = { return Mgs_Gx(row) ? "" : bufstr_get(mgs_twhy, row - mgs_row0); };
-#define MGS_WARN_ESC "^xf44"
 // The tooltip names only what this map lacks (Mgs_Missing's words).
 string(float row) Mgs_WarnTip =
 {
@@ -718,7 +718,7 @@ void(vector rp, vector rs, float nx, float compact, float real, float lit, strin
 	sui_text([rp_x + nx, rp_y + 50], '12 12 0', ui_fit_text(Mgs_Sub(real), cw, '12 12 0'), COL_DIM, a, 0);
 	if (gx)
 		sui_tooltip_for(rid, MGS_GXTIP, 2);
-	else if (Mgs_Warn(real) != "")
+	else if (Mgs_Warn(real) != "" && sui_is_hovered(rid))     // the text only for the hovered row
 		sui_tooltip_for(rid, Mgs_WarnTip(real), 2);
 };
 
