@@ -137,7 +137,7 @@ void(entity e) Tour_Connected =
 	e.tq_streamat = e.tq_lastcmd = e.tq_boundrev = 0;
 	if (strlen(e.tq_boundwho)) strunzone(e.tq_boundwho);
 	e.tq_boundwho = "";
-	if (!Tour_Owns() && infokey(e, "*tqspec") == "1" && !stof(infokey(e, "*spectator")))
+	if (infokey(e, "*tqspec") == "1" && !stof(infokey(e, "*spectator"))) // a held match re-tags it just below
 	{
 		// Rejoined through Cmd_Join_f (Tour_Clear): its SpectatorDisconnect/ClientConnect dropped the account link
 		// and CSQC asks only once per VM load, so the server asks again (Account_Connect ran just before this).
@@ -146,7 +146,8 @@ void(entity e) Tour_Connected =
 	}
 	if (Tour_Owns())
 	{
-		if (!stof(infokey(e, "*spectator"))) forceinfokey(e, "*tqspec", "1"); forceinfokey(e, "*spectator", "1");
+		if (!stof(infokey(e, "*spectator"))) { forceinfokey(e, "*tqspec", "1"); }
+		forceinfokey(e, "*spectator", "1");
 		e.solid = SOLID_NOT;
 	}
 	// Only a tournament server has a panel to clear: Tour_Clear resets every CSQC panel's click state.
@@ -283,7 +284,8 @@ void() Tour_Roles =
 		if (e.tq_role != 1)
 		{
 			Tour_Unhold(e);
-			if (!stof(infokey(e, "*spectator"))) forceinfokey(e, "*tqspec", "1"); forceinfokey(e, "*spectator", "1");
+			if (!stof(infokey(e, "*spectator"))) { forceinfokey(e, "*tqspec", "1"); }
+			forceinfokey(e, "*spectator", "1");
 			e.solid = SOLID_NOT;
 		}
 		else
@@ -342,7 +344,14 @@ void() Tour_Clear =
 		if (infokey(e, "*tqspec") == "1")
 		{
 			if (!stof(infokey(e, "*spectator"))) forceinfokey(e, "*tqspec", "");
-			else if (time >= e.tq_joinat) { e.tq_joinat = time + 10; stuffcmd(e, "cmd join\n"); }
+			else if (time >= e.tq_joinat)
+			{
+				// Cmd_Join_f despawns through SpectatorDisconnect, which skips Lobby_ClientDisconnect: free the
+				// avatar the player had before being forced, or it stays as a second body (review round 7).
+				e.tq_joinat = time + 10;
+				Lobby_AvatarFree(e);
+				stuffcmd(e, "cmd join\n");
+			}
 		}
 		if (e.tq_streambuf) buf_del(e.tq_streambuf);
 		e.tq_streambuf = e.tq_streamcount = 0;
@@ -980,7 +989,8 @@ float(entity e) Tour_PreThink =
 	if (!tq_owned || tq_creating || tq_race) return FALSE;
 	if (e.tq_role != 1)
 	{
-		if (!stof(infokey(e, "*spectator"))) forceinfokey(e, "*tqspec", "1"); forceinfokey(e, "*spectator", "1");
+		if (!stof(infokey(e, "*spectator"))) { forceinfokey(e, "*tqspec", "1"); }
+		forceinfokey(e, "*spectator", "1");
 		e.solid = SOLID_NOT;
 		return TRUE;
 	}
