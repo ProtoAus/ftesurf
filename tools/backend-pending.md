@@ -63,11 +63,16 @@ Runtime surfd.py (rec_segments / row_segments, board_rows adds `segs`), web/boar
 surfd/test_segs.py beside them (14 checks pass on the Pi, Flask 2.2.2). No schema object, no cron, no reader change.
 The lobby csprogs that shows it in game is independent (an older surfd just sends no `segs`). Check after: a
 segmented board's /api/board rows carry `segs` (surf_joutsenlaulu, Proto: 56) and a clean board's bytes are unchanged.
-Rides with P1604's reader pin (reccheck.py 059246f0..., below); P1613's reader is NOT ready (worldofsurf-58).
+Rides with P1604's reader pin (reccheck.py 059246f0..., below); P1613's reader is ready (merged 21 Nov; see below).
 
-## P1613: do NOT pin its reader yet
-Main carries only P1613's recorder (`cseq` rows, 38298aeb); main's reccheck has no command rule. The rule
-(branch p1613-cseq) is merged and pinned only after real lobby runs with `cseq` confirm it against their .view.
+## P1613 reader -- READY for the NEXT generation (merged to main 21 Nov, worldofsurf-6f)
+Main's tools/reccheck.py now carries the command rule (branch p1613-cseq's reader, three review rounds on 19 Nov;
+its recorder has been on the lobbies since 20 Nov). Real-data condition met 21 Nov: 6 pairs (2 local, 4 lobby
+evidence, three players), all judged, 0.00% on no drawn path, worst 0.00 deg (tools/p1613-fleet.md). A sidecar
+with more than 1% of at least 100 joined moves on no drawn path FAULTs ("the sidecar does not show what this
+recording sent"). Pin tools/reccheck.py (+ tools/rcptcheck.py) at game main with the next generation. Check after:
+a recent evidence pair (e.g. surf_happyhands 20261120-140615-0-p27590) reads `angle_cmd ... 0.00% on no drawn
+path` under the pinned reccheck -v, and the sweep's fault rate is unchanged.
 
 ## P1603 Linux runs rank, marked `plat` -- DONE 18 Nov 07:24Z (all three steps live)
 Steps 1-2 rode gen1603 and the P1604 lobby progs. Step 2's check, Lex's Linux run bhop_2hrs 0:17.520 (runid

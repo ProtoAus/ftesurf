@@ -11,3 +11,6 @@ corpus and fleet checks, the reader first in a surfd generation where it convict
 on a real client's .view beside a `cseq` recording, then the recorder on the lobbies, then the reader (BACKLOG).
 
 19 Nov: recorder half merged to main (38298aeb); the rule waits on real lobby runs (branch p1613-cseq).
+
+21 Nov (worldofsurf-6f): real pairs confirm the rule (tools/p1613-fleet.md); reader merged to main; pin queued for
+the next surfd generation (tools/backend-pending.md).
