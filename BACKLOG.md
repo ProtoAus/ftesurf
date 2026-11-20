@@ -12,6 +12,8 @@
 - Home tournament tiles (P1684) stop refreshing while you are in a room (MT_Directory is skipped when mt_id is set).
 - P1678's correction is measured for ui_font_ui at rungs 16/20/24 only; another face or rung may need its own.
 ## P1675 start lag -- what it leaves (21 Nov, worldofsurf-6f)
+- qcframes flags csprogs: Line_Alloc's frame holds the globals ln_nath / ln_nat (cl_lines.qc, Patch 645), so they are
+  put back on every return from Line_Alloc. Present in the build deployed before P1675 too; owner of run lines to fix.
 - Up to 0.06 s per start still passes untimed and clean (two dropped-packet ticks at 0.015); `startlag` is recorded
   but nothing surfaces it yet. The top-10 review page (finish item 7) should flag any `startlag` of 3 ticks or more (2
   is a dropped packet).

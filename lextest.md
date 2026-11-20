@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1675 -- start packets (anti-cheat finish list item 3; worldofsurf-6f) -- LIVE on the lobbies 21 Nov 18:52Z
+1. On a lobby, run a few normal starts (walk out of the start, and a bhop jump start): none should say "start packet too
+   long", and the run stays ranked. Nothing else changes for normal play.
+2. Only a held-back start packet (a 0.06 s hitch or worse at the moment you leave) is practice; the chat line says so
+   and `!r` or walking back in re-arms. If you ever see it on a smooth connection, tell me the map and mode.
+3. Also live in the same deploy: P1688 !hide / !show (item 4 of the mechanics list below).
+
 ## P1676-P1685 -- your 21 Nov UI list (worldofsurf-9b, 21 Nov)
 Your list item by item (P1670, map downloads during a local game, is worldofsurf-75's and arrives separately; the
 tournament-open chat line is worldofsurf-e3's P1674):
