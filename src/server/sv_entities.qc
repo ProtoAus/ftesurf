@@ -6884,7 +6884,11 @@ void() SV_EntityIOBuild =
 	// P1418: a lobby takes crash reports (sv_crash.qc), not a player's own game someone joined by address.
 	forceinfokey(world, "fs_crashrep", cvar("lobby_enable") ? "1" : "0");
 	if (!vbsp_io_on)
+	{
+		if (GS_Map())
+			GS_MapStart();	// P1655 review: GoldSrc's own chain does not depend on Source entity I/O
 		return;
+	}
 
 	vbsp_io_esc = chr2str(27);
 

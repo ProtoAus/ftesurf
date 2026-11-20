@@ -136,7 +136,7 @@ void(entity e, entity act, float ut, float val) GS_UseNow =
 	local string kt;
 
 	kt = e.gs_killtarget;
-	if (kt != "")
+	if (kt != "" && vbsp_mapedit_ok)	// P1655 review: a lobby holds map edits (pm_verify replays must match)
 	{
 		k = find(world, targetname, kt);
 		while (k)
@@ -1254,6 +1254,7 @@ void(entity t, entity act, entity caller, float ut, float val) GS_Use =
 	{
 		e = find(world, targetname, t.target);
 		if (e)
+		if (vbsp_mapedit_ok)	// P1655 review: held on a lobby, as Source's retarget is
 			e.target = t.gs_newtarget;
 	}
 	else if (k == GS_K_COUNTER)
