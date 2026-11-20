@@ -1903,6 +1903,12 @@ void(string c, string a1, string a2, string a3, string a4, string a5) GS_TestCmd
 			e.skin = stof(a2);
 		return;
 	}
+	if (c == "velmode")             // control: 0 is what the shared teleport did with these maps before
+	{
+		for (e = find(world, classname, "trigger_teleport"); e; e = find(e, classname, "trigger_teleport"))
+			e.VelocityMode = stof(a1);
+		return;
+	}
 	if (c == "census") { SV_CensusPrint(); return; }
 	if (c == "time") { print(sprintf("GSTEST time %.3f %s\n", time, a1)); return; }
 	if (!gs_bot)
