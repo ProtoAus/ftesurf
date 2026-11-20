@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## 0.1.49 release -- PUBLISHED 20 Nov 05:12Z; owner check PENDING (record: tools/release-0.1.49.md)
+- Update through the launcher (Windows and Linux); the menu should say 0.1.49.
+- Nothing else should look different until tournaments are switched on. Then follow the P1634/P1635/P1639 checks below
+  (two accounts).
+
 ## P1636-P1638 -- Lex's follow-ups (worldofsurf-bb)
 
 - surf_affliction: your zone file and map settings now say 10000 (backups *.bak-20261120-bb beside them). In zone_edit

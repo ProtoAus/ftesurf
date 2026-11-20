@@ -21,9 +21,6 @@
 
 ## next
 
-### P1639 Bhop tournaments at 100 tick
-- Bhop tournaments play at bhop's normal 100 tick.
-
 ### P1638 New Settings page
 - Settings is now a full page beside Lobbies and Maps, with the friends list and chat on the right: sections for Controls, Audio, Menu scene, Performance, In-game sky and Online & privacy, each setting with a slider or buttons and its current value.
 - The old Visuals & display screen is folded in.
@@ -34,6 +31,11 @@
 ### P1636 Warning for an old Steam library
 - If steam_libraries.txt points at a Steam library that is missing (a drive not mounted), or one that supplies a game while Steam's own library has another copy, the console says so and the missing-content warning names it.
 - `fs_steamlibs remove <path>` takes the line out.
+
+## 0.1.49 2026-11-20
+
+### P1639 Bhop tournaments at 100 tick
+- Bhop tournaments play at bhop's normal 100 tick.
 
 ### P1635 Tournament rounds start and end cleanly
 - In a tournament the F6 panel closes when the countdown starts, and a run still going when the round ends is cancelled rather than posted to the leaderboards.
