@@ -1590,8 +1590,11 @@ Menu party rooms (`/api/tournament-lobbies/action`) use the same rules before
 launch. Each party draft turn has 45 s (`turn_left` in the snapshot); any member
 action, state poll or directory poll that finds it expired makes that player's
 ban/pick from the seeded pool, recorded as theirs with a note. `join` works in
-any open room, always as a spectator and without the revision check; after
-launch the joiner gets the same `launch` reply as the other members.
+any open room, always as a spectator, at most once per 10 s per account and
+room; after launch the joiner gets the same `launch` reply as the other members.
+`say`, `join`, `leave`, `ban` and `pick` skip the room revision check (the turn
+and card status guard ban/pick), so join/leave churn cannot keep members stale.
+The host may remove spectators until launch, competitors in the waiting room.
 
 ### Persistence, exclusions and public browser
 

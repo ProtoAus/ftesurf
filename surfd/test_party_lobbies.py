@@ -338,10 +338,42 @@ class PartyAPI(unittest.TestCase):
         for i in (0, 1):
             m = self.act('ready', i, m, value=1)['party']
         host = self.act('start', 0, m)
+        self.now += P.JOIN_COOLDOWN
         late = self.act('join', 2, dict(m, revision=1))
         self.assertEqual(late['party']['players'][-1]['role'], 'spectator')
         self.assertEqual(late['launch'], host['launch'])
         self.assertEqual(self.act('state', 2)['launch']['addr'], host['launch']['addr'])
+
+    def test_p1650_leave_ban_pick_skip_the_revision_check(self):
+        m = self.locked()
+        stale = dict(m, revision=1)
+        i = self.whos.index(m['turn_who'])
+        out = self.act('ban', i, stale, map=next(c['name'] for c in m['maps'] if c['status'] == 'pool'))['party']
+        self.assertEqual(out['revision'], m['revision'] + 1)
+        # The turn still guards ban/pick: the same stale request from the wrong player is refused.
+        self.assertEqual(self.send(self.form('ban', i, stale, map=next(c['name'] for c in out['maps'] if c['status'] == 'pool')))['error'], 'not your draft turn')
+        self.assertEqual(self.send(self.form('seat', 0, stale, target=self.whos[1], value=0))['error'], 'stale revision; resync')
+        self.assertEqual(self.act('leave', 2, stale)['party']['revision'], out['revision'] + 1)
+
+    def test_p1650_join_cooldown_per_account_per_room(self):
+        m = self.act('create')['party']
+        m = self.act('join', 1, m)['party']
+        m = self.act('leave', 1, m)['party']
+        self.assertEqual(self.send(self.form('join', 1, m))['error'], 'try again shortly')
+        self.act('join', 2, m)
+        self.now += P.JOIN_COOLDOWN
+        self.assertEqual(self.act('join', 1, m)['party']['players'][-1]['who'], self.whos[1])
+
+    def test_p1650_host_kicks_spectators_before_launch(self):
+        m = self.locked()
+        self.assertEqual(self.send(self.form('kick', 0, m, target=self.whos[1]))['ok'], 0)
+        out = self.act('kick', 0, m, target=self.whos[2])['party']
+        self.assertEqual((out['phase'], [p['who'] for p in out['players']]), ('draft', self.whos[:2]))
+        self.assertIsNone(self.act('state', 2)['party'])
+        self.act('cancel', 0, out)
+        m = self.ready()
+        m = self.act('join', 2, m)['party']
+        self.assertEqual(self.act('kick', 0, m, target=self.whos[2])['party']['phase'], 'loading')
 
     def test_host_kick_removes_and_bars_rejoin(self):
         m = self.act('create')['party']

@@ -21,6 +21,7 @@ import tournament_rules as rules
 ONLINE_TTL = 35
 IDLE_TTL = 900
 TURN_SECONDS = 45  # per party draft ban/pick, then a seeded map is chosen for that player
+JOIN_COOLDOWN = 10  # seconds between one account's joins of one room: each join bumps the revision
 JOURNAL_KEEP = 64  # request ids per account: retries come seconds apart, and this bounds the table
 FIELDS = ('op', 'id', 'revision', 'request', 'capacity', 'round_seconds', 'target', 'map', 'value', 'kind', 'tiers', 'profile', 'pool', 'text')
 OPS = frozenset(('configure', 'create', 'state', 'join', 'leave', 'cancel', 'seat', 'accept', 'lock', 'ban', 'pick', 'ready', 'start', 'say', 'kick'))
@@ -286,14 +287,19 @@ def register(app, d):
                     rules.require(m is None or active is not None and active['party'] == m['id'], 'not a current member')
                 else:
                     rules.require(m is not None, 'party not found')
-                    # Chat and joining (always as a spectator) never race roster/settings edits.
-                    rules.require(op in ('say', 'join') or int(data['revision']) == m['revision'], 'stale revision; resync')
+                    # No revision check where churn could starve members: chat, join (as a spectator),
+                    # leave, and ban/pick (the turn and card status already guard those).
+                    rules.require(op in ('say', 'join', 'leave', 'ban', 'pick') or int(data['revision']) == m['revision'],
+                                  'stale revision; resync')
                     if op == 'join':
                         # Any open room, even after launch: result() then hands the joiner the launch address.
                         rules.require(active is None and m['phase'] not in rules.TERMINAL, 'party closed or already joined')
                         rules.require(who not in m['_accounts'] or m['_accounts'][who] == sid, 'ambiguous account handle')
                         rules.require(who not in m.get('_kicked', ()), 'removed from this room')
                         rules.require(who in m['_accounts'] or len(m['_accounts']) < 256, 'account history full')
+                        joins = m.setdefault('_joins', {})
+                        rules.require(now >= joins.get(who, 0) + JOIN_COOLDOWN, 'try again shortly')
+                        joins[who] = now
                         m = rules.transition(m, 'enter', who, name, data)
                         m['_accounts'][who] = sid
                         db.execute('INSERT INTO tournament_party_members VALUES(?,?,?)', (sid, m['id'], now))
@@ -304,8 +310,9 @@ def register(app, d):
                             rules.require_current_settings(m)
                         if op == 'kick':
                             target = next((p for p in m['players'] if p['who'] == data['target']), None)
-                            rules.require(who == m['host'] and m['phase'] == 'lobby' and target is not None
-                                          and target['who'] != who, 'host removes in waiting room only')
+                            rules.require(who == m['host'] and target is not None and target['who'] != who and
+                                          (m['phase'] == 'lobby' or target['role'] == 'spectator'),
+                                          'host removes competitors in the waiting room, spectators before launch')
                             m['players'] = [p for p in m['players'] if p['who'] != target['who']]
                             m.setdefault('_kicked', []).append(target['who'])
                             db.execute('DELETE FROM tournament_party_members WHERE account=? AND party=?',
