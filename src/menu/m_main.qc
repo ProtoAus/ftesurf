@@ -7703,13 +7703,24 @@ float(vector pos) ui_mode_switch =
 string(float k) ui_also_label = { return k ? "+ kz/climb" : "+ ahop"; };
 float() ui_also_w = { return ui_filter_chip_w(ui_also_label(0)) + ui_filter_chip_w(ui_also_label(1)) + 8; };
 
-float(vector pos) ui_also_chips =
+// P1677: `live` 0 (Surf) draws them inert in the same room, so the groups after them do not shift.
+float(vector pos, float live) ui_also_chips =
 {
-	local float k, x, bit;
+	local float k, x, bit, w;
 	local string id;
+	local vector glyph;
 	x = 0;
 	for (k = 0; k < 2; k = k + 1)
 	{
+		if (!live)
+		{
+			w = ui_filter_chip_w(ui_also_label(k));
+			glyph = sui_native_text_size(UI_MAP_FILTER_FONT);
+			sui_roundbox(pos + [x, 0], [w, UI_MAP_FILTER_H], 8, COL_ROW, 0.4);
+			sui_native_text(pos + [x + 8, (UI_MAP_FILTER_H - glyph_y) * 0.5], ui_also_label(k), UI_MAP_FILTER_FONT, COL_DIM, 0.45);
+			x = x + w + 4;
+			continue;
+		}
 		id = k ? "cs_also_climb" : "cs_also_ahop";
 		bit = ui_cat_bit(k ? GC_CLIMB : GC_AHOP);
 		x = x + ui_filter_chip(pos + [x, 0], id, ui_also_label(k), (ms_also & bit) != 0) + 4;
@@ -7748,7 +7759,7 @@ float(float width, float y) ui_map_filters =
 		// installed): it has no surf maps, and its kz maps need no "+ kz/climb" chip.
 		gsl = (ms_srcf == SRC_BIT_GS);
 		if (gsl) also = FALSE;
-		if (group == 1) gw = gw + (gsl ? Mgs_KindW() : ui_mode_switch_w() + 4 + (also ? ui_also_w() : 0));
+		if (group == 1) gw = gw + (gsl ? Mgs_KindW() : ui_mode_switch_w() + 4 + ui_also_w());
 		if (group == 4 && note != "") gw = gw + stringwidth(note, TRUE, sui_native_text_size(UI_MAP_FILTER_FONT)) + 6;
 		if (x > 16 && x + gw > width + 16) { x = 16; y = y + UI_MAP_FILTER_PITCH; }
 		// Keep the display headings distinct, at the same native scale as their width.
@@ -7760,7 +7771,7 @@ float(float width, float y) ui_map_filters =
 		ui_filter_font(ui_font_ui);
 		if (group == 1 && gsl) x = x + Mgs_KindChips([x, y]);
 		if (group == 1 && !gsl) x = x + ui_mode_switch([x, y]);
-		if (group == 1 && also) x = x + ui_also_chips([x, y]);
+		if (group == 1 && !gsl) x = x + ui_also_chips([x, y], also);
 		for (f = 0; f < n; f = f + 1)
 		{
 			label = ui_filter_label(group, f);
