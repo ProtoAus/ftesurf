@@ -318,8 +318,9 @@ labels use matching run names and slot numbers. Escape closes the panel. A
 watched replay can be compared too, as slot 0, with its position marked on its
 curve.
 
-Where the `ui_imgui` plugin is beside the engine (development installs; no
-release has it yet) it is loaded at boot, and the panel's two plots are drawn
+Where the `ui_imgui` plugin is beside the engine (Windows releases and
+development installs; Linux releases do not ship it yet, P1654) it is loaded at
+boot, and the panel's two plots are drawn
 by it instead, on ImPlot:
 the same chips, readout and numbers, with curves at full sample resolution, a
 labelled value axis that follows the view, a right-drag that selects a stretch
