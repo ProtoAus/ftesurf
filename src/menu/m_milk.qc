@@ -1086,6 +1086,19 @@ void() MM_Init =
 	registercvar("milk_cone", "0", 32);        // 1 the coarse pre-pass
 	registercvar("milk_sky_parallax", "1", 32);
 	registercvar("milk_sky_palette", "1", 32);
+	// P1682: desktop audio became the default source, and every saved cfg holds the old default 0 (archived cvars
+	// are all written), so it moves once, on an engine whose default it is. A later pick of game mix stays.
+	registercvar("ui_vis_source_rev", "0", 32);
+	if (cvar("ui_vis_source_rev") < 1682)
+	if (cvar_type("snd_vis_source"))
+	if (cvar_defstring("snd_vis_source") == "1")
+	if (cvar("snd_vis_loopback_supported"))
+	if (checkbuiltin(localcmd_local))
+	{
+		if (cvar("snd_vis_source") == 0)
+			localcmd_local("seta snd_vis_source 1\n");
+		localcmd_local("seta ui_vis_source_rev 1682\n");
+	}
 	registercvar("milk_bootcheck", "0", 0);
 	registercvar("milk_fakemouse", "", 0);
 	registercvar("milk_bcstation", "0", 0);

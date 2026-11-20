@@ -347,7 +347,7 @@ void() MSet_Sky =
 	cy = MSet_Row("Audio source", "What the visualizer listens to");
 	if (supported)
 	{
-		hit = MSet_Seg("mv_source", cy, "game mix|Windows output", cvar("snd_vis_source") == 1 ? 1 : 0);
+		hit = MSet_Seg("mv_source", cy, "game mix|desktop audio", cvar("snd_vis_source") == 1 ? 1 : 0);
 		if (hit >= 0)
 		if (checkbuiltin(localcmd_local))
 		{
@@ -357,10 +357,11 @@ void() MSet_Sky =
 			else
 				mm_autoplayed = FALSE;
 		}
-		MSet_Note("Windows output listens to the default playback device; nothing is recorded or replayed.", COL_DIM);
+		MSet_Note("Desktop audio is what your speakers play: your music and the game. Nothing is recorded or sent.", COL_DIM);
 	}
 	else
-		MSet_Info(cy, "", "the game's own sound (desktop audio capture is Windows-only)", COL_DIM);
+		MSet_Info(cy, "", (cvar_defstring("snd_vis_source") == "1") ? "the game's own sound (desktop audio needs PulseAudio or PipeWire)"
+		          : "the game's own sound (update the game for desktop audio)", COL_DIM);
 };
 
 void() MSet_Online =
