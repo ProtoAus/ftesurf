@@ -36,11 +36,12 @@ tournament-open chat line is worldofsurf-e3's P1674):
 10. P1685 In a lobby, open chat (Y/T): every line starts with the player's picture; hover a name (underlined) and click
    it: their profile card opens. In the main-menu chat each message has the sender's picture; click it or the name.
 
-## P1691 -- Discord presence (worldofsurf-41) -- WAITING on your Discord application
-- Make an application at https://discord.com/developers/applications named World of Surf (the name Discord shows),
-  upload the game icon under Rich Presence > Art Assets with the key `logo`, and send me its Application ID (not a
-  secret). I set it as the default; until then the feature is off. Then: start Discord, play a map: your profile shows
-  the map, its picture, the stage and the run clock; `cl_discord 0` hides it.
+## P1691 -- Discord presence (worldofsurf-41)
+- Your application id (1573424786774696097) is built in and the logo comes from the download site, so the developer
+  portal needs nothing more (optionally give the application the same icon: src/release/site/worldofsurf-512.png).
+  Checked against your running Discord: it accepted the activity, the name World of Surf and both pictures. Your check:
+  with Discord open, play a map and look at your profile (or ask a friend): map, picture, "Stage n/m" and a clock once
+  you leave the start; `cl_discord 0` hides it.
 
 ## P1690 -- healers push in AG mode (worldofsurf-41)
 - bkz_goldbhop_gs in an AG mode: walk into a healer at the start (the column right of the spawns): you are thrown at

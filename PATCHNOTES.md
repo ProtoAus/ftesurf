@@ -21,6 +21,9 @@
 
 ## next
 
+### P1691 Discord shows what you are playing
+- With Discord running, your Discord profile shows World of Surf with the map you are on, its picture, your stage and your run time. Type cl_discord 0 in the console to hide it. Maps the game does not know show as a custom map, and watching someone shows as spectating.
+
 ### P1690 Half-Life door boosts in AG mode
 - Half-Life maps in the AG modes: doors that hurt or heal now push you the way Half-Life does, so the healers at the start of bkz_goldbhop launch you like on Half-Life servers. CS 1.6 mode keeps them harmless.
 
