@@ -224,7 +224,8 @@ void(vector pos, vector size, string name) MCard_Backdrop;     // P1105
 void() MCard_Probe;
 void(string what) MM_BcPanel;
 
-// P1658: GoldSrc maps as rows of the map list (m_goldsrc.qc, which compiles after this file).
+// P1658: GoldSrc maps as rows of the map list (m_goldsrc.qc) and the list drawn compact
+// (m_maprows.qc); both compile after this file.
 float() Mgs_First;              // the first GoldSrc row; they are the list's last rows
 float() Mgs_Count;
 float(float row) Mgs_Row;
@@ -242,6 +243,11 @@ void(float row) Mgs_Launch;
 void(vector rp, vector rs, float nx, float compact, float real, float lit, string rid) Mgs_Card;
 float() Mgs_KindW;
 float(vector pos) Mgs_KindChips;
+float ms_dense;                 // ui_maps_list: the list drawn one line a map
+void() Mrow_Open;
+void() Mrow_Wheel;
+float(vector pos, float rh) Mrow_Switch;
+void(vector rp, vector rs, float idx, float real, float er, float on, float hot) Mrow_Draw;
 
 /*
   Map source, derived from the searchpath a BSP came out of.
@@ -3888,6 +3894,7 @@ void() ui_create_open =
 	// P1130: m_init resets Show all at launch, not on same-session navigation.
 	registercvar("ui_maps_compsort", "0", 32);      // P1080, same rules
 	ms_compsort = bound(0, rint(cvar("ui_maps_compsort")), 2);
+	Mrow_Open();                                    // P1658: ui_maps_list, same rules
 
 	if (ms_count == 0)
 	{
@@ -7793,6 +7800,7 @@ void(vector screensize) screen_create =
 	else
 		mhd = sprintf("map  %s(%g of %g)", SUI_ESC_MUTED, ms_viewcount, mtot);
 	sui_text([16, y], SZ_LABEL, mhd, COL_DIM, 1, 0);
+	rh = Mrow_Switch([16 + inner, y], rh);      // P1658: Cards | List; the list's rows are MROW_H high
 
 	float lbw = max(120, stringwidth("leaderboard", TRUE, SZ_LABEL) + 16);
 	ui_field_sel("cs_search", [16, y + 20], [inner - lbw - 8, 28],
@@ -8026,6 +8034,7 @@ void(vector screensize) screen_create =
 			// sui_list_view only emits rows inside the visible window, so this
 			// loop costs per VISIBLE row -- about a dozen -- not per map.  That
 			// is what lets a 1400-entry list scroll for nothing.
+			if (ms_dense) Mrow_Wheel();     // P1658: three rows a wheel notch
 			sui_list_view_begin("cs_list", [17, y + 1], [ls_x - 2, ls_y - 2],
 			                    [ls_x - 14, rh], ms_viewcount, ms_scroll, [0, 10]);
 
@@ -8049,6 +8058,13 @@ void(vector screensize) screen_create =
 
 				float on  = (real == ms_selected);
 				float hot = sui_is_hovered(rid);
+				if (ms_dense)               // P1658: one text line a row (m_maprows.qc), the same ids and clicks
+				{
+					Mrow_Draw(rp, rs, idx, real, er, on, hot);
+					if (sui_is_released(rid))
+						ms_selected = real;
+					continue;
+				}
 				if (on || hot)
 					sui_roundbox(rp + '1 1 0', rs - '2 2 0', 7, on ? COL_ROW_SEL : COL_ROW_HOVER, 1);
 				if (!Mgs_Row(real))
