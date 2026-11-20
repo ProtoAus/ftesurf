@@ -556,6 +556,8 @@ void(entity pl) GS_DamageKnock =
 	}
 	if (!pl.gs_knockon || pl.gs_knockattempt != pl.bank_attempt)
 		pl.gs_knock = '0 0 0';
+	else if (pl.gs_kbp != self.gs_kbp || pl.gs_kba != self.gs_kba || pl.gs_kbb != self.gs_kbb)
+		SV_BankCauseAffect(pl, pl.gs_kbp, pl.gs_kba, pl.gs_kbb);  // review 2: the queued share's own cause
 	pl.gs_knock = pl.gs_knock + add;
 	pl.gs_knockon = TRUE;
 	pl.gs_knockattempt = pl.bank_attempt;
