@@ -21,6 +21,29 @@
 
 ## next
 
+### P1660 Half-Life textures without Half-Life
+- On a Half-Life map, a texture from a Half-Life or Counter-Strike game you do not have installed is drawn in its own colour instead of the pink and black pattern.
+
+### P1659 Half-Life maps play as Adrenaline Gamer
+- Half-Life maps (BSP 30) start in AG 250 movement by themselves, and the next Source map goes back to its own movement. A mode you picked yourself still applies to every map. Tournament servers never switch.
+- sv_goldsrcprofile picks the movement for Half-Life maps: ag-100, ag-250 (the default), ag-1000 or cs16. Runs on Half-Life maps are practice runs, kept apart from your normal records.
+
+### P1658 Half-Life maps in the map finder, and a compact list
+- Maps has a new Library choice, goldsrc: about 900 Half-Life 1, Adrenaline Gamer and CS 1.6 bhop and kz maps to download and play in a private game. They have no tiers, zones, pictures or leaderboards yet.
+- Under goldsrc the Mode buttons are all, bhop, kz and installed. A map shows its download size, and says needs Half-Life or needs Counter-Strike when it uses files from a Valve game Steam does not have installed.
+- Maps that cannot be offered yet are listed greyed out at the end with the reason, mostly sky textures nobody has.
+- The Momentum and CS:S lists are unchanged and both still means those two. A Half-Life map is its own entry even when a Source map shares its name.
+- New Cards / List switch above the map list. List is one line per map with no pictures or record times, and the game remembers the choice.
+
+### P1656 Half-Life map downloads
+- A Half-Life map downloads as one small package into its own folder (downloads/goldsrc) and is checked before use; its files are only used while that map is loaded, so Source maps never pick them up.
+- Valve's own files come from your Steam copies of Half-Life and Counter-Strike, like every other game.
+
+### P1655 Half-Life map entities
+- On Half-Life maps, ladders can be climbed and water, slime and lava swim as in Half-Life.
+- Doors, bhop blocks, buttons, moving platforms and breakable walls work: press buttons with +use and shoot the ones that need shooting. Teleports reset your speed; boosters and conveyors push.
+- Timers and other logic built into the map run. Source maps are not affected.
+
 ### P1653 Faster Story and Event screens
 - The Story and Event screens draw about four times faster, and screens that look up maps by name (Story, lobbies, tournaments) no longer search the whole map list each time.
 

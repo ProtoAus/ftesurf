@@ -1,5 +1,39 @@
 # BACKLOG.md
 
+## P1654-P1660 GoldSrc maps and Linux ImGui -- open items (20 Nov, worldofsurf-4a)
+- Records: artifacts and reports in FTESurf-worktrees/agmaps-20261120-4a/artifacts/ (rel/, ents/, menu/ REPORT.md;
+  review-*.md). Packages: tools/gsrcpack.py; R2 objects/goldsrc/<sha>.xz + goldsrc/catalog.txt via the Pi root
+  /srv/nvme/agent-work/agmaps-20261120-4a (own r2mirror ledger; the PC's r2 token is read-only).
+- 385 of 1,308 archive maps not offered (323 a custom sky nobody has, 29 not bhop/kz, 33 other missing files). Falsifier:
+  gsrcpack.py plan prints the counts; a found sky set moves rows from gx to gs.
+- trigger_hurt is inert on GoldSrc maps (347 damaging in 80 maps, 48 instant kills in 24): Lex's decision. Falsifier:
+  stand in ag_bhop_master's hp2pow31.
+- 728 of 1,308 maps never loaded with the P1655 progs (580 loaded, 0 failures). Falsifier: the sweep in
+  artifacts/ents/REPORT.md (shell only, ~30 min).
+- No client prediction run of GoldSrc movers or ladders under load; free-standing ladders need a P1655 client.
+  Falsifier: climb a ladder and ride a bhop block with cl_prederror on a remote server.
+- Package unpack (xz decode + sha256) runs on the main thread when a download ends; the largest package is 130 MB.
+  Falsifier: download the largest (gsrcpack catalog) and time the frame.
+- The KZ start/stop buttons (counter_start / counter_off, 1,250 maps) drive only the map's own display; no run timer.
+  Hook points: sv_goldsrc.qc GS_PlayerUse / GS_MultiTouch, before the master check (artifacts/ents/REPORT.md).
+- Still static or on Source code on GoldSrc maps: func_pendulum, func_pushable, func_vehicle, func_plat; env_sprite (.spr),
+  ambient_generic, func_rotating, env_glow, env_beam/env_laser, trigger_gravity. Slanted ladders on kz_man_dragon.
+- No thumbnails for GoldSrc rows (kreedz.com has 364 of 923 by name, "all rights reserved"; or render our own).
+- The menu does not fetch goldsrc/wadcolours.txt; players without Half-Life get flat colours from the next release's
+  scripts/wadcolours.txt (release.ps1 Gates refuses a release without it: run tools/wadcolours.py on a PC with Half-Life).
+- Linux releases do not ship the ImGui plugin yet: installed launchers refuse a whole feed naming an unknown file
+  (artifacts/rel/REPORT.md); ships with the first worldofsurf feed (P1593 stage 3) behind $LinuxShipImgui.
+- Lobby style label: tools/backend-pending.md (P1659 follow-up). GoldSrc lobbies need the packages on the NanoPi and a
+  lobby engine with P1656.
+- Pre-existing, found in P1656's review (outside the patch, details in FTESurf-private): server-offered packages and
+  particle scripts in downloads/, and insecure package/ local names.
+- Pre-existing: a dedicated server that quits while a `map <missing>` download is in flight segfaults in
+  SV_Map_Downloaded -> SV_Error during SV_Shutdown (HTTP_CL_Terminate -> DL_Close); same on engine patch-1644.
+  Falsifier: `map nosuchmap_gs` then `quit` at once; the log ends in "SV_Error: Couldn't download map" + SIGSEGV.
+- P1655 minor: PM_LadderEntPlane takes the first ladder brush the box touches (server and client may list them in a
+  different order: standing in two at once could mispredict); multi_manager treats delay/master/killtarget/dmg keys
+  as settings (Half-Life's treats every key but wait as a target).
+
 ## P1634 tournaments -- settle before enabling them anywhere (20 Nov, worldofsurf-ed)
 - Evidence: FIXED in P1635 (the hold's first edge voids a running run; tournament_playtest.py --round-end, control
   without the fix keeps the timer running while held). The native fixtures (test_tournament_server/transport.py)

@@ -7,6 +7,24 @@
   joins and accepts, draft, Launch. Both should land on the same lobby; F6 shows standings, clock and maps. Try a bhop
   room too (100 tick). Anything wrong: say what you saw, the room and the time.
 
+## P1654-P1660 -- Half-Life (GoldSrc / AG) maps, ImGui on Linux (worldofsurf-4a)
+
+- Maps > Library: a goldsrc chip appears a few seconds after the menu opens (online features on). Click it: about 1,300
+  rows; Mode reads all / bhop / kz / installed; greyed rows at the end say why they are not offered.
+- Download bkz_goldbhop (0.5 MB): a bar, then installed and Play. Play: you are in the map, hud_debug says ag-250 at
+  250 tick. `path` in the console shows downloads/goldsrc/bkz_goldbhop_gs.pk3 and Half-Life near the top.
+- Then load any Source map (surf_beginner): its movement is the usual one and `path` no longer lists Half-Life.
+- ag_bhop_master: climb the ladder near -3388 -3152 3400 looking up and down, then jump off -- any rubber-banding?
+  bhop_hard: a block sinks under you and you arrive at the start with no speed. kz_man_everest: +use the start button,
+  the digits count; the stop button stops them. Swim in ag_bhop_master's red slime (lifts you more slowly than water).
+- A Source map with doors and ladders (de_nuke, cs_office) plays exactly as before.
+- Cards | List switch above the map list: is List readable, does the wheel feel right, is it still List after a restart?
+- ImGui on Linux: `plug_list` lists fteplug_ui_imgui_amd64.so as loaded; the run graphs (F6 / the run line page) draw
+  their plots through it (they did through QC before).
+- Questions: rename "both" now there are three libraries? Open goldsrc in List by default? What should a Half-Life
+  kill trigger (trigger_hurt, 24 maps use instant kills) do: send you to the start, or stay ignored? Use kreedz.com's
+  screenshots (364 of the 923 maps, "all rights reserved") or render our own from the maps?
+
 ## P1647 + P1653 -- roomier console window, faster Story/Event (worldofsurf-bb)
 
 - P1647: open the console. Is there room round the text and above the typing line, a grey title, a small x (red on

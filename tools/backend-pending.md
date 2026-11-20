@@ -1,5 +1,15 @@
 # Backend handoff delivered together — 10 November 2026 UTC
 
+## P1659 follow-up pending: lobbies show their movement style (20 Nov 2026, worldofsurf-4a)
+Lex: "is it possible for the Lobbys to state their movement style (Surf/Bhop/AG250) with the map they are playing? and have
+an ability to swap per map?" Since P1659 the style follows the map on any server (a BSP-30 map runs sv_goldsrcprofile,
+default ag-250; the next Source map its own movement), and every server publishes `*movementprofile` (empty = default).
+Not built: the directory field. Needs, in one change: sv_lobby.qc's heartbeat body (`&style=` from serverkey
+*movementprofile, empty -> the mode from `gamemode`), surfd heartbeat (`clean_text(request.form.get("style"))`, a
+column, the lobby list JSON), and the menu's lobby tile (m_lobby.qc / m_home.qc: "AG 250" beside the map). Lobbies
+host no GoldSrc map today (the packages are not on the NanoPi and the lobby engine predates P1656), so this waits for
+GoldSrc lobbies. Tournament lobbies (tournament_enable) never switch (P1659 skips them; worldofsurf-ed).
+
 ## 20 Nov 2026 06:05Z: gen1635 (P1634 + P1639) LIVE, tournaments ON 06:11Z (tools/p1639-delivery.md)
 Primary ef0d1c7c = the previous live code with surfd.py + P1634's 36 lines and four added tournament modules (game
 448c6832). surfd.py carries NOTHING else from main: P1615 and P1622 below are still pending for the next generation.
