@@ -21,6 +21,9 @@
 
 ## next
 
+### P1646 Scripts and waits do not rank
+- In ranked runs one key press makes one button press: a press made by a script, an alias, a wait or another program makes the run unranked, and the game says why. Normal keys, wheel and gamepad are fine. Comes with the next update.
+
 ### P1691 Discord shows what you are playing
 - With Discord running, your Discord profile shows World of Surf with the map you are on, its picture, your stage and your run time. Type cl_discord 0 in the console to hide it. Maps the game does not know show as a custom map, and watching someone shows as spectating.
 

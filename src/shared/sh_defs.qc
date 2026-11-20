@@ -2258,6 +2258,7 @@ float(float ver) FS_ProfileFields =
 #define PW_TOUCHPAD  10  // P1573: in_rawinput_touchpad is not 0, so a touchpad can turn the view
 #define PW_KEYS      11  // P1576: the engine is not dropping injected keys (in_keyguard)
 #define PW_KEYGUARD  12  // P1576: the key guard cannot run (engine too old, no API, remote play)
+#define PW_SCRIPTGUARD 13  // P1646: the engine cannot count script lapses (older than 1646)
 // P1603 (Lex, 17 Nov): a run's platform mark, its own field beside the flags (TF_ bit 21 is
 // reserved for movement styles). A client without in_rawinput ranks and is marked; the .rec's
 // `plat`, surfd's `plat` and the boards' sky blue carry it. 0 when absent; later values extend it.
@@ -2303,6 +2304,10 @@ float(float have, float raw, float filt, float acc, float grant) FS_ProfileBroke
 // `keys` was measured: 1 dropped, 0 switched off, 2 cannot run here. Without it (engines before
 // 1576) the key block is unknown: the server ranks that unless sv_rank_keyguard is 1 (SV_ProfileWhy).
 #define IPG_LIVE     8
+// P1646: the engine has the read-only in_script_lapses (every platform): a button press its own key's single
+// bind did not make, a wait/waitms/in, plugin input. CSQC steps `bad` on a change, as for a guard lapse.
+// Without the bit the count is unknown: the server ranks that unless sv_rank_scriptguard is 1.
+#define IPG_SCRIPT   16
 
 float(float have, float noleg, float touch, float keys) FS_GuardWhy =
 {
@@ -2335,6 +2340,7 @@ string(float why) FS_ProfileWord =
 	if (why == PW_TOUCHPAD) return "touchpad";
 	if (why == PW_KEYS)     return "keys";
 	if (why == PW_KEYGUARD) return "keyguard";
+	if (why == PW_SCRIPTGUARD) return "scriptguard";
 	return "unknown";
 };
 
@@ -2347,12 +2353,13 @@ string(float why) FS_ProfileText =
 	if (why == PW_NOGRANT)  return "raw input found no mouse (try in_restart)";
 	if (why == PW_SILENT)   return "the game never reported its input settings";
 	if (why == PW_PLATFORM) return "only the Windows game ranks";   // P1603: while sv_rank_linux is 0
-	if (why == PW_CHANGED)  return "an input setting changed during the run";
+	if (why == PW_CHANGED)  return "an input setting changed during the run, or a script or another program pressed a button";
 	if (why == PW_MOVE)     return "a move input went above the standard 450";
 	if (why == PW_CLICKS)   return "injected clicks must be blocked (set in_rawinput_nolegacy 1)";
 	if (why == PW_TOUCHPAD) return "touchpads do not rank (set in_rawinput_touchpad 0)";
 	if (why == PW_KEYS)     return "keys sent by other programs must be blocked (set in_keyguard 1)";
 	if (why == PW_KEYGUARD) return "input from other programs cannot be blocked here (latest game on Windows 8 or newer, no remote session or DirectInput)";
+	if (why == PW_SCRIPTGUARD) return "this game version cannot check for scripts (update the game)";
 	return "";
 };
 

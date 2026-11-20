@@ -1,5 +1,25 @@
 # BACKLOG.md
 
+## P1646 script guard -- what it leaves (21 Nov, worldofsurf-6f)
+- Owner rulings pending: are `rotate`, `impulse` and cvar-changing binds (toggle, cycle, inc) scripts? They are not
+  button presses and are not counted. Is the engine's cl_iDrive (on by default: releasing the newer of two opposite
+  movement keys re-presses the older, as "snap tap" does) allowed? Linux outside injection (XTEST keyboard,
+  XSendEvent, uinput, Steam Input or firmware macros) looks like real presses: accepted as a known limit?
+- A wait/in/deferral is counted when it runs, not when its tail runs: one issued before a run can land its tail inside
+  the run uncounted (button presses in the tail are still judged when they execute).
+- After a wait at level 29 the level's buffer is held up to one network frame (cmd.c re-stamps waitattime); key lines
+  at level 29 (default.cfg, console binds) queued then lapse. Only players who ran a wait; key-menu binds are level
+  30.
+- CL_DirectPress tests rcon_level, not a command's own `restrict` level: a bind at 20-28 under a raised restriction
+  leaves a dead note for one frame (no gain found).
+- cl_threadedphysics 1 with a wheel reported as mouse z (Windows in_dinput 1, Android, web): Key_Event runs on the
+  input thread, the note ring is unsynchronised and the line may land frames late. in_dinput runs are unranked
+  already.
+- Rare false counts outside ftesurf's flows: a server-created alias run from a split-screen seat level, and
+  dpcompat_console 1 alias bodies expanding a teamplay-tainted cvar.
+- sv_rank_scriptguard stays 0 until a release with P1646 has been out long enough; then 1 unranks engines that cannot
+  count (PW_SCRIPTGUARD, "update the game").
+
 ## Lex's 21 Nov UI list -- what P1676-P1685 left (worldofsurf-9b; root FTESurf-worktrees/uilist-20261121-9b)
 - snd_vis desktop audio (P1682) falls back to the game mix only when capture is unsupported or not connected: a
   desktop that is connected but silent while the game plays to another output (s_device on a non-default sink, a

@@ -1,5 +1,14 @@
 # AGENT_NOTES.md
 
+## P1646 script guard: what it does to test arms (21 Nov 2026)
+
+- An engine with P1646 counts in the read-only in_script_lapses every button press its key's own bare bind did not
+  make: `+jump` typed or piped to the console, an alias, a multi-command bind, `wait`/`waitms`/`in`/`waitmap` in a
+  map, a deferred alias body, plugin input. With the P1646 csprogs a change during a run steps the input report's
+  `bad`, so a harness that drives movement from the console makes its runs unranked (`changed`), as on Windows before.
+  Read the counter with `in_script_lapses`; arms that need a ranked run must press keys through the compositor
+  (wtype in the private rig), with single bare `+command` binds.
+
 ## P1675 start lag: what it does to test arms (21 Nov 2026)
 
 - A start whose packet ran more than run_startlag SECONDS (0.06) after the part that left the box (or, for a launch,

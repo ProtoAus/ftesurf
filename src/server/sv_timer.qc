@@ -12038,6 +12038,11 @@ float(entity e) SV_ProfileWhy =
 		if (cvar("sv_rank_keyguard"))
 			return PW_KEYGUARD;
 	}
+	// P1646: an engine before 1646 cannot count script lapses (scripts are not allowed in the Normal
+	// categories: "1 button per key, no waits", Lex 20 Nov); 1 once a release with it is out. Every platform.
+	if (!(e.run_t_ghave & IPG_SCRIPT))
+	if (cvar("sv_rank_scriptguard"))
+		return PW_SCRIPTGUARD;
 	// P1083: the attempt's largest move axis, read by SV_MoveBoundFrame from the
 	// usercmds themselves -- nothing the client reports. 0 until the run starts.
 	if (e.run_t_movebig > RUN_MOVE_STD)

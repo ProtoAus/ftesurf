@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1646 -- the script guard (anti-cheat finish list; worldofsurf-6f) -- on your dev install after its next rebuild
+1. Play a few minutes the way you normally do: keyboard, mouse-wheel jump, a gamepad if you have one. Then open the
+   console and type `in_script_lapses`: it should still read 0. If it went up, tell me what you pressed.
+2. Type `+jump` in the console and press Enter: the number goes up by one (that is the guard working).
+3. Players get it with the next game update; until then nothing changes on the lobbies.
+
 ## P1669 / P1670 -- every GoldSrc map offered; downloads while you play (worldofsurf-75, 21 Nov)
 Your request: all AG maps downloadable with a red warning, and no disconnecting to download.
 1. Maps, library goldsrc: 1,308 maps (was 923). Search bhop_continuous: its line ends in a red "warning"; hover the row:

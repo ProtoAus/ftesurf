@@ -1,4 +1,10 @@
 # The engine build this QuakeC requires.
+# P1646 (engine cl_input.c keys.c cl_main.c client.h in_generic.c cmd.c common.c plugin.c; QC cl_replay.qc
+# sv_timer.qc sh_defs.qc, tools/reccheck.py; Lex's 20 Nov ruling "1 button per key, no waits", worldofsurf-6f): the
+# read-only in_script_lapses counts a button press its key's own bare bind did not make (one-frame note), a wait,
+# waitms, in, waitmap in a map, an alias body deferred to a lower level, plugin input; +attack2 is a command.
+# csprogs steps the input report's bad on a change (a lapse in a run unranks it); IPG_SCRIPT 16; sv_rank_scriptguard
+# (0) unranks engines without it. Reaches players with a release. Record: ENGINE_PATCHES P1646; tools/p1646-arms.md.
 # P1669-P1670 (game tools/gsrcpack.py, menu m_goldsrc.qc m_maprows.qc m_main.qc; engine cl_parse.c pr_menu.c
 # sv_ccmds.c httpclient.c client.h; Lex: "allow downloading and playing of all AG maps regardless of if it's missing
 # assets" and "you need to disconnect to download a map in my game?", worldofsurf-75): all 1,308 GoldSrc maps are
@@ -637,7 +643,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   7e72b14a3
+commit   d4d6ffd38
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
