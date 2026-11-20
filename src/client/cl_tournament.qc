@@ -791,7 +791,7 @@ string(float remaining) Tour_NextStep =
 	if (tour_phase == "loading")
 	{
 		if (serverkey("tournament_starts") == "1") return sprintf("Everyone is here: the round starts in %s%s", Tour_Clock(remaining), host ? "  (F6 to start now)" : "");
-		if (serverkey("tournament_starts") == "2") return sprintf("Starting without the missing players in %s", Tour_Clock(remaining));
+		if (serverkey("tournament_starts") == "2") return sprintf("Starting without the missing players in %s%s", Tour_Clock(remaining), host ? "  (F6 to start now)" : "");
 		if (serverkey("tournament_auto") == "0")
 		{
 			if (mine && !myready) return "Press F6 and click Ready on map";
