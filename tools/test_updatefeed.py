@@ -119,6 +119,20 @@ class PublisherTests(unittest.TestCase):
             self.assertEqual(feed.object_bytes(self.root / 'feed/objects', row['hash'], row['size']),
                              (self.win / path).read_bytes())
 
+    def test_p1654_linux_imgui_waits_for_its_readers(self):
+        """No shipped launcher or engine manages this name, and each refuses a whole feed over one unmanaged
+        path. Change this test only together with qkupdate.c and ftesurf_update.rs, in a feed they all read."""
+        name = 'fteplug_ui_imgui_amd64.so'
+        for game in feed.IDENTITIES:
+            self.assertFalse(feed.managed(name, game), game)
+        self.assertTrue(feed.managed('fteplug_ui_imgui_x64.dll') and feed.managed('fteplug_hl2_amd64.so'))
+        linux = stage(self.root / 'linux', 'linux64')
+        (linux / name).write_bytes(b'synthetic plugin\n')
+        with self.assertRaisesRegex(ValueError, 'unmanaged file: ' + name):
+            feed.build({'win64': self.win, 'linux64': linux}, self.root / 'feed', '0.1.25',
+                       ['https://dl.proto.bar/ftesurf/update'], SEED, KEY)
+        self.assertFalse((self.root / 'feed/update.json').exists())
+
     def test_generated_map_tables_use_existing_asset_namespace(self):
         for name in ('matcolours', 'unshipped', 'wadcolours'):
             path = f'ftesurf/scripts/{name}.txt'

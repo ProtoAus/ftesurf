@@ -19,6 +19,10 @@ import ed25519
 
 PUBLIC_KEY = "18c7c332f5bbc913a0fceef38eab9494ce79cf60771fdda093a2d5eabef86cb6"
 MAX_FEED = 2 * 1024 * 1024
+# A name is added here LAST. The launcher (ftesurf_update.rs decode) and the engine (qkupdate.c
+# QKU_FSValidateManifest) refuse a WHOLE feed when any entry, for either platform, is outside their own copy of
+# this policy; the launcher then starts nothing, and no feed updates a launcher. So a new name may only enter a
+# feed all of whose readers were built with it. Waiting on that: fteplug_ui_imgui_amd64.so (P1654).
 ROOT = {
     "default.fmf", "ftesurf.bat", "ftesurf.sh", "ftesurf_debug.bat", "LICENSE", "INSTALL.txt",
     "VERSION.txt", "SOURCE.txt", "THIRD-PARTY.txt", "ftesurf64.exe", "ftesurf64",

@@ -85,6 +85,7 @@ def main():
     copy(a.tree / 'default.fmf', 'default.fmf')
     copy(a.engine_release / ('fteqw64' if posix else 'fteqw64.exe'), exe)
     if posix: (stage / exe).chmod(0o755)
+    # P1654: no fteplug_ui_imgui_amd64.so; updatefeed.py refuses a stage holding it until its readers manage the name.
     plugins = ['fteplug_hl2_amd64.so'] if posix else ['fteplug_hl2_x64.dll', 'fteplug_ui_imgui_x64.dll']
     for name in plugins:
         if posix: (stage / name).write_bytes(b'not loaded in updater UI harness\n')
