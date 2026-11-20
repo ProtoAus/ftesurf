@@ -1624,6 +1624,9 @@ float(entity f, entity act) SV_CtxFilter =
 
 void(string key, string value) ED_ParseUnknownEpair =
 {
+	if (GS_Map())                   // P1655: GoldSrc keys (sv_goldsrc.qc); a Source map takes no branch
+	if (GS_UnknownKey(key, value))
+		return;
 	if (value == "")
 		return;
 
@@ -6611,6 +6614,11 @@ void(entity pl) SV_UseFrame =
 		return;						// held down; a press is an edge, not a state
 	pl.vbsp_lastuse = TRUE;
 
+	if (GS_Map())                   // P1655: GoldSrc's +use is a search, not this trace (sv_goldsrc.qc)
+	{
+		GS_PlayerUse(pl);
+		return;
+	}
 	if (!vbsp_io_on)
 		return;
 
@@ -6997,6 +7005,8 @@ void() SV_EntityIOBuild =
 			break;
 		}
 	}
+	if (GS_Map())                   // P1655: the lump is built -- trains, multisources, trigger_auto
+		GS_MapStart();
 };
 
 /*
@@ -15200,6 +15210,9 @@ void(void() spawnfunc) CheckSpawn =
 	local string pn, trec, tio;
 	local float nlate;
 
+	if (GS_Map())                   // P1655: GoldSrc classes spawn in sv_goldsrc.qc; FALSE leaves this one here
+	if (GS_Spawn())
+		return;
 	e = self;
 	pn = self.parentname;
 	trec = tio = "";

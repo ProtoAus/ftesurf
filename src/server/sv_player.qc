@@ -300,6 +300,8 @@ void() PutClientInServer =
 	{
 		// CBasePlayer::Spawn nudges 1 unit up off the spawn pad.
 		setorigin(self, spot.origin + (FS_MovementProfileGoldSrc(serverkey("*movementprofile")) ? '0 0 37' : '0 0 1'));
+		if (GS_Map())               // P1655: a GoldSrc map's spawn point is the hull's centre, not the feet
+			setorigin(self, self.origin - '0 0 36');
 		self.angles = spot.angles;
 	}
 	else
