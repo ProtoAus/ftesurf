@@ -1,5 +1,7 @@
 # Signed updates are a separate publication contract from archive receipts.
 # Caller supplies stages only AFTER archive/stage verification; no player-install input.
+# A Linux host need not have a bare `python`; python3 is the portable name there.
+function Get-ReleasePython { if ($env:OS -eq 'Windows_NT') { 'python' } else { 'python3' } }
 function New-UpdateFeed {
     param([string]$Tool, [string]$WindowsStage, [string]$LinuxStage,
         [string]$Output, [string]$Version, [string]$Mirror, [string]$SeedFile,
@@ -17,7 +19,7 @@ function New-UpdateFeed {
         $argv += @('--previous', $Previous)
         if ($PreviousObjects) { $argv += @('--previous-objects', $PreviousObjects) }
     }
-    Native 'python' (@('-B') + $argv) 'signed update generation' | ForEach-Object { Info $_ }
+    Native (Get-ReleasePython) (@('-B') + $argv) 'signed update generation' | ForEach-Object { Info $_ }
     foreach ($file in @('update.json', 'objects.txt')) {
         if (-not (Test-Path -LiteralPath (Join-Path $Output $file) -PathType Leaf)) { Fail "publisher did not produce $file" }
     }
@@ -36,7 +38,7 @@ function Publish-UpdateObjects {
     }
     $list = Join-Path $WorkRoot 'objects.txt'
     # Regenerate/validate inventory from the signed feed rather than trusting a mutable list.
-    Native 'python' @('-B', $Feed.Tool, 'verify-objects', '--feed', $feedPath,
+    Native (Get-ReleasePython) @('-B', $Feed.Tool, 'verify-objects', '--feed', $feedPath,
         '--objects', (Join-Path $Feed.Root 'objects'), '--receipt', (Join-Path $WorkRoot 'local-check.json'), '--inventory', $list) 'local update object check' | ForEach-Object { Info $_ }
     # --immutable + --checksum refuses an existing same-name/different-byte object.
     if (-not $SkipPut) {
@@ -53,7 +55,7 @@ function Publish-UpdateObjects {
     Native 'rclone' @('copy', $Destination, $objects, '--files-from-raw', $list,
         '--checksum', '--bind', '0.0.0.0', '--bwlimit', $Limit) 'update object round-trip download' | Out-Null
     $proof = Join-Path $checkRoot 'publication.json'
-    Native 'python' @('-B', $Feed.Tool, 'verify-objects', '--feed', $feedPath, '--objects', $objects,
+    Native (Get-ReleasePython) @('-B', $Feed.Tool, 'verify-objects', '--feed', $feedPath, '--objects', $objects,
         '--receipt', $proof, '--roundtrip') 'full referenced update object verification' | ForEach-Object { Info $_ }
     if ((Get-FileHash -LiteralPath $feedPath -Algorithm SHA256).Hash.ToLower() -cne $Feed.FeedSha) {
         Fail 'generated update feed changed during object verification'

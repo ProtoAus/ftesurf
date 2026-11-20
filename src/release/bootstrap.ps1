@@ -53,7 +53,19 @@ function Assert-BootstrapGlibc ([string[]]$Versions) {
 
 function Build-Bootstrap ($Source, [string]$Distro = '', [string]$LinuxBuildChroot = '/srv/ftebuild-bullseye') {
     $root = $Source.root
-    if ($Distro) {
+    $onWindows = $env:OS -eq 'Windows_NT'
+    if ($Distro -and -not $onWindows) {
+        # Linux host: the same Bullseye builder as a plain child process. linux-bootstrap.sh becomes
+        # root of its own user/mount/pid namespaces itself when not run as root (no sudo).
+        $compiler = @(& rustc -vV)
+        if ($LASTEXITCODE -ne 0) { throw 'Linux bootstrap requires rustc/cargo (rustup) on PATH' }
+        $toolchain = $compiler[0]
+        $target = @($compiler | Where-Object { $_ -like 'host: *' })[0].Substring(6)
+        if ($target -ne 'x86_64-unknown-linux-gnu') { throw 'Linux bootstrap requires the glibc x86_64 target' }
+        $out = & bash (Join-Path $PSScriptRoot 'linux-bootstrap.sh') $root (Join-Path $root 'target/ftesurf-linux') $LinuxBuildChroot 2>&1
+        $code = $LASTEXITCODE
+        $binary = Join-Path $root "target/ftesurf-linux/$target/release/WOS-Launcher"
+    } elseif ($Distro) {
         $wroot = & wsl.exe -d $Distro --exec wslpath -a -u $root
         if ($LASTEXITCODE -ne 0) { throw 'cannot resolve Linux bootstrap source path' }
         $wroot = "$wroot".Trim()
@@ -68,6 +80,7 @@ function Build-Bootstrap ($Source, [string]$Distro = '', [string]$LinuxBuildChro
         $code = $LASTEXITCODE
         $binary = Join-Path $root "target/ftesurf-linux/$target/release/WOS-Launcher"
     } else {
+        if (-not $onWindows) { throw 'a Linux host cannot build the Windows bootstrap; use Use-PublishedBootstrap' }
         $compiler = @(& rustc -vV)
         if ($LASTEXITCODE -ne 0) { throw 'Windows bootstrap requires rustc/cargo' }
         $toolchain = $compiler[0]
@@ -99,6 +112,50 @@ function Build-Bootstrap ($Source, [string]$Distro = '', [string]$LinuxBuildChro
             dirty_source = $Source.dirty_source; rustc = "$toolchain".Trim(); target = $target
             sha256 = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash
             builder = $(if ($Distro) { 'isolated Bullseye glibc 2.31; locked offline Cargo; baseline --help' } else { 'native Windows Cargo' })
+            policy = 'separate archive bootstrap; never replaced by the ordinary update manifest'
+        }
+    }
+}
+
+# Linux host only. There is no MSVC toolchain here, so the Windows bootstrap is the previous release's standalone
+# launcher, accepted ONLY when that release recorded this exact source -- commit and the full source fingerprint
+# Get-BootstrapSource computes, clean -- for a Windows x86_64 target, and the file hashes to what it published.
+# Nothing is rebuilt and nothing is taken from a player install: the bytes are a published, hash-pinned artifact
+# of the same source. Any other source (a launcher change) needs a Windows host to rebuild it.
+function Use-PublishedBootstrap ($Source, [string]$From) {
+    if (-not $From) { throw 'a Linux host cannot build the Windows bootstrap: pass -ReuseWindowsBootstrap <dir> holding the previous release''s version.json and the WOS-Launcher-<version>.exe it names' }
+    $From = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($From)
+    $metaPath = Join-Path $From 'version.json'
+    if (-not (Test-Path -LiteralPath $metaPath -PathType Leaf)) { throw "no version.json in $From" }
+    $meta = [IO.File]::ReadAllText($metaPath) | ConvertFrom-Json -AsHashtable
+    $b = $meta['bootstrap']
+    if (-not $b) { throw "$metaPath records no bootstrap" }
+    if ($b['commit'] -cne $Source.commit -or $b['source_sha256'] -cne $Source.source_sha256) {
+        throw "published bootstrap ($($meta['version'])) was built from other source (commit $($b['commit'])); a launcher change must be rebuilt on a Windows host"
+    }
+    if (@($b['dirty_source']).Count -or $Source.dirty_source.Count) { throw 'published or current bootstrap source is dirty' }
+    if ($b['target'] -cnotmatch '^x86_64-pc-windows-(msvc|gnu)$') { throw "published bootstrap target '$($b['target'])' is not Windows x86_64" }
+    if ("$($b['sha256'])" -notmatch '^[0-9A-Fa-f]{64}$') { throw 'published bootstrap has no sha256' }
+    $dl = @($meta['bootstrap_downloads'] | Where-Object { $_['platform'] -ceq 'win64' })
+    if ($dl.Count -ne 1) { throw 'published metadata names no single win64 standalone bootstrap' }
+    $name = [string]$dl[0]['name']
+    if ($name -cnotmatch '^WOS-Launcher-\d+\.\d+\.\d+\.exe$') { throw "unexpected published bootstrap name '$name'" }
+    $binary = Join-Path $From $name
+    if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw "missing $binary (fetch $($dl[0]['url']))" }
+    if ((Get-Item -LiteralPath $binary).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'linked published bootstrap is not allowed' }
+    $sha = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash
+    if ($sha -ine $b['sha256'] -or $sha -ine [string]$dl[0]['sha256']) { throw "$name does not hash to the published bootstrap ($($b['sha256']))" }
+    $bytes = [IO.File]::ReadAllBytes($binary)
+    $pe = if ($bytes.Length -gt 64) { [BitConverter]::ToInt32($bytes, 60) } else { -1 }
+    if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A -or $pe -lt 64 -or $pe + 6 -gt $bytes.Length -or
+        [BitConverter]::ToUInt32($bytes, $pe) -ne 0x00004550 -or [BitConverter]::ToUInt16($bytes, $pe + 4) -ne 0x8664) { throw "$name is not an x86-64 PE executable" }
+    [ordered]@{
+        binary = $binary
+        provenance = [ordered]@{
+            commit = $Source.commit; source_sha256 = $Source.source_sha256
+            dirty_source = $Source.dirty_source; rustc = "$($b['rustc'])"; target = "$($b['target'])"
+            sha256 = $sha
+            builder = "published $($meta['version']) bootstrap reused, same source fingerprint ($($b['builder']))"
             policy = 'separate archive bootstrap; never replaced by the ordinary update manifest'
         }
     }

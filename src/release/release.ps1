@@ -79,7 +79,8 @@
 #    src\release\install.sh      one-time sudo wiring on the Pi
 #    src\release\publish.sh      routine no-sudo atomic swap
 #    src\release\releaselib.ps1  helpers (tests: test_releaselib.ps1)
-#    src\release\linux-pack.sh   the WSL half of -Linux (inspect, pack, verify)
+#    src\release\linux-pack.sh   the Linux half of -Linux (inspect, pack, verify): through WSL on
+#                                a Windows host, as a plain child process on a Linux host
 #    dist\ftesurf-<ver>.json     the receipt; the page renders only from this
 # =============================================================================
 [CmdletBinding()]
@@ -120,6 +121,10 @@ param(
     [string] $FteRoot  = $(if ($env:FTESURF_FTEROOT) { $env:FTESURF_FTEROOT } else { 'C:\msys64\home\Lex\fteqw' }),
     # Explicit source: never package an arbitrary bootstrap from a player install.
     [string] $LauncherRoot = $env:FTESURF_LAUNCHERROOT,
+    # Linux host only (no MSVC there): a folder holding the previous release's public version.json
+    # and the WOS-Launcher-<version>.exe it names. Used only when that release recorded exactly this
+    # launcher source (commit + full source fingerprint, clean); its bytes must hash to the record.
+    [string] $ReuseWindowsBootstrap,
     # No inferred live feed or update rollback/Force override. Retained platforms need bytes.
     [switch] $FirstUpdateFeed,
     [string] $PreviousUpdateFeed,
@@ -156,6 +161,20 @@ $EngineRel   = Join-Path $FteRoot 'engine\release'
 $PatchesMd   = Join-Path $FteRoot 'ENGINE_PATCHES.md'
 $VersionFile = Join-Path $SurfDir 'VERSION'
 $SevenZip    = 'C:\Program Files\7-Zip\7z.exe'
+# A Linux host runs the same pipeline natively: 7-Zip's own 7zz/7z, curl, python3, and
+# linux-pack.sh / linux-bootstrap.sh as child processes instead of through wsl.exe.
+$HostIsWindows = $env:OS -eq 'Windows_NT'
+if (-not $HostIsWindows) {
+    $SevenZip = @('7zz', '7z') | ForEach-Object { Get-Command $_ -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1 } |
+        Where-Object { $_ } | Select-Object -First 1 | ForEach-Object { $_.Source }
+    if (-not $SevenZip) { $SevenZip = '/usr/bin/7zz' }
+}
+$PythonExe   = if ($HostIsWindows) { 'python' } else { 'python3' }
+$CurlExe     = if ($HostIsWindows) { 'curl.exe' } else { 'curl' }
+$NullDevice  = if ($HostIsWindows) { 'NUL' } else { '/dev/null' }
+$TempDir     = [IO.Path]::GetTempPath()
+$ReleaseHost = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { [Environment]::MachineName }
+$LinuxHostLabel = if ($HostIsWindows) { "WSL $LinuxDistro" } else { 'native Linux host' }
 
 if ($Force) { $AllowDirty = $true; $AllowStale = $true; $AllowEngineSkew = $true }
 
@@ -434,11 +453,13 @@ $LinuxExeMustHave   = @('libgnutls.so.30', 'gnutls_certificate_allocate_credenti
 $LinuxPluginMustNot = @('needs a build with zstd')
 
 function Invoke-Wsl ([string[]]$argv, [string]$what) {
-    $r = Invoke-WslRaw $LinuxDistro $argv
+    $r = if ($HostIsWindows) { Invoke-WslRaw $LinuxDistro $argv } else { Invoke-NativeRaw $argv }
     if ($r.Rc -ne 0) { Fail "$what failed (exit $($r.Rc))`n$($r.Lines -join "`n")" }
     return $r.Lines
 }
+# The path the Linux half sees: wslpath on Windows, the path itself on a Linux host.
 function WslPath ([string]$p) {
+    if (-not $HostIsWindows) { return [IO.Path]::GetFullPath($p) }
     try { return ConvertTo-WslPath $LinuxDistro $p } catch { Fail $_.Exception.Message }
 }
 # One R2 object's size and md5, or $null when absent.
@@ -480,7 +501,7 @@ if (-not $SetupSite) {
     $notesPrev = (Get-ReleaseVersion ([IO.File]::ReadAllText((Join-Path $SurfDir 'VERSION'))) '')
     if ($notesCheck.releases.Count -lt 2 -or $notesCheck.releases[1].version -cne $notesPrev) { Fail "PATCHNOTES.md: no '## $notesPrev <date>' section under '## next' -- the last release's heading was not added" }
     Info "PATCHNOTES.md: $($notesCheck.releases[0].patches.Count) patches for $targetVersion"
-    Native 'python' @((Join-Path $SurfDir 'tools/shipguard.py'), '--release-policy') 'release asset/policy preflight' | ForEach-Object { Write-Host $_ }
+    Native $PythonExe @((Join-Path $SurfDir 'tools/shipguard.py'), '--release-policy') 'release asset/policy preflight' | ForEach-Object { Write-Host $_ }
     if ($PreflightOnly) { Good "release preflight PASS; target $targetVersion; no build or publication"; return }
     if ($FirstUpdateFeed.IsPresent -eq [bool]$PreviousUpdateFeed) { Fail 'choose -FirstUpdateFeed OR -PreviousUpdateFeed explicitly before building' }
     if ($FirstUpdateFeed -and -not $Linux) { Fail 'first update feed requires both platforms' }
@@ -533,11 +554,11 @@ if ($Linux) {
     }
     $LinuxPack = Join-Path $RelDir 'linux-pack.sh'
     if (-not (Test-Path -LiteralPath $LinuxPack)) { Fail "missing $LinuxPack" }
-    if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) { Fail 'wsl.exe is not on PATH' }
+    if ($HostIsWindows -and -not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) { Fail 'wsl.exe is not on PATH' }
     $LinuxPackWsl = WslPath $LinuxPack
     $LinuxDropWsl = WslPath $LinuxDrop
-    Invoke-Wsl @('sh', $LinuxPackWsl, 'tools') "linux-pack.sh tools (WSL $LinuxDistro)" | Out-Null
-    Good "WSL $LinuxDistro has the pack tools; Linux drop $LinuxDrop"
+    Invoke-Wsl @('sh', $LinuxPackWsl, 'tools') "linux-pack.sh tools ($LinuxHostLabel)" | Out-Null
+    Good "$LinuxHostLabel has the pack tools; Linux drop $LinuxDrop"
 }
 
 # =============================================================================
@@ -875,14 +896,14 @@ $shipGuard = Join-Path $SurfDir 'tools\shipguard.py'
 if (-not (Test-Path -LiteralPath $shipGuard)) {
     Fail "tools\shipguard.py is missing, so gate 4 cannot run. A gate that cannot run must not read as a pass: restore the tool, or delete this gate in the same commit that deletes it."
 }
-if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-    Fail "python is not on PATH, so gate 4 (the ship-set guard) cannot run. This one is not skippable -- the fault it catches is a release that ships a working feature with no data for it to read."
+if (-not (Get-Command $PythonExe -ErrorAction SilentlyContinue)) {
+    Fail "$PythonExe is not on PATH, so gate 4 (the ship-set guard) cannot run. This one is not skippable -- the fault it catches is a release that ships a working feature with no data for it to read."
 }
 # Normalised to strings: with 2>&1 a native command's stderr arrives as
 # ErrorRecord objects, and -match on one of those is not the comparison it looks
 # like.  $LASTEXITCODE is read IMMEDIATELY after the native call, before any
 # PowerShell function runs -- the trap surfd-deploy.ps1's NOTES carry.
-$sgOut = @(& python $shipGuard 2>&1 | ForEach-Object { "$_" })
+$sgOut = @(& $PythonExe $shipGuard 2>&1 | ForEach-Object { "$_" })
 $sgCode = $LASTEXITCODE
 $sgOut | ForEach-Object { Info $_ }
 if ($sgCode -ne 0) {
@@ -1003,7 +1024,7 @@ if ($Linux) {
     $lxGlibc = if ($lxGlibcs.Count) { Get-MaxVersion $lxGlibcs } else { $null }
     if (-not $lxGlibc -or -not $lxHostGlibc) { $lxHard += 'linux-pack.sh inspect reported no GLIBC versions or no host glibc' }
     elseif ([version]$lxGlibc -gt [version]$lxHostGlibc) {
-        $lxHard += "the drop needs glibc $lxGlibc and $LinuxDistro has $lxHostGlibc, so it has never run where it was tested"
+        $lxHard += "the drop needs glibc $lxGlibc and $LinuxHostLabel has $lxHostGlibc, so it has never run where it was tested"
     }
 
     $lxVerified = ($lxSkew.Count -eq 0)
@@ -1024,7 +1045,10 @@ if ($Linux) {
 #  4.  STAGE
 # =============================================================================
 Step 'Build separately delivered Rust bootstrap'
-$bootstrap = Build-Bootstrap $bootstrapSource
+# A Linux host has no MSVC toolchain: it reuses the previous release's Windows bootstrap only when
+# that release recorded this exact source (Use-PublishedBootstrap); a Windows host rebuilds it.
+$bootstrap = if ($HostIsWindows) { Build-Bootstrap $bootstrapSource } else {
+    try { Use-PublishedBootstrap $bootstrapSource $ReuseWindowsBootstrap } catch { Fail $_.Exception.Message } }
 $linuxBootstrap = if ($Linux) { Build-Bootstrap $bootstrapSource $LinuxDistro $LinuxBuildChroot } else { $null }
 if ($Linux) {
     # The bootstrap can raise the advertised glibc floor above the engine's.
@@ -1081,7 +1105,7 @@ if ((Get-FileHash -LiteralPath (Join-Path $StageDir 'WOS-Launcher.exe') -Algorit
 $noticeArgs = @((Join-Path $SurfDir 'tools/bootstrap_notices.py'), '--launcher-root', $bootstrapSource.root,
     '--output', (Join-Path $StageDir 'notices/bootstrap.txt'), '--target', $bootstrap.provenance.target)
 if ($Linux) { $noticeArgs += @('--target', $linuxBootstrap.provenance.target) }
-Native 'python' $noticeArgs 'bootstrap notices' | Out-Null
+Native $PythonExe $noticeArgs 'bootstrap notices' | Out-Null
 $bootstrap.provenance['notices_sha256'] = (Get-FileHash -LiteralPath (Join-Path $StageDir 'notices/bootstrap.txt') -Algorithm SHA256).Hash
 
 # Gate 3 hashed the three binaries before they were copied.  A deploy in between (another
@@ -1398,7 +1422,9 @@ try {
     # PNG for nothing. -ms/-mmt are pinned so a future 7-Zip default cannot move
     # them underneath us. No -i!/-x! patterns anywhere: the whole point of the
     # stage is that the thing being packed is already exactly the ship set.
-    Native $SevenZip @('a', '-t7z', '-mx=9', '-ms=on', '-mmt=on', '-bso0', '-bsp0', $ArchivePath, '.\*') '7z a' | Out-Null
+    # Linux 7-Zip expands its own '*' (no shell here); '.\*' would be one literal name there.
+    $packWild = if ($HostIsWindows) { '.\*' } else { '*' }
+    Native $SevenZip @('a', '-t7z', '-mx=9', '-ms=on', '-mmt=on', '-bso0', '-bsp0', $ArchivePath, $packWild) '7z a' | Out-Null
 } finally { Pop-Location }
 if (-not (Test-Path -LiteralPath $ArchivePath)) { Fail '7z reported success but produced no archive' }
 $ArchiveItem  = Get-Item -LiteralPath $ArchivePath
@@ -1603,7 +1629,7 @@ its full license and dependency notices are in notices/bootstrap.txt.
     if ($lxBytes -gt ($MaxTotalMB * 1MB)) { Fail "the Linux stage is $(HumanSize $lxBytes), over the ${MaxTotalMB} MB ceiling." }
     Good "no denied path in $($lxRel.Count) staged files"
 
-    Step 'Linux: pack (WSL)'
+    Step "Linux: pack ($LinuxHostLabel)"
     Remove-Item -LiteralPath $LinuxArchivePath -Force -ErrorAction SilentlyContinue   # never ship a previous pack
     $LxOutWsl = "$(WslPath $OutDir)/$LinuxArchiveName"
     Invoke-Wsl (@('sh', $LinuxPackWsl, 'pack', (WslPath $LxStageRoot), $LinuxTop, $LxOutWsl) + $LinuxExec) 'linux-pack.sh pack' | Out-Null
@@ -1674,7 +1700,7 @@ $receipt = [ordered]@{
         }
     }
     overrides    = $Overrides
-    tool         = [ordered]@{ script = 'src/release/release.ps1'; host = $env:COMPUTERNAME }
+    tool         = [ordered]@{ script = 'src/release/release.ps1'; host = $ReleaseHost }
 }
 if ($Linux) {
     # Appended, so every existing key keeps its place.
@@ -1685,7 +1711,7 @@ if ($Linux) {
         bootstrap = $linuxBootstrap.provenance
         glibc_min = $lxGlibc
         needed    = @($lxNeeded.Values | ForEach-Object { $_ } | Sort-Object -Unique)
-        packed_on = "$lxHostOs (WSL $LinuxDistro)"
+        packed_on = "$lxHostOs ($LinuxHostLabel)"
         engine    = [ordered]@{
             patch_doc            = $lxPatch
             binary_verified      = $lxVerified
@@ -1811,7 +1837,7 @@ if (-not $SkipSite) {
     foreach ($k in $receipt.Keys) { $pubReceipt[$k] = $receipt[$k] }
     $pubReceipt.tool = [ordered]@{ script = 'src/release/release.ps1'; host = '(withheld)' }
     $pubReceiptJson = ($pubReceipt | ConvertTo-Json -Depth 8).Replace("`r`n", "`n")
-    if ($pubReceiptJson -match [regex]::Escape($env:COMPUTERNAME)) { Fail 'the published receipt still names this machine' }
+    if ($ReleaseHost -and $pubReceiptJson -match [regex]::Escape($ReleaseHost)) { Fail 'the published receipt still names this machine' }
     [System.IO.File]::WriteAllText((Join-Path $pageDir 'version.json'), $pubReceiptJson + "`n", (New-Object System.Text.UTF8Encoding $false))
     $pageSha = (Get-FileHash -LiteralPath (Join-Path $pageDir 'index.html') -Algorithm SHA256).Hash
     Good "rendered index.html ($((Get-Item (Join-Path $pageDir 'index.html')).Length) bytes) + $(5 + $siteFiles.Count) companions"
@@ -1870,14 +1896,14 @@ if ($PublishPrepared -or ($preparedCandidate -and -not $DryRun)) {
     if (-not (Test-Path -LiteralPath $publishWorkDir)) { New-Item -ItemType Directory -Path $publishWorkDir | Out-Null }
     Assert-ReleaseNoLink $publishWorkDir
     $localProof = Join-Path $publishWorkDir 'candidate-local-check.json'
-    Native 'python' @('-B', $updateFeed.Tool, 'verify-objects', '--feed', (Join-Path $updateFeed.Root 'update.json'), '--objects', (Join-Path $updateFeed.Root 'objects'), '--receipt', $localProof) 'prepared signed feed/object validation' | ForEach-Object { Info $_ }
+    Native $PythonExe @('-B', $updateFeed.Tool, 'verify-objects', '--feed', (Join-Path $updateFeed.Root 'update.json'), '--objects', (Join-Path $updateFeed.Root 'objects'), '--receipt', $localProof) 'prepared signed feed/object validation' | ForEach-Object { Info $_ }
     $checked = [IO.File]::ReadAllText($localProof) | ConvertFrom-Json
     if ($checked.version -cne $Ver -or $checked.feed_sha256 -cne $updateFeed.FeedSha) { Fail 'signed candidate version/feed disagrees with prepared receipt' }
     if ($DryRun) {
         Good "PREPARED VALIDATION COMPLETE: $Ver; no build, pack, signing or remote mutation"
         return
     }
-    foreach ($tool in @('rclone', 'curl.exe', 'ssh', 'scp')) { if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { Fail "publication tool missing: $tool" } }
+    foreach ($tool in @('rclone', $CurlExe, 'ssh', 'scp')) { if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { Fail "publication tool missing: $tool" } }
 }
 
 if ($DryRun) {
@@ -1886,7 +1912,7 @@ if ($DryRun) {
     # The rclone token is bucket-scoped and its WRITE access is otherwise
     # unproven until the real upload. Prove it on a zero-byte object instead of
     # discovering it 34 MB into a publish.
-    $probe = Join-Path $env:TEMP 'ftesurf-writetest'
+    $probe = Join-Path $TempDir 'ftesurf-writetest'
     Set-Content -LiteralPath $probe -Value '' -NoNewline
     try {
         Native 'rclone' @('copyto', $probe, "${Remote}:$Bucket/$Prefix/.writetest", '--bind', '0.0.0.0') 'rclone write probe' | Out-Null
@@ -2047,9 +2073,9 @@ if (-not $SkipUpload) {
     # GET on the same key reported HIT. Cloudflare does not serve HEAD from
     # cache, so HEAD calls every path uncached -- including the two rules that
     # provably work. Do not "optimise" this back to -I.
-    $hdrFile = Join-Path $env:TEMP "ftesurf-edge-$Ver.txt"
-    & curl.exe -4 -s -o NUL -r 0-99 $ArchiveUrl 2>$null | Out-Null      # priming; also warms the edge
-    & curl.exe -4 -s -D $hdrFile -o NUL -r 0-99 $ArchiveUrl 2>$null | Out-Null
+    $hdrFile = Join-Path $TempDir "ftesurf-edge-$Ver.txt"
+    & $CurlExe -4 -s -o $NullDevice -r 0-99 $ArchiveUrl 2>$null | Out-Null      # priming; also warms the edge
+    & $CurlExe -4 -s -D $hdrFile -o $NullDevice -r 0-99 $ArchiveUrl 2>$null | Out-Null
     $hdrs = Get-Content -LiteralPath $hdrFile -Raw
     Remove-Item -LiteralPath $hdrFile -Force -ErrorAction SilentlyContinue
     if ($hdrs -notmatch '(?m)^HTTP/[\d.]+ 206') { Fail "edge did not honour a Range request:`n$hdrs" }
@@ -2072,8 +2098,8 @@ if (-not $SkipUpload) {
     }
     if ($VerifyFull) {
         Info 'downloading the whole archive to re-hash (-VerifyFull)...'
-        $tmp = Join-Path $env:TEMP $ArchiveName
-        & curl.exe -4 -s -o $tmp $ArchiveUrl
+        $tmp = Join-Path $TempDir $ArchiveName
+        & $CurlExe -4 -s -o $tmp $ArchiveUrl
         $back = (Get-FileHash -LiteralPath $tmp -Algorithm SHA256).Hash
         Remove-Item -LiteralPath $tmp -Force
         if ($back -ne $ArchiveSha) { Fail "round-trip sha256 $back != $ArchiveSha" }
@@ -2106,9 +2132,9 @@ if (-not $SkipUpload) {
         if (-not $lo.Md5) { Fail "R2 returned no md5 for $LinuxObjectKey; cannot verify it end to end" }
         if ($lo.Md5 -ne $LinuxArchiveMd5) { Fail "R2 md5 $($lo.Md5) != local $LinuxArchiveMd5 ($LinuxObjectKey)" }
         Good "origin: size and md5 match ($LinuxArchiveMd5)"
-        $hdrFile = Join-Path $env:TEMP "ftesurf-edge-linux-$Ver.txt"
-        & curl.exe -4 -s -o NUL -r 0-99 $LinuxArchiveUrl 2>$null | Out-Null
-        & curl.exe -4 -s -D $hdrFile -o NUL -r 0-99 $LinuxArchiveUrl 2>$null | Out-Null
+        $hdrFile = Join-Path $TempDir "ftesurf-edge-linux-$Ver.txt"
+        & $CurlExe -4 -s -o $NullDevice -r 0-99 $LinuxArchiveUrl 2>$null | Out-Null
+        & $CurlExe -4 -s -D $hdrFile -o $NullDevice -r 0-99 $LinuxArchiveUrl 2>$null | Out-Null
         $hdrs = Get-Content -LiteralPath $hdrFile -Raw
         Remove-Item -LiteralPath $hdrFile -Force -ErrorAction SilentlyContinue
         if ($hdrs -notmatch '(?m)^HTTP/[\d.]+ 206') { Fail "edge did not honour a Range request for the Linux archive:`n$hdrs" }
@@ -2117,8 +2143,8 @@ if (-not $SkipUpload) {
             Good "edge: 206 with Content-Range total $LinuxArchiveBytes"
         } else { Warn 'edge returned 206 but no parseable Content-Range (linux)' }
         if ($VerifyFull) {
-            $tmp = Join-Path $env:TEMP $LinuxArchiveName
-            & curl.exe -4 -s -o $tmp $LinuxArchiveUrl
+            $tmp = Join-Path $TempDir $LinuxArchiveName
+            & $CurlExe -4 -s -o $tmp $LinuxArchiveUrl
             $back = (Get-FileHash -LiteralPath $tmp -Algorithm SHA256).Hash
             Remove-Item -LiteralPath $tmp -Force
             if ($back -ne $LinuxArchiveSha) { Fail "round-trip sha256 $back != $LinuxArchiveSha ($LinuxObjectKey)" }
@@ -2147,7 +2173,7 @@ if (-not $SkipUpload -or -not $SkipSite) {
         }
         $check = Join-Path $OutDir "verify-$($artifact.Name)"
         $headers = Join-Path $OutDir "verify-$($artifact.Name).headers"
-        Native 'curl.exe' @('--fail', '--silent', '--show-error', '--location', '--max-time', '120', '--dump-header', $headers, '--output', $check, $artifact.Url) 'download standalone launcher' | Out-Null
+        Native $CurlExe @('--fail', '--silent', '--show-error', '--location', '--max-time', '120', '--dump-header', $headers, '--output', $check, $artifact.Url) 'download standalone launcher' | Out-Null
         if ((Get-FileHash -LiteralPath $check -Algorithm SHA256).Hash.ToLowerInvariant() -ne $artifact.Sha) { Fail "public standalone launcher SHA256 mismatch: $($artifact.Name)" }
         if (-not (Select-String -LiteralPath $headers -SimpleMatch -Quiet "filename=`"$saveAs`"")) { Fail "public standalone launcher is not served as $saveAs (Content-Disposition): $($artifact.Name); an object uploaded without the header is kept by --immutable: re-upload it once with the header and without --immutable" }
         Remove-Item -LiteralPath $check, $headers
@@ -2276,8 +2302,8 @@ refusing to deploy a page for an archive that is not published.
         Write-Host   "      sudo sh $SiteRoot/install.sh`n" -ForegroundColor White
         Fail 'site swap completed but signed-feed release is not publicly verified; configure nginx and verify the exact feed before claiming publication'
     } else {
-        $servedFile = Join-Path $env:TEMP "ftesurf-served-$Ver.html"
-        $hdrFile2   = Join-Path $env:TEMP "ftesurf-served-$Ver.txt"
+        $servedFile = Join-Path $TempDir "ftesurf-served-$Ver.html"
+        $hdrFile2   = Join-Path $TempDir "ftesurf-served-$Ver.txt"
         # -L IS REQUIRED, not tidiness. $SiteUrl has no trailing slash, so it hits
         # `location = /ftesurf { return 301 ... }` -- and a 301 carries neither the
         # marker header nor the page body. Without -L this step reported "nginx has
@@ -2287,7 +2313,7 @@ refusing to deploy a page for an archive that is not published.
         # No --compressed: curl sends no Accept-Encoding by default, so nginx's
         # gzip does not fire and the bytes on the wire are the file itself --
         # which is what makes the hash comparison exact.
-        & curl.exe -4 -sL -D $hdrFile2 -o $servedFile $SiteUrl 2>$null | Out-Null
+        & $CurlExe -4 -sL -D $hdrFile2 -o $servedFile $SiteUrl 2>$null | Out-Null
         $h2 = Get-Content -LiteralPath $hdrFile2 -Raw
         if ($h2 -notmatch '(?mi)^x-ftesurf-site:') {
             Warn 'the marker header is absent: the snippet is on disk but nginx has not reloaded it.'
@@ -2302,7 +2328,7 @@ refusing to deploy a page for an archive that is not published.
             Good "$SiteUrl serves the new page (sha256 verified byte for byte)"
             $servedFeed = Join-Path $publishWorkDir 'served-update.json'
             $feedHeaders = Join-Path $publishWorkDir 'served-update.headers'
-            Native 'curl.exe' @('-4', '-fsS', '-D', $feedHeaders, '-o', $servedFeed, "$SiteUrl/update.json") 'served update feed' | Out-Null
+            Native $CurlExe @('-4', '-fsS', '-D', $feedHeaders, '-o', $servedFeed, "$SiteUrl/update.json") 'served update feed' | Out-Null
             if ((Get-FileHash -LiteralPath $servedFeed -Algorithm SHA256).Hash.ToLower() -cne $updateFeed.FeedSha) {
                 Fail 'served update.json differs from the verified signed feed'
             }
