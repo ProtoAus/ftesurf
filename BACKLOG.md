@@ -39,10 +39,12 @@
   worst 6-7 ms against 3.3 (the 9 ms ones lined up with the arm's own screenshot). Needs Lex's map and an r_spikes 1 +
   r_frametime_dump right after it happens. Suspects if it is CPU: R_GenWorldEBO's blocking sync (r_surf.c "Blocking for
   scenecache generation") when the void view's all-cluster batch set is swapped; if GPU: first-sight uploads in void view.
-- bkz_goldbhop_gs healers: five invisible func_doors (dmg -10000, speed 10000) over the start. GS_DoorBlocked ignores
-  dmg, so here they neither heal nor push (rig: doors fire and block on the player, who walks on at 320 u/s) -- CS 1.6's
-  behaviour. Half-Life's knockback (CBaseMonster::TakeDamage's DamageForce, uncapped for negative damage) launches a
-  player at sv_maxvelocity, which is the HL ports' booster; not reproduced on purpose.
+- P1690 (Lex: AG modes knock back, CS 1.6 nothing): GoldSrc door damage now pushes under ag-*. Left (GoldSrc profiles
+  are unranked and never run on tournament servers): a delayed fire (gs_delay, multi_manager) reads the activator's
+  bank_attempt when the door activates, not when it was triggered, so an output fired before !r lands untainted in the
+  new attempt (SV_BankSnapshot does this for Source outputs); Tour_Hold leaves a queued rotating-door knock for
+  Tour_Unhold; the rotating-door path (GS_KnockPost) has no rig arm (no damaging rotating door on a test map); no
+  trigger_hurt on GoldSrc maps yet (still Lex's open decision).
 - P1688: with lobby_av_stream 0 avatars take the engine's entity path and are not hidden (default 1, lobby.cfg);
   aim-to-share (cl_share.qc) can still pick a hidden player.
 - P1687: no version gate on the AG noclip change: a pre-1687 client on a 1687 server mispredicts noclip on a GoldSrc

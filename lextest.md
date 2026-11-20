@@ -24,6 +24,16 @@ tournament-open chat line is worldofsurf-e3's P1674):
 10. P1685 In a lobby, open chat (Y/T): every line starts with the player's picture; hover a name (underlined) and click
    it: their profile card opens. In the main-menu chat each message has the sender's picture; click it or the name.
 
+## P1691 -- Discord presence (worldofsurf-41) -- WAITING on your Discord application
+- Make an application at https://discord.com/developers/applications named World of Surf (the name Discord shows),
+  upload the game icon under Rich Presence > Art Assets with the key `logo`, and send me its Application ID (not a
+  secret). I set it as the default; until then the feature is off. Then: start Discord, play a map: your profile shows
+  the map, its picture, the stage and the run clock; `cl_discord 0` hides it.
+
+## P1690 -- healers push in AG mode (worldofsurf-41)
+- bkz_goldbhop_gs in an AG mode: walk into a healer at the start (the column right of the spawns): you are thrown at
+  full speed as on Half-Life servers. In CS 1.6 mode you walk through. Other GoldSrc doors with damage push too (AG).
+
 ## P1686-P1688 -- your 21 Nov mechanics list (worldofsurf-41; root FTESurf-worktrees/mechanics-20261121-41)
 1. Crouch smoothing (P1686), cl_maxfps 300 on a surf or bhop map: hold crouch and let go. The view should glide down and
    up with no visible stair-steps (measured before: the eye held for 3 frames then jumped, every tick).

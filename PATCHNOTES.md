@@ -21,6 +21,9 @@
 
 ## next
 
+### P1690 Half-Life door boosts in AG mode
+- Half-Life maps in the AG modes: doors that hurt or heal now push you the way Half-Life does, so the healers at the start of bkz_goldbhop launch you like on Half-Life servers. CS 1.6 mode keeps them harmless.
+
 ### P1675 Starts are timed from the moment you leave
 - If your connection or a frame hitch holds back the moment you leave the start (or jump, on bhop) by more than 0.06 seconds, the run is a practice run and the chat says so. Normal play is never affected.
 
