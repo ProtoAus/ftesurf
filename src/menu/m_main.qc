@@ -224,6 +224,11 @@ void(vector pos, vector size, string name) MCard_Backdrop;     // P1105
 void() MCard_Probe;
 void(string what) MM_BcPanel;
 
+// P1658: the GoldSrc catalogue's fetch (m_goldsrc.qc, which compiles after this file).
+void() Mgs_Ask;
+void() Mgs_Shutdown;
+void() Mgs_Command;
+
 /*
   Map source, derived from the searchpath a BSP came out of.
 
@@ -8316,6 +8321,7 @@ void() m_init =
 	registercommand("ui_stats_open");
 	registercommand("ui_maplist");
 	registercommand("ui_browse");
+	registercommand("ui_goldsrc");          // P1658: the catalogue and its rows, for arms
 	registercommand("ui_tournaments");
 	registercommand("ui_tournament_say");
 	registercommand("ui_compsort");
@@ -8490,6 +8496,7 @@ void(vector screensize) m_draw =
 		mmm_fresh = FALSE;
 		ui_maplist_changed();       // keeps the selection, resets the backdrop
 	}
+	Mgs_Ask();                      // P1658: the GoldSrc catalogue, the same way
 	Mzd_Pump();
 	ui_boot_preload();
 	ui_dlkb_step();                 // Patch 999
@@ -9034,6 +9041,11 @@ float(string cmd) m_consolecommand =
 	if (argv(0) == "ui_browse")
 	{
 		ui_browse_print(argv(1));
+		return TRUE;
+	}
+	if (argv(0) == "ui_goldsrc")
+	{
+		Mgs_Command();
 		return TRUE;
 	}
 	if (argv(0) == "ui_tournament_say")
@@ -9677,4 +9689,5 @@ void() m_shutdown =
 		fclose(mmm_in);
 		Mmm_Unspool();
 	}
+	Mgs_Shutdown();     // P1658: the same for the GoldSrc catalogue's
 };
