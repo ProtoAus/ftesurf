@@ -1788,6 +1788,8 @@ void() ui_meta_load =
 		n = tokenize(bufstr_get(ms_meta, i));
 		if (n > MT_UUID && argv(MT_PAGE) != "-")
 			continue;
+		if (n > MT_UUID && argv(MT_UUID) != "-")
+			mvu = argv(MT_UUID);    // its own id still names its backdrop and card art
 		if (n > MT_KTIER)
 			bufstr_set(ms_meta, i, strcat(sprintf("%s %s %s ", argv(MT_LINEAR), argv(MT_STAGES), argv(MT_BONUS)),
 			                              sprintf("%s %s %s %s %s", mvp, mvc, mvu, argv(MT_TSRC), argv(MT_KTIER))));

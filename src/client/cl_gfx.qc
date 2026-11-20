@@ -170,7 +170,7 @@ string(string path) Gfx_AssetGame =
 	return "?";
 };
 
-float() Tour_CentreBusy;     // cl_tournament.qc (compiled later)
+float(vector scr) Tour_CentreBusy; // cl_tournament.qc (compiled later)
 
 void(vector scr) Gfx_DrawMissing =
 {
@@ -181,7 +181,7 @@ void(vector scr) Gfx_DrawMissing =
 
 	if (!cvar("fs_missingwarn"))
 		return;
-	if (Tour_CentreBusy())          // P1672: drawn over the tournament countdown and announcements
+	if (Tour_CentreBusy(scr))       // P1672: drawn over the tournament countdown and announcements
 		return;
 
 	/*

@@ -939,7 +939,7 @@ void() PlayerPostThink =
 
 	SV_HeldCheck(self);
 	SV_TASAutoKeysStat(self);           // the keys HUD shows what a TAS tape or Jargon pressed (Lex), before the paused return
-	if (self.tq_hold) return;          // no save-spectate rollback on tournament start hold
+	if (self.tq_hold) { Pose_Capture(self); return; } // no save-spectate rollback; P1672: avatars still pose (and say held)
 	SV_NoColPost(self);                 // P1193: before anything else traces
 	SV_PeNameSync(self);                // P1405: the client's name filters
 	SV_VsVelPost(self);                 // P1205: a VScript velocity write from this command's touches

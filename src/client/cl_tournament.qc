@@ -815,10 +815,10 @@ string(float remaining) Tour_NextStep =
 
 // The centre announcement owns the middle of the screen while it shows: a map's game_text (often its name and
 // author at spawn) drew over "ROUND 1" and the countdown (Lex 21 Nov). cl_main skips MapMsg_Draw meanwhile.
-float() Tour_CentreBusy =
+float(vector scr) Tour_CentreBusy =
 {
-	if (tour_id == "" || tour_open || rec_sb_open || UI_CursorHeld()) return FALSE;
-	if (tour_phase == "countdown") return TRUE;
+	if (tour_id == "" || tour_open || rec_sb_open || UI_CursorHeld() || scr_x < 640) return FALSE; // Tour_Hud's own exits
+	if (tour_phase == "countdown" && tour_remaining - (cltime - tour_clock_at) > 0) return TRUE;
 	return (tour_evt != "" && cltime - tour_evtat < tour_evtfor);
 };
 
@@ -842,7 +842,9 @@ void(vector scr) Tour_Hud =
 	if (tour_phase == "aborted" || tour_phase == "cancelled") { colour = '1 0.4 0.35'; line = "NO CONTEST"; }
 	title = (tour_rounds > 0) ? sprintf("Round %g of %g", max(1, tour_round), tour_rounds) : "Tournament";
 	if (tour_map != "" && tour_map != "-") title = strcat(title, "  |  ", tour_map);
-	sz1 = 9 * ui_cv_scale; sz2 = 6.5 * ui_cv_scale; lh1 = Font_Px(sz1); lh2 = Font_Px(sz2); pad = 8 * ui_cv_scale;
+	// Each line's rung in its own face: lh1 measured with no face set read 9 px against a 24 px title.
+	sz1 = 9 * ui_cv_scale; sz2 = 6.5 * ui_cv_scale; pad = 8 * ui_cv_scale;
+	Font_Set(ui_font_display); lh1 = Font_Px(sz1); Font_Set(ui_font_ui); lh2 = Font_Px(sz2);
 	w = min(scr_x - 32, max(380, 34 * lh1)); h = pad * 2 + lh1 + 4 * ui_cv_scale + lh2;
 	p = '16 8 0';
 	// Top-left: the run timer owns the top centre and the map card the top right (first playtest shots).
@@ -851,7 +853,7 @@ void(vector scr) Tour_Hud =
 	Font_Set(ui_font_display);
 	x = p_x + pad + 3 * ui_cv_scale;
 	HUD_Text([x, p_y + pad, 0], line, sz1, colour, 1);
-	x = x + stringwidth(line, TRUE, [Font_Px(sz1), Font_Px(sz1)]) + pad; // display-font rung ("RESULTSROUND" with lh1)
+	x = x + stringwidth(line, TRUE, [lh1, lh1]) + pad;
 	HUD_Text([x, p_y + pad, 0], title, sz1, '1 1 1', 1);
 	n = dnf = 0; risk = -1;
 	for (i = 0; i < tour_hn; i += 1)

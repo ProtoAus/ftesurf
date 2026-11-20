@@ -129,11 +129,15 @@ void(entity e) Tour_Hold =
 {
 	if (!e.tq_hold)
 	{
+		// The tournament hold is the only owner of the movetype while it lasts (P1672 review): a save-lock or replay
+		// pin taken over here would otherwise be released into WALK at GO while its own flag is still set.
 		SV_SpecRelease(e, "tournament");
+		SV_SaveLocRelease(e);
+		SV_WatchLetGo(e, "tournament hold");
 		// The hold freezes the body mid-run and Tour_Unhold has no rollback, so a held run
 		// must end here or it could continue after the hold and post to the ordinary board.
 		SV_TimerVoid(e, "tournament hold");
-		e.tq_holdmove = (e.movetype == MOVETYPE_NONE) ? 0 : e.movetype;
+		e.tq_holdmove = e.movetype; // MOVETYPE_NONE is 0: Tour_Unhold gives back WALK
 		e.tq_hold = TRUE;
 	}
 	e.run_pmhold = TRUE;
@@ -1019,6 +1023,7 @@ float(entity e) Tour_PreThink =
 	}
 	if (e.tq_hold)
 	{
+		SV_SpecRelease(e, "tournament"); // a respawn and `spec` in one packet could start one inside the hold (review)
 		e.run_pmhold = TRUE;
 		e.movetype = MOVETYPE_NONE;
 		e.velocity = '0 0 0';

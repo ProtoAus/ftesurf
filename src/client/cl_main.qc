@@ -2382,7 +2382,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		Rewind_Draw(scr);             // Patch 477
 		Spec_DrawWatchers(scr);       // Patch 429: who is watching you
 		Results_DrawToast(scr);
-		if (!Tour_CentreBusy()) MapMsg_Draw(scr); // Patch 870: game_text and env_hudhint; P1672: not under the tournament's
+		if (!Tour_CentreBusy(scr)) MapMsg_Draw(scr); // Patch 870: game_text and env_hudhint; P1672: not under the tournament's
 		SaveLoc_Draw(scr);
 		Vote_Draw(scr);                 // Patch 372: over saveloc and the chatbox
 		Tour_Hud(scr);                  // P1649: banner, standings and announcements while a match exists

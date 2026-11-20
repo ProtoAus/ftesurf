@@ -1430,10 +1430,6 @@ void(vector pos, vector size, float seat, float i) MT_SeatRow =
 	sui_style_box(pos, size, 8, mine ? SUI_THEME_SELECTED : SUI_THEME_CHIP, mine ? SUI_THEME_ACCENT : SUI_THEME_EDGE, 1);
 	sui_fill(pos + '0 8 0', [4, size_y - 16], colour, 1, 0);
 	MT_Place(pos + '14 0 0', [24, size_y], ftos(seat + 1), 16, colour);
-	// The Steam picture (m_pics.qc; `who` is the 8-hex id the friends list keys on), online dot on its corner.
-	px = size_y - 16;
-	if (!MP_Draw(pos + [36, 8], px, who, 1)) sui_roundbox(pos + [36, 8], [px, px], 6, SUI_THEME_WELL, 1);
-	sui_roundbox(pos + [30 + px, px], '10 10 0', 5, online ? SUI_THEME_GOOD : SUI_THEME_MUTED, 1);
 	right = size_x - 10;
 	if (host && lobby)
 	{
@@ -1455,8 +1451,17 @@ void(vector pos, vector size, float seat, float i) MT_SeatRow =
 	}
 	else if (!mt_started) { text = ready ? "READY" : "NOT READY"; pillc = ready ? SUI_THEME_GOOD : SUI_THEME_MUTED; }
 	// Name on the top line, its tags under it: a long name keeps the row's width.
+	// The Steam picture (m_pics.qc; `who` is the 8-hex id the friends list keys on), online dot on its corner --
+	// when the tags still fit beside it: a host's narrow roster (Spectate + Kick) keeps the old dot-only row.
+	px = (right - 44 - (size_y - 16) >= 110) ? size_y - 16 : 0;
+	if (px)
+	{
+		if (!MP_Draw(pos + [36, 8], px, who, 1)) sui_roundbox(pos + [36, 8], [px, px], 6, SUI_THEME_WELL, 1);
+		sui_roundbox(pos + [30 + px, px], '10 10 0', 5, online ? SUI_THEME_GOOD : SUI_THEME_MUTED, 1);
+	}
+	else sui_roundbox(pos + [36, 13], '8 8 0', 4, online ? SUI_THEME_GOOD : SUI_THEME_MUTED, 1);
 	want = (size_y >= 56) ? 20 : 16;
-	x = 44 + px;
+	x = px ? 44 + px : 52;
 	MT_Place(pos + [x, 4], [right - x - 6, 22], strcat(name, mine ? " (you)" : ""), want, SUI_THEME_TEXT);
 	if (who == mt_host) x += MT_Pill(pos + [x, size_y - 24], "HOST", SUI_THEME_ACCENT2) + 6;
 	if (text != "") MT_Pill(pos + [x, size_y - 24], text, pillc);
@@ -2292,6 +2297,7 @@ void(vector size) MT_DrawStats =
 	MT_Place([w - 2 * cw, 54], [cw, 16], "SHARED", 12, SUI_THEME_MUTED, 2);
 	MT_Place([w - cw, 54], [cw, 16], "PLAYED", 12, SUI_THEME_MUTED, 2);
 	y = 76;
+	if (mt_dirloaded && !mt_enabled) { MT_Place([12, y], [w, size_y - y - 40], "Tournaments are switched off on the server right now.", 16, SUI_THEME_WARN, 1); return; }
 	if (!mt_stloaded) { MT_Place([12, y], [w, size_y - y - 40], "Loading the leaderboard...", 16, SUI_THEME_MUTED, 1); return; }
 	if (mt_stold) { MT_Place([12, y], [w, size_y - y - 40], "Tournament stats arrive with the next server update.", 16, SUI_THEME_DIM, 1); return; }
 	if (!mt_ns)
@@ -2412,7 +2418,7 @@ void(vector scr) MT_DrawBrowser =
 		MT_HowCard([0, y], [cw, howh], 1, "Lobby", "The host sets the rules; players take seats.");
 		MT_HowCard([cw + 12, y], [cw, howh], 2, "Map draft", "Everyone bans a map, then picks one.");
 		MT_HowCard([2 * (cw + 12), y], [cw, howh], 3, "Launch", "One click sends the whole group to a server.");
-		MT_HowCard([3 * (cw + 12), y], [scr_x - 3 * (cw + 12), howh], 4, "Rounds", "Slowest is out each round; last one left wins.");
+		MT_HowCard([3 * (cw + 12), y], [scr_x - 3 * (cw + 12), howh], 4, "Rounds", "Slowest is out each round; last one wins.");
 	}
 	else if (ruleh) MT_HowCard([0, y], [scr_x, ruleh], 0, "Rounds", MT_RULE);
 };
