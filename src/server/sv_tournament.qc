@@ -137,9 +137,16 @@ void(entity e) Tour_Connected =
 	e.tq_streamat = e.tq_lastcmd = e.tq_boundrev = 0;
 	if (strlen(e.tq_boundwho)) strunzone(e.tq_boundwho);
 	e.tq_boundwho = "";
+	if (!Tour_Owns() && infokey(e, "*tqspec") == "1" && !stof(infokey(e, "*spectator")))
+	{
+		// Rejoined through Cmd_Join_f (Tour_Clear): its SpectatorDisconnect/ClientConnect dropped the account link
+		// and CSQC asks only once per VM load, so the server asks again (Account_Connect ran just before this).
+		forceinfokey(e, "*tqspec", "");
+		Account_IssueHello(e, FALSE);
+	}
 	if (Tour_Owns())
 	{
-		forceinfokey(e, "*spectator", "1"); forceinfokey(e, "*tqspec", "1");
+		if (!stof(infokey(e, "*spectator"))) forceinfokey(e, "*tqspec", "1"); forceinfokey(e, "*spectator", "1");
 		e.solid = SOLID_NOT;
 	}
 	// Only a tournament server has a panel to clear: Tour_Clear resets every CSQC panel's click state.
@@ -276,7 +283,7 @@ void() Tour_Roles =
 		if (e.tq_role != 1)
 		{
 			Tour_Unhold(e);
-			forceinfokey(e, "*spectator", "1"); forceinfokey(e, "*tqspec", "1");
+			if (!stof(infokey(e, "*spectator"))) forceinfokey(e, "*tqspec", "1"); forceinfokey(e, "*spectator", "1");
 			e.solid = SOLID_NOT;
 		}
 		else
@@ -973,7 +980,7 @@ float(entity e) Tour_PreThink =
 	if (!tq_owned || tq_creating || tq_race) return FALSE;
 	if (e.tq_role != 1)
 	{
-		forceinfokey(e, "*spectator", "1"); forceinfokey(e, "*tqspec", "1");
+		if (!stof(infokey(e, "*spectator"))) forceinfokey(e, "*tqspec", "1"); forceinfokey(e, "*spectator", "1");
 		e.solid = SOLID_NOT;
 		return TRUE;
 	}
@@ -1171,7 +1178,7 @@ void() Tour_AutoReady =
 	tq_canstart = (n && here + absent == n && (!absent || forfeit));
 	if (!tq_canstart || delay <= 0 || tq_autorefused)
 	{
-		if (tq_allreadyat) forceinfokey(world, "tournament_starts", "");
+		if (serverkey("tournament_starts") != "") forceinfokey(world, "tournament_starts", "");
 		tq_allreadyat = tq_startskind = 0; tq_startnow = FALSE;
 		return;
 	}
