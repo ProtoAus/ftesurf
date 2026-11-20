@@ -21,6 +21,9 @@
 
 ## next
 
+### P1639 Bhop tournaments at 100 tick
+- Bhop tournaments play at bhop's normal 100 tick.
+
 ### P1638 New Settings page
 - Settings is now a full page beside Lobbies and Maps, with the friends list and chat on the right: sections for Controls, Audio, Menu scene, Performance, In-game sky and Online & privacy, each setting with a slider or buttons and its current value.
 - The old Visuals & display screen is folded in.
