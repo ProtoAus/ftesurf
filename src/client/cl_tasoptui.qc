@@ -1175,7 +1175,7 @@ void() TASOptUI_Reset =
 	}
 	jgw_sel = -1; jg_replan = cltime + 0.2;
 };
-// `tas jargon start | mode 0|1|2|3 | set N x|y|z V | field N x|y|z | air N | del N | undo | redo | list`: the panel's own
+// `tas jargon start | download | mode 0|1|2|3 | set N x|y|z V | field N x|y|z | air N | del N | undo | redo | list`: the panel's own
 // functions, for binds and the harness that tests them (N counts from 1, as the list does; field opens one as a click)
 void(float argc) TASOptUI_Verb =
 {
@@ -1189,6 +1189,7 @@ void(float argc) TASOptUI_Verb =
 	if (w == "redo") { TASOptUI_WpUndo(FALSE); return; }
 	if (w == "guide") { if (argc == 4) TASOptUI_GuidePick(stof(argv(3)) - 1); return; }
 	if (w == "takeover") { TASOptUI_Takeover(); return; }
+	if (w == "download") { TASJargon_DlStart(); return; }     // P1693: the panel's "Download the top runs" (pumped while it is open)
 	if (w == "redofrom")
 	{
 		i = floor(stof(argv(3))) - 1;
@@ -1199,6 +1200,8 @@ void(float argc) TASOptUI_Verb =
 	if (w == "drop") { if (argc == 4) { jgd_open = bound(0, floor(stof(argv(3))), 2); jgd_scroll = '0 0 0'; print(sprintf("tas jargon: dropdown %g\n", jgd_open)); } return; }
 	if (w == "guides")
 	{
+		jg_gat = 0; TASJargon_Guides();
+		print(sprintf("tas jargon: course %s, %g guide runs\n", TASJargon_CourseLabel(jg_cpick), jg_gn));
 		for (i = 0; i < jg_gn; i = i + 1) print(sprintf("tas jargon: guide %g %s%s\n", i + 1, jg_gl[i], (i == jg_pick) ? " (picked)" : ""));
 		return;
 	}
@@ -1244,7 +1247,7 @@ void(float argc) TASOptUI_Verb =
 		if (TASOptUI_AirDel(a)) TASOptUI_WpPush(4, 0, a, '0 0 0');
 		return;
 	}
-	print("tas jargon: start | takeover | redofrom N | mode 0|1|2|3 | guide N | guides | set N x|y|z V | field N x|y|z | air N | del N | undo | redo | list\n");
+	print("tas jargon: start | takeover | download | redofrom N | mode 0|1|2|3 | guide N | guides | set N x|y|z V | field N x|y|z | air N | del N | undo | redo | list\n");
 };
 // P1572: why the lines of stretch k ended, the largest share first ("" when none ended for a reason)
 string(float k, float live) TASResults_Why =
@@ -1356,6 +1359,33 @@ float(vector at, float width, float tsz, float hint, float row) TASOptUI_DrawTun
 	}
 	return at_y;
 };
+// the open dropdown's list, over the panel (P1693: also with no guide run -- the Course list never drew there)
+void(float tsz, float hint, float row) TASOptUI_DropList =
+{
+	local float i, q;
+	local vector lp;
+	if (jgd_open == 2 && !jg_gn) jgd_open = 0;
+	if (!jgd_open) return;
+	sui_action_element(jgd_pos - '4000 4000 0', '8000 8000 0', "jgd_shade", sui_noop);
+	if (sui_is_released("jgd_shade")) jgd_open = 0;
+	jgd_n = (jgd_open == 1) ? jg_cn : jg_gn;
+	jgd_rows = bound(1, jgd_n, 10);
+	sui_style_panel(jgd_pos, [jgd_w, jgd_rows * row + 8, 0], 4, 1);
+	sui_list_view_begin("jgd_list", jgd_pos + '4 4 0', [jgd_w - 8, jgd_rows * row, 0], [jgd_w - 8 - tsz, row, 0], jgd_n, jgd_scroll, [0, tsz]);
+	lp = '0 0 0';
+	for (i = sui_list_item(lp); i > -1; i = sui_list_item(lp))
+	{
+		q = (jgd_open == 1) ? (jg_cpick == i) : (jg_pick == i);
+		if (TASOptUI_Cell(sprintf("jgd_%g_%g", jgd_open, i), lp, [jgd_w - 8 - tsz, row - 2, 0],
+			(jgd_open == 1) ? TASJargon_CourseLabel(i) : jg_gl[i], hint, q, FALSE))
+		{
+			if (jgd_open == 1) { if (jg_cpick != i) { TASOptUI_Course(i); jgu_n = jgu_top = 0; } }      // switching stops the run first
+			else TASOptUI_GuidePick(i);
+			jgd_open = 0;
+		}
+	}
+	sui_list_view_end();
+};
 void(vector at, float width, float tsz, float hint, float row, float running, string label) TASOptUI_DrawJargon =
 {
 	local float i, q, half, third, kw, fw, rows, tk;
@@ -1373,9 +1403,22 @@ void(vector at, float width, float tsz, float hint, float row, float running, st
 	if (jg_gn) TASOptUI_Drop("jgd_g", 2, at + [half + 6, 0, 0], [half, row, 0], TASOptUI_Guide(), hint);
 	at_y = at_y + row + hint;
 	if (!jg_gn)
-	{
-		sui_text(at, [hint, hint], (jg_cn > 1) ? sprintf("No run of %s here yet: turn one on in the leaderboard.", cn)
-			: "Turn on a run's line in the leaderboard and it shows up here.", SUI_THEME_MUTED, 1, 0);
+	{	// P1693: Jargon needs a run to follow -- fetch the course's top ones here
+		sui_text(at, [hint, hint], sprintf("Jargon follows a run of %s, and there is none on this computer yet.", cn), SUI_THEME_DIM, 1, 0);
+		at_y = at_y + hint * 1.6;
+		q = (jgdl_state == 1 || jgdl_state == 2);
+		if (Profile_Chip("jgd_get", at, [width, row * 1.4, 0], q ? sprintf("Downloading the top runs of %s...", cn)
+			: sprintf("Download the top runs of %s", cn), tsz, q))
+			TASJargon_DlStart();
+		sui_tooltip_for("jgd_get", "Up to three of the course's fastest recordings from the leaderboards (KSF first, then World of Surf, then Momentum), listed here as guide runs.", max(1, hint / 7));
+		at_y = at_y + row * 1.4 + 3;
+		if (jgdl_state == 4 && jgdl_note != "")
+		{
+			sui_text(at, [hint, hint], strcat("Could not download: ", jgdl_note, "."), SUI_THEME_WARN, 1, 0);
+			at_y = at_y + hint * 1.6;
+		}
+		sui_text(at, [hint, hint], "Or turn on a run's line in the leaderboard (TAB) and it shows up here.", SUI_THEME_MUTED, 1, 0);
+		TASOptUI_DropList(tsz, hint, row);
 		return;
 	}
 	// how the run starts, and Start
@@ -1508,34 +1551,35 @@ void(vector at, float width, float tsz, float hint, float row, float running, st
 	if (Profile_Chip("jgs_l1", at, [half, row, 0], "Search lines", hint, cvar("tas_viz"))) cvar_set("tas_viz", cvar("tas_viz") ? "0" : "1");
 	if (Profile_Chip("jgs_l2", at + [half + 6, 0, 0], [half, row, 0], "Thinking panel", hint, autocvar_tas_searchpanel))
 		cvar_set("tas_searchpanel", autocvar_tas_searchpanel ? "0" : "1");
-	if (jgd_open == 2 && !jg_gn) jgd_open = 0;
-	if (jgd_open)
-	{
-		sui_action_element(jgd_pos - '4000 4000 0', '8000 8000 0', "jgd_shade", sui_noop);
-		if (sui_is_released("jgd_shade")) jgd_open = 0;
-		jgd_n = (jgd_open == 1) ? jg_cn : jg_gn;
-		jgd_rows = bound(1, jgd_n, 10);
-		sui_style_panel(jgd_pos, [jgd_w, jgd_rows * row + 8, 0], 4, 1);
-		sui_list_view_begin("jgd_list", jgd_pos + '4 4 0', [jgd_w - 8, jgd_rows * row, 0], [jgd_w - 8 - tsz, row, 0], jgd_n, jgd_scroll, [0, tsz]);
-		lp = '0 0 0';
-		for (i = sui_list_item(lp); i > -1; i = sui_list_item(lp))
-		{
-			q = (jgd_open == 1) ? (jg_cpick == i) : (jg_pick == i);
-			if (TASOptUI_Cell(sprintf("jgd_%g_%g", jgd_open, i), lp, [jgd_w - 8 - tsz, row - 2, 0],
-				(jgd_open == 1) ? TASJargon_CourseLabel(i) : jg_gl[i], hint, q, FALSE))
-			{
-				if (jgd_open == 1) { if (jg_cpick != i) { TASOptUI_Course(i); jgu_n = jgu_top = 0; } }      // switching stops the run first
-				else TASOptUI_GuidePick(i);
-				jgd_open = 0;
-			}
-		}
-		sui_list_view_end();
-	}
+	TASOptUI_DropList(tsz, hint, row);
+};
+// P1693: the course the timer is on (Lex's surf_sandtrap2 b4 opened on Main): re-picked when that changes, not each frame,
+// so a dropdown pick stays; a stage leg (`!s N`) is that stage, anything else the whole track
+string jg_autokey;
+void() TASOptUI_FollowCourse =
+{
+	local float track, leg, c, i, ss;
+	local string key;
+	if (taso_state == 1) return;            // surfing or armed: that course stays
+	TASJargon_Courses();
+	track = Timer_Stat(STAT_FS_TIMERTRACK); ss = Timer_Stat(STAT_FS_TIMERSTARTSEG);
+	leg = (ss > 0 && Timer_Stat(STAT_FS_TIMERSEGS) > 1) ? ss + 1 : 0;
+	key = sprintf("%s %g %g %g", zone_mapname, zone_count, track, leg);
+	if (!strcmp(key, jg_autokey)) return;
+	if (jg_autokey != "") strunzone(jg_autokey);
+	jg_autokey = strzone(key);
+	c = -1;
+	for (i = 0; i < jg_cn; i = i + 1) if (jg_ct[i] == track && jg_cl[i] == leg) c = i;
+	if (c < 0) for (i = 0; i < jg_cn; i = i + 1) if (jg_ct[i] == track && jg_cl[i] == 0) c = i;
+	if (c < 0 || c == jg_cpick) return;
+	jg_cpick = c; jg_gat = 0; jg_kat = 0; taso_sel = -1; taso_stale = 1; jg_n = 0; jgw_sel = -1; jgu_n = jgu_top = 0;
 };
 void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw =
 {
 	local float running;
 	local string label, cn;
+	TASOptUI_FollowCourse();
+	TASJargon_DlPump();
 	TASJargon_Guides();
 	TASJargon_Saved();
 	running = (taso_state == 1);
