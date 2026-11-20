@@ -80,6 +80,14 @@ def bad_room(log, ident):
         log.exception('party room %s skipped', ident)
 
 
+def room_state(row):
+    """A room row's JSON state; ValueError when it is unreadable or names another id."""
+    m = json.loads(row['state'])
+    if not isinstance(m, dict) or m.get('id') != row['id']:
+        raise ValueError('room state does not match its row')
+    return m
+
+
 def turn_clock(m, now):
     """Party draft clock: stamps each new turn and makes an overdue turn's ban/pick.
     Returns the new state, or None when nothing changed. Callers hold BEGIN IMMEDIATE."""
@@ -136,25 +144,31 @@ def register(app, d):
 
     def expire(db, now):
         # No launched party is ever retired by a waiting-room clock.
+        # Binds use the row key, never the JSON id.
+        def reap(ident):
+            db.execute('DELETE FROM tournament_party_members WHERE party=?', (ident,))
+            db.execute('DELETE FROM tournament_parties WHERE id=?', (ident,))
+
         for row in db.execute('SELECT * FROM tournament_parties').fetchall():
             try:
-                m = json.loads(row['state'])
+                m = room_state(row)
                 if m.get('menu_started'):
-                    live = db.execute('SELECT state FROM tournament_matches WHERE id=?', (m['id'],)).fetchone()
+                    live = db.execute('SELECT state FROM tournament_matches WHERE id=?', (row['id'],)).fetchone()
                     phase = json.loads(live['state'])['phase'] if live else None
                     # A closed room's row goes at once: its members are gone and nothing reads it
                     # again (the match row stays for release/restoration), so the scan stays the live set.
                     if phase in rules.TERMINAL:
-                        db.execute('DELETE FROM tournament_party_members WHERE party=?', (m['id'],))
-                        db.execute('DELETE FROM tournament_parties WHERE id=?', (m['id'],))
+                        reap(row['id'])
                     continue
                 if m['phase'] in rules.TERMINAL or row['touched'] < now-IDLE_TTL:
-                    db.execute('DELETE FROM tournament_party_members WHERE party=?', (m['id'],))
-                    db.execute('DELETE FROM tournament_parties WHERE id=?', (m['id'],))
+                    reap(row['id'])
             except sqlite3.Error:
                 raise
             except Exception:
                 bad_room(d.log, row['id'])
+                # Unreadable rooms still idle out by the column alone, freeing their members.
+                if row['touched'] < now-IDLE_TTL:
+                    reap(row['id'])
 
     def snapshot(db, m, now):
         out = rules.public(m)
@@ -179,11 +193,11 @@ def register(app, d):
             return None
 
     def listing(db, row, now, brief):
-        m = json.loads(row['state'])
+        m = room_state(row)
         ticked = clock(m, now)
         if ticked:
             m = ticked
-            db.execute('UPDATE tournament_parties SET state=? WHERE id=?', (d.game_json(m), m['id']))
+            db.execute('UPDATE tournament_parties SET state=? WHERE id=?', (d.game_json(m), row['id']))
         if m['phase'] in rules.TERMINAL or not (m.get('menu_started') or row['touched'] >= now-IDLE_TTL):
             return None
         if brief:
@@ -284,13 +298,16 @@ def register(app, d):
                 expire(db, now)
                 active = db.execute('SELECT party FROM tournament_party_members WHERE account=?', (sid,)).fetchone()
                 ident = active['party'] if data['id'] == '-' and active else data['id']
-                row = db.execute('SELECT state FROM tournament_parties WHERE id=?', (ident,)).fetchone()
-                m = json.loads(row['state']) if row else None
+                row = db.execute('SELECT id,state FROM tournament_parties WHERE id=?', (ident,)).fetchone()
+                try:
+                    m = room_state(row) if row else None
+                except ValueError:
+                    raise rules.Refusal('That room is broken; it will be cleared shortly.')
                 ticked = clock(m, now)
                 if ticked:
                     # Kept even by a replayed request; a refused action rolls it back and the next poll redoes it.
                     m = ticked
-                    db.execute('UPDATE tournament_parties SET state=? WHERE id=?', (d.game_json(m), m['id']))
+                    db.execute('UPDATE tournament_parties SET state=? WHERE id=?', (d.game_json(m), row['id']))
                 op = data['op']
                 if op in ('create', 'configure', 'start'):
                     tournaments.require_hosting(d)

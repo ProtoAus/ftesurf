@@ -452,6 +452,26 @@ class PartyAPI(unittest.TestCase):
             self.assertEqual(self.act('state', 0)['party']['id'], good['id'])
         self.assertEqual(logged.call_count, 2)
 
+    def test_p1650_broken_rooms_refuse_members_then_idle_out_and_never_bind_json_ids(self):
+        rooms = (('d' * 32, '{not json'),
+                 ('e' * 32, json.dumps(dict(id=['x'], phase='cancelled'))),
+                 ('f' * 32, json.dumps(dict(id=['y'], phase='loading', menu_started=1))))
+        for ident, state in rooms:
+            self.db.execute('INSERT INTO tournament_parties VALUES(?,?,?)', (ident, state, self.now))
+        self.db.execute('INSERT INTO tournament_party_members VALUES(?,?,?)', ('76561198000000002', 'd' * 32, self.now))
+        self.db.commit()
+        for query in ('?brief=1', ''):
+            response = self.client.get('/api/tournament-lobbies' + query)
+            self.assertEqual((response.status_code, response.get_json()['rows']), (200, []))
+        for op in ('state', 'create'):
+            self.assertEqual(self.send(self.form(op, 1))['error'], 'That room is broken; it will be cleared shortly.')
+        # Idle by the touched column alone, the broken rooms and their members go.
+        self.now += P.IDLE_TTL + 1
+        self.assertEqual(self.client.get('/api/tournament-lobbies').status_code, 200)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM tournament_parties').fetchone()[0], 0)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM tournament_party_members').fetchone()[0], 0)
+        self.assertEqual(self.act('create', 1)['party']['host'], self.whos[1])
+
     def test_host_kick_removes_and_bars_rejoin(self):
         m = self.act('create')['party']
         m = self.act('join', 1, m)['party']

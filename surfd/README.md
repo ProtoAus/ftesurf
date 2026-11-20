@@ -1600,7 +1600,9 @@ room; after launch the joiner gets the same `launch` reply as the other members.
 `say`, `join`, `leave`, `ban` and `pick` skip the room revision check (the turn
 and card status guard ban/pick), so join/leave churn cannot keep members stale.
 The host may remove spectators until launch, competitors in the waiting room.
-A room the directory cannot read or list is skipped and logged once per process.
+A room the directory cannot read or list (or whose JSON id differs from its row)
+is skipped and logged once per process; its members are refused with a plain
+message and it idles out by its `touched` column like any other room.
 
 ### Persistence, exclusions and public browser
 
