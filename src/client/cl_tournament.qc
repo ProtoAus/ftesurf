@@ -845,7 +845,7 @@ void(vector scr) Tour_Hud =
 	// Each line's rung in its own face: lh1 measured with no face set read 9 px against a 24 px title.
 	sz1 = 9 * ui_cv_scale; sz2 = 6.5 * ui_cv_scale; pad = 8 * ui_cv_scale;
 	Font_Set(ui_font_display); lh1 = Font_Px(sz1); Font_Set(ui_font_ui); lh2 = Font_Px(sz2);
-	w = min(scr_x - 32, max(380, 34 * lh1)); h = pad * 2 + lh1 + 4 * ui_cv_scale + lh2;
+	w = min(scr_x - 32, max(380, 68 * sz1)); h = pad * 2 + lh1 + 4 * ui_cv_scale + lh2; // 612 at scale 1: clear of the run timer
 	p = '16 8 0';
 	// Top-left: the run timer owns the top centre and the map card the top right (first playtest shots).
 	drawfill(p, [w, h], '0.05 0.06 0.09', 0.78, 0);

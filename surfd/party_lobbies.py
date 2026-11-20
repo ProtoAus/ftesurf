@@ -243,7 +243,7 @@ def register(app, d):
                 except ValueError:
                     continue
             stats_cache.update(at=now, rows=rules.standings(states, banned),
-                               matches=sum(1 for m in states if isinstance(m, dict) and m.get('phase') == 'finished'))
+                               matches=sum(1 for m in states if isinstance(m, dict) and m.get('phase') == 'finished' and m.get('_started')))
         return dict(matches=stats_cache['matches'], rows=stats_cache['rows'][:limit])
 
     @app.get('/api/tournament-lobbies', endpoint='party_browse')
