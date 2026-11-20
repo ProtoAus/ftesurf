@@ -321,10 +321,27 @@ def transition(original, op, actor, display, data, pool=()):
             require(m['_arrived'] and me is not None and me['role'] == 'player', 'map has not arrived or no seat')
             me['ready'] = 1
     elif op in ('start', 'autostart'):
-        # autostart: the game server starts once everyone is ready, without waiting for the host.
+        # autostart: the game server starts without the host, first forfeiting the unready
+        # competitors it names in `absent` (it names only those missing 90 s after arrival).
         require(phase == 'loading' and m['_arrived'], 'map has not arrived')
-        require(all(p['ready'] for p in competitors(m)), 'every surviving competitor must ready')
-        m['phase'] = 'countdown'
+        roster = competitors(m)
+        raw = data.get('absent') or '' if op == 'autostart' else ''
+        require(isinstance(raw, str), 'absent list invalid')
+        absent = raw.split(',') if raw else []
+        unready = {p['who']: p for p in roster if not p['ready']}
+        require(len(set(absent)) == len(absent) and all(who in unready for who in absent), 'absent list invalid')
+        if absent:
+            gone = [unready[who] for who in absent]
+            for p in gone:
+                p.update(role='eliminated', place=len(roster) - len(gone) + 1)
+            m['note'] = crown(m, "%s didn't arrive and %s out." % (listed(gone), 'is' if len(gone) == 1 else 'are'))
+            if len(competitors(m)) == 1:
+                m['phase'] = 'finished'
+            elif not competitors(m):
+                m.update(phase='aborted', outcome='no-contest', note='No contest: nobody arrived.')
+        if m['phase'] == 'loading':
+            require(all(p['ready'] for p in competitors(m)), 'every surviving competitor must ready')
+            m['phase'] = 'countdown'
     elif op == 'go':
         require(phase == 'countdown', 'not counting down')
         integer(data, 'elapsed_ms', 5000, 3600000)

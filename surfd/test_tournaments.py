@@ -400,6 +400,35 @@ class Rules(unittest.TestCase):
         with self.assertRaisesRegex(R.Refusal, 'host only'):
             R.transition(m, 'start', 'p1', '', data)
 
+    def test_autostart_p1650_absent_competitors_forfeit_first(self):
+        m = self.drafted(3)
+        data = observation(m)
+        m = R.transition(R.transition(m, 'arrive', '', '', data), 'ready', 'host', '', data)
+        for absent in ('host', 'stranger', 'p1,p1', 'p1,', ',p1'):
+            with self.assertRaisesRegex(R.Refusal, 'absent list invalid', msg=absent):
+                R.transition(m, 'autostart', '', '', dict(data, absent=absent))
+        # Remaining survivors must still all be ready; a refusal forfeits nobody.
+        with self.assertRaisesRegex(R.Refusal, 'every'):
+            R.transition(m, 'autostart', '', '', dict(data, absent='p1'))
+        ready = R.transition(m, 'ready', 'p2', '', data)
+        out = R.transition(ready, 'autostart', '', '', dict(data, absent='p1'))
+        self.assertEqual((out['phase'], self.roles(out)['p1'], out['note']), ('countdown', ('eliminated', 3), "p1 didn't arrive and is out."))
+        out = R.transition(m, 'autostart', '', '', dict(data, absent='p1,p2'))
+        self.assertEqual((out['phase'], out['outcome']), ('finished', 'winner'))
+        self.assertEqual(self.roles(out), dict(host=('player', 1), p1=('eliminated', 2), p2=('eliminated', 2)))
+        self.assertEqual(out['note'], "p1 and p2 didn't arrive and are out. Host wins!")
+        nobody = R.transition(R.transition(self.drafted(3), 'arrive', '', '', data), 'autostart', '', '', dict(data, absent='p2,host,p1'))
+        self.assertEqual((nobody['phase'], nobody['outcome'], nobody['note']), ('aborted', 'no-contest', 'No contest: nobody arrived.'))
+        # Empty or missing `absent` is plain autostart; an eliminated player cannot be listed again.
+        for extra in ({}, dict(absent='')):
+            with self.assertRaisesRegex(R.Refusal, 'every'):
+                R.transition(m, 'autostart', '', '', dict(data, **extra))
+            everyone = R.transition(ready, 'ready', 'p1', '', data)
+            self.assertEqual(R.transition(everyone, 'autostart', '', '', dict(data, **extra))['phase'], 'countdown')
+        forfeited = R.transition(ready, 'leave', 'p1', '', {})
+        with self.assertRaisesRegex(R.Refusal, 'absent list invalid'):
+            R.transition(forfeited, 'autostart', '', '', dict(data, absent='p1'))
+
     def test_configure_host_freeze_capacity_and_consent_invalidation(self):
         m = self.lobby(3)
         data = dict(kind='surf', tiers='7', profile='default', pool='-', capacity=8, round_seconds=60)
@@ -696,16 +725,26 @@ class API(unittest.TestCase):
         self.assertEqual([(p['role'], p['place']) for p in out['match']['players']], [('player', 1), ('eliminated', 2)])
         self.assertTrue(T.reserved(self.db, 'n1'))
 
-    def arrived_ready(self):
+    def arrived_ready(self, ready=(0, 1)):
         m = self.create()
         for op, i, fields in (('enter',1,{}), ('seat',0,dict(target=self.whos[1])), ('accept',0,{}), ('accept',1,{}), ('lock',0,{})):
             m = self.action(m, op, i, **fields)['match']
         while m['phase'] == 'draft':
             m = self.action(m, m['turn_kind'], self.whos.index(m['turn_who']), map=next(c['name'] for c in m['maps'] if c['status']=='pool'))['match']
         m = self.action(m, 'arrive')['match']
-        for i in (0, 1):
+        for i in ready:
             m = self.action(m, 'ready', i)['match']
         return m
+
+    def test_autostart_p1650_absent_list_through_game_endpoint_and_journal(self):
+        m = self.arrived_ready(ready=(0,))
+        fields = dict(observation(m), id=m['id'], revision=m['revision'], epoch=m['epoch'], request='b6b6')
+        self.assertEqual(self.post('autostart', **dict(fields, absent=self.whos[0]))['error'], 'absent list invalid')
+        first = self.post('autostart', **dict(fields, absent=self.whos[1]))
+        self.assertEqual((first['ok'], first['match']['phase'], first['match']['outcome']), (1, 'finished', 'winner'), first)
+        self.assertEqual([(p['role'], p['place']) for p in first['match']['players']], [('player', 1), ('eliminated', 2)])
+        self.assertEqual(self.post('autostart', **dict(fields, absent=self.whos[1])), first)
+        self.assertIn('reused', self.post('autostart', **dict(fields, absent=''))['error'])
 
     def test_autostart_p1650_is_a_keyed_server_op_with_journal(self):
         m = self.arrived_ready()
