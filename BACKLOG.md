@@ -1,9 +1,13 @@
 # BACKLOG.md
 
 ## P1643 start rest -- what it leaves (20 Nov, worldofsurf-4b)
-- Scope by decision: bhop-mode maps (run_starthop 0) and stage boxes (run_stagecap 0, Lex 21 Sep) are not judged for
-  arrival speed; on a bhop-mode map an idle body may still cross its START in flight. Owner question, not a defect.
-  Site: sv_timer.qc SV_StartUnrested. Falsifier: tools/p1643-arms.md's arm U on a bhop-mode map.
+- Scope by decision: stage boxes (run_stagecap 0, Lex 21 Sep) are not judged for arrival speed. Bhop-mode maps are
+  judged since P1657 (Lex, 20 Nov), ahop maps too. Site: sv_timer.qc SV_StartUnrested, SV_BhopRestOn.
+- P1657 leaves: a launch is judged on any tick of its packet (run_t_restnow) and a leave on the packet-end speed, so
+  a client batching many commands into one packet gains up to ~30 u/s of air strafe after a slow ground tick (and its
+  clock starts at the packet end: the finish item "start latched per tick"). A push carrier is left out of the
+  ground test (earlier decision; run_startcap 0). Not measured: a real bhop map, a real fast landing (the arms lower
+  the caps), an airborne hop-out (the rig's `!r` in the air left the body standing), bhop-hl1, overlapping STARTs.
 - A map teleport into a START is judged on horizontal speed only (Patch 775 round 3: surf_polygon b4), so a fall it
   keeps arrives rested. Site: SV_TimerTryArm's run_t_tpnow branch. Falsifier: a velocity-keeping teleport whose START
   can be left in the air, read `starts: ... unrested`.
@@ -22,9 +26,20 @@
   140 within ~0.2 s, so packets of 0.2-0.35 s never show a surf START's in-box hop chain, and a rest already latched
   leaves it clean (~+60 u/s per hop, box-bounded). Fix with the finish item "start latched per tick": drive the tag
   from PlayerPreThink's per-command jump edge, or judge surf leaves on own speed with a cap for one jump out.
-- Ahop maps (mode_ahop.cfg: run_starthop 0; not run_t_bhopjump) are not judged by P1657: after one rest, hops in the
-  START build ~40 u/s each, clean. OWNER QUESTION (does "no prespeed on bhop" cover ahop?); an ahop cap needs
-  measuring from ahop run-ups (sprint 320).
+- Under a `*movementprofile` (hl2-*, AG) P1657 does not judge starts: those runs never rank, and the formula would be
+  wrong there (hl2-* sprint is a hard-coded factor with pm_walkspeed 0; the AG mover ignores pm_walkspeed). If profile
+  runs ever rank, the ceiling must follow the profile's mover.
+- P1657 review 7, left: run_t_armpushed ends only on a packet that ends slow on the ground, so hops in a START after a
+  push stay exempt on a leave in the air (maps with a push in a START; fix: latch the pushed packets' horizontal
+  speed and test own speed against the larger of the cap and that plus a margin). A horizontal-only trigger_setspeed
+  or script velocity never sets run_pushed (sv_entities.qc 9925, 4951), so a bhop START booster left at its speed
+  without a launch reads unrested: none in the lobbies' 69 bhop starts; census tools/census/ssd1.py on bhop/ahop
+  maps. Per-profile times (cl_lobbytime.qc "retained by the server") have no run-up rule: owner question.
+- The run-up bound is a formula (SV_TimerRunupCeiling: optimal ground strafing, friction above stopspeed, no edge
+  friction), not a measurement: on ahop it allows 504 u/s against a 320 sprint, and nobody has measured what a human
+  reaches there. Edge friction near a ledge or a speedmod map could put an honest run-up above or below it. The
+  lobbies have one ahop start on record (263 u/s, recorded under the bhop rules before P1631). Ahop is judged since
+  P1657 (Lex, 20 Nov: "no pre-speed please besides the run up").
 - Carriers count as rest: SV_TimerSlowGround reads own speed before the carrier cash-out and run_startcap is 0, so a
   push or conveyor in a START gives clean speed (decided before P1643; map-dependent).
 - A map teleport into a START does not end the latch (only `!r`, a spawn or the rest does): a candidate if players

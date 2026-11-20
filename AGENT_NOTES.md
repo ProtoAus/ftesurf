@@ -8,6 +8,27 @@
 - Linux arm (rig): the report is `ev "14 0 0 0 1 0"`, wouldplat 1, with and without the patch and with sys_platform
   set to Win. The Windows half is not runnable on this PC; see tools/p1645-platform.md for what it rests on.
 
+## P1657 bhop/ahop start rest: what it does to test arms (20 Nov 2026)
+
+- On a bhop-mode map (gamemode bhop or bhop-hl1) and an ahop map (gamemode ahop; `+set sv_gamemode bhop|ahop` makes
+  any map one) P1643's rest rule judges the start on how it LEFT (Lex: "pre-speed on bhop is not allowed, you have to
+  start from a run, jump"; ahop: "no pre-speed please besides the run up"). A launch jump (bhop only: armed, or a
+  re-launch during/after a run) must leave ground the body was slow on in that packet (run_t_restnow); a leave
+  without a launch must be under SV_TimerRestCap of its own horizontal speed. A rest seen earlier does not carry:
+  `!r` then a fast exit is practice; `!r`, run, jump or walk out is clean.
+- SV_TimerRestCap under the rule = max(run_rearmspeed, SV_TimerRunupCeiling() + 10): the steady state of optimal
+  ground strafing from sv_maxspeed (x pm_walkspeed when > 1: ahop sprint), sv_accelerate, sv_friction and pm_ticrate.
+  299.95 on bhop (0.01 tick), 504.09 on ahop sprint. `run_bhoprestspeed` > 0 replaces it exactly (the arms use 100).
+- A map push reaching the armed attempt (run_pushed while ARMED) exempts its leave (run_t_armpushed) until the body is
+  seen slow on the ground with no push, or a save is restored.
+- Not under a `*movementprofile` (run_t_movprof): those runs never rank, and the formula does not model hl2-* sprint
+  or the AG mover. The ceiling is worked out once a map (run_t_runupceil).
+- `cmd timer` prints `rest: rule R bhop B cap C rested N ...` (B is 1 on ahop too); `set run_bhoprest 0` is the
+  control and reads as the QC before 1657 line for line. The dedicated server prints `starts:` on its stdout.
+- Zones arm on the body's point and are left on its hull: no START slab over a floor can be entered and left by a jump
+  from that floor. surf_ace's spawn points stand in columns at x -4522 -4456 -4398 -4333 -4287. With +jump and
+  +forward held, `!r` in the air leaves the body standing (cause not traced).
+
 ## P1643 start rest: what it does to test arms (20 Nov 2026)
 
 - A full or bonus run on a start-on-leave map is practice unless its arm saw the body at rest: a restart placement

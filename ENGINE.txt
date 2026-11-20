@@ -1,4 +1,9 @@
 # The engine build this QuakeC requires.
+# P1657 (QC server only; Lex's rulings of 20 Nov, worldofsurf-4b): P1643's rest rule on bhop- and ahop-mode maps,
+# judged on how the start left: a launch jump must leave ground the body was slow on in that packet, and any other
+# leave must be under the mode's ground run-up ceiling + 10 of its own speed (299.95 bhop, 504.09 ahop sprint); a rest
+# seen earlier in the box does not carry speed hops built since. A map push in the START exempts the leave.
+# run_bhoprest 0 is the rule before 1657. Record: engine ENGINE_PATCHES.md P1657; tools/p1657-arms.md.
 # P1652 (lobby config only; Lex's anti-cheat finish list, worldofsurf-4b): cfg/lobby/lobby.cfg sets run_slowclock 1
 # (was the QC default 5): the fleet's own `clk` records put the honest maximum at 0.24 s over 1,292 runs.
 # Record: engine ENGINE_PATCHES.md P1652.

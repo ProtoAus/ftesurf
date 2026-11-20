@@ -2322,6 +2322,7 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	e.run_t_track    = tr;
 	e.run_t_startseg = ss;
 	e.run_t_rested   = FALSE;       // P1643: whatever the last attempt showed is not this body's
+	e.run_t_armpushed = FALSE;      // P1657 review 6: nor a push it met
 	e.run_t_prerest  = FALSE;
 	/*
 	  BUILD 57: the leg, from the file where it says, and from startseg where it

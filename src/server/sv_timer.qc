@@ -566,6 +566,14 @@ float  run_t_rearmhop;
 float  run_t_rearmspeed;
 // P1643: run_startrest, cached per map.  1 = the rest rule and the placement latch; 0 = before 1643.
 float  run_t_startrest;
+// P1657: run_bhoprest, cached per map.  1 = the rest rule on bhop-mode maps too; 0 = before 1657.
+float  run_t_bhoprest;
+float  run_t_bhoprestspeed;     // P1657: run_bhoprestspeed, an override of the run-up bound (0 = computed)
+float  run_t_ahop;              // P1657: gamemode ahop (start on leave, run_starthop 0 too)
+float  run_t_movprof;           // P1657: a *movementprofile is set (its runs do not rank; SV_TimerRunupCeiling
+                                // does not model hl2-* sprint or the AG mover: review 6)
+float  run_t_runupceil;         // P1657: SV_TimerRunupCeiling, per map (-1: not worked out yet)
+.float run_t_armpushed;         // P1657 review 5: a map push reached this armed attempt (SV_TimerJumpWatch)
 
 /*
   Bhop starts on the initial jump, not at the edge of the start box.
@@ -12681,8 +12689,68 @@ float(entity e) SV_TimerRearmRest =
 	return TRUE;
 };
 
+// P1657: the start is judged on how it left -- a bhop map's, and an ahop map's (Lex, 20 Nov: "pre-speed on bhop is
+// not allowed, you have to start from a run, jump"; on ahop "no pre-speed please besides the run up").  Both modes
+// set run_starthop 0, so the hopped rule does not judge in-box hops there.
+float() SV_BhopRestOn =
+{
+	if (!run_t_startrest || !run_t_bhoprest || run_t_movprof)
+		return FALSE;
+	return (run_t_bhopjump || run_t_ahop) ? TRUE : FALSE;
+};
+
+// P1657: the fastest a ground run-up gets on this map's mover: optimal ground strafing settles where friction takes
+// what acceleration adds, v^2 = (2aW - a^2) / (1 - k^2), k = 1 - friction*tick, a = accelerate*W*tick, W the
+// fastest wish speed (pm_walkspeed above 1 is ahop's sprint).  CS:S at a 0.01 tick: 289.95; ahop sprinting: 494.
+float() SV_TimerRunupCeiling =
+{
+	local float w, dt, a, k, d;
+
+	if (run_t_runupceil >= 0)       // per map: the movement cvars are locked (review 6: cvar lookups per command)
+		return run_t_runupceil;
+	w = cvar("sv_maxspeed");
+	if (cvar("pm_walkspeed") > 1)
+		w = w * cvar("pm_walkspeed");
+	dt = cvar("pm_ticrate");
+	if (dt <= 0)
+		dt = 0.015;
+	a = cvar("sv_accelerate") * w * dt;
+	if (a > w)
+		a = w;
+	k = 1 - cvar("sv_friction") * dt;
+	if (k < 0)
+		k = 0;
+	d = 1 - k * k;
+	if (d <= 0 || w <= 0)
+		run_t_runupceil = max(w, 0);
+	else
+		run_t_runupceil = sqrt((2 * a * w - a * a) / d);
+	return run_t_runupceil;
+};
+
+// P1657: a start from a run is below this own horizontal speed: run_rearmspeed, or under the run-up rule the mode's
+// run-up ceiling plus 10 (a launch is judged on one packet) -- run_bhoprestspeed, when set, instead.
+float() SV_TimerRestCap =
+{
+	local float cap, up;
+
+	cap = run_t_rearmspeed;
+	if (cap <= 0)
+		cap = 290;
+	if (SV_BhopRestOn())
+	{
+		if (run_t_bhoprestspeed > 0)
+			return run_t_bhoprestspeed;
+		up = SV_TimerRunupCeiling() + 10;
+		if (up > cap)
+			cap = up;
+	}
+	return cap;
+};
+
 // P1643: on the ground, not rising, its own horizontal speed under run_rearmspeed (289 is the
-// prestrafe ceiling).  The carrier is left out: a start pad under a standing body is the map's.
+// prestrafe ceiling; P1657: SV_TimerRestCap on a bhop map).  The carrier is left out: a start pad under a
+// standing body is the map's.
 float(entity e) SV_TimerSlowGround =
 {
 	local vector hv;
@@ -12694,17 +12762,20 @@ float(entity e) SV_TimerSlowGround =
 		return FALSE;
 	hv = e.velocity;
 	hv_z = 0;
-	cap = run_t_rearmspeed;
-	if (cap <= 0)
-		cap = 290;
+	cap = SV_TimerRestCap();
 	return vlen(hv) < cap;
 };
 
-// P1643: would leaving the box now be an unrested start?  Full and bonus runs only: a bhop-mode
-// map starts on a grounded jump, and a stage box keeps Lex's 21 Sep rule (run_stagecap 0).
+// P1643: would leaving the box now be an unrested start?  Full and bonus runs only: a stage box keeps
+// Lex's 21 Sep rule (run_stagecap 0).  P1657: a bhop-mode map as well, where SV_TimerFrame judges the start
+// on how the body left -- a launch on the ground it left, a leave on its own speed -- since run_starthop is 0
+// there (mode_bhop.cfg) and a rest seen earlier says nothing about speed hops in the box built since.
 float(entity e) SV_StartUnrested =
 {
-	if (!run_t_startrest || run_t_bhopjump)
+	if (!run_t_startrest)
+		return FALSE;
+	if (run_t_bhopjump)
+	if (!run_t_bhoprest)
 		return FALSE;
 	if (e.run_t_armzone < 0 || e.run_t_armzone >= zone_count)
 		return FALSE;
@@ -13239,6 +13310,15 @@ float(entity e) SV_TimerJumpWatch =
 		e.run_t_groundsec = 0;
 	}
 
+	// P1657 review 5: a booster or setspeed in the START is the map's speed; the leave's own-speed test in
+	// SV_TimerFrame leaves an attempt it reached alone, as SV_TimerSlowGround leaves the carrier out.
+	if (e.run_t_state == TS_ARMED)
+	{
+		if (e.run_pushed)
+			e.run_t_armpushed = TRUE;
+		else if (SV_TimerSlowGround(e))  // review 6: slow on the ground with no push ends it
+			e.run_t_armpushed = FALSE;
+	}
 	// Patch 409.  Their only reader is above, so clearing them here makes both
 	// latches exactly one packet wide. P732 also clears them on every packet
 	// end in PlayerPostThink, including held and early-return timer paths.
@@ -13562,10 +13642,13 @@ float(entity e, string word, float n) SV_TimerChatLeg =
 // until you leave THAT zone -- see the start check in SV_TimerFrame.
 void(entity e, float z) SV_TimerArm =
 {
-	local float attempts, rested;
+	local float attempts, rested, samearm;
 	// P1643: the scan re-arms the box SV_ZoneMoveAt just armed (and a step back in from the
 	// hull band); the same armed attempt keeps what it has already shown.
-	rested = ((e.run_t_state == TS_ARMED) && (e.run_t_armzone == z) && e.run_t_rested);
+	samearm = ((e.run_t_state == TS_ARMED) && (e.run_t_armzone == z));
+	rested = (samearm && e.run_t_rested);
+	if (!samearm)
+		e.run_t_armpushed = FALSE;      // P1657 review 5
 	// Same-box occupancy reconciliation is not a new admission.
 	if (e.bank_attempt == 0i || e.run_t_state != TS_ARMED || e.run_t_armzone != z)
 		SV_BankNewAttempt(e);
@@ -14983,8 +15066,14 @@ void(entity e) SV_TimerStart =
 			sprint(e, PRINT_HIGH, "^3not a clean start^7 -- a noclip, a teleport or a loaded spot since the last "
 			       "restart: ^2!r^7 for a clean start\n");
 		else if (!e.run_t_dirty && !e.run_t_hopped && SV_StartUnrested(e))
-			sprint(e, PRINT_HIGH, "^3unrested start^7 -- stop on the ground in the start, "
-			       "or ^2!r^7, before leaving it\n");
+		{
+			if (SV_BhopRestOn())    // P1657
+				sprint(e, PRINT_HIGH, sprintf("^3unrested start^7 -- start from a run-up: under %g on the ground "
+				       "in the start, then jump or leave it (or ^2!r^7)\n", floor(SV_TimerRestCap())));
+			else
+				sprint(e, PRINT_HIGH, "^3unrested start^7 -- stop on the ground in the start, "
+				       "or ^2!r^7, before leaving it\n");
+		}
 	}
 
 	if (SV_DevOn())     // P1643: the start's own verdict, for arms and the lobby log
@@ -16184,6 +16273,7 @@ void(entity e) SV_TimerFrame =
 {
 	local float az, ez, cp, cancel;
 	local float bhopz, bhopstate, bhopdirty, bhopcheat, bhoptrack;
+	local vector bhophv;
 	local float sz, sin, shit;      // build 43: OUR stage's own boundary box
 	local float tp;
 	local vector p, lastp;
@@ -16495,7 +16585,23 @@ void(entity e) SV_TimerFrame =
 			  run_t_armzone.
 			*/
 			if (!SV_ZoneIn(e.run_t_armzone, p, mn, mx))
+			{
+				// P1657: a bhop map judges how the body left.  A launch latched this packet takes the ground it
+				// left (its commit below finds the run started: review 1); any other leave its own speed now.
+				if (SV_BhopRestOn())
+				{
+					bhophv = e.velocity;
+					bhophv_z = 0;
+					if (bhopz >= 0)
+						e.run_t_rested = e.run_t_restnow ? TRUE : FALSE;
+					else if (!e.run_t_armpushed)    // review 5: a map push's speed is the map's
+					{
+						if (vlen(bhophv) >= SV_TimerRestCap())
+							e.run_t_rested = FALSE;
+					}
+				}
 				SV_TimerStart(e);
+			}
 			// Patch 403 review: the in-box clamp used to live HERE, and here it
 			// is worth almost nothing.  SV_TimerFrame runs from PlayerPostThink,
 			// which the engine calls once per PACKET (sv_user.c:9331 brackets the
@@ -16794,6 +16900,8 @@ void(entity e) SV_TimerFrame =
 						e.run_st_cheat = TRUE;
 					}
 				}
+				if (SV_BhopRestOn())                // P1657: the ground the jump left, not a rest seen earlier
+					e.run_t_rested = e.run_t_restnow ? TRUE : FALSE;
 				e.run_t_startok = TRUE;
 				SV_TimerStart(e);
 			}
@@ -16802,7 +16910,11 @@ void(entity e) SV_TimerFrame =
 		}
 		else
 		{
+			// P1657: this arm and its start are one tick, so the only rest it can show is the ground the jump
+			// left: some tick of this packet began slow on it (run_t_restnow).  A landing still sliding is not one.
 			SV_TimerArm(e, bhopz);
+			if (SV_BhopRestOn())
+				e.run_t_rested = e.run_t_restnow ? TRUE : FALSE;
 			if (bhopdirty)
 				e.run_t_dirty = TRUE;
 			if (bhopcheat)
@@ -16999,6 +17111,9 @@ void() SV_TimerMapInit =
 	// Patch 224 publishes the exact resolved mode before gamecode starts.  Read
 	// that answer, not sv_gamemode (which may be empty/auto) or the map prefix.
 	mode = serverkey("gamemode");
+	run_t_ahop = (mode == "ahop") ? TRUE : FALSE;      // P1657
+	run_t_movprof = strlen(serverkey("*movementprofile")) ? TRUE : FALSE;
+	run_t_runupceil = -1;
 	run_t_bhopjump = FALSE;
 	if (mode == "bhop" || mode == "bhop-hl1")
 		run_t_bhopjump = TRUE;
@@ -17138,6 +17253,8 @@ void() SV_TimerMapInit =
 	registercvar("run_rearmhop", "0");           // build 21, and see the trap above
 	registercvar("run_rearmspeed", "290");       // P1008: re-arm at rest in the box below this
 	registercvar("run_startrest", "1");          // P1643: rest before a clean start; 0 = before 1643
+	registercvar("run_bhoprest", "1");           // P1657: and on bhop-mode maps; 0 = before 1657
+	registercvar("run_bhoprestspeed", "0");      // P1657: override of the run-up bound; 0 = the mode's ceiling + 10
 	registercvar("rec_runs_keep", "25");         // build 23, and see the trap above
 	registercvar("rec_watch_pvs", "1");          // build 43, and see the trap above
 	registercvar("sv_tp_pvs", "1");              // P1190: the teleport destination's PVS eye
@@ -17218,6 +17335,8 @@ void() SV_TimerMapInit =
 	run_t_rearmspeed  = cvar("run_rearmspeed");
 	localcmd(sprintf("serverinfo run_rearmspeed %g\n", run_t_rearmspeed));   // P1008: the HUD's hint
 	run_t_startrest   = cvar("run_startrest");      // P1643
+	run_t_bhoprest    = cvar("run_bhoprest");       // P1657
+	run_t_bhoprestspeed = cvar("run_bhoprestspeed");
 	run_t_stagefail   = cvar("run_stagefail");
 	run_t_stagearm    = cvar("run_stagearm");
 	run_t_stageclean  = cvar("run_stageclean");
@@ -17702,8 +17821,8 @@ void(entity e) SV_TimerReport =
 	       e.run_t_startok ? 1 : 0, run_t_dwell, run_t_settle, run_t_startstrict,
 	       e.run_t_hopped ? 1 : 0, run_t_rearmhop));
 	// P1643: its own line -- the one above is at the varargs cap.
-	sprint(e, PRINT_HIGH, sprintf("        rest: rule %g rested %g placed %g unrested %g prerest %g\n",
-	       run_t_startrest, e.run_t_rested ? 1 : 0, e.run_t_placed ? 1 : 0,
+	sprint(e, PRINT_HIGH, sprintf("        rest: rule %g bhop %g cap %g rested %g placed %g unrested %g prerest %g\n",
+	       run_t_startrest, SV_BhopRestOn() ? 1 : 0, SV_TimerRestCap(), e.run_t_rested ? 1 : 0, e.run_t_placed ? 1 : 0,
 	       (e.run_t_state == TS_ARMED && SV_StartUnrested(e)) ? 1 : 0, e.run_t_restnow ? 1 : 0));
 	sprint(e, PRINT_HIGH, sprintf("        phase: ground %.2f  air %.2f  jumps %g  ramp %g\n",
 	       e.run_t_groundsec ? (SV_ClockSec(e) - e.run_t_groundsec) : 0,
