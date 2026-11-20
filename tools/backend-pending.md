@@ -1,5 +1,10 @@
 # Backend handoff delivered together — 10 November 2026 UTC
 
+## 20 Nov 2026 06:05Z: gen1635 (P1634 + P1639) LIVE, tournaments ON 06:11Z (tools/p1639-delivery.md)
+Primary ef0d1c7c = the previous live code with surfd.py + P1634's 36 lines and four added tournament modules (game
+448c6832). surfd.py carries NOTHING else from main: P1615 and P1622 below are still pending for the next generation.
+A surfd stop/start under the guarded drop-in takes about 4 minutes (ExecStartPre checks).
+
 ## P1623 host tooling ready (19 November 2026)
 
 PowerShell7.7 now works on the Linux workstation; it is not required on the Pi. Native QC NoDeploy and the

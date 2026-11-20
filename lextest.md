@@ -2,8 +2,10 @@
 
 ## 0.1.49 release -- PUBLISHED 20 Nov 05:12Z; owner check PENDING (record: tools/release-0.1.49.md)
 - Update through the launcher (Windows and Linux); the menu should say 0.1.49.
-- Nothing else should look different until tournaments are switched on. Then follow the P1634/P1635/P1639 checks below
-  (two accounts).
+- Tournaments are ON since 20 Nov 06:11Z (tools/p1639-delivery.md): a TOURNAMENT tab in the main menu; Open Lobby
+  #9/#10/#11 host the matches (the tab picks an empty one). Two accounts (two PCs or a friend): host a room, the other
+  joins and accepts, draft, Launch. Both should land on the same lobby; F6 shows standings, clock and maps. Try a bhop
+  room too (100 tick). Anything wrong: say what you saw, the room and the time.
 
 ## P1644 -- console undo, no ] prompt (worldofsurf-bb)
 

@@ -7,7 +7,7 @@
   but its finish-scoring path and the transport fixture's round flow need a zoned, rule-locked synthetic course
   (Tour_Observe aborts a zone-less map); surfd/README.md's "29 passing" is stale (35 now, Tour_Observe stubbed
   around the finish checks; both mutants fail). Transport fixture: still needs a zoned, rule-locked course.
-- BHOP TOURNAMENTS (fixed in source by P1639; live once its surfd generation, lobby QC and 0.1.49 menu are out): lobbies run bhop at 100 Hz (tick 10000 us) but
+- BHOP TOURNAMENTS (fixed by P1639; LIVE 20 Nov 06:11Z, tools/p1639-delivery.md): lobbies run bhop at 100 Hz (tick 10000 us) but
   tournament_rules.PROFILES['default'] and sv_tournament.qc Tour_ProfileTick("default") both demand 15000, so no bhop
   map qualifies and a bhop match would fail the arrival tick check. Needs a per-kind tick (default+bhop = 10000) in
   BOTH the QC and the backend (next surfd generation). Until then a host who picks bhop sees too few maps; surf works.
@@ -15,6 +15,12 @@
   tournament_rules and Tour_ProfileMovement expect `ag100-v1`, so surfd stores an AG node's movement as '' and no
   non-default profile can host (fails closed). A menu without P1639 (no player has one: the tab is new in 0.1.49) loops
   on "Incomplete lobby snapshot" in a 100-tick bhop room and cannot Leave; keep the minimum client at 0.1.49+.
+- Tournament log noise (live since 06:11Z): sv_tournament.qc Tour_Reply calls find(world, social_token,
+  tq_pendingtoken) before testing strlen(tq_pendingtoken), so every state-poll reply on lobbies 9-11 prints
+  "PF_FindString: empty string" plus a 3-line trace (developer 1). Behaviour is right (actor = world next line).
+  Fix: test the token first; rides the next lobby deploy (worldofsurf-ed owns it; not in P1643/P1645).
+- P1634 surfd.py writes lobby_handoffs on every ordinary join, with tournaments on or off (gen1635 reviewer note:
+  additive, in scope; the brief's accepted limits did not name it).
 - Qualification upkeep: a registry pin binds the BSP's size/mtime/ctime and the map's zone pin. A zone republish, a
   re-download or even a chmod of a BSP invalidates that map until tools/tournament_qualify_live.py runs again
   (incremental; Pi root /srv/nvme/agent-work/tq1635-ed). A match drafted on a stale map aborts at arrival
@@ -23,6 +29,9 @@
   one process dies of MAX_MOD_KNOWN after ~17-36 maps: the first surf run (20 Nov) marked 30 maps invalid for it. The
   tool now starts a new server every 12 loads (--recycle) and retries a reused server's death once on a fresh one.
   Open: a live lobby that changes maps for hours should hit the same limit (no restart seen yet; not measured).
+  Live registry: /srv/nvme/surfd/data/tournament-qualifications.json (1509 maps on 20 Nov). Refresh: `run` with
+  --previous/--previous-state/--keep-previous on the last run, check it with the live primary's
+  tournament_pool.registry(), then install + mv into place; surfd reads it per request (no restart).
 - Lex's call (P1635): a tournament finish with TF_NOJOURNAL (the player opted out of the input journal) still scores,
   although the ranked board treats it as uncertified; every other TF_UNCERT bit, TF_SPEC and TF_MULTISESSION refuse.
   To require journals in tournaments, drop the `- TF_NOJOURNAL` in Tour_Finished (the fixture's last check flips).
