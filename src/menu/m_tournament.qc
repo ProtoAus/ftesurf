@@ -6,6 +6,7 @@
 #define MT_JSON_ARRAY 3 // engine/common/common.h json_type_array
 #define MT_JSON_NUMBER 1 // required numeric metadata must not default missing fields to zero
 #define MT_DIR_FIELDS 7
+#define MT_ST_FIELDS 6 // who, name, rating, played, wins, shared
 #define MT_PLAYER_FIELDS 10 // who name role accepted ready best eliminated menu_ready online seat
 #define MT_MAP_FIELDS 9 // name status by page cell tier by-seat by-name style
 #define MT_CAT_FIELDS 5 // name tier provenance page cell
@@ -16,6 +17,8 @@ string(string nonce, string op, string who) friends_sign;
 float mt_req, mt_wire, mt_phase_wire, mt_sent, mt_next, mt_dirreq, mt_dirwire, mt_dirnext, mt_enabled, mt_dirloaded;
 var float mt_dirrows = 6, mt_maprows = 6, mt_rosterrows = 8;
 float mt_engaged, mt_ok;
+// Lex 21 Nov: tournament stats (surfd ?stats=1). mt_board swaps the room list for the leaderboard.
+float mt_board, mt_streq, mt_stwire, mt_stnext, mt_stloaded, mt_stold, mt_stats, mt_ns, mt_stmatches;
 var float mt_newseats = 4, mt_newseconds = 300;
 float mt_revision, mt_capacity, mt_seconds, mt_np, mt_nm, mt_nd, mt_fresh, mt_started;
 float mt_rosterpage, mt_mappage, mt_dirpage, mt_view;
@@ -539,6 +542,14 @@ void(string op, string id, string target, string map, float value, float expecte
 	MT_Request(op, id, target, map, value, expected, FALSE);
 };
 
+void() MT_StatsFetch =
+{
+	if (mt_stwire || mt_streq || time < mt_stnext || ms_consent < FS_TERMS_ONLINE) return;
+	mt_streq = Lob_NextReq(); mt_stwire = mt_streq; mt_stnext = time + 30;
+	if (!uri_get(strcat(MT_SITE, "/api/tournament-lobbies?stats=1&limit=100"), mt_streq)) mt_stwire = mt_streq = 0;
+};
+string(float i, float field) MT_St = { return bufstr_get(mt_stats, i * MT_ST_FIELDS + field); };
+
 void() MT_Directory =
 {
 	if (mt_dirwire || mt_dirreq || time < mt_dirnext || ms_consent < FS_TERMS_ONLINE) return;
@@ -931,6 +942,38 @@ float(float req, float code, string body) MT_Reply =
 		}
 		return TRUE;
 	}
+	if (req == mt_stwire && mt_stwire)
+	{
+		mt_stwire = 0;
+		if (req != mt_streq) { mt_stnext = 0; return TRUE; }
+		mt_streq = 0;
+		if (code || strlen(body) > 131072) return TRUE;
+		root = json_parse(body); if (!root) return TRUE;
+		item = json_find_object_child(root, "stats");
+		mt_stloaded = TRUE; mt_stold = !item; // a surfd before the stats answers with its room list
+		rows = item ? json_find_object_child(item, "rows") : 0; n = rows ? json_get_length(rows) : -1;
+		if (rows && json_get_value_type(rows) == MT_JSON_ARRAY && n >= 0 && n <= 200)
+		{
+			mt_stmatches = json_get_float(json_find_object_child(item, "matches"));
+			db = buf_create(); mt_ns = 0;
+			for (i = 0; i < n; i += 1)
+			{
+				item = json_get_child_at_index(rows, i); id = json_get_string(json_find_object_child(item, "who"));
+				if (!MT_Who(id)) continue;
+				bufstr_set(db, mt_ns * MT_ST_FIELDS, id);
+				bufstr_set(db, mt_ns * MT_ST_FIELDS + 1, MT_Text(json_get_string(json_find_object_child(item, "name")), 40));
+				bufstr_set(db, mt_ns * MT_ST_FIELDS + 2, ftos(json_get_float(json_find_object_child(item, "rating"))));
+				bufstr_set(db, mt_ns * MT_ST_FIELDS + 3, ftos(json_get_float(json_find_object_child(item, "played"))));
+				bufstr_set(db, mt_ns * MT_ST_FIELDS + 4, ftos(json_get_float(json_find_object_child(item, "wins"))));
+				bufstr_set(db, mt_ns * MT_ST_FIELDS + 5, ftos(json_get_float(json_find_object_child(item, "shared"))));
+				mt_ns += 1;
+			}
+			if (mt_stats) buf_del(mt_stats);
+			mt_stats = db;
+		}
+		json_free(root);
+		return TRUE;
+	}
 	if (!mt_wire || req != mt_wire) return FALSE;
 	mt_wire = 0;
 	if (!mt_req || req != mt_req) { mt_next = 0; return TRUE; }
@@ -1017,6 +1060,7 @@ void() MT_Frame =
 		else MT_Fail("The tournament service is slow to answer; still waiting.");
 	}
 	if (mt_dirreq && time >= mt_dirnext + 10) mt_dirreq = 0;
+	if (mt_streq && time >= mt_stnext + 10) mt_streq = 0;
 	if (ms_consent < FS_TERMS_ONLINE) return;
 	// Connected: nothing queued while disconnected may be signed after a later disconnect.
 	if (clientstate() != 1) { MT_ClearQueue(); mt_qstale = FALSE; mt_ingame = TRUE; return; }
@@ -1031,7 +1075,7 @@ void() MT_Frame =
 		mt_metadata = TRUE;
 		if (!ms_count) ui_load_maps();
 	}
-	if (menu_screen == SCREEN_TOURNAMENT && mt_id == "") MT_Directory();
+	if (menu_screen == SCREEN_TOURNAMENT && mt_id == "") { MT_Directory(); if (mt_board) MT_StatsFetch(); }
 	else if (time >= mt_probeat && mt_id == "") { mt_probeat = time + 300; MT_Directory(); }
 	host = (mt_id != "" && mt_me == mt_host && mt_phase == "lobby");
 	// While a configure is in flight the snapshot is pre-edit: an undo back to it is still an edit.
@@ -1368,7 +1412,7 @@ float(vector pos, string who, float i) MT_KickButton =
 
 void(vector pos, vector size, float seat, float i) MT_SeatRow =
 {
-	local float host, lobby, right, mine, online, accepted, ready, want, x;
+	local float host, lobby, right, mine, online, accepted, ready, want, x, px;
 	local string who, name, text;
 	local vector colour, pillc;
 	colour = MT_SeatColour(seat);
@@ -1386,7 +1430,10 @@ void(vector pos, vector size, float seat, float i) MT_SeatRow =
 	sui_style_box(pos, size, 8, mine ? SUI_THEME_SELECTED : SUI_THEME_CHIP, mine ? SUI_THEME_ACCENT : SUI_THEME_EDGE, 1);
 	sui_fill(pos + '0 8 0', [4, size_y - 16], colour, 1, 0);
 	MT_Place(pos + '14 0 0', [24, size_y], ftos(seat + 1), 16, colour);
-	sui_roundbox(pos + [36, 13], '8 8 0', 4, online ? SUI_THEME_GOOD : SUI_THEME_MUTED, 1);
+	// The Steam picture (m_pics.qc; `who` is the 8-hex id the friends list keys on), online dot on its corner.
+	px = size_y - 16;
+	if (!MP_Draw(pos + [36, 8], px, who, 1)) sui_roundbox(pos + [36, 8], [px, px], 6, SUI_THEME_WELL, 1);
+	sui_roundbox(pos + [30 + px, px], '10 10 0', 5, online ? SUI_THEME_GOOD : SUI_THEME_MUTED, 1);
 	right = size_x - 10;
 	if (host && lobby)
 	{
@@ -1409,19 +1456,21 @@ void(vector pos, vector size, float seat, float i) MT_SeatRow =
 	else if (!mt_started) { text = ready ? "READY" : "NOT READY"; pillc = ready ? SUI_THEME_GOOD : SUI_THEME_MUTED; }
 	// Name on the top line, its tags under it: a long name keeps the row's width.
 	want = (size_y >= 56) ? 20 : 16;
-	MT_Place(pos + '52 4 0', [right - 58, 22], strcat(name, mine ? " (you)" : ""), want, SUI_THEME_TEXT);
-	x = 52;
+	x = 44 + px;
+	MT_Place(pos + [x, 4], [right - x - 6, 22], strcat(name, mine ? " (you)" : ""), want, SUI_THEME_TEXT);
 	if (who == mt_host) x += MT_Pill(pos + [x, size_y - 24], "HOST", SUI_THEME_ACCENT2) + 6;
 	if (text != "") MT_Pill(pos + [x, size_y - 24], text, pillc);
 };
 
 void(vector pos, vector size, float i) MT_SpecRow =
 {
-	local float right, mine;
+	local float right, mine, px;
 	local string who;
 	who = MT_Player(i, 0); mine = (who == mt_me);
 	sui_style_box(pos, size, 8, mine ? SUI_THEME_SELECTED : SUI_THEME_WELL, mine ? SUI_THEME_ACCENT : SUI_THEME_EDGE, 1);
 	sui_roundbox(pos + [16, floor(size_y / 2) - 4], '8 8 0', 4, stof(MT_Player(i, 8)) ? SUI_THEME_GOOD : SUI_THEME_MUTED, 1);
+	px = size_y - 20;
+	if (!MP_Draw(pos + [30, 10], px, who, 1)) sui_roundbox(pos + [30, 10], [px, px], 5, SUI_THEME_PANEL, 1);
 	right = size_x - 10;
 	// P1650's host can remove a spectator until launch; today's surfd refuses it outside the lobby (MT_Friendly).
 	if (mt_me == mt_host && !mt_started && !mine)
@@ -1436,7 +1485,7 @@ void(vector pos, vector size, float i) MT_SpecRow =
 		right -= 118;
 	}
 	if (who == mt_host) right -= MT_Pill(pos + [right, floor((size_y - 20) / 2)], "HOST", SUI_THEME_ACCENT2, TRUE) + 6;
-	MT_Place(pos + '32 0 0', [right - 38, size_y], strcat(MT_Player(i, 1), mine ? " (you)" : ""), 16, SUI_THEME_DIM);
+	MT_Place(pos + [38 + px, 0], [right - 44 - px, size_y], strcat(MT_Player(i, 1), mine ? " (you)" : ""), 16, SUI_THEME_DIM);
 };
 
 float(float rh) MT_RosterHeight = { return 56 + (mt_capacity + 1 + max(1, mt_nspec)) * (rh + 6) + 4; };
@@ -2229,6 +2278,48 @@ void(vector p, vector size, float n, string title, string body) MT_HowCard =
 	MT_Para(p + [x, top + 22], size_x - x - 12, body, 12, SUI_THEME_DIM, 2, TRUE);
 };
 
+// The leaderboard, inside the browser's panel frame. Own row pinned last when it is below the fold.
+void(vector size) MT_DrawStats =
+{
+	local float y, rh, i, k, rows, mine, w, cw, namew, me;
+	local string who;
+	local vector p;
+	w = size_x - 24; rh = 44; cw = (w >= 640) ? 92 : 70; namew = w - 4 * cw - 104;
+	MT_Place('28 54 0', [40, 16], "#", 12, SUI_THEME_MUTED);
+	MT_Place('112 54 0', [namew, 16], "PLAYER", 12, SUI_THEME_MUTED);
+	MT_Place([w - 4 * cw, 54], [cw, 16], "RATING", 12, SUI_THEME_MUTED, 2);
+	MT_Place([w - 3 * cw, 54], [cw, 16], "WINS", 12, SUI_THEME_MUTED, 2);
+	MT_Place([w - 2 * cw, 54], [cw, 16], "SHARED", 12, SUI_THEME_MUTED, 2);
+	MT_Place([w - cw, 54], [cw, 16], "PLAYED", 12, SUI_THEME_MUTED, 2);
+	y = 76;
+	if (!mt_stloaded) { MT_Place([12, y], [w, size_y - y - 40], "Loading the leaderboard...", 16, SUI_THEME_MUTED, 1); return; }
+	if (mt_stold) { MT_Place([12, y], [w, size_y - y - 40], "Tournament stats arrive with the next server update.", 16, SUI_THEME_DIM, 1); return; }
+	if (!mt_ns)
+	{
+		MT_Place([12, y + floor((size_y - y - 40) / 2) - 28], [w, 26], "No finished tournaments yet", 20, SUI_THEME_TEXT, 1);
+		MT_Place([12, y + floor((size_y - y - 40) / 2) + 2], [w, 22], "Win one and your name goes at the top.", 16, SUI_THEME_DIM, 1);
+		return;
+	}
+	rows = max(1, floor((size_y - y - 40) / (rh + 6)));
+	me = -1;
+	for (i = 0; i < mt_ns; i += 1) if (MT_St(i, 0) == mt_me) { me = i; break; }
+	for (k = 0; k < min(rows, mt_ns); k += 1)
+	{
+		i = (k == rows - 1 && me >= rows) ? me : k;
+		who = MT_St(i, 0); mine = (i == me); p = [12, y];
+		sui_style_box(p, [w, rh], 8, mine ? SUI_THEME_SELECTED : SUI_THEME_CHIP, mine ? SUI_THEME_ACCENT : SUI_THEME_EDGE, 1);
+		MT_Place(p + '12 0 0', [40, rh], ftos(i + 1), 16, (i < 3) ? SUI_THEME_ACCENT2 : SUI_THEME_DIM);
+		if (!MP_Draw(p + [56, 6], rh - 12, who, 1)) sui_roundbox(p + [56, 6], [rh - 12, rh - 12], 6, SUI_THEME_WELL, 1);
+		MT_Place(p + [100, 0], [namew, rh], strcat(MT_St(i, 1), mine ? " (you)" : ""), 16, SUI_THEME_TEXT);
+		MT_Place(p + [w - 4 * cw - 12, 0], [cw, rh], MT_St(i, 2), 20, SUI_THEME_TEXT, 2, 1);
+		MT_Place(p + [w - 3 * cw - 12, 0], [cw, rh], MT_St(i, 4), 16, SUI_THEME_GOOD, 2);
+		MT_Place(p + [w - 2 * cw - 12, 0], [cw, rh], MT_St(i, 5), 16, SUI_THEME_DIM, 2);
+		MT_Place(p + [w - cw - 12, 0], [cw, rh], MT_St(i, 3), 16, SUI_THEME_DIM, 2);
+		y += rh + 6;
+	}
+	MT_Place([12, size_y - 34], [w, 20], sprintf("%g finished tournaments. Rating is Elo from final places: everyone starts at 1000.", mt_stmatches), 12, SUI_THEME_MUTED);
+};
+
 void(vector scr) MT_DrawBrowser =
 {
 	local float y, i, rh, top, ph, howh, ruleh, w, statw, playw, joinw, first, last, namew, cw, lines, lh, started;
@@ -2257,12 +2348,15 @@ void(vector scr) MT_DrawBrowser =
 		top += lh + 12;
 	}
 	howh = (scr_x >= 820 && scr_y >= 560) ? 76 : 0;
-	ruleh = (scr_y >= 520) ? 56 : 0;
+	ruleh = (!howh && scr_y >= 520) ? 56 : 0; // the wide layout shows Rounds as a fourth card
 	ph = scr_y - top - (howh ? howh + 12 : 0) - (ruleh ? ruleh + 12 : 0);
 	sui_push_frame([0, top], [scr_x, ph]);
 	sui_style_panel('0 0 0', [scr_x, ph], 12, 1);
-	MT_Label('16 14 0', "open rooms", 24, SUI_THEME_ACCENT, scr_x - 160);
-	if (MT_Button("mt_refresh", [scr_x - 126, 12], '110 30 0', "Refresh")) { mt_dirnext = 0; mt_next = 0; }
+	MT_Label('16 14 0', mt_board ? "leaderboard" : "open rooms", 24, SUI_THEME_ACCENT, scr_x - 300);
+	if (MT_Button("mt_board", [scr_x - 274, 12], '140 30 0', mt_board ? "Open rooms" : "Leaderboard")) { mt_board = !mt_board; mt_stnext = 0; }
+	if (MT_Button("mt_refresh", [scr_x - 126, 12], '110 30 0', "Refresh")) { mt_dirnext = 0; mt_next = 0; mt_stnext = 0; }
+	if (mt_board) MT_DrawStats([scr_x, ph]);
+	else {
 	w = scr_x - 24; joinw = 120; statw = 130; playw = (w >= 600) ? 140 : 0;
 	namew = w - joinw - statw - playw - 48;
 	MT_Place('28 54 0', [namew, 16], "ROOM", 12, SUI_THEME_MUTED);
@@ -2308,17 +2402,19 @@ void(vector scr) MT_DrawBrowser =
 		if (MT_Button("mt_prev", [12, y], '104 30 0', "Previous", 0, mt_dirpage > 0)) mt_dirpage = max(0, mt_dirpage - 1);
 		if (MT_Button("mt_next", [124, y], '84 30 0', "Next", 0, last < mt_nd)) mt_dirpage = min(floor((mt_nd - 1) / mt_dirrows), mt_dirpage + 1);
 	}
+	}
 	sui_pop_frame();
 	y = top + ph + 12;
 	if (howh)
 	{
-		cw = floor((scr_x - 24) / 3);
+		// Four equal cards (Lex 21 Nov: Rounds was a shorter full-width strip). Bodies wrap to two lines.
+		cw = floor((scr_x - 36) / 4);
 		MT_HowCard([0, y], [cw, howh], 1, "Lobby", "The host sets the rules; players take seats.");
 		MT_HowCard([cw + 12, y], [cw, howh], 2, "Map draft", "Everyone bans a map, then picks one.");
-		MT_HowCard([2 * cw + 24, y], [scr_x - 2 * cw - 24, howh], 3, "Launch", "One click sends the whole group to a server.");
-		y += howh + 12;
+		MT_HowCard([2 * (cw + 12), y], [cw, howh], 3, "Launch", "One click sends the whole group to a server.");
+		MT_HowCard([3 * (cw + 12), y], [scr_x - 3 * (cw + 12), howh], 4, "Rounds", "Slowest is out each round; last one left wins.");
 	}
-	if (ruleh) MT_HowCard([0, y], [scr_x, ruleh], howh ? 4 : 0, "Rounds", MT_RULE);
+	else if (ruleh) MT_HowCard([0, y], [scr_x, ruleh], 0, "Rounds", MT_RULE);
 };
 
 void(vector scr, float bottom) MT_DrawToast =

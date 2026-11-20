@@ -1772,6 +1772,29 @@ void() ui_meta_load =
 	  why maxpage is tracked in the loop above rather than assumed -- mapmeta.txt
 	  describes 2194 maps and most installs have far fewer.
 	*/
+	// Lex 21 Nov: a CSS/KSF/fix build with no picture of its own shows its Momentum build's (ms_varof is the base
+	// row since ui_dl_load, Patch 652). 388 of 394 qualified _css builds had no mapmeta row at all.
+	local float mvb;
+	local string mvp, mvc, mvu;
+	for (i = 0; i < ms_count; i = i + 1)
+	{
+		if (bufstr_get(ms_varof, i) == "")
+			continue;
+		mvb = stof(bufstr_get(ms_varof, i));
+		n = tokenize(bufstr_get(ms_meta, mvb));
+		if (n <= MT_UUID || argv(MT_PAGE) == "-")
+			continue;
+		mvp = argv(MT_PAGE); mvc = argv(MT_CELL); mvu = argv(MT_UUID);
+		n = tokenize(bufstr_get(ms_meta, i));
+		if (n > MT_UUID && argv(MT_PAGE) != "-")
+			continue;
+		if (n > MT_KTIER)
+			bufstr_set(ms_meta, i, strcat(sprintf("%s %s %s ", argv(MT_LINEAR), argv(MT_STAGES), argv(MT_BONUS)),
+			                              sprintf("%s %s %s %s %s", mvp, mvc, mvu, argv(MT_TSRC), argv(MT_KTIER))));
+		else
+			bufstr_set(ms_meta, i, sprintf("- - - %s %s %s - -", mvp, mvc, mvu));
+	}
+
 	for (i = 0; i <= maxpage; i = i + 1)
 		precache_pic(strcat("gfx/mapthumbs/atlas", ftos(i)));
 	for (i = 0; i <= maxhd; i = i + 1)
