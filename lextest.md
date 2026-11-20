@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## 0.1.52 release -- PUBLISHED 21 Nov 13:52Z (record: tools/release-0.1.52.md); owner check PENDING
+- P1666 + P1667 only. Your friend: update through the launcher (or the archive) and start normally; the Wayland crash is
+  gone (until then: `env -u WAYLAND_DISPLAY ./ftesurf.sh`). Production check passed: the 0.1.52 game replaced a stale
+  launcher from the live feed.
+
 ## P1666 / P1667 -- the game keeps the launcher current; Linux starts on newer Wayland (worldofsurf-75, 21 Nov)
 P1666 is the launcher auto-updater you asked for. The launcher itself is still never in the update list (every installed
 launcher would refuse the whole update over a name it does not know); instead the signed update names it separately,

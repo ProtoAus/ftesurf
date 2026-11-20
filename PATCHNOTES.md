@@ -21,6 +21,8 @@
 
 ## next
 
+## 0.1.52 2026-11-21
+
 ### P1667 Linux: the game starts on newer Wayland desktops
 - The Linux download no longer closes straight after starting on newer Wayland desktops (recent KDE Plasma, GNOME and wlroots-based ones such as Hyprland, sway or labwc).
 
