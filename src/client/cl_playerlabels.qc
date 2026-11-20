@@ -48,7 +48,7 @@ void(vector scr) PlayerLabels_Draw =
 	{
 		tag_bodies = tag_bodies + 1;
 		slot = b.pb_slot - 1;
-		if (!b.pb_n || slot < 0 || slot == player_localnum || b.pb_slot == spc_hideslot) continue;
+		if (!b.pb_n || slot < 0 || slot == player_localnum || b.pb_slot == spc_hideslot || pb_hideothers) continue;
 		if (cltime - b.pb_rxt > 1 || getplayerkeyvalue(slot, "name") == "") continue;
 		tag_fresh = tag_fresh + 1;
 		head = b.pb_rorg + [0, 0, b.pb_reye + 16];

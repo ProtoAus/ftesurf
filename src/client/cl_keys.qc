@@ -146,6 +146,7 @@ float  rec_wt_time;              // the playback position in the .rec's own `t`
 // Patch 383, the pose stream: written by cl_body.qc, read by cl_netmon.qc
 // (which compiles before it).  Free-running totals, zeroed per map.
 float  spc_hideslot;             // slot+1 of the body NOT to draw this frame, 0 none (spectate writes it)
+float  pb_hideothers;            // P1688 !hide/!show: no other player drawn (body, trail, label); a map load clears it
 float  pb_rx_total;              // pose samples received
 float  pb_tk_total;              // sum of their tick gaps
 float  pb_bf_total;              // body-frames evaluated

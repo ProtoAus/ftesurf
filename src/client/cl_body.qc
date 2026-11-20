@@ -167,6 +167,7 @@ void() Body_RegisterCvars =
 	registercvar("cl_playerfade_near", "32", CVAR_ARCHIVE);
 	registercvar("cl_playerfade_far", "128", CVAR_ARCHIVE);
 	registercommand("body_stats");
+	registercommand("hideplayers");   // P1688: sv_player.qc stuffs it for !hide / !show
 	registercommand("body_trace");
 	Body_ReadCvars();
 };
@@ -189,7 +190,7 @@ float() Body_Predraw =
 	local float duck;
 	local vector rgb, org, kit;
 
-	if (!self.pb_n || (spc_hideslot && self.pb_slot == spc_hideslot))
+	if (!self.pb_n || (spc_hideslot && self.pb_slot == spc_hideslot) || pb_hideothers)
 	{
 		self.pb_trailok = FALSE;
 		return PREDRAW_NEXT;

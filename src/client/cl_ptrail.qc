@@ -180,6 +180,19 @@ void() PTrail_Overview =
 	}
 };
 
+// P1688: !hide empties the other players' lines now rather than letting them fade out over PTrail_Life.
+void() PTrail_ClearBodies =
+{
+	local float id;
+	if (!ptr_meta)
+		return;
+	for (id = PT_BODY; id < PT_SLOTS; id = id + 1)
+	{
+		ptr_meta[id * PT_META + PM_N] = 0;
+		ptr_meta[id * PT_META + PM_CUT] = TRUE;
+	}
+};
+
 void(float id) PTrail_DrawOne =
 {
 	local float m, n, h, k, i, b, t, age, life, open, now;

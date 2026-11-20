@@ -2702,6 +2702,11 @@ void(string cmd) SV_ParseClientCommand =
 			stuffcmd(self, sprintf("spectate %S\n", strtrim(tail)));
 			return;
 		}
+		if (tail == "" && (!strcmp(w, "!hide") || !strcmp(w, "!show")))
+		{
+			stuffcmd(self, "hideplayers\n");   // P1688: this viewer only, cl_body.qc
+			return;
+		}
 
 		if (tail == "")
 		{

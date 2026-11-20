@@ -2946,6 +2946,14 @@ float(string cmd) CSQC_ConsoleCommand =
 	}
 	if (argv(0) == "vote")
 		return Vote_Console();
+	if (argv(0) == "hideplayers")      // P1688: bare toggles (!hide and !show both do, Lex); 0|1 sets
+	{
+		pb_hideothers = (argv(1) == "") ? !pb_hideothers : (stof(argv(1)) != 0);
+		if (pb_hideothers)
+			PTrail_ClearBodies();
+		print(pb_hideothers ? "Other players hidden until the next map (!show to see them).\n" : "Other players shown.\n");
+		return TRUE;
+	}
 
 	// Patch 385.  `spectate look <dx> <dy>`: an IE_MOUSEDELTA through the whole
 	// chain, as `vote key` does for keys -- `took 1` is what zeroes the engine's.
