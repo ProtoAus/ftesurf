@@ -36,6 +36,63 @@
 - sv_rank_scriptguard stays 0 until a release with P1646 has been out long enough; then 1 unranks engines that cannot
   count (PW_SCRIPTGUARD, "update the game").
 
+## TAS uploads -- what P1640 left (20 Nov, tasupload-20261120-c7; root FTESurf-worktrees/tasupload-20261120-c7)
+- In-game upload after a TAS finish, and a TAS-uploads view in the web/menu boards (read `/tasup/api/board`).
+  Falsifier: a run uploaded in game appears on `/tasup/board` for its map/track with the uploader's name.
+- EXACT verdict: re-simulate native `in`-row recordings with pm_verify (surfd/sweep.py) in the worker; today
+  every upload is judged by tools/tasplaus.py alone. Falsifier: a native TAS .rec gets "re-simulated", a
+  one-row edit of it does not.
+- tools/tasplaus.py: map push/booster volumes and stage legs still HOLD (surf_classics/sodacity boosters).
+- Human replays passed off as TAS: tasupd refuses files with KSF/Momentum import keys or `mom-`/`ksf-` run ids
+  and copies of other uploads, but not a public surfd/KSF/Momentum replay with those keys stripped (it is real
+  motion, so it passes physics). Fix: compare each upload's motion signature (tasupd.motion_series/same_motion)
+  against that course's public replays before showing it. Falsifier: a board replay re-headed and uploaded is
+  refused as "the motion of <player>'s run". Until then: `tasupd.py remove <id>`.
+- tasupd limits not covered by unit tests: the two-at-once Steam confirmation slot (503), IPv6 /64 rate keys and
+  the owner CLI's "changed meanwhile" race. Bans reach tasupd within surfd's 5-minute account cache at worst;
+  signed-in sessions (12 h) cannot be revoked except by rotating the meta secret.
+- tasplaus without collision: a made-up path that ignores the map's walls at legal speeds passes; the
+  record backstop holds it only when it beats the course's best. Real fix: trace the path against the
+  BSP (or pm_verify for native `in` rows). Two independent TAS bots converging on near-identical motion
+  were never tested against the copy check (0 of 13231 honest pairs flagged).
+- tasupd runs as proto, the same user as surfd: a compromise of tasupd could signal or ptrace surfd. A
+  user of its own (state dir owned by it, surfd.db readable through a group) would contain that.
+- nginx: the installer's reload also makes live any other unreloaded nginx edit (its predecessor hash
+  covers the site file only, not snippets); `.rec` downloads are spooled to /var/lib/nginx (the app
+  budgets bytes handed to nginx, not delivered). Files orphaned by a kill between placement and commit
+  are never swept; the store-size check scans every row per upload.
+- tasupd sign-in: 30 Steam confirmations a minute for everyone, 3 per address: a few /64s of forged
+  assertions can still use up a minute's sign-ins (self-heals each minute).
+- tasupd store: rows (~5 KB each, <= 1000 a day) are outside STORE_CAP, rejected runs keep their file, and a
+  full store is only a journal line (`journalctl -u ftesurf-tasupd`). Add a purge for rejected/removed runs and
+  a size line in the owner's `list`.
+- Round 5 (21 Nov) left: a crafted 8 MB file of minimal samples stores a ~7 MB motion blob (cap on samples, or a
+  purge); `same_path` filters the whole series per shift (60 candidates of 83k ticks: 4.1 s here, ~15-25 s on the Pi:
+  bisect the step ends); the upload connection limit is keyed per /128, so one /64 can hold the 16 nginx upload
+  slots (the app checks two at once and answers 503 past that); upgrade falls back to a release dir in proto's tree; an install from before the zones
+  file upgrades into a raw FileNotFoundError (still refuses before any change); the pending-reload check is not
+  repeated right before each daemon-reload. Checker: a free-flight tick before a landing at vz in (134, 140] holds
+  (model only, no real case); 2+ lost packets after the start hold (EXACT re-simulation would clear native ones);
+  a pre-start step straddling t=0 hides ~3 ticks (up to ~21 on a long straight). Nits: copy_of counts hits, not
+  runs; "Physics check: PASS" heads a copy/record hold; 507 and the concurrent 409 keep the day's attempt; comma
+  decimals read as "no samples"; a BOM is refused; NBSP in `owner` refused; %g with all three coordinates past
+  10000 gets the precision hold; `list` loads blobs; `show` prints a deleted file's path.
+- Round 6 (21 Nov) left: a copy re-timed as a whole by 0.1-0.15% (t / f, v x f, 2 decimals) is not matched -- the
+  samples drift across tick boundaries, so neither the velocity nor the path comparison aligns past half a tick.
+  Fix: compare at the upload's own sample times against the candidate's series interpolated at t x f, f from the
+  length ratio (an index stretch alone did not match). Falsifier: r6-attack e2d (f 1.0015 / 1.001) held as a copy.
+  `--upgrade-from` compares the host's snippet/zones/unit with the NEW commit's text, so any later change to them
+  refuses the upgrade: record their hashes in SOURCE.json at install and compare with those. A fake clip each arc
+  (vz <= 140 then a jump) pumps height: collision, accepted. Trimming the finish by 1 tick passes on 11 of 117
+  replays (5 before round 5): within the 1-tick lost-packet limit.
+- Round 7 (21 Nov) left: the clock test is a median, so retimed ticks in a minority pass it (a low quantile
+  would not; measure honest quantiles first); the drift sum covers aligned single ticks only. A copy re-timed by
+  ~0.1% (already above) can also launder a removed run's motion once shown. The new `recs/xx` directory name is
+  not fsynced in `recs/` (ext4-safe). Only SIGINT/SIGHUP are held by the installer.
+- tools/install_tasrevd.py FILES lacks surfd/fetchq.py, which ksfprofile.py imports since P1448 (f959eaac),
+  so its next `--upgrade-from` refuses at check_imports (test_install_tasrevd CurrentClosure fails with
+  "No module named 'fetchq'"). Refuses safely; the live release is unaffected. Fix: add it to FILES.
+
 ## Lex's 21 Nov UI list -- what P1676-P1685 left (worldofsurf-9b; root FTESurf-worktrees/uilist-20261121-9b)
 - snd_vis desktop audio (P1682) falls back to the game mix only when capture is unsupported or not connected: a
   desktop that is connected but silent while the game plays to another output (s_device on a non-default sink, a
