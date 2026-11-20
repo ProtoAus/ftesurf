@@ -267,6 +267,7 @@ __pycache__/
 # Generated authored asset tables (P1571); exact names, never ignore scripts generally.
 /ftesurf/scripts/matcolours.txt
 /ftesurf/scripts/unshipped.txt
+/ftesurf/scripts/wadcolours.txt
 !/ftesurf/fs_addons.default.txt
 # Public generated tier catalogue; never un-ignore maps/BSPs generally.
 !/ftesurf/maps/

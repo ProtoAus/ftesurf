@@ -107,20 +107,20 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(feed.object_bytes(self.root / 'feed/objects', row['hash'], row['size']), p.read_bytes())
 
     def test_generated_map_tables_signed_roundtrip(self):
-        for name in ('matcolours', 'unshipped'):
+        for name in ('matcolours', 'unshipped', 'wadcolours'):
             p = self.win / f'ftesurf/scripts/{name}.txt'
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_bytes(f'synthetic {name} fixture\n'.encode())
         self.build()
         payload = feed.verify((self.root / 'feed/update.json').read_bytes(), KEY)
-        for name in ('matcolours', 'unshipped'):
+        for name in ('matcolours', 'unshipped', 'wadcolours'):
             path = f'ftesurf/scripts/{name}.txt'
             row = next(f for f in payload['files'] if f['path'] == path)
             self.assertEqual(feed.object_bytes(self.root / 'feed/objects', row['hash'], row['size']),
                              (self.win / path).read_bytes())
 
     def test_generated_map_tables_use_existing_asset_namespace(self):
-        for name in ('matcolours', 'unshipped'):
+        for name in ('matcolours', 'unshipped', 'wadcolours'):
             path = f'ftesurf/scripts/{name}.txt'
             self.assertTrue(feed.managed(path), path)
             for bad in (path.upper(), path + '.', path + ' ', path + ':stream',
