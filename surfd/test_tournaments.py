@@ -105,6 +105,27 @@ class Rules(unittest.TestCase):
         data.update(extra)
         return R.transition(m, 'score', '', '', data)
 
+    # P1650 helpers: a wider synthetic pool admits 4+ competitors; play() takes a loading round to live.
+    def wide(self, n):
+        return {('surf_w%02d' % i): dict(name='surf_w%02d' % i, kind='surf', tier=1, pin=pin_for(MAPS[0]))
+                for i in range(3 * n)}
+
+    def play(self, m):
+        data = observation(m)
+        m = R.transition(m, 'arrive', '', '', data)
+        for p in list(R.competitors(m)):
+            m = R.transition(m, 'ready', p['who'], '', data)
+        m = R.transition(m, 'start', 'host', '', observation(m))
+        return R.transition(m, 'go', '', '', dict(observation(m), elapsed_ms=5000, tickrate=1000000/15000))
+
+    def settle(self, m, scores=()):
+        for who, ticks in scores:
+            m = self.score(m, who, ticks)
+        return R.transition(m, 'settle', '', '', dict(observation(m), elapsed_ms=60000))
+
+    def roles(self, m):
+        return {p['who']: (p['role'], p['place']) for p in m['players']}
+
     def test_alpha_settings_actions_refuse_without_mutation_or_invented_consent(self):
         m = self.lobby(2)
         for key in ('settings', 'ruleset_id', '_pins', '_zonegen'):
@@ -215,14 +236,66 @@ class Rules(unittest.TestCase):
         with self.assertRaisesRegex(R.Refusal, 'already scored'):
             self.score(next_round, 'host', 100, runid='0000000000000001')
 
-    def test_tie_multiple_and_all_dnf_no_contest(self):
-        for scores in ([], [('host',100)], [('host',100),('p1',200),('p2',200)]):
-            m = self.live()
-            for who, ticks in scores:
-                m = self.score(m, who, ticks)
-            m = R.transition(m, 'settle', '', '', dict(observation(m), elapsed_ms=60000))
-            self.assertEqual((m['phase'], m['outcome']), ('aborted', 'no-contest'))
-            self.assertTrue(all(p['role'] == 'player' for p in m['players']))
+    def test_settle_p1650_nobody_finished_everyone_goes_through(self):
+        m = self.settle(self.live())
+        self.assertEqual((m['phase'], m.get('outcome')), ('results', None))
+        self.assertTrue(all(p['role'] == 'player' and p['place'] == 0 for p in m['players']))
+        self.assertEqual(m['note'], 'Nobody finished %s: everyone goes through.' % m['current_map'])
+        self.assertEqual(next(c for c in m['maps'] if c['name'] == m['current_map'])['status'], 'played')
+
+    def test_settle_p1650_every_non_finisher_is_out(self):
+        m = self.settle(self.live(), [('host', 100)])
+        self.assertEqual(self.roles(m), dict(host=('player', 1), p1=('eliminated', 2), p2=('eliminated', 2)))
+        self.assertEqual((m['phase'], m['outcome']), ('results', 'winner'))
+        self.assertEqual(m['note'], 'p1 and p2 did not finish and are out. Host wins!')
+        m = self.settle(self.live(), [('host', 100), ('p1', 200)])
+        self.assertEqual(self.roles(m)['p2'], ('eliminated', 3))
+        self.assertEqual((m['phase'], m['note']), ('results', 'p2 did not finish and is out.'))
+        # A DNF goes out even when a finisher was slower than everyone else.
+        m = R.transition(self.lobby(4), 'lock', 'host', '', {}, self.wide(4))
+        while m['phase'] == 'draft':
+            card = next(c for c in m['maps'] if c['status'] == 'pool')
+            m = R.transition(m, m['turn_kind'], m['turn_who'], '', dict(map=card['name']))
+        m = self.settle(self.play(m), [('host', 100), ('p1', 600)])
+        self.assertEqual(self.roles(m), dict(host=('player', 0), p1=('player', 0), p2=('eliminated', 3), p3=('eliminated', 3)))
+        self.assertEqual(m['note'], 'p2 and p3 did not finish and are out.')
+
+    def test_settle_p1650_slowest_and_tied_slowest_are_out(self):
+        m = self.settle(self.live(), [('host', 100), ('p1', 200), ('p2', 300)])
+        self.assertEqual(self.roles(m), dict(host=('player', 0), p1=('player', 0), p2=('eliminated', 3)))
+        self.assertEqual(m['note'], 'p2 had the slowest time and is out.')
+        m = self.settle(self.live(), [('host', 100), ('p1', 200), ('p2', 200)])
+        self.assertEqual(self.roles(m), dict(host=('player', 1), p1=('eliminated', 2), p2=('eliminated', 2)))
+        self.assertEqual((m['phase'], m['outcome']), ('results', 'winner'))
+        self.assertEqual(m['note'], 'p1 and p2 tied for the slowest time and are out. Host wins!')
+        m = self.settle(self.live(), [('host', 100), ('p1', 100), ('p2', 100)])
+        self.assertEqual((m['phase'], m['note']), ('results', 'Everyone tied: everyone goes through.'))
+        self.assertTrue(all(p['role'] == 'player' for p in m['players']))
+
+    def test_advance_p1650_plays_reserve_then_shares_first(self):
+        m = self.settle(self.live())
+        reserve = m['reserve']
+        m = R.transition(m, 'advance', '', '', {})
+        self.assertEqual((m['phase'], m['round_index'], m['round_total']), ('loading', 2, 2))
+        m = self.settle(self.play(m))
+        m = R.transition(m, 'advance', '', '', {})
+        # Scheduled rounds are used up with three survivors: the reserve becomes round 3.
+        self.assertEqual((m['phase'], m['round_index'], m['generation'], m['round_total']), ('loading', 3, 3, 3))
+        self.assertEqual((m['current_map'], m['schedule'][-1], len(m['schedule'])), (reserve, reserve, 3))
+        self.assertEqual(next(c for c in m['maps'] if c['name'] == reserve)['status'], 'picked')
+        m = self.settle(self.play(m))
+        m = R.transition(m, 'advance', '', '', {})
+        self.assertEqual((m['phase'], m['outcome']), ('finished', 'shared'))
+        self.assertEqual([p['place'] for p in m['players']], [1, 1, 1])
+        self.assertEqual(m['note'], 'Out of maps: Host, p1 and p2 share first place.')
+
+    def test_advance_p1650_one_survivor_finishes_early_and_eighth_round_observes(self):
+        # Two DNFs in round one of three scheduled rounds leave a winner: no further round loads.
+        m = self.settle(self.live(), [('host', 100)])
+        self.assertEqual(R.transition(m, 'advance', '', '', {})['phase'], 'finished')
+        m = self.drafted(2)
+        m.update(round_index=8, generation=8)
+        self.assertEqual(R.observe(m, observation(m), latched=False), 1)
 
     def test_unique_slowest_winner_and_withdrawal(self):
         m = self.live(2)

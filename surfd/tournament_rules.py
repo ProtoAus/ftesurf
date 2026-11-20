@@ -61,8 +61,9 @@ def settings(data, legacy=False):
 
 def observe(match, data, latched=True):
     require(data.get('current_map') == match['current_map'], 'wrong map')
-    require(integer(data, 'generation', 1, 7) == match['generation'], 'wrong generation')
-    require(integer(data, 'round', 1, 7) == match['round_index'], 'wrong round')
+    # Up to 7 scheduled rounds plus the reserve.
+    require(integer(data, 'generation', 1, 8) == match['generation'], 'wrong generation')
+    require(integer(data, 'round', 1, 8) == match['round_index'], 'wrong round')
     require(data.get('ruleset') == match.get('ruleset_id') and bool(match.get('ruleset_id')), 'wrong ruleset')
     require(match.get('settings', {}).get('profile') in PROFILES and isinstance(match.get('_pins'), dict),
             'missing frozen settings')
@@ -129,6 +130,21 @@ def public(match):
 
 def competitors(match):
     return [p for p in match['players'] if p['role'] == 'player']
+
+
+def listed(players):
+    names = [p['name'] for p in players]
+    return names[0] if len(names) == 1 else ', '.join(names[:-1]) + ' and ' + names[-1]
+
+
+def crown(match, note):
+    """Declares a lone survivor the winner; returns the note with the win appended."""
+    left = competitors(match)
+    if len(left) != 1:
+        return note
+    left[0]['place'] = 1
+    match['outcome'] = 'winner'
+    return note + ' %s wins!' % left[0]['name']
 
 
 def require_current_settings(match):
@@ -283,7 +299,7 @@ def transition(original, op, actor, display, data, pool=()):
     elif op == 'score':
         require(phase == 'live', 'round is not live')
         require(data.get('current_map') == m['current_map'], 'wrong map')
-        require(integer(data, 'generation', 1, 7) == m['generation'], 'wrong generation')
+        require(integer(data, 'generation', 1, 8) == m['generation'], 'wrong generation')
         target = next((p for p in competitors(m) if p['who'] == data.get('who')), None)
         require(target is not None, 'not a surviving competitor')
         tickrate = rate(data)
@@ -306,33 +322,46 @@ def transition(original, op, actor, display, data, pool=()):
         integer(data, 'elapsed_ms', m['round_seconds']*1000, 3600000)
         roster = competitors(m)
         dnfs = [p for p in roster if not p['best_ticks']]
-        if len(dnfs) == 1:
-            losers, note = dnfs, 'Unique DNF eliminated.'
+        if len(dnfs) == len(roster):
+            losers, note = [], 'Nobody finished %s: everyone goes through.' % m['current_map']
         elif dnfs:
-            losers, note = [], 'No contest: multiple/all DNF; alpha tiebreak unavailable.'
+            losers = dnfs
+            note = '%s did not finish and %s out.' % (listed(dnfs), 'is' if len(dnfs) == 1 else 'are')
         else:
             worst = max(p['best_ticks'] for p in roster)
             losers = [p for p in roster if p['best_ticks'] == worst]
-            note = 'Slowest round best eliminated.'
-        if len(losers) != 1:
-            m.update(phase='aborted', outcome='no-contest', note=note if dnfs else
-                     'No contest: tied slowest best; alpha tiebreak unavailable.')
-        else:
-            losers[0].update(role='eliminated', place=len(roster))
-            m.update(phase='results', note=note)
-            for c in m['maps']:
-                if c['name'] == m['current_map']:
-                    c['status'] = 'played'
-            if len(roster) == 2:
-                competitors(m)[0]['place'] = 1
-                m['outcome'] = 'winner'
+            note = ('%s had the slowest time and is out.' if len(losers) == 1 else
+                    '%s tied for the slowest time and are out.') % listed(losers)
+            if len(losers) == len(roster):
+                losers, note = [], 'Everyone tied: everyone goes through.'
+        for p in losers:
+            p.update(role='eliminated', place=len(roster) - len(losers) + 1)
+        for c in m['maps']:
+            if c['name'] == m['current_map']:
+                c['status'] = 'played'
+        m.update(phase='results', note=crown(m, note))
     elif op in ('advance', 'next'):
         require(phase == 'results', 'results required')
-        if m['round_index'] == m['round_total']:
+        survivors = competitors(m)
+        spare = next((c for c in m['maps'] if c['name'] == m['reserve'] and c['status'] == 'reserve'), None)
+        if len(survivors) <= 1:
             m['phase'] = 'finished'
-        else:
+        elif m['round_index'] < m['round_total']:
             m['round_index'] += 1
             loading(m)
+        elif spare is not None:
+            # The reserve is played once; 'picked' is the status the menu and HUD already show.
+            spare['status'] = 'picked'
+            m['schedule'].append(spare['name'])
+            m['round_total'] += 1
+            m['round_index'] += 1
+            m['note'] = 'Extra round on the reserve map %s.' % spare['name']
+            loading(m)
+        else:
+            for p in survivors:
+                p['place'] = 1
+            m.update(phase='finished', outcome='shared',
+                     note='Out of maps: %s share first place.' % listed(survivors))
     elif op == 'leave':
         require(me is not None, 'not entered')
         if phase == 'lobby' or me['role'] == 'spectator':
