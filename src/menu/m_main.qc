@@ -6813,7 +6813,7 @@ float  dl_t0;           // when it started (time), for the status strip
 float  dl_afterlocal;
 float  dl_reload;       // P1670: a download landed with no menu open; the list reloads when one does (2: a GoldSrc row)
 float  dl_moved;        // P1670: when dl_done last grew
-#define DL_HOLD_STALL 60    // as PJ_STALL: a transfer silent this long is dead, and nothing can cancel a web one
+#define DL_HOLD_STALL 62    // the engine's 60 s (CL_MapDownloadHolds) and a margin: never let go before it does
 
 /*
   THE MAP MIRROR, AND WHY THIS FUNCTION HAS TO EXIST.
@@ -6980,16 +6980,21 @@ void(string name, optional float force) ui_dl_start =
 	}
 };
 
-// P1670: the engine refuses `map` while that map's download is running and alive (sv_ccmds.c SV_Map_f).
+// P1670: the engine refuses `map` while that map's download is queued or running and alive (sv_ccmds.c SV_Map_f).
 float(string mapname) ui_dl_holds =
 {
 	local string s;
-	if (dl_state != DL_ACTIVE || dl_afterlocal || dl_name != mapname || time - dl_moved > DL_HOLD_STALL)
+	if (dl_state != DL_ACTIVE || dl_afterlocal || strcasecmp(dl_name, mapname))
 		return FALSE;
 	s = serverkey("dlstate");
-	if (s != "" && tokenize(s) >= 4)
-	if (argv(3) != strcat("maps/", mapname, ".bsp") && argv(3) != strcat("goldsrc/", strtolower(mapname), ".pk3"))
-		return FALSE;               // the engine is fetching something else: this one has landed
+	if (s != "" && tokenize(s) >= 5)
+	{
+		if (strcasecmp(argv(3), strcat("maps/", mapname, ".bsp")) && strcasecmp(argv(3), strcat("goldsrc/", mapname, ".pk3")))
+		if (stof(argv(0)) < 1)
+			return FALSE;           // another file is current and nothing is queued: this one has landed
+		if (substring(argv(4), 0, 4) == "http" && time - dl_moved > DL_HOLD_STALL)
+			return FALSE;           // a dead web transfer: the engine lets go too (netchan ones it never does)
+	}
 	ui_st_result(sprintf("%s is still downloading: play it when it finishes", mapname), 0);
 	return TRUE;
 };
