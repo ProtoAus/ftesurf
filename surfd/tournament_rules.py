@@ -11,7 +11,7 @@ TERMINAL = frozenset(('finished', 'cancelled', 'aborted'))
 RUNID = re.compile(r'[0-9a-f]{16,64}\Z')
 # sv_tournament.qc abort reasons, as players read them.
 ABORT_REASONS = {
-    'alpha_lobby_timeout': 'the tournament timed out waiting in the lobby or draft',
+    'alpha_lobby_timeout': 'the tournament timed out waiting',  # also sent for a host who left
     'loading_timeout': 'players did not get ready in time',
     'host_gone': 'the host left the server',
     'map_change_failed': 'the server could not load the map',
@@ -20,7 +20,10 @@ ABORT_REASONS = {
     'interrupted_live_round': 'the server lost contact with the tournament service',
     'service_interrupted': 'the server lost contact with the tournament service',
     'reservation_race': 'someone else joined the server first',
+    'competitor_lost_during_countdown': 'a player dropped during the countdown',
 }
+# The game server sends the note URL-escaped inside one client line capped at 1024 characters.
+NOTE_BYTES = 160
 
 TIER_MASK = 1023 | 1 << 20
 MAP_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z')
@@ -146,7 +149,15 @@ def competitors(match):
 
 def listed(players):
     names = [p['name'] for p in players]
+    if len(names) > 3:
+        return '%s, %s and %d others' % (names[0], names[1], len(names) - 2)
     return names[0] if len(names) == 1 else ', '.join(names[:-1]) + ' and ' + names[-1]
+
+
+def short(note):
+    """Caps a note at NOTE_BYTES of UTF-8, cutting on a character boundary."""
+    raw = note.encode()
+    return note if len(raw) <= NOTE_BYTES else raw[:NOTE_BYTES - 3].decode(errors='ignore') + '...'
 
 
 def crown(match, note):
@@ -451,5 +462,7 @@ def transition(original, op, actor, display, data, pool=()):
         require(data.get('restored') == '1', 'public-mode restoration ACK required')
     else:
         raise Refusal('unknown operation')
+    if isinstance(m.get('note'), str):
+        m['note'] = short(m['note'])
     m['revision'] += 1
     return m

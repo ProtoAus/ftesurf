@@ -224,6 +224,33 @@ class Rules(unittest.TestCase):
         won = self.settle(self.live(2), [('host', 100), ('p1', 200)])
         self.assertEqual(self.roles(R.transition(won, 'leave', 'host', '', {})), self.roles(won))
 
+    def test_notes_p1650_capped_and_long_name_lists_abbreviated(self):
+        m = R.transition(self.lobby(8), 'lock', 'host', '', {}, self.wide(8))
+        while m['phase'] == 'draft':
+            card = next(c for c in m['maps'] if c['status'] == 'pool')
+            m = R.transition(m, m['turn_kind'], m['turn_who'], '', dict(map=card['name']))
+        m = self.play(m)
+        out = self.settle(m, [('host', 100), ('p1', 200)])
+        self.assertEqual(out['note'], 'p2, p3 and 4 others did not finish and are out.')
+        self.assertEqual({p['place'] for p in out['players'] if p['role'] == 'eliminated'}, {3})
+        for p in m['players']:
+            p['name'] = '\U0001f642' * 64
+        note = self.settle(m, [('host', 100), ('p1', 200)])['note']
+        self.assertTrue(note.endswith('...') and len(note.encode()) <= R.NOTE_BYTES and '\ufffd' not in note, note)
+        self.assertEqual(R.short('x' * 400), 'x' * (R.NOTE_BYTES - 3) + '...')
+
+    def test_leave_p1650_forfeited_host_match_still_plays_out(self):
+        m = self.drafted(3)
+        m['menu_started'] = 1
+        m = R.transition(m, 'leave', 'host', '', {})
+        data = observation(m)
+        m = R.transition(R.transition(m, 'arrive', '', '', data), 'autostart', '', '', data)
+        m = R.transition(m, 'go', '', '', dict(observation(m), elapsed_ms=5000, tickrate=1000000/15000))
+        m = self.settle(m, [('p1', 100), ('p2', 200)])
+        self.assertEqual(self.roles(m), dict(host=('eliminated', 3), p1=('player', 1), p2=('eliminated', 2)))
+        self.assertEqual(R.transition(m, 'advance', '', '', {})['phase'], 'finished')
+        self.assertEqual(R.public(m)['host'], 'host')
+
     def test_unseat_p1650_in_draft_or_ready_check_returns_to_lobby(self):
         m = R.transition(R.transition(self.lobby(3), 'enter', 'x', 'X', {}), 'lock', 'host', '', {}, POOL)
         out = R.transition(m, 'seat', 'host', '', dict(target='p2'))
@@ -369,7 +396,7 @@ class Rules(unittest.TestCase):
     def test_abort_p1650_reasons_read_plainly(self):
         m = self.live()
         for reason, text in (
-                ('alpha_lobby_timeout', 'the tournament timed out waiting in the lobby or draft'),
+                ('alpha_lobby_timeout', 'the tournament timed out waiting'),
                 ('loading_timeout', 'players did not get ready in time'),
                 ('host_gone', 'the host left the server'),
                 ('map_change_failed', 'the server could not load the map'),
@@ -378,7 +405,8 @@ class Rules(unittest.TestCase):
                 ('interrupted_live_round', 'the server lost contact with the tournament service'),
                 ('service_interrupted', 'the server lost contact with the tournament service'),
                 ('reservation_race', 'someone else joined the server first'),
-                ('competitor_lost_during_countdown', 'the server stopped the match'),
+                ('competitor_lost_during_countdown', 'a player dropped during the countdown'),
+                ('some_future_reason', 'the server stopped the match'),
                 (None, 'the server stopped the match')):
             out = R.transition(m, 'abort', '', '', {} if reason is None else dict(reason=reason))
             self.assertEqual((out['phase'], out['outcome'], out['note']), ('aborted', 'no-contest', 'No contest: %s.' % text))

@@ -331,6 +331,16 @@ class PartyAPI(unittest.TestCase):
         self.assertEqual(self.act('state', 0)['party']['revision'], legacy['revision'])
         self.assertEqual(self.raw()['_turn_at'], [3, self.now])
 
+    def test_p1650_draft_clock_note_is_capped(self):
+        m = self.locked()
+        raw = self.raw()
+        next(p for p in raw['players'] if p['who'] == m['turn_who'])['name'] = '\U0001f642' * 64
+        self.db.execute('UPDATE tournament_parties SET state=?', (json.dumps(raw),))
+        self.db.commit()
+        self.now += P.TURN_SECONDS
+        note = self.act('state', 0)['party']['note']
+        self.assertTrue(note.endswith('...') and len(note.encode()) <= P.rules.NOTE_BYTES, note)
+
     def test_p1650_draft_clock_skips_a_room_it_cannot_move(self):
         m = self.locked()
         odd = self.raw()

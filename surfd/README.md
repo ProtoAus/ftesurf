@@ -1574,7 +1574,9 @@ not just HTTP status. Successful mutations return `status=ok` (release returns
   `cancel` works only before the first GO; no post-GO host veto.
 - Server `abort` gives no-contest without freeing the node. Its `reason=` code
   becomes a plain note (`No contest: the host left the server.`); unknown codes
-  read `the server stopped the match`.
+  read `the server stopped the match`. Notes are capped at 160 UTF-8 bytes (the
+  game server sends them escaped in a 1024-character client line) and long name
+  lists read `A, B and N others`.
 - `release`: only finished/cancelled/aborted and requires `restored=1`, the trusted
   QC acknowledgement that public mode was restored. This is the **only** reservation
   removal. Abort/release remain available even if the backend feature is turned off.

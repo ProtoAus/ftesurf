@@ -94,7 +94,7 @@ def turn_clock(m, now):
         m = rules.transition(m, kind, who, name, dict(map=chosen))
     except rules.Refusal:
         return None  # an odd room must not refuse every member action or break the directory
-    m['note'] = '%s ran out of time; a map was %s for them.' % (name, 'banned' if kind == 'ban' else 'picked')
+    m['note'] = rules.short('%s ran out of time; a map was %s for them.' % (name, 'banned' if kind == 'ban' else 'picked'))
     if m['phase'] == 'draft':
         m['_turn_at'] = [m['_turn'], now]
     else:
