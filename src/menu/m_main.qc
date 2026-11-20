@@ -224,10 +224,24 @@ void(vector pos, vector size, string name) MCard_Backdrop;     // P1105
 void() MCard_Probe;
 void(string what) MM_BcPanel;
 
-// P1658: the GoldSrc catalogue's fetch (m_goldsrc.qc, which compiles after this file).
+// P1658: GoldSrc maps as rows of the map list (m_goldsrc.qc, which compiles after this file).
+float() Mgs_First;              // the first GoldSrc row; they are the list's last rows
+float() Mgs_Count;
+float(float row) Mgs_Row;
+float(float row) Mgs_Gx;        // a row the catalogue lists as not available
+float(float row) Mgs_Cat;
+float(float row) Mgs_Keep;
+float(string id) Mgs_Find;
+float(string id) Mgs_Installed;
+string(float row) Mgs_Kind;
+void() Mgs_Append;
 void() Mgs_Ask;
 void() Mgs_Shutdown;
 void() Mgs_Command;
+void(float row) Mgs_Launch;
+void(vector rp, vector rs, float nx, float compact, float real, float lit, string rid) Mgs_Card;
+float() Mgs_KindW;
+float(vector pos) Mgs_KindChips;
 
 /*
   Map source, derived from the searchpath a BSP came out of.
@@ -266,6 +280,7 @@ void() Mgs_Command;
 #define SRC_BIT_MOM     2
 #define SRC_BIT_CSS     4
 #define SRC_BIT_ASSET   8
+#define SRC_BIT_GS      16      // P1658: a GoldSrc catalogue row (m_goldsrc.qc), never a mount
 
 float menu_active;
 float menu_screen;
@@ -1102,6 +1117,12 @@ float(string pkg) ui_classify =
 {
 	string p = strtolower(pkg);
 
+	// P1658: while a GoldSrc map is loaded the engine mounts its package and Half-Life's own
+	// folders, as "steam:Half-Life/cstrike" -- which is not Counter-Strike: Source ("Half-Life 2/"
+	// does not match).  Unfixed, a reload then listed 10 of CS 1.6's maps as CS:S rows here.
+	if (strstrofs(p, "half-life/") >= 0 || strstrofs(p, "/downloads/goldsrc/") >= 0)
+		return SRC_BIT_OTHER;
+
 	if (strstrofs(p, "momentum") >= 0)
 		return SRC_BIT_MOM;
 
@@ -1144,6 +1165,7 @@ float(float slot) ui_srcf_bit =
 {
 	if (slot == 1) return SRC_BIT_MOM;
 	if (slot == 2) return SRC_BIT_CSS;
+	if (slot == 3) return SRC_BIT_GS;
 	return 0;
 };
 
@@ -1151,9 +1173,12 @@ string(float slot) ui_srcf_label =
 {
 	if (slot == 1) return "momentum";
 	if (slot == 2) return "cs:s";
+	if (slot == 3) return "goldsrc";
 	return "both";
 };
 
+// P1658: a fourth chip, goldsrc, is drawn while the catalogue has rows.  "both" stays the
+// two Source libraries: GoldSrc rows are listed only under their own chip (ui_refilter).
 #define SRCF_NCHIPS 3
 
 /*
@@ -1794,6 +1819,9 @@ void() ui_cat_load =
 			c = ui_name_cat(nm);
 		if (!c)
 			c = GC_OTHER;
+		k = Mgs_Cat(i);         // P1658: a GoldSrc row files by its catalogue kind, whatever its name
+		if (k)
+			c = k;
 		bufstr_add(ms_catv, ftos(c), TRUE);
 	}
 
@@ -1809,7 +1837,7 @@ void() ui_cat_load =
 	{
 		c = ui_mode_id(s);
 		k = 0;
-		for (i = 0; i < ms_count; i = i + 1)
+		for (i = 0; i < Mgs_First(); i = i + 1)     // the Source rows
 			if (stof(bufstr_get(ms_catv, i)) == c)
 				k = k + 1;
 		rep = sprintf("%s  %s %g", rep, ui_mode_label(s), k);
@@ -2380,6 +2408,7 @@ void(float row) ui_load_card =
 	if (bonus > 0) s = sprintf("%s, %g bonus", s, bonus);
 	au = MapAuthor_Text(bufstr_get(ms_author, row));
 	if (au != "") s = strcat("by ", au, " | ", s);
+	if (Mgs_Row(row)) s = strcat("GoldSrc | ", Mgs_Kind(row));      // P1658: it has no tiers; its kind
 	ls_cardinfo = strzone(s);
 };
 
@@ -2878,7 +2907,8 @@ void() ui_data_load =
 		else if (tier)           q = DQ_TIER;
 		else                     q = DQ_BARE;
 		bufstr_set(ms_dataq, i, ftos(q));
-		n[q] += 1;
+		if (i < Mgs_First())    // P1658: the report is of the Source rows
+			n[q] += 1;
 	}
 	print(sprintf("WOS: data -- %g full, %g picture only, %g tier only, %g "
 	              "neither (listed when searched or under show all)\n",
@@ -3131,6 +3161,7 @@ void() ui_load_maps =
 	// come to look identical.
 	ui_pool_load();
 	ui_dl_load();
+	Mgs_Append();               // P1658: the GoldSrc rows, last; before ui_meta_load for the same reason
 
 	ui_meta_load();
 	ui_cat_load();
@@ -3237,8 +3268,12 @@ void() ui_refilter =
 
 	string q = strtolower(ms_query);
 	float modes = ui_modes_eff();
+	// P1658: the GoldSrc rows are the list's last, and are walked only under their own
+	// library -- so "both", momentum and cs:s list what they did before those rows existed.
+	float gsl = (ms_srcf == SRC_BIT_GS);
+	float i1 = gsl ? ms_count : Mgs_First();
 
-	for (float i = 0; i < ms_count; i++)
+	for (float i = gsl ? Mgs_First() : 0; i < i1; i++)
 	{
 		/*
 		  The gametype set first, in the place the source filter had: with surf
@@ -3252,7 +3287,12 @@ void() ui_refilter =
 		  "0 answers only any", and with any no longer the default it would have
 		  hidden every CS:S-only surf map.
 		*/
-		if (!(modes & ui_cat_bit(stof(bufstr_get(ms_catv, i)))))
+		if (gsl)
+		{
+			if (!Mgs_Keep(i))       // its own Mode chips: all, bhop, kz, installed
+				continue;
+		}
+		else if (!(modes & ui_cat_bit(stof(bufstr_get(ms_catv, i)))))
 			continue;
 		// Patch 652: a second build is on its map's row, behind the switch.
 		if (bufstr_get(ms_varof, i) != "")
@@ -3285,6 +3325,7 @@ void() ui_refilter =
 		// none). A search still finds them.
 		if (q == "")
 		if (!ms_showall)
+		if (!gsl)                   // P1658: no GoldSrc map has zones or a picture
 		if (bufstr_get(ms_zoned, ui_eff(i)) != "1" || stof(bufstr_get(ms_dataq, i)) >= DQ_TIER)
 		{
 			ms_nhidden++;
@@ -3396,7 +3437,7 @@ void(string arg) ui_browse_print =
 	known = unk = ksf = wr = 0;
 	for (r = 0; r < DQ_CLASSES; r++)
 		dqn[r] = 0;
-	for (i = 0; i < ms_count; i++)
+	for (i = 0; i < Mgs_First(); i++)       // P1658: the Source rows, as before GoldSrc ones followed them
 	{
 		dqn[bound(0, stof(bufstr_get(ms_dataq, i)), DQ_CLASSES - 1)] += 1;
 		if (stof(bufstr_get(ms_tierv, i)) > 0) known++; else unk++;
@@ -3416,7 +3457,7 @@ void(string arg) ui_browse_print =
 			wr++;
 	}
 	print(sprintf("ui_browse: maps %g -- tiered %g, untiered %g, %g of them "
-	              "from ksf\n", ms_count, known, unk, ksf));
+	              "from ksf\n", Mgs_First(), known, unk, ksf));
 	print(sprintf("ui_browse: best times %g\n", wr));
 
 	/*
@@ -4269,6 +4310,11 @@ void(float eventmax) ui_launch_mode =
 	// Only a data-marked Story Play passes eventmax. Ordinary launches clear
 	// earlier requests, including another attempt on the exact same map.
 	ui_eventfog_target(eventmax ? mapname : "");
+	if (Mgs_Row(ms_selected))       // P1658: no lobby hosts a GoldSrc map; no directory ask
+	{
+		Mgs_Launch(ms_selected);
+		return;
+	}
 	if (ui_online_opt())
 	if (Lob_JoinAsk(mapname))
 	{
@@ -5755,6 +5801,8 @@ void(vector screensize) ui_map_backdrop =
 		{
 			if (ui_bguuid(uuid))
 				want = strcat("https://dl.proto.bar/ftesurf/mapshots/", uuid, "-bg.jpg");
+			else if (Mgs_Row(ms_selected))
+				want = "";              // P1658: no picture exists for a GoldSrc map: nothing to ask for
 			else if (Mdl_Made(bufstr_get(ms_name, ms_selected), MDL_NAMECH, 64))
 				want = strcat("https://dl.proto.bar/ftesurf/mapshots/", bufstr_get(ms_name, ms_selected), ".jpg");
 			if (strlen(want)) ms_bgremote = TRUE;
@@ -6784,12 +6832,14 @@ void(string name, optional float force) ui_dl_start =
 		dl_state = DL_ACTIVE;
 		dl_pct = dl_rate = dl_done = dl_total = 0;
 		dl_t0 = time;
-		Mzd_Fetch(name);
+		if (Mgs_Find(name) < 0)     // P1658: no zone file exists for a GoldSrc id
+			Mzd_Fetch(name);
 	}
 	else if (r == 2)
 	{
 		// Already present -- the list is stale rather than the map missing.
-		Mzd_Fetch(name);
+		if (Mgs_Find(name) < 0)
+			Mzd_Fetch(name);
 		ui_load_maps();
 		ui_refilter();
 	}
@@ -6848,14 +6898,23 @@ void() Dl_Tick =
 	string s = serverkey("dlstate");
 	if (s == "")
 	{
-		dl_state = ui_file_exists(strcat("maps/", dl_name, ".bsp")) ? DL_OK : DL_FAIL;
+		// P1658: a GoldSrc package holds its map, which no search path has until it loads:
+		// the engine's own answer (mapfilekb) settles it.  -1: not a GoldSrc id.
+		float gsi = Mgs_Installed(dl_name);
+		if (gsi < 0)
+			dl_state = ui_file_exists(strcat("maps/", dl_name, ".bsp")) ? DL_OK : DL_FAIL;
+		else
+			dl_state = gsi ? DL_OK : DL_FAIL;
 		dl_until = time + DL_HOLD;
 		if (dl_state == DL_OK)
 		{
+			vector keep = ms_scroll;
 			ui_st_result(sprintf("Installed %s", dl_name), 1);
 			// It is on the disk now, so it is no longer a downloadable row.
 			ui_load_maps();
 			ui_refilter();
+			if (gsi > 0)
+				ms_scroll = keep;   // a GoldSrc row keeps its place in the list: stay on it
 		}
 		else
 			ui_st_result(sprintf("Download of %s failed", dl_name), -1);
@@ -7610,7 +7669,7 @@ float(vector pos) ui_also_chips =
 
 float(float width, float y) ui_map_filters =
 {
-	local float group, f, n, x, gw, cw, on, bit, next, also;
+	local float group, f, n, x, gw, cw, on, bit, next, also, gsl;
 	local vector glyph;
 	local string heading, label, id, note;
 	x = 16;
@@ -7619,7 +7678,7 @@ float(float width, float y) ui_map_filters =
 	for (group = 0; group < 5; group = group + 1)
 	{
 		heading = group == 0 ? "Tier" : (group == 1 ? "Mode" : (group == 2 ? "Library" : (group == 3 ? "Extra" : "Sort")));
-		n = group == 0 ? 11 : (group == 1 ? 0 : (group == 2 ? SRCF_NCHIPS : (group == 3 ? 1 : 3)));
+		n = group == 0 ? 11 : (group == 1 ? 0 : (group == 2 ? SRCF_NCHIPS + (Mgs_Count() > 0) : (group == 3 ? 1 : 3)));
 		ui_filter_font(ui_font_display);
 		gw = stringwidth(heading, TRUE, sui_native_text_size(UI_MAP_FILTER_HEADING)) + 12;
 		ui_filter_font(ui_font_ui);
@@ -7627,7 +7686,11 @@ float(float width, float y) ui_map_filters =
 			gw = gw + ui_filter_chip_w(ui_filter_label(group, f)) + 4;
 		// P1583 review: the switch can flip while it draws; the chips follow the state this group was measured in.
 		also = (ms_modes == 2);
-		if (group == 1) gw = gw + ui_mode_switch_w() + 4 + (also ? ui_also_w() : 0);
+		// P1658: under the GoldSrc library the Mode group is its own kinds (all, bhop, kz,
+		// installed): it has no surf maps, and its kz maps need no "+ kz/climb" chip.
+		gsl = (ms_srcf == SRC_BIT_GS);
+		if (gsl) also = FALSE;
+		if (group == 1) gw = gw + (gsl ? Mgs_KindW() : ui_mode_switch_w() + 4 + (also ? ui_also_w() : 0));
 		if (group == 4 && note != "") gw = gw + stringwidth(note, TRUE, sui_native_text_size(UI_MAP_FILTER_FONT)) + 6;
 		if (x > 16 && x + gw > width + 16) { x = 16; y = y + UI_MAP_FILTER_PITCH; }
 		// Keep the display headings distinct, at the same native scale as their width.
@@ -7637,7 +7700,8 @@ float(float width, float y) ui_map_filters =
 			UI_MAP_FILTER_HEADING, COL_TEXT, 1);
 		x = x + stringwidth(heading, TRUE, glyph) + 12;
 		ui_filter_font(ui_font_ui);
-		if (group == 1) x = x + ui_mode_switch([x, y]);
+		if (group == 1 && gsl) x = x + Mgs_KindChips([x, y]);
+		if (group == 1 && !gsl) x = x + ui_mode_switch([x, y]);
 		if (group == 1 && also) x = x + ui_also_chips([x, y]);
 		for (f = 0; f < n; f = f + 1)
 		{
@@ -7650,13 +7714,19 @@ float(float width, float y) ui_map_filters =
 			x = x + ui_filter_chip([x, y], id, label, on) + 4;
 			if (group == 0) sui_tooltip_for(id, f == 0 ? "Every tier, including untiered maps." : sprintf("MOM or KSF tier %g.", f), 2);
 			if (group == 1) sui_tooltip_for(id, f ? "Show/hide this gametype." : "Every gametype; again for none, to pick one alone.", 2);
-			if (group == 2) sui_tooltip_for(id, "Momentum Mod's maps, or KSF's (CS:S) maps: by catalogue, not by folder.", 2);
+			if (group == 2 && f == 3) sui_tooltip_for(id, "Half-Life 1, Adrenaline Gamer and CS 1.6 bhop and kz maps, on a list of their own: no tiers, zones or pictures yet.", 2);
+			else if (group == 2 && f == 0 && n > SRCF_NCHIPS) sui_tooltip_for(id, "Momentum Mod's and KSF's (CS:S) maps together. GoldSrc maps are listed only under goldsrc.", 2);
+			else if (group == 2) sui_tooltip_for(id, "Momentum Mod's maps, or KSF's (CS:S) maps: by catalogue, not by folder.", 2);
 			if (group == 3) sui_tooltip_for(id, "Also show maps without zones or a picture. Search always finds them.", 2);
 			if (group == 4) sui_tooltip_for(id, "Your clean main finishes in WOS, tier order within each. Needs a linked account online; while unknown the list stays in tier order.", 2);
 			if (!sui_is_released(id)) continue;
 			if (group == 0) ms_tier = f;
 			else if (group == 1) { next = ui_modes_click(ms_modes, f); if (next != ms_modes) ui_modes_set(next); }
-			else if (group == 2) ms_srcf = bit;
+			else if (group == 2)
+			{
+				ms_srcf = bit;
+				if (bit == SRC_BIT_GS) ms_tier = 0;     // P1658: no GoldSrc map has a tier
+			}
 			else if (group == 3) ui_showall_set(!ms_showall);
 			else ui_compsort_set(f);
 		}
@@ -7715,11 +7785,13 @@ void(vector screensize) screen_create =
 	string sel = ui_selected_name();
 
 	string mhd;
+	// P1658: of the library being listed -- the GoldSrc rows, or the Source ones as before.
+	float mtot = (ms_srcf == SRC_BIT_GS) ? Mgs_Count() : Mgs_First() - ms_nvar;
 	if (ms_nhidden > 0)
 		mhd = sprintf("map  %s(%g of %g -- %g more searchable)", SUI_ESC_MUTED,
-		              ms_viewcount, ms_count - ms_nvar, ms_nhidden);
+		              ms_viewcount, mtot, ms_nhidden);
 	else
-		mhd = sprintf("map  %s(%g of %g)", SUI_ESC_MUTED, ms_viewcount, ms_count - ms_nvar);
+		mhd = sprintf("map  %s(%g of %g)", SUI_ESC_MUTED, ms_viewcount, mtot);
 	sui_text([16, y], SZ_LABEL, mhd, COL_DIM, 1, 0);
 
 	float lbw = max(120, stringwidth("leaderboard", TRUE, SZ_LABEL) + 16);
@@ -7734,7 +7806,7 @@ void(vector screensize) screen_create =
 			sui_text_select_all("cs_search", ms_query, ms_query_cursor);
 			ms_query_stale = FALSE;
 		}
-	ui_board_button([16 + inner - lbw, y + 20], [lbw, 28], sel);
+	ui_board_button([16 + inner - lbw, y + 20], [lbw, 28], Mgs_Row(ms_selected) ? "" : sel);   // P1658: no board has a GoldSrc map
 	y += 56;
 
 	/*
@@ -7947,7 +8019,8 @@ void(vector screensize) screen_create =
 		sui_style_box([16, y], ls, 9, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
 
 		if (ms_viewcount == 0)
-			sui_text([24, y + 10], SZ_ROW, ms_modes ? "no matches" : "no mode picked: pick one above, or all", COL_DIM, 1, 0);
+			sui_text([24, y + 10], SZ_ROW, (ms_srcf == SRC_BIT_GS && ms_tier) ? "no matches: GoldSrc maps have no tiers (Tier: any)"
+			         : (ms_modes ? "no matches" : "no mode picked: pick one above, or all"), COL_DIM, 1, 0);
 		else
 		{
 			// sui_list_view only emits rows inside the visible window, so this
@@ -7978,9 +8051,13 @@ void(vector screensize) screen_create =
 				float hot = sui_is_hovered(rid);
 				if (on || hot)
 					sui_roundbox(rp + '1 1 0', rs - '2 2 0', 7, on ? COL_ROW_SEL : COL_ROW_HOVER, 1);
-				MCard_Backdrop(rp, rs, bufstr_get(ms_name, er));     // P1105: behind all of the card
+				if (!Mgs_Row(real))
+					MCard_Backdrop(rp, rs, bufstr_get(ms_name, er));     // P1105: behind all of the card
 
 				// Metadata is parsed only for visible cards. Keep times source-separated.
+				if (Mgs_Row(real))          // P1658: no picture, tier or board: its own card, no record request
+					Mgs_Card(rp, rs, nx, compact, real, on || hot, rid);
+				else
 				{
 					local float mn, mpage, mcell, mstages, mbonus, mlinear, cw, neww, pop, ax;
 					local string mtier, mktier, mnmf, sub, mode, dep, au;
@@ -8097,7 +8174,7 @@ void(vector screensize) screen_create =
 						ui_launch();
 					}
 				}
-				else if (dlg > 0 && bufstr_get(ms_have, er) != "1")
+				else if (dlg > 0 && bufstr_get(ms_have, er) != "1" && !Mgs_Gx(er))   // P1658: nothing to fetch for a gx row
 				{
 					vector gp = [rp_x + (compact ? 4 : rs_x - 4 - dlg), rp_y + ay];
 					vector gs = [dlg - 4, compact ? 40 : 48];
