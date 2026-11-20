@@ -497,16 +497,23 @@ void() ZoneEdit_ResetSpawn =
 	ZoneEdit_Note(sprintf("%s: spawn reset to the zone's default", ZoneEdit_Label(ze_sel)));
 };
 
+// P1637: Momentum ids; Ahop (9) beside Surf and Bhop.
+string(float mode) ZoneEdit_ModeName =
+{
+	if (mode == 9) return "Ahop";
+	return mode == 2 ? "Bhop" : "Surf";
+};
+
 void(float mode) ZoneEdit_SettingMode =
 {
-	if (!ze_settings || (mode != 1 && mode != 2)) return;
+	if (!ze_settings || (mode != 1 && mode != 2 && mode != 9)) return;
 	ze_field = -1; sui_text_unfocus();
 	if (mode != ze_mode)            // P1381: re-clicking the selected mode keeps a custom air accel
-		ze_values[2] = mode == 2 ? 1000 : 150;
+		ze_values[2] = mode == 2 ? 1000 : (mode == 9 ? 10 : 150);   // P1637: cfg/lobby/mode_ahop.cfg's 10
 	ze_mode = mode;
 	ze_mode_stage = TRUE;           // P1371: a click is the only way the zone file's mode changes
 	ZoneEdit_Note(sprintf("%s staged, lobbies too (%s Hz, its preset); local air accel %g; save & reload",
-	                      mode == 2 ? "Bhop" : "Surf", mode == 2 ? "100" : "66.67", ze_values[2]));
+	                      ZoneEdit_ModeName(mode), mode == 2 ? "100" : "66.67", ze_values[2]));
 };
 
 void() ZoneEdit_SettingsOpen =
@@ -514,7 +521,7 @@ void() ZoneEdit_SettingsOpen =
 	local float i, fh, n, bytes;
 	local string line;
 	for (i = 0; i < MAPSET_COUNT; i = i + 1) ze_values[i] = cvar(MapSet_Name(i));
-	ze_mode = cvar("pm_ticrate") < 0.012 ? 2 : 1;
+	ze_mode = serverkey("gamemode") == "ahop" ? 9 : (cvar("pm_ticrate") < 0.012 ? 2 : 1);   // P1637: ahop runs 66.67 Hz too
 	bytes = 0; fh = fopen(MapSet_Path(ze_map), FILE_READ);
 	if (fh >= 0)
 	{
@@ -525,7 +532,7 @@ void() ZoneEdit_SettingsOpen =
 			n = tokenize(line);
 			if (n != 2) continue;
 			if (strcmp(argv(0), "gamemode") == 0)
-			if (strcmp(argv(1), "1") == 0 || strcmp(argv(1), "2") == 0) ze_mode = stof(argv(1));
+			if (strcmp(argv(1), "1") == 0 || strcmp(argv(1), "2") == 0 || strcmp(argv(1), "9") == 0) ze_mode = stof(argv(1));
 			for (i = 0; i < MAPSET_COUNT; i = i + 1)
 				if (strcmp(argv(0), MapSet_Name(i)) == 0)
 				if (MapSet_Valid(i, stof(argv(1)))) ze_values[i] = stof(argv(1));
@@ -538,8 +545,8 @@ void() ZoneEdit_SettingsOpen =
 	// which the lobbies run, is drawn under them and changes only on a click (review 2: the local
 	// file always carries a gamemode line, a guess included, so it cannot stand for a choice).
 	ze_mode_stage = FALSE;
-	if ((zone_mode == 1 || zone_mode == 2) && zone_mode != ze_mode)
-		ZoneEdit_Note(sprintf("Lobbies run %s from the zone file; click Surf or Bhop to change it", zone_mode == 2 ? "Bhop" : "Surf"));
+	if (zone_mode > 0 && zone_mode != ze_mode)
+		ZoneEdit_Note(sprintf("Lobbies run %s from the zone file; click Surf, Bhop or Ahop to change it", ZoneEdit_ModeName(zone_mode)));
 	ze_tier_m = ze_tier_m_open = zone_tier_mom; ze_tier_k = ze_tier_k_open = zone_tier_ksf;
 	if (sui_text_has_focus("ze_value")) sui_text_unfocus();
 };
@@ -698,19 +705,23 @@ void(vector p, float tsz, string text, vector col) ZoneEdit_Text =
 
 void(vector p, float w, float y, float rowh, float tsz) ZoneEdit_SettingsDraw =
 {
-	local float i;
+	local float i, bw;
 	local vector fp;
 	local string id, tip;
 	ZoneEdit_Text([p_x + 8, y + 4], tsz, "MAP PROPERTIES  /  reload the hosted map to apply", ZEC_DIM);
 	y = y + rowh * 1.4;
-	if (ZoneEdit_Button([p_x + 8, y], [w * 0.48 - 8, rowh], "ze_mode_surf", "Surf", tsz, ze_mode == 1 ? ZEC_SEL : ZEC_TEXT)) ZoneEdit_SettingMode(1);
-	if (ZoneEdit_Button([p_x + w * 0.5, y], [w * 0.48 - 8, rowh], "ze_mode_bhop", "Bhop", tsz, ze_mode == 2 ? ZEC_SEL : ZEC_TEXT)) ZoneEdit_SettingMode(2);
+	bw = floor((w - 24) / 3);
+	if (ZoneEdit_Button([p_x + 8, y], [bw, rowh], "ze_mode_surf", "Surf", tsz, ze_mode == 1 ? ZEC_SEL : ZEC_TEXT)) ZoneEdit_SettingMode(1);
+	if (ZoneEdit_Button([p_x + 12 + bw, y], [bw, rowh], "ze_mode_bhop", "Bhop", tsz, ze_mode == 2 ? ZEC_SEL : ZEC_TEXT)) ZoneEdit_SettingMode(2);
+	if (ZoneEdit_Button([p_x + 16 + bw * 2, y], [bw, rowh], "ze_mode_ahop", "Ahop", tsz, ze_mode == 9 ? ZEC_SEL : ZEC_TEXT)) ZoneEdit_SettingMode(9);
 	y = y + rowh;
-	ZoneEdit_Text([p_x + 8, y + 4], tsz, ze_mode == 2 ? "100 Hz  /  air accel 1000  /  timer on the jump" : "66.67 Hz  /  air accel 150  /  timer leaving the start", ZEC_DIM);
+	ZoneEdit_Text([p_x + 8, y + 4], tsz, ze_mode == 2 ? "100 Hz  /  air accel 1000  /  timer on the jump"
+		: (ze_mode == 9 ? "66.67 Hz  /  air accel 10  /  HL2 hull, 190 speed  /  timer on the jump"
+		: "66.67 Hz  /  air accel 150  /  timer leaving the start"), ZEC_DIM);
 	y = y + rowh;
 	ZoneEdit_Text([p_x + 8, y + 4], tsz, strcat("Lobbies (zone file): ",
-		ze_mode_stage ? (ze_mode == 2 ? "Bhop, staged" : "Surf, staged")
-		              : (zone_mode == 2 ? "Bhop" : (zone_mode == 1 ? "Surf" : "not set (Momentum's list / map name)"))),
+		ze_mode_stage ? strcat(ZoneEdit_ModeName(ze_mode), ", staged")
+		              : (zone_mode > 0 ? ZoneEdit_ModeName(zone_mode) : "not set (Momentum's list / map name)")),
 		ze_mode_stage ? ZEC_WARN : ZEC_DIM);
 	y = y + rowh * 1.4;
 	for (i = 0; i < MAPSET_COUNT + 2; i = i + 1)

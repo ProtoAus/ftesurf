@@ -450,7 +450,7 @@ void() SV_ZoneLoad =
 	// P1371: likewise the mode (the engine's answer is serverinfo gamemode); a hosted game's
 	// map settings or a pinned sv_gamemode outrank the zone file there on purpose.
 	gm = serverkey("gamemode");
-	if ((zone_mode == 1 && gm != "surf") || (zone_mode == 2 && gm != "bhop"))
+	if ((zone_mode == 1 && gm != "surf") || (zone_mode == 2 && gm != "bhop") || (zone_mode == 9 && gm != "ahop"))
 		print(sprintf("^3zones: %s asks gamemode %g, this server runs %s\n", mapname, zone_mode,
 		              gm != "" ? gm : "the base ruleset"));
 	if (zone_tier_mom > 0 || zone_tier_ksf > 0)
