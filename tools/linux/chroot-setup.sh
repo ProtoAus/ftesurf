@@ -27,9 +27,11 @@ trap 'umount "$CH/proc" 2>/dev/null; rm -f "$CH/etc/resolv.conf"' EXIT
 # Headers only for what the engine dlopens (X11, GL/EGL, Wayland, audio, GnuTLS).  Deliberately
 # no png/jpeg/freetype/vorbis/opus/speex/zlib -dev: those come from `make makelibs` as static
 # archives, and a missing one must fail the link rather than pick up a system .so.
+# g++ (with libstdc++.a) is for the ui_imgui plugin (P1654); buildd's build-essential already brings
+# it, named here for a rootfs made another way.
 chroot "$CH" apt-get update -qq
 chroot "$CH" apt-get install -y -qq --no-install-recommends \
-	git ca-certificates pkg-config zip unzip file python3 autoconf automake libtool wget \
+	git ca-certificates pkg-config zip unzip file python3 autoconf automake libtool wget g++ \
 	mesa-common-dev libgl-dev libegl-dev libgles-dev libwayland-dev libxkbcommon-dev \
 	libx11-dev libxcursor-dev libxi-dev libxrandr-dev libxss-dev \
 	libasound2-dev libpulse-dev libgnutls28-dev

@@ -208,8 +208,9 @@ Copy `fteqw64.exe` to `ftesurf64.exe` and `fteplug_hl2_x64.dll` next to it, in
 this directory.
 
 Linux: `tools/linux/build.sh` (via `build-linux.ps1` on Windows, or as root on a
-Linux box after `chroot-setup.sh`) builds a portable `fteqw64` and
-`fteplug_hl2_amd64.so`; copy them here as `ftesurf64` and `fteplug_hl2_amd64.so`.
+Linux box after `chroot-setup.sh`) builds a portable `fteqw64`,
+`fteplug_hl2_amd64.so` and `fteplug_ui_imgui_amd64.so` (the run graphs' plots;
+optional); copy them here as `ftesurf64` and the two plugins under their own names.
 
 `FTE_TARGET=win64` is mandatory — msys2's gcc reports `mingw`, so the Makefile's
 auto-detect picks win32. And **the `plugins/hl2` line is not optional**:

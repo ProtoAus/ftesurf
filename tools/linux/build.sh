@@ -6,7 +6,7 @@
 # pid namespaces (unshare --map-auto needs the user's /etc/subuid range), so chroot and the proc mount
 # need no sudo.  FTESURF_LINUX_CHROOT / _MIRROR / _CACHE then name an owned rootfs, mirror and cache.
 # Output (Windows-visible): C:\FTESurf\dist\linux-build\ (or $FTESURF_LINUX_OUT) -- fteqw64, fteplug_hl2_amd64.so,
-# fteqw-sv64, BUILDINFO.txt, db/ (unstripped, for crash symbolising), logs/.
+# fteplug_ui_imgui_amd64.so, fteqw-sv64, BUILDINFO.txt, db/ (unstripped, for crash symbolising), logs/.
 set -eu
 if [ "$(id -u)" != 0 ]; then
 	command -v unshare >/dev/null || { echo "build.sh: not root and no unshare" >&2; exit 1; }
@@ -99,10 +99,11 @@ done
 #    only, PIC, static -- the plugin is a shared object.
 inch "cd /build && tar -xzf zstd-$ZSTDVER.tar.gz && make -C zstd-$ZSTDVER/lib -j$JOBS libzstd.a CFLAGS='-O2 -fPIC' ZSTD_LIB_COMPRESSION=0 ZSTD_LIB_DICTBUILDER=0 ZSTD_LIB_DEPRECATED=0 ZSTD_LEGACY_SUPPORT=0" > "$LOGS/zstd.log" 2>&1 || die "zstd failed (logs/zstd.log)"
 
-# 6. The engine, the dedicated server and the hl2 plugin.
+# 6. The engine, the dedicated server and the hl2 and ui_imgui plugins.  ui_imgui is C++17 (the chroot's
+#    g++, libstdc++ linked static) and links on Linux only from engine Patch 1654 (1261fd011) on.
 inch "cd /build/fteqw/engine && make -j$JOBS m-rel FTE_TARGET=linux64" > "$LOGS/m-rel.log" 2>&1 || die "m-rel failed (logs/m-rel.log)"
 inch "cd /build/fteqw/engine && make -j$JOBS sv-rel FTE_TARGET=linux64" > "$LOGS/sv-rel.log" 2>&1 || die "sv-rel failed (logs/sv-rel.log)"
-inch "cd /build/fteqw/engine && make -j$JOBS plugins-rel FTE_TARGET=linux64 NATIVE_PLUGINS=hl2 HL2_ZSTD_CFLAGS='-DHAVE_ZSTD -I/build/zstd-$ZSTDVER/lib' HL2_ZSTD_LDFLAGS=/build/zstd-$ZSTDVER/lib/libzstd.a" > "$LOGS/plugins.log" 2>&1 || die "plugins-rel failed (logs/plugins.log)"
+inch "cd /build/fteqw/engine && make -j$JOBS plugins-rel FTE_TARGET=linux64 NATIVE_PLUGINS='hl2 ui_imgui' HL2_ZSTD_CFLAGS='-DHAVE_ZSTD -I/build/zstd-$ZSTDVER/lib' HL2_ZSTD_LDFLAGS=/build/zstd-$ZSTDVER/lib/libzstd.a" > "$LOGS/plugins.log" 2>&1 || die "plugins-rel failed (logs/plugins.log)"
 [ -z "$(git -C "$W" status --porcelain --untracked-files=no)" ] || die "the build modified tracked files"
 
 R=$W/engine/release
@@ -112,7 +113,7 @@ cat "$LOGS/gates.log"
 # 7. Publish: previous build kept under linux-build-archive/, new one swapped in whole.
 STAGE=$OUT.tmp
 rm -rf "$STAGE" && mkdir -p "$STAGE/db" "$STAGE/logs"
-cp "$R/fteqw64" "$R/fteqw-sv64" "$R/fteplug_hl2_amd64.so" "$STAGE/"
+cp "$R/fteqw64" "$R/fteqw-sv64" "$R/fteplug_hl2_amd64.so" "$R/fteplug_ui_imgui_amd64.so" "$STAGE/"
 cp "$R/fteqw64.db" "$R/fteqw-sv64.db" "$STAGE/db/" 2>/dev/null || true
 cp "$LOGS"/*.log "$STAGE/logs/"
 REV=$(grep -a -o -m1 "git-[0-9]*-[A-Za-z0-9._-]*" "$R/fteqw64" || true)
@@ -124,7 +125,7 @@ REV=$(grep -a -o -m1 "git-[0-9]*-[A-Za-z0-9._-]*" "$R/fteqw64" || true)
 	echo "cc        $(inch 'cc --version | head -1')"
 	echo "built     $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 	if [ $GATES -eq 0 ]; then echo "gates     all PASS"; else echo "gates     FAIL $(grep -c 'FAIL' "$LOGS/gates.log")"; fi
-	for f in fteqw64 fteplug_hl2_amd64.so fteqw-sv64; do
+	for f in fteqw64 fteplug_hl2_amd64.so fteplug_ui_imgui_amd64.so fteqw-sv64; do
 		echo "sha256    $(sha256sum "$STAGE/$f" | cut -d' ' -f1)  $f"
 	done
 } > "$STAGE/BUILDINFO.txt"
