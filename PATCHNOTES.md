@@ -87,6 +87,14 @@
 - The countdown and round announcements sit on a dark plate, and a map's own centre text waits until they are gone.
 - No more "vote: vote cancelled" over and over after a tournament, and an idle tournament server rotates its maps again.
 
+### P1670 Download maps while you play
+- In a game you started yourself, Download in the map list now starts straight away instead of waiting until you leave. The game keeps running, and changing map does not wait for it.
+- Only the map you are playing waits until you leave, and a map cannot be started while its own download is still running.
+
+### P1669 Every Half-Life map can be downloaded
+- All 1308 Half-Life (GoldSrc) maps can now be downloaded and played, including 385 that were left out because some of their files could not be found, or because they are not bhop or kz maps.
+- A map with missing files shows a red "warning": hover over it to see what is missing (its sky, textures, models or sounds). Missing textures draw dark and a missing sky draws plain.
+
 ## 0.1.53 2026-11-21
 
 ### P1668 Run graphs on Linux

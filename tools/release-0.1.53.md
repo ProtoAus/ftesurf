@@ -1,6 +1,6 @@
 # World of Surf 0.1.53 delivery
 
-Published 21 Nov 2026, completing at **15:01 UTC** (worldofsurf-75) from the Linux PC, one sealed candidate, no rebuild.
+Published 20 Nov 2026 (21 Nov local), completing at **15:01 UTC** (worldofsurf-75) from the Linux PC, one sealed candidate, no rebuild.
 Lex: "Well do the still open please. fix it all up." -- the open item was the Linux run-graph (ui_imgui) plugin reaching
 players. Page: <https://proto.bar/ftesurf>.
 

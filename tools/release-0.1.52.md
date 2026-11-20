@@ -1,6 +1,6 @@
 # World of Surf 0.1.52 delivery
 
-Published 21 Nov 2026, completing at **13:52 UTC** (worldofsurf-75) from the Linux PC, one sealed Windows/Linux candidate,
+Published 20 Nov 2026 (21 Nov local), completing at **13:52 UTC** (worldofsurf-75) from the Linux PC, one sealed Windows/Linux candidate,
 no rebuild after sealing. Lex asked for a launcher auto-updater ("make a auto updater for the launcher or whatever you need
 please"); P1667 was found while testing it, and a friend's log (20 Nov) showed the same abort on a real desktop.
 Page: <https://proto.bar/ftesurf>.

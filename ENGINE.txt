@@ -1,4 +1,10 @@
 # The engine build this QuakeC requires.
+# P1669-P1670 (game tools/gsrcpack.py, menu m_goldsrc.qc m_maprows.qc m_main.qc; engine cl_parse.c pr_menu.c
+# sv_ccmds.c httpclient.c client.h; Lex: "allow downloading and playing of all AG maps regardless of if it's missing
+# assets" and "you need to disconnect to download a map in my game?", worldofsurf-75): all 1,308 GoldSrc maps are
+# catalogue rows (missing sky/textures/models/sounds are flag bits 8/16/32/64: a red "warning" and a tooltip); a menu
+# Download during a local game goes ahead from the web mirror (DLLF_WEBONLY; the hosted map waits for the game's end,
+# SV_Map_f refuses a map whose download is alive; cvar cl_download_localgame). Record: engine ENGINE_PATCHES P1669-P1670.
 # P1690-P1691 (QC sv_goldsrc.qc sv_player.qc; engine cl_discord.c cl_main.c client.h Makefile CMakeLists.txt; Lex's
 # answers of 21 Nov, worldofsurf-41): GoldSrc doors with dmg give Half-Life's TakeDamage knockback under ag-* only
 # (bkz_goldbhop_gs's healers launch at sv_maxvelocity; cs16 nothing; recorded as a speed warp, activator's bank cause);
@@ -630,7 +636,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   b8c359102
+commit   475e5c415
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary

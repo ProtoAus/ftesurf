@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P1669 / P1670 -- every GoldSrc map offered; downloads while you play (worldofsurf-75, 21 Nov)
+Your request: all AG maps downloadable with a red warning, and no disconnecting to download.
+1. Maps, library goldsrc: 1,308 maps (was 923). Search bhop_continuous: its line ends in a red "warning"; hover the row:
+   the tooltip says textures are missing. Download and Play it (surfaces without their texture draw dark).
+2. Start a local game (Play on an installed map), press Esc, Download a map you do not have: it starts at once and the
+   game keeps running (before: "downloads when you leave this game"). Close the menu and keep playing; it lands
+   quietly, and the list shows it installed when you open the menu again.
+3. Known: a big GoldSrc package (over ~10 MB; 43 of them) stalls the game for about a second per 12 MB when it lands
+   (unpacking, BACKLOG); kz_unicorn_gs / kz_gigablockier_gs about 10 s.
+4. Players on 0.1.53 already see all 1,308 maps (the catalogue is live since 20 Nov 17:33Z), without the warning; the
+   warning and the in-game download need the next release (engine + menu).
+
 ## P1675 -- start packets (anti-cheat finish list item 3; worldofsurf-6f) -- LIVE on the lobbies 21 Nov 18:52Z
 1. On a lobby, run a few normal starts (walk out of the start, and a bhop jump start): none should say "start packet too
    long", and the run stays ranked. Nothing else changes for normal play.
@@ -44,7 +56,7 @@ tournament-open chat line is worldofsurf-e3's P1674):
 4. On a lobby (after the lobby QC deploy): type !hide -- other players, names and trails disappear for you only; !show
    (or !hide again) brings them back; change map and everyone is shown again.
 
-## 0.1.53 release -- PUBLISHED 21 Nov 15:01Z (record: tools/release-0.1.53.md); owner check PENDING
+## 0.1.53 release -- PUBLISHED 20 Nov 15:01Z (21 Nov local) (record: tools/release-0.1.53.md); owner check PENDING
 - P1668 only (the Linux run-graph plugin through launcher 0.1.7). Production check passed from the live feed: a 0.1.52
   Linux install got 0.1.53, then launcher 0.1.7 from the game, then the plugin, which the engine loads.
 
@@ -54,7 +66,7 @@ tournament-open chat line is worldofsurf-e3's P1674):
   fteplug_ui_imgui_amd64.so; the run graphs then draw with the plotting plugin as on Windows.
 - A fresh Linux download of 0.1.53 has the plugin and launcher 0.1.7 straight away. Windows: unchanged.
 
-## 0.1.52 release -- PUBLISHED 21 Nov 13:52Z (record: tools/release-0.1.52.md); owner check PENDING
+## 0.1.52 release -- PUBLISHED 20 Nov 13:52Z (21 Nov local) (record: tools/release-0.1.52.md); owner check PENDING
 - P1666 + P1667 only. Your friend: update through the launcher (or the archive) and start normally; the Wayland crash is
   gone (until then: `env -u WAYLAND_DISPLAY ./ftesurf.sh`). Production check passed: the 0.1.52 game replaced a stale
   launcher from the live feed.

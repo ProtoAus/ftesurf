@@ -147,16 +147,26 @@
 - Records: artifacts and reports in FTESurf-worktrees/agmaps-20261120-4a/artifacts/ (rel/, ents/, menu/ REPORT.md;
   review-*.md). Packages: tools/gsrcpack.py; R2 objects/goldsrc/<sha>.xz + goldsrc/catalog.txt via the Pi root
   /srv/nvme/agent-work/agmaps-20261120-4a (own r2mirror ledger; the PC's r2 token is read-only).
-- 385 of 1,308 archive maps not offered (323 a custom sky nobody has, 29 not bhop/kz, 33 other missing files). Falsifier:
-  gsrcpack.py plan prints the counts; a found sky set moves rows from gx to gs.
+- P1669 (worldofsurf-75): all 1,308 archive maps are offered since the 20 Nov 17:33Z catalogue; 361 ship without files
+  nobody has (333 a custom sky, 9 textures, 7 models, 26 sounds) behind the red warning; 29 are kind other (listed under
+  "all" only). A found sky set or WAD: gsrcpack.py build again (unchanged maps keep their bytes), upload via the Pi root.
+  Falsifier: gsrcpack.py plan prints the missing counts.
 - trigger_hurt is inert on GoldSrc maps (347 damaging in 80 maps, 48 instant kills in 24): Lex's decision. Falsifier:
   stand in ag_bhop_master's hp2pow31.
 - 728 of 1,308 maps never loaded with the P1655 progs (580 loaded, 0 failures). Falsifier: the sweep in
   artifacts/ents/REPORT.md (shell only, ~30 min).
 - No client prediction run of GoldSrc movers or ladders under load; free-standing ladders need a P1655 client.
   Falsifier: climb a ladder and ride a bhop block with cl_prederror on a remote server.
-- Package unpack (xz decode + sha256) runs on the main thread when a download ends; the largest package is 130 MB.
-  Falsifier: download the largest (gsrcpack catalog) and time the frame.
+- Package unpack (xz decode + sha256, cl_parse.c CL_GoldSrc_Unpack) runs on the main thread when a download ends, about
+  12 MB/s here: kz_unicorn_gs (124 MB xz) froze the client 11 s; 0.1 s for the median package (1.2 MB), 4-10 s for the 4
+  over 50 MB. Since P1670 a download can land mid-run in a local game. Fix: unpack on a worker with the download slot
+  still held. Falsifier: the log gap at the landing in tools/p1670arm2.py B (lane launcherupd-20261120-75).
+- P1670: a web download cannot be cancelled (the menu's downloadcancel builtin exists in no engine: ROADMAP 1; no HTTP
+  idle timeout), so a dead transfer holds the one download slot for the session (its map only 60 s: SV_Map_f, ui_dl_holds).
+  Falsifier: tools/p1670arm2.py S, then Download another map.
+- P1670 minor (reviews): map loads outside SV_Map_f (savegame load, recordmap) skip the in-flight-download refusal; a
+  deferred re-get of the hosted map holds the download slot until the game ends; a remote join made while a menu
+  download runs waits for it, as before P1670. Falsifier: hosting X, force re-get X, then Download Y: "queued".
 - The KZ start/stop buttons (counter_start / counter_off, 1,250 maps) drive only the map's own display; no run timer.
   Hook points: sv_goldsrc.qc GS_PlayerUse / GS_MultiTouch, before the master check (artifacts/ents/REPORT.md).
 - Still static or on Source code on GoldSrc maps: func_pendulum, func_pushable, func_vehicle, func_plat; env_sprite (.spr),
