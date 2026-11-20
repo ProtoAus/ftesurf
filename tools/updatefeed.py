@@ -293,6 +293,11 @@ def validate(payload: dict, game: str | None = None) -> dict[str, int]:
     native = platforms(payload)
     if not native:
         raise ValueError("invalid update file set")
+    keys = [(f["path"].lower(), f["platform"]) for f in files + ext]
+    if len(keys) != len(set(keys)):
+        raise ValueError("duplicate update path")
+    if not {f["platform"] for f in ext} <= native:
+        raise ValueError("invalid update file set")  # a files_ext platform installs its own "files" too
     for platform in sorted(native):
         # P1294: what this platform installs is its own entries and the "all" ones; a path once among them, as
         # the launcher's "overlapping platform entries" check (an "all" and a native entry would install two).
@@ -427,6 +432,9 @@ def check_publication(feed: Path, receipt: Path, version: str, previous: Path,
             raise ValueError("update version must advance (no rollback or same-version replacement)")
         if not platforms(old) <= platforms(payload):
             raise ValueError("update dropped a supported platform")
+        if old["game"] == payload["game"] and not ({(f["path"], f["platform"]) for f in old.get("files_ext", [])}
+                                                   <= {(f["path"], f["platform"]) for f in payload.get("files_ext", [])}):
+            raise ValueError("update dropped a files_ext path the previous release shipped")
 
 
 def build(stages: dict[str, Path], output: Path, version: str, mirrors: list[str], seed: bytes,
@@ -526,6 +534,10 @@ def build(stages: dict[str, Path], output: Path, version: str, mirrors: list[str
                "exec_by_platform": executables, "removed": []}
     if launcher:
         payload["launcher"] = dict(sorted(launcher.items()))
+    if same:
+        dropped = {(f["path"], f["platform"]) for f in old.get("files_ext", [])} - {(f["path"], f["platform"]) for f in ext}
+        if dropped:  # P1668: nothing deletes it, so a plugin left from the last release would load into a newer engine
+            raise ValueError(f"release drops a files_ext path the previous release shipped: {sorted(dropped)}")
     if ext:
         payload["files_ext"] = sorted(ext, key=lambda f: (f["path"], f["platform"]))
     objects = validate(payload, game)

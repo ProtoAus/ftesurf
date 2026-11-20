@@ -165,6 +165,19 @@ class PublisherTests(unittest.TestCase):
                 feed.validate(dict(m, files_ext=bad))
         with self.assertRaisesRegex(ValueError, 'duplicate update path'):
             feed.validate(dict(m, files_ext=[e, e]))
+        # review: duplicates are refused even for a platform with no "files" of its own, which is refused anyway
+        w2 = dict(m, files=[f for f in m['files'] if f['platform'] != 'linux64'],
+                  exec_by_platform={'win64': m['exec_by_platform']['win64']})
+        with self.assertRaisesRegex(ValueError, 'duplicate update path|file set'):
+            feed.validate(dict(w2, files_ext=[e, e]))
+        with self.assertRaisesRegex(ValueError, 'file set'):
+            feed.validate(dict(w2, files_ext=[e]))
+        # review: a later release restaging Linux without the plugin is refused (nothing would delete the old one)
+        (linux / name).unlink()
+        with self.assertRaisesRegex(ValueError, 'drops a files_ext path'):
+            feed.build({'win64': self.win, 'linux64': linux}, self.root / 'dropped', '0.1.27',
+                       ['https://dl.proto.bar/ftesurf/update'], SEED, KEY,
+                       previous=(self.root / 'feed/update.json').read_bytes(), previous_objects=self.root / 'feed/objects')
         with self.assertRaisesRegex(ValueError, 'invalid update file descriptor'):
             feed.validate(dict(m, files=m['files'] + [dict(e, platform='linux64')]))
 
