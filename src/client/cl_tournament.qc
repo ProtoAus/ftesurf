@@ -791,6 +791,7 @@ string(float remaining) Tour_NextStep =
 	if (tour_phase == "loading")
 	{
 		if (serverkey("tournament_starts") == "1") return sprintf("Everyone is here: the round starts in %s%s", Tour_Clock(remaining), host ? "  (F6 to start now)" : "");
+		if (serverkey("tournament_starts") == "2") return sprintf("Starting without the missing players in %s", Tour_Clock(remaining));
 		if (serverkey("tournament_auto") == "0")
 		{
 			if (mine && !myready) return "Press F6 and click Ready on map";
@@ -852,7 +853,7 @@ void(vector scr) Tour_Hud =
 		if (!(stof(argv(6)) > 0)) dnf += 1;
 	}
 	if (n < 2) risk = -1;
-	starts = (tour_phase == "loading" && serverkey("tournament_starts") == "1");
+	starts = (tour_phase == "loading" && serverkey("tournament_starts") != "");
 	if (tour_phase == "live" || tour_phase == "countdown" || tour_phase == "results" || starts)
 		HUD_TextR([p_x + w - pad, p_y + pad, 0], Tour_Clock(remaining), sz1, (tour_phase == "live" && remaining <= 30) ? '1 0.4 0.35' : '1 1 1', 1);
 	Font_Set(ui_font_ui);
