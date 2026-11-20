@@ -55,6 +55,16 @@ pwsh -NoProfile -File tools/linux/build-linux.ps1 -Commit <engine-sha> -FteRoot 
 pwsh -NoProfile -File src/release/release.ps1 -Bump patch -DryRun -BuildNumber <current-qcbuild> -FteRoot <engine-worktree> -LauncherRoot <launcher-worktree> -Linux dist/linux-build -PreviousUpdateFeed <saved-live-update.json> -MaxTotalMB 128
 ```
 
+The Linux drop also holds `fteplug_ui_imgui_amd64.so` (P1654; `build.sh` now needs an engine
+commit that has Patch 1654) and its gates cover it, but no release ships it yet: `$LinuxShipImgui`
+in `release.ps1` is off. Every installed launcher and engine refuses a whole feed, on both
+platforms, when one entry is outside its own disk policy, and no feed updates a launcher (see
+`ROOT` in `tools/updatefeed.py`). Turn it on only for a feed whose readers were all built with
+the name -- the first worldofsurf-identity feed (P1593 stage 3) at the earliest, never
+`update.json` -- in the change that adds the name to `qkupdate.c`, the launcher's
+`ftesurf_update.rs` and `updatefeed.py`. The Linux archive then carries the plugin and its own
+`THIRD-PARTY.txt`.
+
 The 128 MiB stage budget is the normal published 0.1.45/0.1.46 budget, not a
 bypass: their Windows stages are 125.72/126.87 MiB, already above the 80 MiB
 small-stage default. Keep the per-file limit and deny checks; review the actual

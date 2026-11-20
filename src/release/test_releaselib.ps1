@@ -120,7 +120,7 @@ Check 'tokens: an empty block side names no empty token' {
 
 # --- BUILDINFO ---------------------------------------------------------------------
 $c40 = '3dd8f93c572cf63102203c31b67515da23b27a28'
-$h1 = 'a' * 64; $h2 = 'B' * 64
+$h1 = 'a' * 64; $h2 = 'B' * 64; $h3 = 'C' * 64
 $biGood = @"
 FTESURF-LINUX-BUILD 1
 commit    $c40
@@ -132,6 +132,7 @@ gates     all PASS
 tarball   zstd-1.5.6.tar.gz $h1
 sha256    $h1  fteqw64
 sha256    $h2  fteplug_hl2_amd64.so
+sha256    $h3  fteplug_ui_imgui_amd64.so
 sha256    $h1  fteqw-sv64
 sha256    $h1  db/fteqw64.db
 "@.Replace("`r`n", "`n") + "`n"
@@ -139,10 +140,20 @@ function BiFile ([string]$text) { TmpFile $text }
 Check 'buildinfo: good parses, extra files and unknown keys allowed' {
     $b = Read-LinuxBuildInfo (BiFile $biGood)
     $b.Commit -ceq $c40 -and $b.Gates -ceq 'all PASS' -and $b.Sha256['fteqw64'] -ceq $h1.ToUpper() -and
-        $b.Sha256['fteplug_hl2_amd64.so'] -ceq $h2 -and $b.Sha256.Count -eq 4 -and $b.Builder -like 'Debian*'
+        $b.Sha256['fteplug_hl2_amd64.so'] -ceq $h2 -and $b.Sha256['fteplug_ui_imgui_amd64.so'] -ceq $h3 -and
+        $b.Sha256.Count -eq 5 -and $b.Builder -like 'Debian*'
 }
 Check 'buildinfo: gates FAIL parses (the gate is the caller''s)' { (Read-LinuxBuildInfo (BiFile $biGood.Replace('all PASS', 'FAIL G8 G6'))).Gates -ceq 'FAIL G8 G6' }
 Check 'buildinfo: missing plugin sha throws' { Throws { Read-LinuxBuildInfo (BiFile ($biGood -replace "(?m)^sha256 +$h2  fteplug_hl2_amd64\.so`n", '')) } '*fteplug_hl2_amd64.so*' }
+# P1654: release.ps1 requires the ui_imgui line only when it ships the plugin ($LinuxShipImgui);
+# a drop from before build.sh wrote one must keep reading while it does not.
+$biOld = $biGood -replace "(?m)^sha256 +$h3  fteplug_ui_imgui_amd64\.so`n", ''
+$biNames = @('fteqw64', 'fteplug_hl2_amd64.so')
+Check 'buildinfo: a drop without ui_imgui reads when it is not required' {
+    $biOld -cne $biGood -and (Read-LinuxBuildInfo (BiFile $biOld) ($biNames + @())).Sha256.Count -eq 4
+}
+Check 'buildinfo: a required ui_imgui sha is read' { (Read-LinuxBuildInfo (BiFile $biGood) ($biNames + @('fteplug_ui_imgui_amd64.so'))).Sha256['fteplug_ui_imgui_amd64.so'] -ceq $h3 }
+Check 'buildinfo: a required ui_imgui sha that is missing throws' { Throws { Read-LinuxBuildInfo (BiFile $biOld) ($biNames + @('fteplug_ui_imgui_amd64.so')) } '*fteplug_ui_imgui_amd64.so*' }
 Check 'buildinfo: CRLF throws' { Throws { Read-LinuxBuildInfo (BiFile $biGood.Replace("`n", "`r`n")) } '*CR*' }
 Check 'buildinfo: short commit throws' { Throws { Read-LinuxBuildInfo (BiFile $biGood.Replace($c40, '3dd8f93c5')) } '*40*' }
 Check 'buildinfo: duplicate key throws' { Throws { Read-LinuxBuildInfo (BiFile ($biGood + "commit    $c40`n")) } '*two*' }
@@ -225,6 +236,61 @@ Check 'entries: unparsable line' { Has (Test-LinuxArchiveEntries (Entries ($L + 
 Check 'sha lines: parse, spaced path' {
     $m = ConvertFrom-ShaLines @("$('a' * 64)  FTESurf/a b.txt", 'junk')
     $m.Count -eq 1 -and $m['FTESurf/a b.txt'] -ceq ('a' * 64)
+}
+
+# --- the Linux ui_imgui notice (P1654) --------------------------------------------------
+function TpWin ([string[]]$sections) {
+    $t = "World of Surf 1.2.3 -- third-party software in fteplug_ui_imgui_x64.dll`n====`n`nfteplug_ui_imgui_x64.dll draws plots.  This file`n" +
+        "is about that one DLL; it lists no more.`n`n  Dear ImGui     MIT            url`n  Roboto         SIL OFL 1.1    a font`n" +
+        "  winpthreads    MIT and BSD    mingw-w64's thread library, linked in by the compiler`n`nKanji note."
+    foreach ($s in $sections) { $t += "`n`n---------- $s ----------`n`ntext of $s" }
+    return $t + "`n"
+}
+$tpNames = @('Dear ImGui', 'ImPlot', 'stb_truetype, stb_rect_pack, stb_textedit', 'ProggyClean', 'Roboto')
+$tpGood = TpWin ($tpNames + 'winpthreads')
+Check 'notice: the .so is named, winpthreads and its row are gone, the rest is byte-equal' {
+    $l = ConvertTo-LinuxImguiNotice $tpGood
+    $want = (TpWin $tpNames).Replace('fteplug_ui_imgui_x64.dll', 'fteplug_ui_imgui_amd64.so').Replace('that one DLL;', 'that one plugin;').Replace("  winpthreads    MIT and BSD    mingw-w64's thread library, linked in by the compiler`n", '')
+    $l -ceq $want -and $l.EndsWith("text of Roboto`n") -and -not $l.Contains('winpthreads')
+}
+Check 'notice: CRLF throws' { Throws { ConvertTo-LinuxImguiNotice $tpGood.Replace("`n", "`r`n") } '*CR*' }
+Check 'notice: no winpthreads section throws' { Throws { ConvertTo-LinuxImguiNotice (TpWin $tpNames) } '*no winpthreads row and section*' }
+Check 'notice: winpthreads not last throws' { Throws { ConvertTo-LinuxImguiNotice (TpWin (@('Dear ImGui', 'ImPlot', 'stb_truetype, stb_rect_pack, stb_textedit', 'ProggyClean', 'winpthreads', 'Roboto'))) } '*not the last section*' }
+Check 'notice: a text that does not name the DLL throws' { Throws { ConvertTo-LinuxImguiNotice $tpGood.Replace('that one DLL;', 'that one file;') } '*does not name its DLL*' }
+Check 'notice: a missing licence section throws' { Throws { ConvertTo-LinuxImguiNotice (TpWin @('Dear ImGui', 'stb_truetype, stb_rect_pack, stb_textedit', 'ProggyClean', 'Roboto', 'winpthreads')) } '*no ImPlot section*' }
+Check 'notice: winpthreads named in another section throws' { Throws { ConvertTo-LinuxImguiNotice $tpGood.Replace('text of ImPlot', 'text of ImPlot and winpthreads') } '*Windows-only name survives*' }
+
+# --- release.ps1's Linux ui_imgui switch (P1654) --------------------------------------
+# The production assignments, evaluated both ways; nothing else of release.ps1 runs.
+$relTok = $null; $relErr = $null
+$relAst = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'release.ps1'), [ref]$relTok, [ref]$relErr)
+function RelAssign ([string]$name) {
+    $a = @($relAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+            $n.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and $n.Left.VariablePath.UserPath -eq $name }, $true))
+    if ($a.Count -ne 1) { throw "release.ps1 assigns `$$name $($a.Count) times" }
+    return $a[0].Extent.Text
+}
+function ImguiLists ([bool]$ship) {
+    $LinuxShipImgui = $ship
+    . ([scriptblock]::Create((@('LinuxRequired', 'LinuxImguiName', 'LinuxImguiFiles', 'LinuxImguiRequired' | ForEach-Object { RelAssign $_ }) -join "`n")))
+    [pscustomobject]@{ Base = @($LinuxRequired); Files = @($LinuxImguiFiles); Required = @($LinuxRequired) + $LinuxImguiRequired }
+}
+Check 'release.ps1 parses' { $relErr.Count -eq 0 }
+Check 'imgui switch: off adds nothing to the drop or archive lists' {
+    $r = ImguiLists $false
+    $r.Files.Count -eq 0 -and $r.Base.Count -ge 16 -and $r.Required.Count -eq $r.Base.Count -and
+        @($r.Required | Where-Object { -not $_ -or $_ -match 'imgui|THIRD-PARTY' }).Count -eq 0
+}
+Check 'imgui switch: on requires the plugin and its notice' {
+    $r = ImguiLists $true
+    ($r.Files -join ',') -ceq 'fteplug_ui_imgui_amd64.so' -and $r.Required.Count -eq $r.Base.Count + 2 -and
+        $r.Required -ccontains 'fteplug_ui_imgui_amd64.so' -and $r.Required -ccontains 'THIRD-PARTY.txt'
+}
+# Readers refuse a whole feed naming a path they do not manage, so shipping and the policy move together.
+Check 'imgui switch: a literal, on exactly when tools/updatefeed.py lists the name' {
+    $text = RelAssign 'LinuxShipImgui'
+    $listed = [System.IO.File]::ReadAllText((Join-Path $SurfDir 'tools/updatefeed.py')) -cmatch '"fteplug_ui_imgui_amd64\.so"'
+    $text -cmatch '^\$LinuxShipImgui = \$(true|false)$' -and ($Matches[1] -ceq 'true') -eq $listed
 }
 
 # --- prune ---------------------------------------------------------------------------
@@ -355,6 +421,9 @@ Check 'mutant: no owner guard -> its test fails' {
 }
 Check 'mutant: no CR guard -> its test fails' {
     -not (Test-Mutant 'has CR bytes' { Throws { Read-LinuxBuildInfo (BiFile $biGood.Replace("`n", "`r`n")) } '*CR*' })
+}
+Check 'mutant: no last-section guard -> its test fails' {
+    -not (Test-Mutant 'is not the last section' { Throws { ConvertTo-LinuxImguiNotice (TpWin (@('Dear ImGui', 'ImPlot', 'stb_truetype, stb_rect_pack, stb_textedit', 'ProggyClean', 'winpthreads', 'Roboto'))) } '*not the last section*' })
 }
 Check 'mutant: no notes character guard -> its test fails' {
     -not (Test-Mutant 'printable ASCII only' { Throws { Notes "## next`n### P5 x`n- ^1red`n" } '*no ^*' })

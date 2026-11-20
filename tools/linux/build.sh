@@ -100,7 +100,7 @@ done
 inch "cd /build && tar -xzf zstd-$ZSTDVER.tar.gz && make -C zstd-$ZSTDVER/lib -j$JOBS libzstd.a CFLAGS='-O2 -fPIC' ZSTD_LIB_COMPRESSION=0 ZSTD_LIB_DICTBUILDER=0 ZSTD_LIB_DEPRECATED=0 ZSTD_LEGACY_SUPPORT=0" > "$LOGS/zstd.log" 2>&1 || die "zstd failed (logs/zstd.log)"
 
 # 6. The engine, the dedicated server and the hl2 and ui_imgui plugins.  ui_imgui is C++17 (the chroot's
-#    g++, libstdc++ linked static) and links on Linux only from engine Patch 1654 (1261fd011) on.
+#    g++, libstdc++ linked static) and links on Linux only from engine Patch 1654 on.
 inch "cd /build/fteqw/engine && make -j$JOBS m-rel FTE_TARGET=linux64" > "$LOGS/m-rel.log" 2>&1 || die "m-rel failed (logs/m-rel.log)"
 inch "cd /build/fteqw/engine && make -j$JOBS sv-rel FTE_TARGET=linux64" > "$LOGS/sv-rel.log" 2>&1 || die "sv-rel failed (logs/sv-rel.log)"
 inch "cd /build/fteqw/engine && make -j$JOBS plugins-rel FTE_TARGET=linux64 NATIVE_PLUGINS='hl2 ui_imgui' HL2_ZSTD_CFLAGS='-DHAVE_ZSTD -I/build/zstd-$ZSTDVER/lib' HL2_ZSTD_LDFLAGS=/build/zstd-$ZSTDVER/lib/libzstd.a" > "$LOGS/plugins.log" 2>&1 || die "plugins-rel failed (logs/plugins.log)"

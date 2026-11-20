@@ -179,6 +179,26 @@ function Test-LinuxArchiveEntries ($Entries, $Hashes, $Stage, [string]$Top, [str
     return $p
 }
 
+# --- the Linux ui_imgui notice (P1654) ---------------------------------------------
+# The Linux THIRD-PARTY.txt is release.ps1's Windows text (LF) renamed for the .so, without
+# winpthreads: mingw's thread library, which only the DLL links. Throws on any other shape.
+function ConvertTo-LinuxImguiNotice ([string]$WindowsText) {
+    $dll = 'fteplug_ui_imgui_x64.dll'; $one = 'is about that one DLL;'
+    if ($WindowsText.Contains("`r")) { throw 'imgui notice: CR in the Windows text' }
+    $row = [regex]::Matches($WindowsText, '(?m)^  winpthreads  .*\n')
+    $cut = $WindowsText.IndexOf("`n`n---------- winpthreads ----------`n", [System.StringComparison]::Ordinal)
+    if ($row.Count -ne 1 -or $cut -lt 0 -or $row[0].Index -gt $cut) { throw 'imgui notice: no winpthreads row and section to remove' }
+    if ($WindowsText.IndexOf("`n---------- ", $cut + 2, [System.StringComparison]::Ordinal) -ge 0) { throw 'imgui notice: winpthreads is not the last section' }
+    $t = ($WindowsText.Substring(0, $cut) + "`n").Remove($row[0].Index, $row[0].Length)
+    if ([regex]::Matches($t, [regex]::Escape($dll)).Count -lt 2 -or -not $t.Contains($one)) { throw 'imgui notice: the Windows text does not name its DLL as expected' }
+    $t = $t.Replace($dll, 'fteplug_ui_imgui_amd64.so').Replace($one, 'is about that one plugin;')
+    if ($t -cmatch 'winpthreads|x64\.dll') { throw 'imgui notice: a Windows-only name survives' }
+    foreach ($s in 'Dear ImGui', 'ImPlot', 'stb_truetype, stb_rect_pack, stb_textedit', 'ProggyClean', 'Roboto') {
+        if (-not $t.Contains("`n---------- $s ----------`n")) { throw "imgui notice: no $s section" }
+    }
+    return $t
+}
+
 # --- R2 housekeeping ---------------------------------------------------------------
 # Keep the newest $Keep VERSIONS (by parsed semver, never ModTime) and doom every
 # artifact of the older ones. Sidecars and probes never match; $Protect never goes.
