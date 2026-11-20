@@ -53,6 +53,9 @@ float mt_probeat;
 // mt_watch: room id of a browser Watch click, so its refusal reads as one.
 string mt_launchaddr, mt_watch;
 float mt_needlink, mt_ingame;
+// P1650's draft clock: turn_left seconds as of mt_turnat, counted down between polls; -1 = not sent.
+var float mt_turnleft = -1;
+float mt_turnat;
 #define MT_RULE "Each round, anyone who doesn't finish (or the slowest finisher) is out. Last one standing wins."
 
 string(float i) MT_ProfileID =
@@ -407,8 +410,9 @@ string(string note, float raw = FALSE) MT_Friendly =
 	// After launch surfd takes only leave (party_lobbies.py); a host Close lands here.
 	if (strstrofs(note, "already started", 0) >= 0 || strstrofs(note, "after first GO", 0) >= 0)
 		return "The tournament is already running on its server; the room can't be closed or changed now.";
-	if (strstrofs(note, "waiting room only", 0) >= 0 || strstrofs(note, "roster frozen", 0) >= 0 || strstrofs(note, "settings frozen", 0) >= 0)
-		return "Seats and settings are locked once the draft starts.";
+	// Neutral: P1650's host may unseat or kick in the draft and ready check, today's only in the lobby.
+	if (strstrofs(note, "waiting room only", 0) >= 0 || strstrofs(note, "roster frozen", 0) >= 0) return "You can't change seats right now.";
+	if (strstrofs(note, "settings frozen", 0) >= 0) return "Settings are locked once the draft starts.";
 	if (strstrofs(note, "need at least two", 0) >= 0) return "The draft needs at least two seated players.";
 	if (strstrofs(note, "Pre-Beta tournament", 0) >= 0) return "This room is from an older version. Close it and host a new one.";
 	if (!strcmp(note, "host only")) return "Only the host can do that.";
@@ -679,6 +683,12 @@ float(int party) MT_Snapshot =
 	MT_Set(MT_Text(json_get_string(json_find_object_child(party, "name")), 64), mt_name);
 	MT_Set(MT_Text(json_get_string(json_find_object_child(party, "turn_kind")), 12), mt_turnkind);
 	MT_Set(MT_Text(json_get_string(json_find_object_child(party, "turn_who")), 12), mt_turnwho);
+	item = json_find_object_child(party, "turn_left"); mt_turnleft = -1;
+	if (item && json_get_value_type(item) == MT_JSON_NUMBER && phase == "draft")
+	{
+		mt_turnleft = json_get_float(item); mt_turnat = time;
+		if (mt_turnleft < 0 || mt_turnleft > 3600 || mt_turnleft != floor(mt_turnleft)) mt_turnleft = -1;
+	}
 	MT_Set(MT_Text(json_get_string(json_find_object_child(party, "reserve")), 64), mt_reserve);
 	mt_revision = revision; mt_capacity = capacity; mt_seconds = seconds;
 	mt_started = (json_get_float(json_find_object_child(party, "menu_started")) == 1);
@@ -1413,13 +1423,14 @@ void(vector pos, vector size, float i) MT_SpecRow =
 	sui_style_box(pos, size, 8, mine ? SUI_THEME_SELECTED : SUI_THEME_WELL, mine ? SUI_THEME_ACCENT : SUI_THEME_EDGE, 1);
 	sui_roundbox(pos + [16, floor(size_y / 2) - 4], '8 8 0', 4, stof(MT_Player(i, 8)) ? SUI_THEME_GOOD : SUI_THEME_MUTED, 1);
 	right = size_x - 10;
+	// P1650's host can remove a spectator until launch; today's surfd refuses it outside the lobby (MT_Friendly).
+	if (mt_me == mt_host && !mt_started && !mine)
+	{
+		if (MT_KickButton(pos + [right - 64, floor((size_y - 30) / 2)], who, i)) MT_Action("kick", mt_id, who, "-", 0);
+		right -= 72;
+	}
 	if (mt_me == mt_host && mt_phase == "lobby")
 	{
-		if (!mine)
-		{
-			if (MT_KickButton(pos + [right - 64, floor((size_y - 30) / 2)], who, i)) MT_Action("kick", mt_id, who, "-", 0);
-			right -= 72;
-		}
 		if (MT_Button(sprintf("mt_seat%g", i), pos + [right - 110, floor((size_y - 30) / 2)], '110 30 0', "Give seat", 3, (mt_ok && mt_seated < mt_capacity)))
 			MT_Action("seat", mt_id, who, "-", 1);
 		right -= 118;
@@ -1651,8 +1662,9 @@ float(vector p, vector size, float i, float clickable) MT_MapCard =
 void(vector size) MT_DrawDraft =
 {
 	local float i, c, bans, picks, myturn, gap, cols, cardw, cardh, thumbh, rows, top, avail, first, last, row, pagerh, need;
+	local float left, urgent, hint, want, tw, cw;
 	local vector p, colour;
-	local string text;
+	local string text, clock;
 	MT_Label('16 14 0', "map draft", 24, SUI_THEME_ACCENT, size_x - 250);
 	bans = picks = 0;
 	for (i = 0; i < mt_nm; i += 1)
@@ -1668,13 +1680,21 @@ void(vector size) MT_DrawDraft =
 	sui_fill(p + '0 10 0', '4 32 0', colour, 1, 0);
 	if (myturn) text = (mt_turnkind == "ban") ? "Your turn: ban a map" : "Your turn: pick a map";
 	else text = sprintf("%s is %s", mt_turnname, (mt_turnkind == "ban") ? "banning a map" : "picking a map");
-	// The hint gives way first: on a narrow panel the turn line needs the width.
-	if (size_x >= 640)
-	{
-		MT_Place(p + '18 0 0', [size_x - 60 - 200, 52], text, 20, myturn ? SUI_THEME_FOCUS : SUI_THEME_TEXT);
-		MT_Place(p + [size_x - 236, 0], '200 52 0', myturn ? "Click a map card." : "The cards update live.", 12, myturn ? SUI_THEME_TEXT : SUI_THEME_MUTED, 2);
-	}
-	else MT_Place(p + '18 0 0', [size_x - 60, 52], text, (size_x >= 440) ? 20 : 16, myturn ? SUI_THEME_FOCUS : SUI_THEME_TEXT);
+	// P1650's turn clock beside it; at 0 the server bans/picks for whoever is up.
+	left = -1;
+	if (mt_turnleft >= 0) left = max(0, ceil(mt_turnleft - (time - mt_turnat)));
+	urgent = (left >= 0 && left < 10);
+	clock = "";
+	if (left >= 0) clock = (myturn && urgent) ? sprintf("(%g s, or one is chosen for you)", left) : sprintf("(%g s)", left);
+	// The hint gives way first: on a narrow panel, or to the urgent clock, the turn line needs the width.
+	hint = (size_x >= 640 && !(myturn && urgent));
+	want = (size_x >= 440) ? 20 : 16;
+	tw = size_x - 60 - (hint ? 200 : 0);
+	cw = 0;
+	if (clock != "") cw = min(ceil(MT_Width(clock, 16, 0)), floor(tw * 0.6));
+	MT_Place(p + '18 0 0', [tw - (cw ? cw + 8 : 0), 52], text, want, myturn ? SUI_THEME_FOCUS : SUI_THEME_TEXT);
+	if (cw) MT_Place(p + [26 + min(ceil(MT_Width(text, want, 0)), tw - cw - 8), 0], [cw, 52], clock, 16, urgent ? SUI_THEME_WARN : SUI_THEME_DIM);
+	if (hint) MT_Place(p + [size_x - 236, 0], '200 52 0', myturn ? "Click a map card." : "The cards update live.", 12, myturn ? SUI_THEME_TEXT : SUI_THEME_MUTED, 2);
 	top = 116; gap = 12;
 	if (size_y >= 420)
 	{
@@ -2041,8 +2061,8 @@ void(vector scr) MT_DrawRoom =
 	if (MT_Player(me, 2) == "player")
 	{
 		risky = TRUE;
-		warn = mt_started ? "Click again to leave. You drop out of this tournament and can't rejoin it."
-			: "Click again to leave. Leaving now may end or reset the tournament for everyone.";
+		warn = mt_started ? "Click again to leave. Leaving now counts as dropping out of the tournament."
+			: "Click again to leave. Leaving sends the room back to the lobby (or ends it on an older server).";
 	}
 	armed = (risky && time < mt_confirm);
 	label = host ? (armed ? "Confirm close" : "Close room") : (armed ? "Confirm leave" : "Leave room");
