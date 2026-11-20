@@ -813,10 +813,19 @@ string(float remaining) Tour_NextStep =
 	return "Press F6 for the tournament panel";
 };
 
+// The centre announcement owns the middle of the screen while it shows: a map's game_text (often its name and
+// author at spawn) drew over "ROUND 1" and the countdown (Lex 21 Nov). cl_main skips MapMsg_Draw meanwhile.
+float() Tour_CentreBusy =
+{
+	if (tour_id == "" || tour_open || rec_sb_open || UI_CursorHeld()) return FALSE;
+	if (tour_phase == "countdown") return TRUE;
+	return (tour_evt != "" && cltime - tour_evtat < tour_evtfor);
+};
+
 void(vector scr) Tour_Hud =
 {
 	local vector p, at, colour;
-	local float w, h, x, remaining, i, rows, rh, risk, big, n, dnf, starts, sz1, sz2, lh1, lh2, pad;
+	local float w, h, x, remaining, i, rows, rh, risk, big, n, dnf, starts, sz1, sz2, lh1, lh2, pad, bigpx;
 	local string line, title, name, tm;
 	// Plain draws only: sui_begin empties sui's single hit-test list and sui_end clears the click and typing
 	// buffers, so an always-on bracket here broke every menu drawn after it (P1649 review). Hidden while
@@ -842,7 +851,7 @@ void(vector scr) Tour_Hud =
 	Font_Set(ui_font_display);
 	x = p_x + pad + 3 * ui_cv_scale;
 	HUD_Text([x, p_y + pad, 0], line, sz1, colour, 1);
-	x = x + stringwidth(line, TRUE, [lh1, lh1]) + pad;
+	x = x + stringwidth(line, TRUE, [Font_Px(sz1), Font_Px(sz1)]) + pad; // display-font rung ("RESULTSROUND" with lh1)
 	HUD_Text([x, p_y + pad, 0], title, sz1, '1 1 1', 1);
 	n = dnf = 0; risk = -1;
 	for (i = 0; i < tour_hn; i += 1)
@@ -881,18 +890,34 @@ void(vector scr) Tour_Hud =
 		}
 	}
 
-	// Centre: the countdown digits, then the phase's announcement.
-	big = 44 * ui_cv_scale;
+	// Centre: the countdown digits, then the phase's announcement, on a plate (map warnings draw here too).
+	// Sizes are display-font rungs taken before any switch: the UI font's put "Out: ..." inside the winner line.
+	big = 44 * ui_cv_scale; pad = 10 * ui_cv_scale;
 	Font_Set(ui_font_display);
 	if (tour_phase == "countdown" && remaining > 0)
-		HUD_TextC([scr_x * 0.5, scr_y * 0.34, 0], ftos(ceil(remaining)), big * 1.3, '0.45 0.85 1', 0.95);
+	{
+		line = ftos(ceil(remaining)); bigpx = Font_Px(big * 1.3);
+		w = stringwidth(line, TRUE, [bigpx, bigpx]) + 6 * pad;
+		drawfill([scr_x * 0.5 - w * 0.5, scr_y * 0.34 - pad], [w, bigpx + 2 * pad], '0.05 0.06 0.09', 0.6, 0);
+		HUD_TextC([scr_x * 0.5, scr_y * 0.34, 0], line, big * 1.3, '0.45 0.85 1', 0.95);
+	}
 	else if (tour_evt != "" && cltime - tour_evtat < tour_evtfor)
 	{
+		bigpx = Font_Px(big);
+		w = stringwidth(tour_evt, TRUE, [bigpx, bigpx]); h = bigpx;
+		if (tour_evtsub != "")
+		{
+			Font_Set(ui_font_ui); sz2 = Font_Px(12 * ui_cv_scale);
+			w = max(w, stringwidth(tour_evtsub, TRUE, [sz2, sz2])); h = h + pad + sz2;
+			Font_Set(ui_font_display);
+		}
+		w = min(scr_x - 32, w + 4 * pad);
+		drawfill([scr_x * 0.5 - w * 0.5, scr_y * 0.34 - pad], [w, h + 2 * pad], '0.05 0.06 0.09', 0.6, 0);
 		HUD_TextC([scr_x * 0.5, scr_y * 0.34, 0], tour_evt, big, tour_evtcolour, 0.95);
 		if (tour_evtsub != "")
 		{
 			Font_Set(ui_font_ui);
-			HUD_TextC([scr_x * 0.5, scr_y * 0.34 + Font_Px(big) + 6 * ui_cv_scale, 0], tour_evtsub, 10 * ui_cv_scale, '1 1 1', 0.9);
+			HUD_TextC([scr_x * 0.5, scr_y * 0.34 + bigpx + pad, 0], tour_evtsub, 12 * ui_cv_scale, '1 1 1', 0.9);
 		}
 	}
 	Font_Reset();

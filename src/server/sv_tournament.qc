@@ -29,7 +29,7 @@ string tq_note, tq_pending, tq_pendingop, tq_pendingtoken;
 string tq_json;
 .float tq_role, tq_seenrev, tq_stream, tq_streamat, tq_lastcmd, tq_boundrev;
 .float tq_streambuf, tq_streamcount, tq_streamrev;
-.float tq_hold, tq_runround, tq_runstart, tq_best, tq_wasspec, tq_bound;
+.float tq_hold, tq_runround, tq_runstart, tq_best, tq_wasspec, tq_bound, tq_holdmove;
 .string tq_boundwho;
 void() SV_PlayerRespawn;
 void(entity e) Tour_Stream;
@@ -112,6 +112,17 @@ void(entity e) Tour_Unhold =
 	if (!e.tq_hold) return;
 	e.tq_hold = FALSE;
 	e.run_pmhold = FALSE;
+	if (e.movetype == MOVETYPE_NONE) e.movetype = e.tq_holdmove ? e.tq_holdmove : MOVETYPE_WALK;
+	e.tq_holdmove = 0;
+};
+
+// Competitors are drawn as lobby avatars. One released from a forced spectate never ran ClientConnect (a map load
+// reconnects a spectator through SpectatorConnect), so it had none and was invisible (Lex 21 Nov); a forced
+// spectator's avatar would follow its free camera (Lobby_AvatarPose checks only the classname).
+void(entity e) Tour_Avatar =
+{
+	if (stof(infokey(e, "*spectator"))) { Lobby_AvatarFree(e); return; }
+	if (!e.lobby_av && cvar("lobby_enable") && cvar("lobby_avatars")) Lobby_AvatarSpawn(e);
 };
 
 void(entity e) Tour_Hold =
@@ -122,9 +133,13 @@ void(entity e) Tour_Hold =
 		// The hold freezes the body mid-run and Tour_Unhold has no rollback, so a held run
 		// must end here or it could continue after the hold and post to the ordinary board.
 		SV_TimerVoid(e, "tournament hold");
+		e.tq_holdmove = (e.movetype == MOVETYPE_NONE) ? 0 : e.movetype;
 		e.tq_hold = TRUE;
 	}
 	e.run_pmhold = TRUE;
+	// MOVETYPE_NONE stops the client's prediction as well (SV_PMTypeForClient -> PM_NONE): with run_pmhold alone a
+	// held player could hold jump and bounce locally, snapped back each snapshot (Lex 21 Nov). The save hold's pin.
+	e.movetype = MOVETYPE_NONE;
 	e.velocity = '0 0 0';
 };
 
@@ -149,6 +164,7 @@ void(entity e) Tour_Connected =
 		if (!stof(infokey(e, "*spectator"))) { forceinfokey(e, "*tqspec", "1"); }
 		forceinfokey(e, "*spectator", "1");
 		e.solid = SOLID_NOT;
+		Lobby_AvatarFree(e);
 	}
 	// Only a tournament server has a panel to clear: Tour_Clear resets every CSQC panel's click state.
 	if (Tour_On() || Tour_Owns()) stuffcmd(e, "tourney_clear\n");
@@ -266,6 +282,7 @@ void(entity e) Tour_RefreshRole =
 	{
 		forceinfokey(e, "*spectator", "0"); forceinfokey(e, "*tqspec", "");
 		saved = self; self = e; SV_PlayerRespawn(); self = saved;
+		Tour_Avatar(e);
 	}
 };
 
@@ -287,6 +304,7 @@ void() Tour_Roles =
 			if (!stof(infokey(e, "*spectator"))) { forceinfokey(e, "*tqspec", "1"); }
 			forceinfokey(e, "*spectator", "1");
 			e.solid = SOLID_NOT;
+			Lobby_AvatarFree(e);
 		}
 		else
 		{
@@ -296,6 +314,7 @@ void() Tour_Roles =
 				local entity saved;
 				saved = self; self = e; SV_PlayerRespawn(); self = saved;
 			}
+			Tour_Avatar(e);
 			if (!tq_releasing && (tq_broken || tq_phase == "countdown" || tq_phase == "results" ||
 			    tq_phase == "finished" || tq_phase == "aborted" || tq_phase == "cancelled" ||
 			    (tq_phase == "live" && (!tq_live || time > tq_goat + tq_seconds))))
@@ -331,7 +350,8 @@ void(string op, string data, entity actor) Tour_Queue =
 void() Tour_Clear =
 {
 	local entity e;
-	local float i, kind;
+	local float i, kind, held;
+	held = (tq_id != ""); // Tour_Clear also runs on every idle state poll
 	for (i = 1; i <= TQ_CLIENT_MAX; i = i + 1)
 	{
 		e = edict_num(i); kind = clienttype(e);
@@ -356,7 +376,7 @@ void() Tour_Clear =
 		if (e.tq_streambuf) buf_del(e.tq_streambuf);
 		e.tq_streambuf = e.tq_streamcount = 0;
 		e.tq_role = e.tq_bound = e.tq_stream = 0;
-		stuffcmd(e, "tourney_clear\n");
+		if (held) stuffcmd(e, "tourney_clear\n");
 	}
 	if (strlen(tq_id)) strunzone(tq_id);
 	if (strlen(tq_phase)) strunzone(tq_phase);
@@ -384,9 +404,10 @@ void() Tour_Clear =
 	if (strlen(tq_absentset)) strunzone(tq_absentset);
 	tq_absentset = "";
 	cvar_set("tournament_noauto", "");
-	if (cvar("lobby_cycle") > 0) lobby_cyc_next = time + max(60, cvar("lobby_cycle"));
-	// Empty state is polled repeatedly. Don't announce a nonexistent cancelled vote.
-	if (vote_on || lobby_vt_kind) Vote_Cancel();
+	// vote_on means "map votes enabled", not "a vote is open": testing it here cancelled (and announced) a vote on
+	// every idle poll and pushed the map cycle back each time (Lex 21 Nov).
+	if (held && cvar("lobby_cycle") > 0) lobby_cyc_next = time + max(60, cvar("lobby_cycle"));
+	if (held && lobby_vt_kind) Vote_Cancel();
 };
 
 string(string profile) Tour_ProfileMovement =
@@ -744,6 +765,7 @@ void(int match, string envelope) Tour_Adopt =
 				SV_PlayerRespawn();
 				SV_ZoneChatCommand("!m", 0);
 				self = saved;
+				Tour_Avatar(e);
 				Tour_Hold(e);
 			}
 		}
@@ -992,11 +1014,13 @@ float(entity e) Tour_PreThink =
 		if (!stof(infokey(e, "*spectator"))) { forceinfokey(e, "*tqspec", "1"); }
 		forceinfokey(e, "*spectator", "1");
 		e.solid = SOLID_NOT;
+		Lobby_AvatarFree(e);
 		return TRUE;
 	}
 	if (e.tq_hold)
 	{
 		e.run_pmhold = TRUE;
+		e.movetype = MOVETYPE_NONE;
 		e.velocity = '0 0 0';
 		return TRUE;
 	}
