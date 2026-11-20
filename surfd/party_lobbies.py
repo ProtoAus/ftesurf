@@ -157,6 +157,13 @@ def register(app, d):
             out['turn_left'] = max(0, at[1] + TURN_SECONDS - now)
         return out
 
+    def clock(m, now):
+        try:
+            return turn_clock(m, now)
+        except Exception:  # one bad room must not fail the directory or its members' requests
+            d.log.exception('party draft clock skipped room %s', m.get('id') if isinstance(m, dict) else None)
+            return None
+
     def result(db, m, sid, now, status='ok'):
         launch = None
         if m and m.get('menu_started'):
@@ -187,7 +194,7 @@ def register(app, d):
             # Historical rows must not consume the bounded active-directory quota.
             for row in db.execute('SELECT * FROM tournament_parties ORDER BY id').fetchall():
                 m = json.loads(row['state'])
-                ticked = turn_clock(m, now)
+                ticked = clock(m, now)
                 if ticked:
                     m = ticked
                     db.execute('UPDATE tournament_parties SET state=? WHERE id=?', (d.game_json(m), m['id']))
@@ -254,7 +261,7 @@ def register(app, d):
                 ident = active['party'] if data['id'] == '-' and active else data['id']
                 row = db.execute('SELECT state FROM tournament_parties WHERE id=?', (ident,)).fetchone()
                 m = json.loads(row['state']) if row else None
-                ticked = turn_clock(m, now)
+                ticked = clock(m, now)
                 if ticked:
                     # Kept even by a replayed request; a refused action rolls it back and the next poll redoes it.
                     m = ticked
@@ -317,11 +324,7 @@ def register(app, d):
                             m.setdefault('_kicked', []).append(target['who'])
                             db.execute('DELETE FROM tournament_party_members WHERE account=? AND party=?',
                                        (m['_accounts'].get(target['who'], ''), m['id']))
-                            if target['role'] == 'player':
-                                for p in m['players']:
-                                    p['accepted'] = 0
-                            for p in m['players']:
-                                p['menu_ready'] = 0
+                            # Only the removed player's state goes; the others keep their accepts (as seat).
                             m['revision'] += 1
                         elif op == 'say':
                             rules.require(d.rate_ok(sid, now, 20, 'party-say'), 'try again shortly')
@@ -361,12 +364,11 @@ def register(app, d):
                             # Unseating also works in the draft and ready check (rules.transition returns to the lobby).
                             rules.require(target is not None and who == m['host'] and m['phase'] in ('lobby', 'draft', 'loading'),
                                           'host seat in waiting room only')
+                            # A seat already in the asked role is a true no-op: no revision bump, readies kept.
                             if (target['role'] == 'player') != (data['value'] == '1'):
                                 m = rules.transition(m, 'seat', who, name, data)
-                            else:
-                                m['revision'] += 1
-                            for p in m['players']:
-                                p['menu_ready'] = 0
+                                for p in m['players']:
+                                    p['menu_ready'] = 0
                         else:
                             if op == 'configure':
                                 tournaments.map_pool(db, d, rules.settings(data))
@@ -378,7 +380,7 @@ def register(app, d):
                         db.execute('DELETE FROM tournament_party_members WHERE party=?', (m['id'],))
                     elif not m.get('menu_started'):
                         m['menu_phase'] = 'draft' if m['phase'] == 'draft' else 'ready' if m['phase'] == 'loading' else 'waiting'
-                m = turn_clock(m, now) or m  # stamps a turn this action began, clears it off the draft
+                m = clock(m, now) or m  # stamps a turn this action began, clears it off the draft
                 if m and m['phase'] in rules.TERMINAL:
                     db.execute('DELETE FROM tournament_parties WHERE id=?', (m['id'],))
                 elif m:

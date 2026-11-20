@@ -286,21 +286,42 @@ class PartyAPI(unittest.TestCase):
         self.assertNotIn('_turn_at', self.raw())
         self.assertNotIn('turn_left', out)
 
-    def test_p1650_draft_turn_clock_applies_once_under_concurrent_polls_and_browse(self):
+    def test_p1650_draft_turn_clock_serialises_overlapping_polls_and_runs_in_browse(self):
         m = self.locked()
-        self.now += 45
-        forms = [self.form('state', 0), self.form('state', 1)]
-        def run(f):
+        start = self.now
+        self.now = start + 45
+        clock, calls = P.turn_clock, []
+        first_in, second_in, release = threading.Event(), threading.Event(), threading.Event()
+        def held(state, now):
+            calls.append(now)
+            if len(calls) == 1:
+                first_in.set()
+                release.wait(10)
+            elif now == start + 90:
+                second_in.set()
+            return clock(state, now)
+        def run(form):
             with S.app.test_client() as client:
-                return self.send(f, client)['ok']
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            self.assertEqual(list(executor.map(run, forms)), [1, 1])
+                return self.send(form, client)['ok']
+        with patch.object(P, 'turn_clock', held), ThreadPoolExecutor(max_workers=2) as executor:
+            one = executor.submit(run, self.form('state', 0))
+            try:
+                self.assertTrue(first_in.wait(10), 'first poll did not reach the clock')
+                # A poll 45 s later must see the first poll's move (turn 1 due again), not the state
+                # it replaced; a lost update would re-ban turn 0's map and leave _turn at 1.
+                self.now = start + 90
+                two = executor.submit(run, self.form('state', 1))
+                second_in.wait(1)  # reached only by a poll that skipped the first one's transaction
+            finally:
+                release.set()
+            self.assertEqual((one.result(), two.result()), (1, 1))
         raw = self.raw()
-        self.assertEqual((raw['revision'], raw['_turn'], sum(c['status'] == 'banned' for c in raw['maps'])), (m['revision'] + 1, 1, 1))
+        self.assertEqual((raw['revision'], raw['_turn'], sum(c['status'] == 'banned' for c in raw['maps'])),
+                         (m['revision'] + 2, 2, 2))
         # The public directory poll drives the clock too.
         self.now += 45
-        row = self.client.get('/api/tournament-lobbies?brief=1').get_json()['rows'][0]
-        self.assertEqual((row['revision'], self.raw()['_turn']), (m['revision'] + 2, 2))
+        self.client.get('/api/tournament-lobbies?brief=1')
+        self.assertEqual(self.raw()['_turn'], 3)
         # A room drafted before the clock existed starts its clock on first sight, not with a move.
         legacy = self.raw()
         legacy.pop('_turn_at')
@@ -308,7 +329,7 @@ class PartyAPI(unittest.TestCase):
         self.db.commit()
         self.now += 300
         self.assertEqual(self.act('state', 0)['party']['revision'], legacy['revision'])
-        self.assertEqual(self.raw()['_turn_at'], [2, self.now])
+        self.assertEqual(self.raw()['_turn_at'], [3, self.now])
 
     def test_p1650_draft_clock_skips_a_room_it_cannot_move(self):
         m = self.locked()
@@ -374,6 +395,30 @@ class PartyAPI(unittest.TestCase):
         m = self.ready()
         m = self.act('join', 2, m)['party']
         self.assertEqual(self.act('kick', 0, m, target=self.whos[2])['party']['phase'], 'loading')
+
+    def test_p1650_seat_no_op_and_kick_keep_everyone_elses_state(self):
+        m = self.ready()
+        out = self.act('seat', 0, m, target=self.whos[1], value=1)['party']
+        self.assertEqual((out['revision'], [p['menu_ready'] for p in out['players']]), (m['revision'], [1, 1]))
+        self.act('cancel', 0, out)
+        m = self.act('create', capacity=3)['party']
+        for i in (1, 2):
+            m = self.act('join', i, m)['party']
+            m = self.act('seat', 0, m, target=self.whos[i], value=1)['party']
+        for i in (0, 1, 2):
+            m = self.act('accept', i, m)['party']
+        out = self.act('kick', 0, m, target=self.whos[2])['party']
+        self.assertEqual([(p['who'], p['accepted']) for p in out['players']], [(self.whos[0], 1), (self.whos[1], 1)])
+
+    def test_p1650_directory_and_members_survive_a_failing_draft_clock(self):
+        m = self.locked()
+        def broken(state, now):
+            raise RuntimeError('fixture: bad room')
+        with patch.object(P, 'turn_clock', broken), patch.object(S.log, 'exception') as logged:
+            response = self.client.get('/api/tournament-lobbies?brief=1')
+            self.assertEqual((response.status_code, response.get_json()['rows'][0]['id']), (200, m['id']))
+            self.assertEqual(self.act('leave', 2, m)['party']['phase'], 'draft')
+        self.assertTrue(logged.called)
 
     def test_host_kick_removes_and_bars_rejoin(self):
         m = self.act('create')['party']
