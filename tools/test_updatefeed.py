@@ -128,19 +128,45 @@ class PublisherTests(unittest.TestCase):
             self.assertEqual(feed.object_bytes(self.root / 'feed/objects', row['hash'], row['size']),
                              (self.win / path).read_bytes())
 
-    def test_p1654_linux_imgui_waits_for_its_readers(self):
-        """No shipped launcher or engine manages this name, and each refuses a whole feed over one unmanaged
-        path. Change this test only together with qkupdate.c and ftesurf_update.rs, in a feed they all read."""
+    def test_p1668_linux_imgui_rides_files_ext(self):
+        """Still never a "files" path (every reader before launcher 0.1.7 and every engine would refuse the whole feed);
+        a Linux stage's plugin goes to "files_ext", which only launcher 0.1.7+ reads."""
         name = 'fteplug_ui_imgui_amd64.so'
         for game in feed.IDENTITIES:
             self.assertFalse(feed.managed(name, game), game)
         self.assertTrue(feed.managed('fteplug_ui_imgui_x64.dll') and feed.managed('fteplug_hl2_amd64.so'))
         linux = stage(self.root / 'linux', 'linux64')
         (linux / name).write_bytes(b'synthetic plugin\n')
+        feed.build({'win64': self.win, 'linux64': linux}, self.root / 'feed', '0.1.25',
+                   ['https://dl.proto.bar/ftesurf/update'], SEED, KEY)
+        m = feed.verify((self.root / 'feed/update.json').read_bytes(), KEY)
+        self.assertNotIn(name, {f['path'] for f in m['files']})
+        h = hashlib.blake2b(b'synthetic plugin\n', digest_size=32).hexdigest()
+        self.assertEqual(m['files_ext'], [{'path': name, 'hash': h, 'size': 17, 'platform': 'linux64', 'exec': False}])
+        objects = feed.verify_objects(self.root / 'feed/objects', m)
+        self.assertIn(h, objects)
+        self.assertIn(f'{h[:2]}/{h}', (self.root / 'feed/objects.txt').read_text().splitlines())
+        # a Windows stage holding the Linux plugin is still a publishing mistake
+        (self.win / name).write_bytes(b'x')
         with self.assertRaisesRegex(ValueError, 'unmanaged file: ' + name):
-            feed.build({'win64': self.win, 'linux64': linux}, self.root / 'feed', '0.1.25',
-                       ['https://dl.proto.bar/ftesurf/update'], SEED, KEY)
-        self.assertFalse((self.root / 'feed/update.json').exists())
+            self.build(name='winfeed')
+        (self.win / name).unlink()
+        # a Windows-only release keeps the Linux plugin entry
+        self.build(name='winonly', version='0.1.26', previous=(self.root / 'feed/update.json').read_bytes(),
+                   previous_objects=self.root / 'feed/objects')
+        w = feed.verify((self.root / 'winonly/update.json').read_bytes(), KEY)
+        self.assertEqual(w['files_ext'], m['files_ext'])
+        feed.verify_objects(self.root / 'winonly/objects', w)
+        # malformed or misplaced entries refuse
+        e = m['files_ext'][0]
+        for bad in ([dict(e, platform='win64')], [dict(e, platform='all')], [dict(e, path='ftesurf/data/consent.txt')],
+                    [dict(e, exec=True)], [dict(e, extra=1)], [dict(e, hash=e['hash'].upper())], [dict(e, size=-1)], e):
+            with self.assertRaisesRegex(ValueError, 'descriptor|file set', msg=repr(bad)):
+                feed.validate(dict(m, files_ext=bad))
+        with self.assertRaisesRegex(ValueError, 'duplicate update path'):
+            feed.validate(dict(m, files_ext=[e, e]))
+        with self.assertRaisesRegex(ValueError, 'invalid update file descriptor'):
+            feed.validate(dict(m, files=m['files'] + [dict(e, platform='linux64')]))
 
     def test_generated_map_tables_use_existing_asset_namespace(self):
         for name in ('matcolours', 'unshipped', 'wadcolours'):

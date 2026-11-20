@@ -21,8 +21,8 @@ PUBLIC_KEY = "18c7c332f5bbc913a0fceef38eab9494ce79cf60771fdda093a2d5eabef86cb6"
 MAX_FEED = 2 * 1024 * 1024
 # A name is added here LAST. The launcher (ftesurf_update.rs decode) and the engine (qkupdate.c
 # QKU_FSValidateManifest) refuse a WHOLE feed when any entry, for either platform, is outside their own copy of
-# this policy; the launcher then starts nothing, and no feed updates a launcher. So a new name may only enter a
-# feed all of whose readers were built with it. Waiting on that: fteplug_ui_imgui_amd64.so (P1654).
+# this policy; the launcher then starts nothing. So a new name may only enter "files" once no installed reader lacks
+# it -- in practice never: a new path goes to EXT below instead.
 ROOT = {
     "default.fmf", "ftesurf.bat", "ftesurf.sh", "ftesurf_debug.bat", "LICENSE", "INSTALL.txt",
     "VERSION.txt", "SOURCE.txt", "THIRD-PARTY.txt", "ftesurf64.exe", "ftesurf64",
@@ -43,6 +43,9 @@ IDENTITIES = {
 REQUIRED = ("menu.dat", "csprogs.dat", "qwprogs.dat")  # below the identity's gamedir
 # default.fmf's GAME switches the signed updater and install lock on (qkupdate.c); BASEGAME picks the identity.
 MANIFEST_GAME = {LEGACY: "FTESurf", WORLDOFSURF: "WorldofSurf"}
+# P1668: paths only launcher 0.1.7+ manages, per platform. They are signed in "files_ext", which every older launcher
+# and every engine ignores (in "files" they would refuse the whole feed); P1666 engines install the 0.1.7 launcher.
+EXT = {"linux64": {"fteplug_ui_imgui_amd64.so"}}
 # P1666: the launcher is never a feed file (an old reader refuses an unknown path); the payload names it per
 # platform in "launcher", which old launchers and engines ignore and the engine's in-game check installs.
 LAUNCHER = {"win64": "WOS-Launcher.exe", "linux64": "WOS-Launcher"}
@@ -259,6 +262,19 @@ def validate(payload: dict, game: str | None = None) -> dict[str, int]:
         if h in objects and objects[h] != size:
             raise ValueError("inconsistent object size")
         objects[h] = size
+    ext = payload.get("files_ext", [])
+    if not isinstance(ext, list) or len(files) + len(ext) > 8192:
+        raise ValueError("invalid update file set")
+    for f in ext:
+        platform = f.get("platform") if isinstance(f, dict) else None
+        p, h, size = (f.get("path"), f.get("hash"), f.get("size")) if isinstance(f, dict) else (None, None, None)
+        if (platform not in EXT or p not in EXT[platform] or set(f) != {"path", "hash", "size", "platform", "exec"}
+                or not isinstance(h, str) or not re.fullmatch(r"[0-9a-f]{64}", h)
+                or type(size) is not int or not 0 <= size <= 32 * 1024 * 1024 or f.get("exec") is not False):
+            raise ValueError("invalid update file descriptor")
+        if h in objects and objects[h] != size:
+            raise ValueError("inconsistent object size")
+        objects[h] = size
     launcher = payload.get("launcher", {})
     if not isinstance(launcher, dict) or not set(launcher) <= set(LAUNCHER):
         raise ValueError("invalid launcher descriptor")
@@ -271,8 +287,8 @@ def validate(payload: dict, game: str | None = None) -> dict[str, int]:
         if h in objects and objects[h] != size:
             raise ValueError("inconsistent object size")
         objects[h] = size
-    # The launchers sum every entry, "all" ones once (ftesurf_update.rs validate).
-    if sum(f["size"] for f in files) > 160 * 1024 * 1024:
+    # The launchers sum every entry, "all" ones once (ftesurf_update.rs validate); 0.1.7+ counts files_ext too.
+    if sum(f["size"] for f in files) + sum(f["size"] for f in ext) > 160 * 1024 * 1024:
         raise ValueError("feed exceeds small-install limits")
     native = platforms(payload)
     if not native:
@@ -281,7 +297,7 @@ def validate(payload: dict, game: str | None = None) -> dict[str, int]:
         # P1294: what this platform installs is its own entries and the "all" ones; a path once among them, as
         # the launcher's "overlapping platform entries" check (an "all" and a native entry would install two).
         names = set()
-        for f in files:
+        for f in files + ext:
             if f["platform"] in ("all", platform):
                 if f["path"].lower() in names:
                     raise ValueError("duplicate update path")
@@ -439,6 +455,7 @@ def build(stages: dict[str, Path], output: Path, version: str, mirrors: list[str
             files.extend(dict(f, platform=q) for f in old["files"] if f["platform"] in (q, "all"))
     executables = dict(old.get("exec_by_platform", {})) if same else {}
     launcher = {q: d for q, d in old.get("launcher", {}).items() if q not in stages} if same else {}
+    ext = [dict(f) for f in old.get("files_ext", []) if f["platform"] not in stages] if same else []
     omitted = []
     for platform, stage in stages.items():
         if platform not in ("win64", "linux64"):
@@ -452,6 +469,18 @@ def build(stages: dict[str, Path], output: Path, version: str, mirrors: list[str
             if not source.is_file():
                 continue
             p = source.relative_to(stage).as_posix()
+            if not managed(p, game) and p in EXT.get(platform, ()):
+                content = source.read_bytes()  # P1668: signed where only launcher 0.1.7+ reads it
+                if len(content) > 32 * 1024 * 1024:
+                    raise ValueError(f"file exceeds small-install limit: {p}")
+                h = hashlib.blake2b(content, digest_size=32).hexdigest()
+                obj = output / "objects" / h[:2] / h
+                obj.parent.mkdir(parents=True, exist_ok=True)
+                if not obj.exists():
+                    obj.write_bytes(content)
+                ext.append({"path": p, "hash": h, "size": len(content), "platform": platform, "exec": False})
+                paths.add(p.lower())
+                continue
             if not managed(p, game):
                 # Ordinary distribution docs and the launcher itself are not self-managed.
                 # Anything player-owned in a stage is still a fatal publishing mistake.
@@ -497,6 +526,8 @@ def build(stages: dict[str, Path], output: Path, version: str, mirrors: list[str
                "exec_by_platform": executables, "removed": []}
     if launcher:
         payload["launcher"] = dict(sorted(launcher.items()))
+    if ext:
+        payload["files_ext"] = sorted(ext, key=lambda f: (f["path"], f["platform"]))
     objects = validate(payload, game)
     # Retained platforms need their bytes too, not only descriptors in the new feed.
     for h, size in objects.items():

@@ -121,6 +121,9 @@ param(
     [string] $FteRoot  = $(if ($env:FTESURF_FTEROOT) { $env:FTESURF_FTEROOT } else { 'C:\msys64\home\Lex\fteqw' }),
     # Explicit source: never package an arbitrary bootstrap from a player install.
     [string] $LauncherRoot = $env:FTESURF_LAUNCHERROOT,
+    # P1668: the source of the Windows bootstrap when it is unchanged while the Linux one (from -LauncherRoot) moved on.
+    # A Linux host reuses the published Windows launcher only for this exact source; default: -LauncherRoot.
+    [string] $WindowsLauncherRoot = $env:FTESURF_WINDOWS_LAUNCHERROOT,
     # Linux host only (no MSVC there): a folder holding the previous release's public version.json
     # and the WOS-Launcher-<version>.exe it names. Used only when that release recorded exactly this
     # launcher source (commit + full source fingerprint, clean); its bytes must hash to the record.
@@ -441,12 +444,11 @@ $LinuxExec = @('ftesurf64', 'ftesurf.sh', 'WOS-Launcher')
 $LinuxRequired = @('ftesurf64', 'fteplug_hl2_amd64.so', 'ftesurf.sh', 'WOS-Launcher', 'notices/bootstrap.txt', 'default.fmf', 'LICENSE',
     'INSTALL.txt', 'VERSION.txt', 'SOURCE.txt', 'ftesurf/csprogs.dat', 'ftesurf/qwprogs.dat', 'ftesurf/menu.dat',
     'ftesurf/fs_addons.default.txt', 'ftesurf/fs_addons.txt', 'ftesurf/cfg/default.cfg')
-# P1654: the Linux ui_imgui plugin is in every drop (tools\linux\build.sh) and in NO release yet.
-# Installed launchers and engines refuse a WHOLE feed naming a path their own policy lacks, on both
-# platforms, and no feed updates a launcher (tools\updatefeed.py ROOT has the citations). Set this only
-# for a feed whose readers all manage the name; until then the signed-feed step refuses a stage holding it.
+# P1654/P1668: the Linux ui_imgui plugin ships. The archive carries it; the signed feed names it only in
+# "files_ext" (tools\updatefeed.py EXT), which installed launchers before 0.1.7 and every engine ignore (in "files"
+# they would refuse the whole feed); launcher 0.1.7 installs it, and P1666 engines install that launcher.
 # $LinuxRequired stays a literal: tools\test_bootstrap_linux_archive.ps1 reads it from the AST.
-$LinuxShipImgui = $false
+$LinuxShipImgui = $true
 $LinuxImguiName = 'fteplug_ui_imgui_amd64.so'
 $LinuxImguiFiles = @(if ($LinuxShipImgui) { $LinuxImguiName })                        # added to the drop lists
 $LinuxImguiRequired = @(if ($LinuxShipImgui) { $LinuxImguiName; 'THIRD-PARTY.txt' })  # added to $LinuxRequired
@@ -523,7 +525,8 @@ if (-not $SetupSite) {
     $frozenQc = Get-ReleaseSourceState $SurfDir -IgnoreVersion
     $frozenEngine = Get-ReleaseSourceState $FteRoot
     $frozenBootstrap = Get-BootstrapSource $LauncherRoot
-    $releaseHasDirtyInputs = ($frozenQc.Dirty -or $frozenEngine.Dirty -or $frozenBootstrap.dirty_source.Count)
+    $frozenWinBootstrap = if ($WindowsLauncherRoot) { Get-BootstrapSource $WindowsLauncherRoot } else { $frozenBootstrap }
+    $releaseHasDirtyInputs = ($frozenQc.Dirty -or $frozenEngine.Dirty -or $frozenBootstrap.dirty_source.Count -or $frozenWinBootstrap.dirty_source.Count)
     if ($releaseHasDirtyInputs -and -not $AllowDirty) { Fail 'release inputs must be clean inspected checkouts; use isolated worktrees, not another session dirty source' }
 }
 Step 'Preflight'
@@ -1069,8 +1072,11 @@ if ($Linux) {
 Step 'Build separately delivered Rust bootstrap'
 # A Linux host has no MSVC toolchain: it reuses the previous release's Windows bootstrap only when
 # that release recorded this exact source (Use-PublishedBootstrap); a Windows host rebuilds it.
-$bootstrap = if ($HostIsWindows) { Build-Bootstrap $bootstrapSource } else {
-    try { Use-PublishedBootstrap $bootstrapSource $ReuseWindowsBootstrap } catch { Fail $_.Exception.Message } }
+if ($frozenWinBootstrap.commit -cne $bootstrapSource.commit -or $frozenWinBootstrap.source_sha256 -cne $bootstrapSource.source_sha256) {
+    Info "Windows bootstrap source $($frozenWinBootstrap.commit.Substring(0, 9)), Linux $($bootstrapSource.commit.Substring(0, 9)) (P1668: separate)"
+}
+$bootstrap = if ($HostIsWindows) { Build-Bootstrap $frozenWinBootstrap } else {
+    try { Use-PublishedBootstrap $frozenWinBootstrap $ReuseWindowsBootstrap } catch { Fail $_.Exception.Message } }
 $linuxBootstrap = if ($Linux) { Build-Bootstrap $bootstrapSource $LinuxDistro $LinuxBuildChroot } else { $null }
 if ($Linux) {
     # The bootstrap can raise the advertised glibc floor above the engine's.
@@ -1890,6 +1896,10 @@ if (-not $SkipSite -and -not $Overrides.Count) {
         if ($pair[0].Head -cne $pair[1].Head -or $pair[0].ChangesSha256 -cne $pair[1].ChangesSha256 -or $pair[0].Description -cne $pair[1].Description) { Fail 'source inputs changed during preparation; no candidate sealed' }
     }
     if ($nowBootstrap.commit -cne $frozenBootstrap.commit -or $nowBootstrap.source_sha256 -cne $frozenBootstrap.source_sha256) { Fail 'launcher source changed during preparation' }
+    if ($WindowsLauncherRoot) {
+        $nowWin = Get-BootstrapSource $WindowsLauncherRoot
+        if ($nowWin.commit -cne $frozenWinBootstrap.commit -or $nowWin.source_sha256 -cne $frozenWinBootstrap.source_sha256) { Fail 'Windows launcher source changed during preparation' }
+    }
     Copy-Item -LiteralPath (Join-Path $updateFeed.Root 'update.json') -Destination (Join-Path $pageDir 'update.json')
     $publisherDir = Join-Path $OutDir "prepared-$Ver"
     if (Test-Path -LiteralPath $publisherDir) { Fail "unsealed publisher staging already exists: $publisherDir; inspect/recover it, do not rename around the failure" }
