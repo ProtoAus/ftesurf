@@ -488,18 +488,21 @@ def transition(original, op, actor, display, data, pool=()):
 RATING_START, RATING_K = 1000.0, 32.0
 
 
-def standings(matches):
-    """Tournament stats (Lex 21 Nov) from finished matches' final places, oldest first. Rating is Elo over every pair
-    in a match (a better place wins the pair, an equal place draws), K / (n - 1) per pair so one match moves a rating
-    by at most K; all of a match's changes use the ratings from before it. Shared first place counts as `shared`."""
+def standings(matches, banned=frozenset()):
+    """Tournament stats (Lex 21 Nov) from finished matches' final places, in creation order. Rating is Elo over every
+    pair in a match (a better place wins the pair, an equal place draws), K / (n - 1) per pair so one match moves a
+    rating by at most K; all of a match's changes use the ratings from before it. Shared first place counts as
+    `shared`. Only matches that reached a GO (_started) count, so a no-show or pre-GO forfeit farms nothing; banned
+    accounts are left out as the boards leave them out."""
     table = {}
     for m in matches:
-        if not isinstance(m, dict) or m.get('phase') != 'finished':
+        if not isinstance(m, dict) or m.get('phase') != 'finished' or not m.get('_started'):
             continue
         seen, ranked = set(), []
-        for p in m.get('players') or ():
+        players = m.get('players')
+        for p in players if isinstance(players, list) else ():
             who, place = (p.get('who'), p.get('place')) if isinstance(p, dict) else (None, None)
-            if isinstance(who, str) and who and who not in seen and type(place) is int and place > 0:
+            if isinstance(who, str) and who and who not in seen and who not in banned and type(place) is int and place > 0:
                 seen.add(who)
                 ranked.append(p)
         if len(ranked) < 2:

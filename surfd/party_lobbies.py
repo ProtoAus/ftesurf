@@ -24,6 +24,7 @@ TURN_SECONDS = 45  # per party draft ban/pick, then a seeded map is chosen for t
 JOIN_COOLDOWN = 10  # seconds between one account's joins of one room: each join bumps the revision
 JOURNAL_KEEP = 64  # request ids per account: retries come seconds apart, and this bounds the table
 FIELDS = ('op', 'id', 'revision', 'request', 'capacity', 'round_seconds', 'target', 'map', 'value', 'kind', 'tiers', 'profile', 'pool', 'text')
+STATS_TTL = 30
 OPS = frozenset(('configure', 'create', 'state', 'join', 'leave', 'cancel', 'seat', 'accept', 'lock', 'ban', 'pick', 'ready', 'start', 'say', 'kick'))
 CHAT_KEEP = 40
 CHAT_TEXT = 200
@@ -227,20 +228,21 @@ def register(app, d):
                     launch = dict(id=m['id'], epoch=m['epoch'], addr=m['addr'], map=m['schedule'][0], ready=ready)
         return dict(ok=1, status=status, me=accounts.who_of(sid), party=snapshot(db, m, now) if m else None, launch=launch)
 
-    stats_cache = dict(key=None, rows=[], matches=0)
+    stats_cache = dict(at=None, rows=[], matches=0)
 
     def stats_view(db, limit):
-        # Finished matches stay in tournament_matches; rowid is creation order. A finished state never changes,
-        # and a live one changes length as it advances, so this key is enough to reuse the replay.
-        key = tuple(db.execute('SELECT count(*), max(rowid), sum(length(state)) FROM tournament_matches').fetchone())
-        if key != stats_cache['key']:
+        # Finished matches stay in tournament_matches (rowid = creation order). A replay of every state, at most every
+        # STATS_TTL per worker: a change-detecting key missed same-length updates (review), and this bounds the cost.
+        now = d.clock()
+        if stats_cache['at'] is None or not 0 <= now - stats_cache['at'] < STATS_TTL:
+            banned = {accounts.who_of(r[0]) for r in db.execute('SELECT steamid FROM accounts WHERE banned_at>0')}
             states = []
             for (raw,) in db.execute('SELECT state FROM tournament_matches ORDER BY rowid'):
                 try:
                     states.append(json.loads(raw))
                 except ValueError:
                     continue
-            stats_cache.update(key=key, rows=rules.standings(states),
+            stats_cache.update(at=now, rows=rules.standings(states, banned),
                                matches=sum(1 for m in states if isinstance(m, dict) and m.get('phase') == 'finished'))
         return dict(matches=stats_cache['matches'], rows=stats_cache['rows'][:limit])
 
@@ -461,8 +463,9 @@ def register(app, d):
                 out = result(db, m, sid, now)
             if op == 'create':
                 # Lex 21 Nov: the public lobby chat hears about a new room, as the host's board line (after the
-                # commit; social.announce paces one per player per two minutes and never raises).
-                social.announce(db, sid, 'opened a tournament room -- join from the TOURNAMENT tab', now)
+                # commit; never raises). always=True: a recent personal-best line must not silence it; the same
+                # line inside social.ANNOUNCE_GAP still posts once.
+                social.announce(db, sid, 'opened a tournament room -- join from the TOURNAMENT tab', now, always=True)
             return response(out)
         except rules.Refusal as exc:
             return response(dict(ok=0, status='refused', error=str(exc)[:160], me=accounts.who_of(sid) if sid else '', party=None, launch=None))

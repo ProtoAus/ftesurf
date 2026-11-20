@@ -140,7 +140,8 @@ class Pool(unittest.TestCase):
             P.revalidate(self.db, self.d, m)
 
     def test_one_build_per_family_momentum_first_lex_21nov(self):
-        families = {'surf_Exact': 'surf_Exact', 'surf_Exact_css': 'surf_Exact'}
+        # surfd.variant_base's keys and values are clean_map lowercase; the disk spelling here is mixed case.
+        families = {'surf_exact': 'surf_exact', 'surf_exact_css': 'surf_exact'}
         self.d.variant_base = families.get
         rows, unqualified = self.pool()
         self.assertEqual((list(rows), unqualified), (['surf_Exact'], 0))
@@ -152,6 +153,16 @@ class Pool(unittest.TestCase):
         self.records['surf_Exact']['default']['approved'] = 0
         self.save()
         self.assertEqual(self.pool(), ({'surf_Exact_css': self.pool()[0]['surf_Exact_css']}, 1))
+        self.tiers['surf_exact'] = 1
+        self.records['surf_Exact']['default']['approved'] = 1
+        self.save()
+        # Exact names already chosen are never folded: a frozen draft holding the variant, and a host's own pool.
+        everything, _ = P.catalogue(self.db, self.d, self.settings(), fold=False)
+        m = dict(settings=self.settings(), schedule=['surf_Exact_css'], reserve='surf_Exact',
+                 _pins={n: c['pin'] for n, c in everything.items()})
+        P.revalidate(self.db, self.d, m)
+        self.assertEqual(list(P.selected(self.db, self.d, self.settings(pool='surf_Exact_css'))), ['surf_Exact_css'])
+        self.assertEqual(list(P.selected(self.db, self.d, self.settings())), ['surf_Exact'])
         # No catalogue (variant_base answers None): nothing is folded.
         self.d.variant_base = lambda name: None
         self.records['surf_Exact']['default']['approved'] = 1

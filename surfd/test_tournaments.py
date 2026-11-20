@@ -1090,8 +1090,8 @@ class API(unittest.TestCase):
 
 class Standings(unittest.TestCase):
     """Lex 21 Nov: tournament wins and an Elo-style rating from finished matches."""
-    def match(self, places, phase='finished'):
-        return dict(phase=phase, players=[dict(who=w, name=w.upper(), place=p) for w, p in places])
+    def match(self, places, phase='finished', started=1):
+        return dict(phase=phase, _started=started, players=[dict(who=w, name=w.upper(), place=p) for w, p in places])
 
     def test_wins_shared_played_and_pairwise_elo(self):
         rows = R.standings([self.match([('a', 1), ('b', 2), ('c', 3)]),
@@ -1113,7 +1113,11 @@ class Standings(unittest.TestCase):
         self.assertEqual(rows[0]['who'], 'p0')
         self.assertEqual(sum(r['rating'] for r in rows), 8000)
         self.assertEqual(R.standings([]), [])
-        self.assertEqual(R.standings([dict(phase='finished', players=[dict(who='a', place=1), dict(who='a', place=2)])]), [])
+        # No GO in the match (a no-show or pre-GO forfeit): nothing to farm. A banned account is left out.
+        self.assertEqual(R.standings([self.match([('a', 1), ('b', 2)], started=0)]), [])
+        self.assertEqual([r['who'] for r in R.standings([self.match([('a', 1), ('b', 2), ('c', 3)])], {'b'})], ['a', 'c'])
+        self.assertEqual(R.standings([dict(phase='finished', _started=1, players={'a': 1})]), [])
+        self.assertEqual(R.standings([dict(phase='finished', _started=1, players=[dict(who='a', place=1), dict(who='a', place=2)])]), [])
 
 
 if __name__ == '__main__':

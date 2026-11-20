@@ -840,7 +840,7 @@ class PartyAPI(unittest.TestCase):
         self.db.execute('DELETE FROM tournament_matches')
         for n, places in enumerate(([('aaaaaaaa', 1), ('bbbbbbbb', 2)], [('bbbbbbbb', 1), ('aaaaaaaa', 2)],
                                     [('aaaaaaaa', 1), ('bbbbbbbb', 2)])):
-            state = dict(phase='finished', players=[dict(who=w, name='N' + w[0], place=p) for w, p in places])
+            state = dict(phase='finished', _started=1, players=[dict(who=w, name='N' + w[0], place=p) for w, p in places])
             self.db.execute('INSERT INTO tournament_matches VALUES(?,?,?)', ('m%d' % n, 'node', json.dumps(state)))
         self.db.execute('INSERT INTO tournament_matches VALUES(?,?,?)', ('live', 'node', json.dumps(dict(phase='live'))))
         self.db.commit()
