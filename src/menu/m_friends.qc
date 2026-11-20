@@ -599,6 +599,19 @@ float(float reqid, float code, string body) MF_Reply =
 	return TRUE;
 };
 
+// P1679: a lobby says "Stage 1" on a linear course too (surfd takes only Stage/Bonus/Spectating); read it as Main.
+string(string map, string activity) MF_Activity =
+{
+	local float row;
+	if (activity != "Stage 1") return activity;
+	row = ui_map_index(map);
+	if (row >= 0)
+	if (tokenize(bufstr_get(ms_meta, row)) > MT_STAGES)
+	if (argv(MT_LINEAR) == "1" || (argv(MT_STAGES) != "-" && stof(argv(MT_STAGES)) <= 1))
+		return "Main";
+	return activity;
+};
+
 void(vector pos, vector size) MF_Draw =
 {
 	local float i, rel, online, menuonline, at, fresh, alpha, flag, room, bw;
@@ -649,6 +662,7 @@ void(vector pos, vector size) MF_Draw =
 			server = uri_unescape(argv(4));
 			map = uri_unescape(argv(5));
 			activity = at >= 7 ? uri_unescape(argv(6)) : "";
+			activity = MF_Activity(map, activity);     // tokenizes: every argv above is read
 			alpha = (online || menuonline) ? 1 : 0.45;
 			room = size_x - 114;
 			sui_style_box(rp, [size_x - 38, 64], 8, SUI_THEME_WELL, SUI_THEME_EDGE, alpha);
