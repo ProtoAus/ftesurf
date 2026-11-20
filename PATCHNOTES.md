@@ -21,6 +21,27 @@
 
 ## next
 
+### P1651 A friendlier Tournament tab
+- Leaving a tournament room takes a second click, and the warning says what leaving does.
+- If you drop out of a running tournament, a Rejoin button takes you back to its server. Started rooms have a Watch button.
+- You can link Steam from the Tournament tab. Errors read in plain words, the rules fit in one line, the room code is in the room header and draft turns show their clock.
+
+### P1650 Fairer tournament rules
+- Each round, everyone who doesn't finish, or who ties for the slowest time, is out. If nobody finishes, everyone goes through. The last one standing wins.
+- Leaving after the tournament has started counts as dropping out, and leaving before it sends the room back to the lobby. It no longer ends the tournament for everyone.
+- Draft turns have a 45-second clock, after which a map is chosen for you. Viewers can join a room to watch at any time.
+
+### P1649 Clearer tournaments in game
+- During a tournament a banner shows the round, the map and the clock with the standings underneath, and big messages mark GO, the end of a round and the winner. F6 opens the tournament panel.
+- Chat announces each round, every new best time with its place, who is out and who wins.
+- If a finish doesn't count (a bonus, a single stage, or a practice or segmented run), you're told why.
+
+### P1648 Tournaments that run themselves
+- A round starts by itself once everyone is on the server, and the host can start it early. Someone who doesn't arrive is left out after a grace period instead of everyone waiting.
+- Lobby servers restart themselves while empty, before many map changes can make them unstable.
+
+## 0.1.49 2026-11-20
+
 ### P1639 Bhop tournaments at 100 tick
 - Bhop tournaments play at bhop's normal 100 tick.
 
@@ -42,7 +63,7 @@
 ### P1631 All bhop and ahop maps in the finder; ahop rules; speed caps
 - Every bhop_ and ahop_ map now shows under Bhop in the map finder (bhop_canals was hidden).
 - Maps in Momentum's ahop mode play with its ahop movement (gravity 600, slower walking, 66 tick).
-- Maps that raise their speed cap on Momentum or KSF (such as surf_affliction at 10000) now get it automatically.
+- Maps that raise their speed cap on Momentum or KSF now get it automatically.
 
 ### P1630 Displacements collide where you see them
 - About a third of terrain displacements had an invisible layer about 4 units in front of the rock. You no longer fall off ahop_coast's ladder or catch on terrain seams. Times on affected maps are not comparable with older builds.

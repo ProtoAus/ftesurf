@@ -14,6 +14,11 @@ string tour_mapname[TOUR_MAPS], tour_pic[TOUR_MAPS];
 var filestream tour_meta = -1;
 float tour_meta_rows;
 float tour_create_seats, tour_create_seconds, tour_openat;
+// P1649: map play order (0 = unscheduled), the leave confirmation, and the centre announcement.
+float tour_mapord[TOUR_MAPS];
+float tour_leaveat, tour_evtat, tour_evtfor;
+string tour_evt, tour_evtsub;
+vector tour_evtcolour;
 // Keys pressed while the panel is open; only their releases are the panel's, so a key
 // held when it opened (+forward, +duck) still gets its release (as cl_report.qc's Rp_Took).
 #define TOUR_KN 8
@@ -134,12 +139,54 @@ void(string action) Tour_Ask =
 {
 	if (action != "resync" && action != "open" && substring(action, 0, 7) != "create ")
 	if (tour_id == "" || cltime - tour_received > 20)
-	{ tour_note = "Snapshot is stale. Refresh before acting."; return; }
+	{ tour_note = "This view is out of date. Click Refresh first."; return; }
 	if (cltime < tour_next_action) return;
 	tour_next_action = cltime + 0.75;
 	localcmd(strcat("cmd tour ", action, "\n"));
 	tour_request_at = cltime + 8;
-	tour_note = "Request sent; awaiting server confirmation.";
+	tour_note = "Sent. Waiting for the server...";
+};
+
+// P1649: the big centre line for a phase change, read from the staged snapshot before it is swapped
+// in (tour_phase is still the old phase). Nothing on the first snapshot of a match: a late joiner
+// is not shown a stale GO.
+void(strbuf staged) Tour_Event =
+{
+	local string nphase, outs, wins, name, mname;
+	local float i, minplace, place;
+	tokenize(tour_header);
+	nphase = argv(3);
+	if (nphase == tour_phase || (strcmp(argv(1), tour_id) && !(tour_id == "" && nphase == "loading"))) return;
+	mname = uri_unescape(argv(12)); tour_evtsub = Tour_Text(argv(14), 180);
+	tour_evt = sprintf("ROUND %s OF %s", argv(6), argv(7));
+	minplace = 999; outs = wins = "";
+	for (i = 0; i < tour_sp; i += 1)
+	{
+		tokenize(bufstr_get(staged, i));
+		name = Tour_Text(argv(2), 32); place = stof(argv(8));
+		if (argv(3) == "eliminated" && place > 0)
+		{
+			if (place < minplace) { minplace = place; outs = name; }
+			else if (place == minplace) outs = strcat(outs, ", ", name);
+		}
+		if (argv(3) == "player" && place == 1) wins = strlen(wins) ? strcat(wins, ", ", name) : name;
+	}
+	tour_evtat = cltime; tour_evtcolour = '0.45 0.85 1'; tour_evtfor = 3;
+	if (nphase == "loading") { tour_evtsub = (mname != "-") ? mname : ""; }
+	else if (nphase == "live") { tour_evt = "GO!"; tour_evtsub = ""; tour_evtfor = 1.5; tour_evtcolour = '0.45 1 0.55'; }
+	else if (nphase == "results")
+	{
+		tour_evt = strlen(wins) ? ((strstrofs(wins, ", ", 0) >= 0) ? "SHARED FIRST PLACE" : strcat(wins, " WINS!")) : "ROUND OVER";
+		tour_evtsub = strlen(outs) ? strcat("Out: ", outs) : tour_evtsub; tour_evtfor = 5;
+		if (strlen(wins)) tour_evtcolour = '1 0.82 0.2';
+	}
+	else if (nphase == "finished")
+	{
+		tour_evt = strlen(wins) ? ((strstrofs(wins, ", ", 0) >= 0) ? "SHARED FIRST PLACE" : strcat(wins, " WINS THE TOURNAMENT")) : "TOURNAMENT OVER";
+		tour_evtsub = (strstrofs(wins, ", ", 0) >= 0) ? wins : ""; tour_evtfor = 8; tour_evtcolour = '1 0.82 0.2';
+	}
+	else if (nphase == "aborted" || nphase == "cancelled") { tour_evt = "NO CONTEST"; tour_evtfor = 6; tour_evtcolour = '1 0.4 0.35'; }
+	else tour_evt = "";
 };
 
 float(float argc, string line) Tour_Command =
@@ -200,7 +247,7 @@ float(float argc, string line) Tour_Command =
 	{
 		if (!tour_stage) return TRUE;
 		tourmap = uri_unescape(argv(1));
-		if (argc != 4 || tour_sm >= TOUR_MAPS || !Tour_MapOK(tourmap) || strlen(line) > 256)
+		if ((argc != 4 && argc != 5) || tour_sm >= TOUR_MAPS || !Tour_MapOK(tourmap) || strlen(line) > 256)
 		{ tour_stage = FALSE; return TRUE; }
 		bufstr_set(tour_stage_maps, tour_sm, line); tour_sm += 1;
 		return TRUE;
@@ -208,6 +255,7 @@ float(float argc, string line) Tour_Command =
 	if (op == "tourney_end")
 	{
 		if (!tour_stage || argc != 2 || stof(argv(1)) != tour_stage_revision) return TRUE;
+		Tour_Event(tour_stage_players);
 		tokenize(tour_header);
 		keepclock = (!strcmp(tour_id, argv(1)) && !strcmp(tour_phase, argv(3)) && tour_round == stof(argv(6)));
 		if (strcmp(tour_id, argv(1))) tour_entered = 0;
@@ -224,7 +272,7 @@ float(float argc, string line) Tour_Command =
 		tour_np = tour_sp; tour_nm = tour_sm; tour_stage = FALSE; tour_received = cltime; tour_request_at = 0;
 		for (i = 0; i < tour_nm; i += 1)
 		{
-			tokenize(bufstr_get(tour_maps, i));
+			tour_mapord[i] = (tokenize(bufstr_get(tour_maps, i)) == 5) ? bound(0, stof(argv(4)), TOUR_MAPS) : 0;
 			tour_mapname[i] = uri_unescape(argv(1)); tour_pic[i] = "";
 			tour_page[i] = tour_cell[i] = -1;
 		}
@@ -241,8 +289,8 @@ void() Tour_Frame =
 	local float n, i, page, cell;
 	local string ln, who;
 	if (tour_request_at && cltime > tour_request_at)
-	{ tour_request_at = 0; tour_note = "No confirmation received. Refresh to check the server state."; }
-	if (tour_stage && cltime - tour_stage_at > 15) { tour_stage = FALSE; tour_note = "Incomplete snapshot; click Refresh."; }
+	{ tour_request_at = 0; tour_note = "The server did not answer. Click Refresh."; }
+	if (tour_stage && cltime - tour_stage_at > 15) { tour_stage = FALSE; tour_note = "Could not load the tournament state. Click Refresh."; }
 	if (cvar("cl_tourney_create") != 0)
 	{
 		if (!tour_create_at) tour_create_at = gettime(0) + 30;
@@ -314,8 +362,8 @@ float(float evtype, float x, float y, float devid) Tour_Input =
 		// An OS repeat is not a press (cl_chat.qc's chat_rep): a key held into the panel keeps its release.
 		if (chat_rep) return TRUE;
 		Tour_Took(x, TRUE);
-		// Esc or the key bound to `tournament` (F6 in the playtest) closes it again.
-		if (x == K_ESCAPE || (getkeybind(x) == "tournament" && cltime - tour_openat > 0.3)) { Tour_Close(); return TRUE; }
+		// Esc, F6 during a match (Tour_Key), or the key bound to `tournament` closes it again.
+		if (x == K_ESCAPE || ((getkeybind(x) == "tournament" || (x == K_F6 && (tour_id != "" || serverkey("tournament") != ""))) && cltime - tour_openat > 0.3)) { Tour_Close(); return TRUE; }
 		sui_input_event(evtype, x, y, devid);
 		return TRUE;
 	}
@@ -503,7 +551,8 @@ void(vector scr) Tour_Draw =
 		if (argv(3) == "spectator") { spec += 1; continue; }
 		tour_seat[i] = seat; seat += 1;
 		tour_besttext[i] = "DNF";
-		if (stof(argv(6)) > 0 && stof(argv(7)) > 0) tour_besttext[i] = Time_TickString(stof(argv(6)), stof(argv(7)));
+		// P1649: the snapshot's tickrate is ticks per second; Time_TickString wants seconds per tick.
+		if (stof(argv(6)) > 0 && stof(argv(7)) > 0) tour_besttext[i] = Time_TickString(stof(argv(6)), 1 / stof(argv(7)));
 		tour_order[n] = i; n += 1;
 		if (argv(3) != "player") continue;
 		seconds = stof(argv(6));
@@ -530,8 +579,7 @@ void(vector scr) Tour_Draw =
 
 	// --- hero: phase, round, map, clock
 	phase = tour_phase;
-	remaining = tour_remaining;
-	if (phase == "live" || phase == "countdown") remaining = max(0, remaining - (cltime - tour_clock_at));
+	remaining = max(0, tour_remaining - (cltime - tour_clock_at)); // P1649: every phase's server clock counts down
 	colour = SUI_THEME_DIM; line = strtoupper(phase);
 	if (phase == "live") { colour = SUI_THEME_GOOD; line = "LIVE"; }
 	if (phase == "countdown") { colour = SUI_THEME_FOCUS; line = "GET READY"; }
@@ -556,7 +604,9 @@ void(vector scr) Tour_Draw =
 	if (phase == "live" || phase == "countdown")
 		Tour_Place(at + [size_x - 40 - 216, 8], '200 80 0', Tour_Clock(remaining), 64, (remaining <= 30) ? SUI_THEME_BAD : SUI_THEME_TEXT, 2, 1);
 	else if (phase == "loading")
-		Tour_Place(at + [size_x - 40 - 216, 8], '200 80 0', myplayer ? (ready ? "You are ready" : "Ready up when loaded") : "Players are loading", 16, SUI_THEME_DIM, 2);
+		Tour_Place(at + [size_x - 40 - 216, 8], '200 80 0', myplayer ? (ready ? "You are ready" : ((serverkey("tournament_auto") == "0") ? "Click Ready on map" : "Starts once everyone is here")) : "Players are loading", 16, SUI_THEME_DIM, 2);
+	else if (phase == "results" || phase == "finished" || phase == "aborted" || phase == "cancelled")
+		Tour_Place(at + [size_x - 40 - 216, 8], '200 80 0', sprintf((phase == "results") ? "Next round in %s" : "Back to normal play in %s", Tour_Clock(remaining)), 16, SUI_THEME_DIM, 2);
 
 	// --- body: standings left, maps right
 	top = 172; bh = size_y - top - 74; // clamped to the screen above
@@ -580,7 +630,8 @@ void(vector scr) Tour_Draw =
 		Tour_Place(at + [52, y + 3], [lw - 220, 22], strcat(name, mine ? " (you)" : ""), 16, (role == "eliminated") ? SUI_THEME_MUTED : SUI_THEME_TEXT);
 		x = 52;
 		if (!strcmp(who, tour_host)) x += Tour_Pill(at + [x, y + rh - 23], "HOST", SUI_THEME_ACCENT2) + 6;
-		if (role == "eliminated") Tour_Pill(at + [x, y + rh - 23], "ELIMINATED", SUI_THEME_MUTED);
+		if (role == "player" && place == 1) Tour_Pill(at + [x, y + rh - 23], "WINNER", SUI_THEME_GOOD);
+		else if (role == "eliminated") Tour_Pill(at + [x, y + rh - 23], "ELIMINATED", SUI_THEME_MUTED);
 		else if (i == risk && phase == "live") Tour_Pill(at + [x, y + rh - 23], "AT RISK", SUI_THEME_BAD);
 		else if (phase == "loading" || phase == "lobby") Tour_Pill(at + [x, y + rh - 23], stof(argv(4)) ? "READY" : (phase == "lobby" ? (stof(argv(5)) ? "ACCEPTED" : "SEAT OFFERED") : "NOT READY"), stof(argv(4)) ? SUI_THEME_GOOD : SUI_THEME_MUTED);
 		Tour_Place(at + [lw - 170, y], [146, rh], tour_besttext[i], 20, (tour_besttext[i] == "DNF") ? SUI_THEME_MUTED : SUI_THEME_TEXT, 2);
@@ -595,16 +646,16 @@ void(vector scr) Tour_Draw =
 	if (phase == "draft") line = can ? sprintf("your turn: %s a map", tour_kind) : "map draft";
 	else line = "maps";
 	Tour_Place(at + '14 8 0', [cw - 28, 26], line, 20, can ? SUI_THEME_FOCUS : SUI_THEME_ACCENT);
-	// One row per map, in play order: the current map, then picks, the reserve,
-	// the ones nobody picked, and the bans.
+	// One row per map, in play order: the current map, the picks by round (P1649: the server sends each
+	// map's round), the reserve, played ones, the ones nobody picked, and the bans.
 	for (i = 0; i < tour_nm; i += 1) tour_maporder[i] = i;
 	for (j = 1; j < tour_nm; j += 1)
 		for (k = j; k > 0; k -= 1)
 		{
 			tokenize(bufstr_get(tour_maps, tour_maporder[k])); status = argv(2);
-			best = (tour_mapname[tour_maporder[k]] == tour_map) ? 0 : ((status == "picked") ? 1 : ((status == "reserve") ? 2 : ((status == "pool") ? 3 : 4)));
+			best = (tour_mapname[tour_maporder[k]] == tour_map) ? 0 : ((status == "picked") ? 1 + tour_mapord[tour_maporder[k]] / 100 : ((status == "reserve") ? 2 : ((status == "played") ? 3 : ((status == "pool") ? 4 : 5))));
 			tokenize(bufstr_get(tour_maps, tour_maporder[k - 1])); status = argv(2);
-			bt = (tour_mapname[tour_maporder[k - 1]] == tour_map) ? 0 : ((status == "picked") ? 1 : ((status == "reserve") ? 2 : ((status == "pool") ? 3 : 4)));
+			bt = (tour_mapname[tour_maporder[k - 1]] == tour_map) ? 0 : ((status == "picked") ? 1 + tour_mapord[tour_maporder[k - 1]] / 100 : ((status == "reserve") ? 2 : ((status == "played") ? 3 : ((status == "pool") ? 4 : 5))));
 			if (best >= bt) break;
 			i = tour_maporder[k]; tour_maporder[k] = tour_maporder[k - 1]; tour_maporder[k - 1] = i;
 		}
@@ -618,7 +669,9 @@ void(vector scr) Tour_Draw =
 		tokenize(bufstr_get(tour_maps, i)); status = argv(2);
 		y = 42 + (k - first) * (chh + 6);
 		line = "NOT PICKED"; colour = SUI_THEME_MUTED;
-		if (status == "picked") { line = "UP NEXT"; colour = SUI_THEME_GOOD; }
+		if (status == "picked") { line = (tour_mapord[i] > 0) ? sprintf("ROUND %g", tour_mapord[i]) : "UP NEXT"; colour = SUI_THEME_GOOD; }
+		if (status == "picked" && tour_mapord[i] == tour_round + 1) line = "UP NEXT";
+		if (status == "played") { line = "PLAYED"; colour = SUI_THEME_DIM; }
 		if (status == "reserve") { line = "RESERVE"; colour = SUI_THEME_INFO; }
 		if (status == "banned") { line = "BANNED"; colour = SUI_THEME_BAD; }
 		if (tour_mapname[i] == tour_map) { line = "NOW"; colour = SUI_THEME_ACCENT; }
@@ -643,7 +696,16 @@ void(vector scr) Tour_Draw =
 
 	// --- actions: leave/cancel left, the phase's own button(s) right
 	y = p_y + size_y - 60; bw = 170;
-	if (Tour_Btn("tour_leave", [p_x + 20, y], '140 40 0', "Leave event", 0, tour_id != "")) Tour_Ask("leave");
+	// P1649: one stray click used to end the match for everyone; leaving takes a second click.
+	if (Tour_Btn("tour_leave", [p_x + 20, y], '140 40 0', (cltime < tour_leaveat) ? "Click again" : "Leave event", (cltime < tour_leaveat) ? 2 : 0, tour_id != ""))
+	{
+		if (cltime < tour_leaveat) { tour_leaveat = 0; Tour_Ask("leave"); }
+		else
+		{
+			tour_leaveat = cltime + 4;
+			tour_note = myplayer ? "Leaving drops you out of the tournament. Click again to leave." : "Click again to leave.";
+		}
+	}
 	if (host && (phase == "lobby" || phase == "draft"))
 	if (Tour_Btn("tour_cancel", [p_x + 172, y], '120 40 0', "Cancel", 2, TRUE)) Tour_Ask("cancel");
 	x = p_x + size_x - 20;
@@ -663,7 +725,175 @@ void(vector scr) Tour_Draw =
 	if (host && phase == "lobby") { x -= bw; if (Tour_Btn("tour_lock", [x, y], [bw, 40], "Lock roster", 1, TRUE)) Tour_Ask("lock"); x -= 10; }
 	line = tour_note;
 	if (cltime - tour_received > 20) line = "This view is out of date. Click Refresh.";
-	if (line == "") line = (serverkey("tournament_test") == "1") ? "Local test: the practice partner does not surf or set times." : "F6 opens and closes this panel.";
+	if (line == "") line = (serverkey("tournament_test") == "1") ? "Local test: the practice partner does not surf or set times." : "Press F6 to close this panel.";
 	Tour_Place([p_x + 304, y], [x - p_x - 316, 40], line, 12, (cltime - tour_received > 20) ? SUI_THEME_WARN : SUI_THEME_DIM);
 	sui_end(); Font_Reset();
+};
+
+// ---------------------------------------------------------------------------
+//  P1649: the match without opening F6 -- a banner, the standings and centre
+//  announcements, for competitors, spectators and a host's stream alike.
+// ---------------------------------------------------------------------------
+
+// F6 belongs to the tournament while this server has a match: no bind needed (nothing shipped one).
+// With no match, F6 keeps its bind; a report box on screen (it reads "F6 Send report") keeps its F6.
+float(float scanx) Tour_Key =
+{
+	if (scanx != K_F6 || (tour_id == "" && serverkey("tournament") == "")) return FALSE;
+	if (PE_BoxUp() || CR_BoxUp()) return FALSE;
+	if (tour_open) Tour_Close();
+	else { Tour_Open(); Tour_Ask("open"); }
+	return TRUE;
+};
+
+float tour_hn, tour_hrow[TOUR_PLAYERS];
+// Competitors fastest first, then no time yet, then the eliminated by place: tour_hrow[0..tour_hn).
+void() Tour_Rank =
+{
+	local float i, j, k, a, b;
+	tour_hn = 0;
+	for (i = 0; i < tour_np && tour_hn < TOUR_PLAYERS; i += 1)
+	{
+		tokenize(bufstr_get(tour_players, i));
+		if (argv(3) != "spectator") { tour_hrow[tour_hn] = i; tour_hn += 1; }
+	}
+	for (j = 1; j < tour_hn; j += 1)
+		for (k = j; k > 0; k -= 1)
+		{
+			tokenize(bufstr_get(tour_players, tour_hrow[k]));
+			a = (argv(3) == "eliminated") ? 3000000 + stof(argv(8)) : ((stof(argv(6)) > 0 && stof(argv(7)) > 0) ? stof(argv(6)) / stof(argv(7)) : 2000000);
+			tokenize(bufstr_get(tour_players, tour_hrow[k - 1]));
+			b = (argv(3) == "eliminated") ? 3000000 + stof(argv(8)) : ((stof(argv(6)) > 0 && stof(argv(7)) > 0) ? stof(argv(6)) / stof(argv(7)) : 2000000);
+			if (a >= b) break;
+			i = tour_hrow[k]; tour_hrow[k] = tour_hrow[k - 1]; tour_hrow[k - 1] = i;
+		}
+};
+
+// What this viewer should do or expect next, in one line.
+string(float remaining) Tour_NextStep =
+{
+	local float i, n, rd, mine, myready, myrank, host;
+	local string mytime;
+	host = (tour_me != "-" && tour_me != "" && !strcmp(tour_me, tour_host));
+	n = rd = mine = myready = myrank = 0; mytime = "";
+	for (i = 0; i < tour_hn; i += 1)
+	{
+		tokenize(bufstr_get(tour_players, tour_hrow[i]));
+		if (argv(3) != "player") continue;
+		n += 1;
+		if (stof(argv(4))) rd += 1;
+		if (!strcmp(argv(1), tour_me))
+		{
+			mine = TRUE; myready = stof(argv(4)); myrank = n;
+			if (stof(argv(6)) > 0 && stof(argv(7)) > 0) mytime = Time_TickString(stof(argv(6)), 1 / stof(argv(7)));
+		}
+	}
+	if (tour_phase == "loading")
+	{
+		if (serverkey("tournament_starts") == "1") return sprintf("Everyone is here: the round starts in %s%s", Tour_Clock(remaining), host ? "  (F6 to start now)" : "");
+		if (serverkey("tournament_starts") == "2") return sprintf("Starting without the missing players in %s%s", Tour_Clock(remaining), host ? "  (F6 to start now)" : "");
+		if (serverkey("tournament_auto") == "0")
+		{
+			if (mine && !myready) return "Press F6 and click Ready on map";
+			if (host && n && rd == n) return "Everyone is ready: press F6 and click Start round";
+			return sprintf("Ready: %g of %g. The host starts the round", rd, n);
+		}
+		return mine ? "Loading in. The round starts once everyone is here" : "Players are loading in";
+	}
+	if (tour_phase == "countdown") return mine ? "Get ready: you're held at the start until GO" : "The round is about to start";
+	if (tour_phase == "live")
+	{
+		if (!mine) return "Watching: best times so far below";
+		if (mytime != "") return sprintf("Your best: %s (%g of %g). Restart any time to beat it", mytime, myrank, n);
+		return "No time yet: finish a clean run before the clock runs out";
+	}
+	if (tour_phase == "results") return sprintf("Round over. Next round in %s", Tour_Clock(remaining));
+	if (tour_phase == "finished" || tour_phase == "aborted" || tour_phase == "cancelled")
+		return sprintf("%sBack to normal play in %s", (tour_note != "") ? strcat(tour_note, "  ") : "", Tour_Clock(remaining));
+	return "Press F6 for the tournament panel";
+};
+
+void(vector scr) Tour_Hud =
+{
+	local vector p, at, colour;
+	local float w, h, x, remaining, i, rows, rh, risk, big, n, dnf, starts, sz1, sz2, lh1, lh2, pad;
+	local string line, title, name, tm;
+	// Plain draws only: sui_begin empties sui's single hit-test list and sui_end clears the click and typing
+	// buffers, so an always-on bracket here broke every menu drawn after it (P1649 review). Hidden while
+	// any panel holds the cursor.
+	if (tour_id == "" || tour_open || rec_sb_open || UI_CursorHeld() || scr_x < 640) return;
+	remaining = max(0, tour_remaining - (cltime - tour_clock_at));
+	Tour_Rank();
+	colour = '0.7 0.72 0.78'; line = strtoupper(tour_phase);
+	if (tour_phase == "live") { colour = '0.45 1 0.55'; line = "LIVE"; }
+	if (tour_phase == "countdown") { colour = '0.45 0.85 1'; line = "GET READY"; }
+	if (tour_phase == "loading") { colour = '1 0.82 0.2'; line = "LOADING"; }
+	if (tour_phase == "results") { colour = '0.45 0.85 1'; line = "RESULTS"; }
+	if (tour_phase == "finished") { colour = '1 0.82 0.2'; line = "FINISHED"; }
+	if (tour_phase == "aborted" || tour_phase == "cancelled") { colour = '1 0.4 0.35'; line = "NO CONTEST"; }
+	title = (tour_rounds > 0) ? sprintf("Round %g of %g", max(1, tour_round), tour_rounds) : "Tournament";
+	if (tour_map != "" && tour_map != "-") title = strcat(title, "  |  ", tour_map);
+	sz1 = 9 * ui_cv_scale; sz2 = 6.5 * ui_cv_scale; lh1 = Font_Px(sz1); lh2 = Font_Px(sz2); pad = 8 * ui_cv_scale;
+	w = min(scr_x - 32, max(380, 34 * lh1)); h = pad * 2 + lh1 + 4 * ui_cv_scale + lh2;
+	p = '16 8 0';
+	// Top-left: the run timer owns the top centre and the map card the top right (first playtest shots).
+	drawfill(p, [w, h], '0.05 0.06 0.09', 0.78, 0);
+	drawfill(p, [3 * ui_cv_scale, h], colour, 0.95, 0);
+	Font_Set(ui_font_display);
+	x = p_x + pad + 3 * ui_cv_scale;
+	HUD_Text([x, p_y + pad, 0], line, sz1, colour, 1);
+	x = x + stringwidth(line, TRUE, [lh1, lh1]) + pad;
+	HUD_Text([x, p_y + pad, 0], title, sz1, '1 1 1', 1);
+	n = dnf = 0; risk = -1;
+	for (i = 0; i < tour_hn; i += 1)
+	{
+		tokenize(bufstr_get(tour_players, tour_hrow[i]));
+		if (argv(3) != "player") continue;
+		n += 1; risk = i;
+		if (!(stof(argv(6)) > 0)) dnf += 1;
+	}
+	if (n < 2) risk = -1;
+	starts = (tour_phase == "loading" && serverkey("tournament_starts") != "");
+	if (tour_phase == "live" || tour_phase == "countdown" || tour_phase == "results" || starts)
+		HUD_TextR([p_x + w - pad, p_y + pad, 0], Tour_Clock(remaining), sz1, (tour_phase == "live" && remaining <= 30) ? '1 0.4 0.35' : '1 1 1', 1);
+	Font_Set(ui_font_ui);
+	HUD_Text([p_x + pad + 3 * ui_cv_scale, p_y + pad + lh1 + 4 * ui_cv_scale, 0], Tour_NextStep(remaining), sz2, '0.75 0.78 0.84', 1);
+
+	// Standings: rank, name, best. While live, who would be out now is red: everyone without a time, or else
+	// the slowest (surfd's settle).
+	rows = min(tour_hn, 8); rh = lh2 + 5 * ui_cv_scale;
+	at = [p_x, p_y + h + 6];
+	if (rows > 0)
+	{
+		drawfill(at, [w, rows * rh + pad], '0.05 0.06 0.09', 0.7, 0);
+		for (i = 0; i < rows; i += 1)
+		{
+			tokenize(bufstr_get(tour_players, tour_hrow[i]));
+			name = Tour_Text(argv(2), 28);
+			tm = (stof(argv(6)) > 0 && stof(argv(7)) > 0) ? Time_TickString(stof(argv(6)), 1 / stof(argv(7))) : "no time";
+			colour = '1 1 1';
+			if (argv(3) == "eliminated") { colour = '0.55 0.57 0.62'; tm = "out"; }
+			else if (tour_phase == "live" && risk >= 0 && (dnf ? !(stof(argv(6)) > 0) : i == risk)) colour = '1 0.45 0.4';
+			if (argv(3) == "player" && stof(argv(8)) == 1) { colour = '0.45 1 0.55'; tm = "WINNER"; }
+			if (!strcmp(argv(1), tour_me)) name = strcat(name, " (you)");
+			HUD_Text([at_x + pad, at_y + pad * 0.5 + i * rh, 0], strcat(ftos(i + 1), "  ", name), sz2, colour, 1);
+			HUD_TextR([at_x + w - pad, at_y + pad * 0.5 + i * rh, 0], tm, sz2, colour, 1);
+		}
+	}
+
+	// Centre: the countdown digits, then the phase's announcement.
+	big = 44 * ui_cv_scale;
+	Font_Set(ui_font_display);
+	if (tour_phase == "countdown" && remaining > 0)
+		HUD_TextC([scr_x * 0.5, scr_y * 0.34, 0], ftos(ceil(remaining)), big * 1.3, '0.45 0.85 1', 0.95);
+	else if (tour_evt != "" && cltime - tour_evtat < tour_evtfor)
+	{
+		HUD_TextC([scr_x * 0.5, scr_y * 0.34, 0], tour_evt, big, tour_evtcolour, 0.95);
+		if (tour_evtsub != "")
+		{
+			Font_Set(ui_font_ui);
+			HUD_TextC([scr_x * 0.5, scr_y * 0.34 + Font_Px(big) + 6 * ui_cv_scale, 0], tour_evtsub, 10 * ui_cv_scale, '1 1 1', 0.9);
+		}
+	}
+	Font_Reset();
 };

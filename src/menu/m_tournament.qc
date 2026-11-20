@@ -49,6 +49,14 @@ float mt_chatcursor;
 // The TOURNAMENT tab shows only where the service has tournaments switched on
 // (or ui_tournaments 1): a quiet public GET, re-asked every 5 minutes.
 float mt_probeat;
+// mt_launchaddr: the launched server while the backend still hands it out (Rejoin/Watch).
+// mt_watch: room id of a browser Watch click, so its refusal reads as one.
+string mt_launchaddr, mt_watch;
+float mt_needlink, mt_ingame;
+// P1650's draft clock: turn_left seconds as of mt_turnat, counted down between polls; -1 = not sent.
+var float mt_turnleft = -1;
+float mt_turnat;
+#define MT_RULE "Each round, anyone who doesn't finish (or the slowest finisher) is out. Last one standing wins."
 
 string(float i) MT_ProfileID =
 {
@@ -350,6 +358,7 @@ void() MT_ClearParty =
 	if (mt_id != "" && mt_me != mt_host) MT_ResetSettings();
 	MT_Set("", mt_id); MT_Set("", mt_host); MT_Set("", mt_phase); MT_Set("", mt_name);
 	MT_Set("", mt_turnkind); MT_Set("", mt_turnwho); MT_Set("", mt_turnname); MT_Set("", mt_reserve);
+	MT_Set("", mt_launchaddr);
 	if (mt_players) buf_del(mt_players);
 	if (mt_maps) buf_del(mt_maps);
 	mt_players = mt_maps = mt_np = mt_nm = mt_revision = mt_fresh = mt_started = 0;
@@ -362,29 +371,56 @@ void() MT_ClearParty =
 	MT_ClearQueue();
 };
 
-// Backend refusals in the words a player needs.
-string(string note) MT_Friendly =
+// Backend refusals in the words a player needs; raw = the text came from surfd,
+// and anything unmapped is shown as the server's own words.
+string(string note, float raw = FALSE) MT_Friendly =
 {
 	if (strstrofs(note, "stale revision", 0) >= 0) return "The room changed; refreshing.";
 	if (strstrofs(note, "every competitor must accept", 0) >= 0) return "Every seated player has to accept first.";
 	if (strstrofs(note, "qualified maps", 0) >= 0) return "Not enough qualified maps for this many players.";
-	if (strstrofs(note, "no enabled empty fresh node", 0) >= 0) return "No free tournament server right now. Try again in a minute.";
+	if (strstrofs(note, "no enabled empty fresh node", 0) >= 0)
+		return "All tournament servers are busy, or someone is playing on them. Try again in a minute.";
 	if (strstrofs(note, "online and ready", 0) >= 0) return "Everyone seated has to be online and ready.";
 	if (strstrofs(note, "party closed or already joined", 0) >= 0) return "That room has closed or already started.";
 	if (strstrofs(note, "linked account required", 0) >= 0) return "Link your Steam account to play tournaments.";
 	if (strstrofs(note, "hosting unavailable", 0) >= 0) return "Tournament hosting is unavailable right now.";
 	if (strstrofs(note, "capacity below roster", 0) >= 0) return "Move a player to spectators before removing their seat.";
 	if (strstrofs(note, "seats full", 0) >= 0) return "Every seat is taken. Add a seat first.";
-	if (strstrofs(note, "proof unavailable", 0) >= 0 || strstrofs(note, "try again shortly", 0) >= 0)
+	if (strstrofs(note, "proof unavailable", 0) >= 0 || strstrofs(note, "try again shortly", 0) >= 0
+		|| strstrofs(note, "storage unavailable", 0) >= 0)
 		return "The tournament service is busy; try again in a moment.";
 	if (strstrofs(note, "removed from this room", 0) >= 0) return "The host removed you from that room.";
 	if (strstrofs(note, "chat is closed", 0) >= 0) return "Chat closes once the tournament starts.";
 	if (strstrofs(note, "bad text", 0) >= 0) return "That message could not be sent.";
 	if (strstrofs(note, "already in a party", 0) >= 0) { mt_next = 0; return "You are already in a room; reopening it."; }
+	if (strstrofs(note, "spectator roster full", 0) >= 0 || strstrofs(note, "account history full", 0) >= 0) return "This room is full.";
+	if (strstrofs(note, "proof expired", 0) >= 0 || strstrofs(note, "invalid signature", 0) >= 0 || strstrofs(note, "proof replay", 0) >= 0)
+		return "Your connection check expired. Click again.";
+	if (strstrofs(note, "not your draft turn", 0) >= 0) return "It's not your turn yet.";
+	if (strstrofs(note, "map is not available", 0) >= 0) return "That map was just taken. Pick another.";
+	if (strstrofs(note, "drafted qualification changed", 0) >= 0)
+		return "A drafted map changed on the server. The host should close the room and start again.";
+	if (strstrofs(note, "selected map", 0) >= 0 || strstrofs(note, "manual pool mismatch", 0) >= 0)
+		return "A map in the pool is no longer available. Edit the map pool.";
+	if (strstrofs(note, "catalogue unavailable", 0) >= 0 || strstrofs(note, "registry", 0) >= 0)
+		return "The map list is unavailable right now; it retries by itself.";
+	if (strstrofs(note, "party not found", 0) >= 0 || strstrofs(note, "match is closed", 0) >= 0) return "That room has closed.";
+	if (strstrofs(note, "not a current member", 0) >= 0) return "You are no longer in that room.";
+	if (strstrofs(note, "tournaments disabled", 0) >= 0) return "Tournaments are switched off on the server right now.";
+	// After launch surfd takes only leave (party_lobbies.py); a host Close lands here.
+	if (strstrofs(note, "already started", 0) >= 0 || strstrofs(note, "after first GO", 0) >= 0)
+		return "The tournament is already running on its server; the room can't be closed or changed now.";
+	// Neutral: P1650's host may unseat or kick in the draft and ready check, today's only in the lobby.
+	if (strstrofs(note, "waiting room only", 0) >= 0 || strstrofs(note, "roster frozen", 0) >= 0) return "You can't change seats right now.";
+	if (strstrofs(note, "settings frozen", 0) >= 0) return "Settings are locked once the draft starts.";
+	if (strstrofs(note, "need at least two", 0) >= 0) return "The draft needs at least two seated players.";
+	if (strstrofs(note, "Pre-Beta tournament", 0) >= 0) return "This room is from an older version. Close it and host a new one.";
+	if (!strcmp(note, "host only")) return "Only the host can do that.";
+	if (raw && note != "") return strcat("Server says: ", note);
 	return note;
 };
 
-void(string note) MT_Fail =
+void(string note, float raw = FALSE) MT_Fail =
 {
 	local float stale, busy;
 	stale = (strstrofs(note, "stale revision", 0) >= 0);
@@ -396,6 +432,10 @@ void(string note) MT_Fail =
 	if (!busy) mt_fresh = 0;
 	mt_next = time + (busy ? 3 + random() * 3 : 4);
 	if (busy) { mt_holdat = mt_next; if (mt_op == "state") note = ""; }
+	// Unlinked: the browser's Link banner says it once instead of a toast every poll.
+	if (strstrofs(note, "linked account required", 0) >= 0) { mt_needlink = TRUE; if (mt_op == "state") note = ""; }
+	// A poll whose proof aged out just polls again; only a click is told to retry.
+	if (mt_op == "state" && strstrofs(note, "proof expired", 0) >= 0) note = "";
 	// A busy resync keeps the queued clicks: they wait out the hold with the poll.
 	if (mt_op == "state" && mt_qstale && !busy) { mt_qstale = FALSE; MT_ClearQueue(); }
 	if (mt_op == "configure")
@@ -418,7 +458,7 @@ void(string note) MT_Fail =
 	}
 	else if (stale && mt_op == "lock")
 	{
-		mt_next = 0; note = "The room changed. Check the seats, then start the draft again.";
+		mt_next = 0; note = "The room changed. Check the seats, then start the draft again."; raw = FALSE;
 	}
 	else if (stale && !mt_fretried && mt_op != "" && mt_op != "state" && mt_op != "create")
 	{
@@ -428,9 +468,16 @@ void(string note) MT_Fail =
 	else if (mt_op == "create" && strstrofs(note, "selected map", 0) >= 0)
 	{
 		MT_Set("-", mt_pool);
-		note = "A map in your saved pool no longer qualifies, so the pool is back to Auto. Host again.";
+		note = "A map in your saved pool no longer qualifies, so the pool is back to Auto. Host again."; raw = FALSE;
 	}
-	if (note != "") { MT_Note(MT_Friendly(note)); mt_noteerr = TRUE; }
+	if (note != "")
+	{
+		// Today's surfd admits joins only before the draft; a Watch refusal says so plainly.
+		if (mt_op == "join" && mt_watch != "" && strstrofs(note, "party closed or already joined", 0) >= 0)
+			note = "This tournament has already started and can't be watched from here.";
+		else note = MT_Friendly(note, raw);
+		MT_Note(note); mt_noteerr = TRUE;
+	}
 	MT_Set("", mt_payload); MT_Set("", mt_hash); MT_Set("", mt_op);
 };
 
@@ -442,7 +489,7 @@ void(string op, string id, string target, string map, float value, float expecte
 	if (mt_req || mt_wire) return;
 	revision = (expected >= 0) ? expected : mt_revision;
 	if (ms_consent < FS_TERMS_ONLINE) { MT_Note("Read the online terms first."); return; }
-	if (clientstate() != 1) { MT_Note("Waiting-room actions are only available before connecting to a game."); return; }
+	if (clientstate() != 1) { MT_Note("Leave your current game to use tournament rooms."); return; }
 	if (id == "") id = "-";
 	if (target == "") target = "-";
 	if (map == "") map = "-";
@@ -459,9 +506,9 @@ void(string op, string id, string target, string map, float value, float expecte
 	payload = strcat(payload, "&kind=", uri_escape(mt_kind), "&tiers=", sprintf("%.0f", mt_tiers));
 	payload = strcat(payload, "&profile=", uri_escape(mt_profile), "&pool=", uri_escape(mt_pool));
 	payload = strcat(payload, "&text=", uri_escape(text));
-	if (strlen(payload) > 2048) { MT_Note("Settings exceed the request limit."); return; }
+	if (strlen(payload) > 2048) { MT_Note("That request is too long to send."); return; }
 	hash = digest_hex("SHA256", payload);
-	if (!MT_Hex(hash, 64)) { MT_Fail("Native SHA256 is unavailable."); return; }
+	if (!MT_Hex(hash, 64)) { MT_Fail("Update the game to use tournament rooms."); return; }
 	MT_Set(payload, mt_payload); MT_Set(hash, mt_hash); MT_Set(op, mt_op);
 	MT_Set(id, mt_fid); MT_Set(target, mt_ftarget); MT_Set(map, mt_fmap); MT_Set(text, mt_ftext);
 	mt_fvalue = value; mt_fexpected = expected; mt_fretried = retried; mt_userop = (op != "state");
@@ -469,7 +516,7 @@ void(string op, string id, string target, string map, float value, float expecte
 	if (!uri_get(strcat(MT_SITE, "/api/tournament-lobbies/challenge?hash=", hash), mt_req))
 	{
 		mt_wire = 0;
-		MT_Fail("Tournament service unavailable.");
+		MT_Fail("Can't reach the tournament service. Try again in a moment.");
 	}
 };
 
@@ -625,6 +672,9 @@ float(int party) MT_Snapshot =
 		mt_rosterpage = mt_mappage = 0;
 		mt_autoaccept = mt_confirm = mt_cfgretry = 0; mt_dirty = FALSE;
 	}
+	// Only P1650's surfd sends a started room back to the lobby (a leave or unseat before launch).
+	if (id == mt_id && phase == "lobby" && mt_phase != "lobby" && mt_phase != "")
+		MT_Note("Back to the lobby: someone left or was unseated, so the draft starts over.");
 	if (id != mt_id || phase != mt_phase) mt_view = (phase == "lobby") ? 0 : 1;
 	if (mt_players) buf_del(mt_players);
 	if (mt_maps) buf_del(mt_maps);
@@ -633,6 +683,12 @@ float(int party) MT_Snapshot =
 	MT_Set(MT_Text(json_get_string(json_find_object_child(party, "name")), 64), mt_name);
 	MT_Set(MT_Text(json_get_string(json_find_object_child(party, "turn_kind")), 12), mt_turnkind);
 	MT_Set(MT_Text(json_get_string(json_find_object_child(party, "turn_who")), 12), mt_turnwho);
+	item = json_find_object_child(party, "turn_left"); mt_turnleft = -1;
+	if (item && json_get_value_type(item) == MT_JSON_NUMBER && phase == "draft")
+	{
+		mt_turnleft = json_get_float(item); mt_turnat = time;
+		if (mt_turnleft < 0 || mt_turnleft > 3600 || mt_turnleft != floor(mt_turnleft)) mt_turnleft = -1;
+	}
 	MT_Set(MT_Text(json_get_string(json_find_object_child(party, "reserve")), 64), mt_reserve);
 	mt_revision = revision; mt_capacity = capacity; mt_seconds = seconds;
 	mt_started = (json_get_float(json_find_object_child(party, "menu_started")) == 1);
@@ -699,26 +755,46 @@ void(int root) MT_Launch =
 {
 	local int launch;
 	local float i, member;
-	local string id, epoch, addr, map;
+	local string id, epoch, addr, map, key;
 	launch = json_find_object_child(root, "launch");
 	id = json_get_string(json_find_object_child(launch, "id"));
-	if (id == "") return;
+	// No launch in the reply: nothing to rejoin (not started, ended, or no longer a member).
+	if (id == "") { MT_Set("", mt_launchaddr); return; }
 	epoch = json_get_string(json_find_object_child(launch, "epoch"));
 	addr = json_get_string(json_find_object_child(launch, "addr"));
 	map = json_get_string(json_find_object_child(launch, "map"));
 	member = FALSE;
 	for (i = 0; i < mt_np; i += 1) if (MT_Player(i, 0) == mt_me) member = TRUE;
 	if (!member || id != mt_id || !MT_Hex(epoch, 32) || !ui_addr_ok(addr) || !ui_host_allowed(addr) || !MT_MapAllowed(map, FALSE))
-	{ MT_Note("Start received, but its server/map failed validation. No connection was made."); return; }
-	if (mt_launched == epoch || clientstate() != 1) return;
+	{
+		MT_Set("", mt_launchaddr);
+		MT_Note("The tournament started, but the server details it sent look wrong, so the game did not connect. Tell the host.");
+		return;
+	}
+	if (clientstate() != 1) return;
 	// The node is still loading the round's map; joining now could hang on its level change.
 	MT_Set(map, mt_launchmap);
-	if (json_get_float(json_find_object_child(launch, "ready")) != 1) return;
-	MT_Set(epoch, mt_launched);
+	if (json_get_float(json_find_object_child(launch, "ready")) != 1) { MT_Set("", mt_launchaddr); return; }
+	MT_Set(addr, mt_launchaddr);
+	// Auto-connect once per launch AND address: a new round or a moved node connects again,
+	// a player back at the menu on the same one gets the Rejoin button instead.
+	key = strcat(epoch, "@", addr);
+	if (!strcmp(mt_launched, key)) return;
+	MT_Set(key, mt_launched);
 	MT_Note("The host started the tournament. Connecting everyone to the assigned game server...");
 	// Public ID only, not a capability. SSQC still verifies the same linked key.
 	cvar_set("cl_tourney_create", "0");
 	localcmd(sprintf("connect %s\n", addr));
+	m_close();
+};
+
+// The Rejoin / Watch on the server button: the address MT_Launch already validated.
+void() MT_Rejoin =
+{
+	if (!ui_addr_ok(mt_launchaddr) || !ui_host_allowed(mt_launchaddr)) return;
+	MT_Note("Connecting to the tournament server...");
+	cvar_set("cl_tourney_create", "0");
+	localcmd(sprintf("connect %s\n", mt_launchaddr));
 	m_close();
 };
 
@@ -738,7 +814,7 @@ void() MT_Catalog =
 	if (!uri_get(strcat(MT_SITE, "/api/tournament-map-pool?", key), mt_req))
 	{
 		mt_wire = mt_req = mt_phase_wire = 0;
-		MT_Set("Map catalogue unavailable. Retry shortly.", mt_catalogmsg);
+		MT_Set("The map list is unavailable right now; it retries by itself.", mt_catalogmsg);
 	}
 };
 float(int root, string key, float maximum) MT_CatalogUInt =
@@ -760,9 +836,9 @@ void(int root) MT_CatalogReply =
 	if (strcmp(key, mt_querykey)) return;
 	mt_catalogfresh = FALSE;
 	if (json_get_float(json_find_object_child(root, "ok")) != 1)
-	{ MT_Set(MT_Text(json_get_string(json_find_object_child(root, "error")), 180), mt_catalogmsg); return; }
+	{ MT_Set(MT_Friendly(MT_Text(json_get_string(json_find_object_child(root, "error")), 180), TRUE), mt_catalogmsg); return; }
 	if (json_get_float(json_find_object_child(root, "enabled")) != 1)
-	{ MT_Set("Tournaments are disabled.", mt_catalogmsg); return; }
+	{ MT_Set("Tournaments are switched off on the server right now.", mt_catalogmsg); return; }
 	rows = json_find_object_child(root, "rows"); filters = json_find_object_child(root, "filters");
 	if (!MT_CatalogUInt(root, "ok", 1) || !MT_CatalogUInt(root, "enabled", 1) || !MT_CatalogUInt(root, "hosting", 1)
 		|| !MT_CatalogUInt(root, "total", 8192) || !MT_CatalogUInt(root, "unqualified", 1000000)
@@ -849,7 +925,7 @@ float(float req, float code, string body) MT_Reply =
 			for (i = 0; i < mt_nd; i += 1)
 				if (MT_Dir(i, 0) == mt_rejoin) break;
 			if (i == mt_nd) MT_Note("That room has closed.");
-			else if (MT_Dir(i, 4) != "lobby") MT_Note("That room has already started.");
+			else if (MT_Dir(i, 4) != "lobby" && strcmp(mt_watch, mt_rejoin)) MT_Note("That room has already started. Click Watch to spectate.");
 			else MT_Request("join", mt_rejoin, "-", "-", 0, stof(MT_Dir(i, 5)), TRUE);
 			MT_Set("", mt_rejoin);
 		}
@@ -863,49 +939,50 @@ float(float req, float code, string body) MT_Reply =
 	{
 		mt_phase_wire = 0;
 		if (clientstate() != 1 || ms_consent < FS_TERMS_ONLINE) return TRUE;
-		MT_Set("Map catalogue unavailable or invalid; retry shortly.", mt_catalogmsg);
+		MT_Set("The map list is unavailable right now; it retries by itself.", mt_catalogmsg);
 		if (code || strlen(body) > 32768) return TRUE;
 		root = json_parse(body); if (!root) return TRUE;
 		MT_CatalogReply(root); json_free(root); return TRUE;
 	}
-	if (clientstate() != 1 || ms_consent < FS_TERMS_ONLINE) { MT_Fail("Waiting-room proof was cancelled."); return TRUE; }
+	if (clientstate() != 1 || ms_consent < FS_TERMS_ONLINE) { MT_Fail("That request was cancelled. Try again from the menu."); return TRUE; }
 	if (code == 429) { MT_Fail("try again shortly"); return TRUE; } // a per-IP limit: back off like a busy reply
-	if (code || strlen(body) > 131072) { MT_Fail("Tournament request failed. Refresh checks the real state before retrying."); return TRUE; }
-	root = json_parse(body); if (!root) { MT_Fail("Invalid tournament reply."); return TRUE; }
+	if (code || strlen(body) > 131072) { MT_Fail("The tournament service didn't answer. Try again in a moment."); return TRUE; }
+	root = json_parse(body); if (!root) { MT_Fail("The tournament service sent a reply the game can't read. Try again in a moment."); return TRUE; }
 	if (json_get_float(json_find_object_child(root, "ok")) != 1)
 	{
 		note = MT_Text(json_get_string(json_find_object_child(root, "error")), 220);
-		if (note == "") note = "Tournament request refused. Refresh to check the lobby.";
 		if (mt_op == "join") mt_dirnext = 0;
-		MT_Fail(note); json_free(root); return TRUE;
+		if (note == "") MT_Fail("The tournament service refused that. Try again in a moment.");
+		else MT_Fail(note, TRUE);
+		json_free(root); return TRUE;
 	}
 	if (mt_phase_wire == 1)
 	{
 		nonce = json_get_string(json_find_object_child(root, "nonce"));
 		expires = json_get_string(json_find_object_child(root, "expires")); ticket = json_get_string(json_find_object_child(root, "ticket"));
-		if (!MT_Hex(nonce, 32) || !MT_Hex(ticket, 64) || strlen(expires) != 10) { MT_Fail("Invalid tournament challenge."); json_free(root); return TRUE; }
+		if (!MT_Hex(nonce, 32) || !MT_Hex(ticket, 64) || strlen(expires) != 10) { MT_Fail("Your connection check failed. Click again."); json_free(root); return TRUE; }
 		for (i = 0; i < 10; i += 1) if (strstrofs("0123456789", substring(expires, i, 1), 0) < 0) break;
-		if (i != 10) { MT_Fail("Invalid challenge expiry."); json_free(root); return TRUE; }
+		if (i != 10) { MT_Fail("Your connection check failed. Click again."); json_free(root); return TRUE; }
 		proof = "";
 		if (checkbuiltin(friends_sign)) proof = friends_sign(nonce, "tournament", mt_hash);
-		if (tokenize(proof) != 2) { MT_Fail("Update the native game client for main-menu tournament lobbies."); json_free(root); return TRUE; }
+		if (tokenize(proof) != 2) { MT_Fail("Update the game to use tournament rooms."); json_free(root); return TRUE; }
 		pub = argv(0); sig = argv(1);
-		if (!MT_Hex(pub, 64) || !MT_Hex(sig, 128)) { MT_Fail("Tournament identity unavailable."); json_free(root); return TRUE; }
+		if (!MT_Hex(pub, 64) || !MT_Hex(sig, 128)) { MT_Fail("Your game identity isn't ready yet. Try again in a moment."); json_free(root); return TRUE; }
 		form = strcat("payload=", uri_escape(mt_payload), "&nonce=", nonce, "&expires=", expires);
 		form = strcat(form, "&ticket=", ticket, "&pub=", pub, "&sig=", sig);
 		mt_req = Lob_NextReq(); mt_wire = mt_req; mt_phase_wire = 2; mt_sent = time;
 		if (!uri_get(strcat(MT_SITE, "/api/tournament-lobbies/action"), mt_req, "application/x-www-form-urlencoded", form))
 		{
 			mt_wire = 0;
-			MT_Fail("Tournament proof request failed.");
+			MT_Fail("Can't reach the tournament service. Try again in a moment.");
 		}
 	}
 	else
 	{
 		id = json_get_string(json_find_object_child(root, "me"));
-		if (!MT_Who(id)) { MT_Fail("Invalid verified tournament identity."); json_free(root); return TRUE; }
-		MT_Set(id, mt_me);
-		if (!MT_Snapshot(json_find_object_child(root, "party"))) { MT_Fail("Incomplete lobby snapshot; controls remain stale."); json_free(root); return TRUE; }
+		if (!MT_Who(id)) { MT_Fail("The tournament service sent a reply the game can't read. Try again in a moment."); json_free(root); return TRUE; }
+		MT_Set(id, mt_me); mt_needlink = FALSE;
+		if (!MT_Snapshot(json_find_object_child(root, "party"))) { MT_Fail("The room didn't load properly. Retrying in a few seconds."); json_free(root); return TRUE; }
 		if (mt_op != "state" && mt_noteerr) MT_Set("", mt_note);
 		if (mt_op == "configure") mt_cfgretry = 0;
 		mt_qstale = FALSE;
@@ -936,13 +1013,19 @@ void() MT_Frame =
 	if (mt_req && time - mt_sent > 15)
 	{
 		// A slow public catalogue GET must not mark the room's controls stale.
-		if (mt_phase_wire == 3) { mt_req = mt_phase_wire = 0; MT_Set("Map catalogue is slow; retrying shortly.", mt_catalogmsg); }
-		else MT_Fail("Tournament request is slow; waiting for the connection to finish.");
+		if (mt_phase_wire == 3) { mt_req = mt_phase_wire = 0; MT_Set("The map list is slow to load; retrying.", mt_catalogmsg); }
+		else MT_Fail("The tournament service is slow to answer; still waiting.");
 	}
 	if (mt_dirreq && time >= mt_dirnext + 10) mt_dirreq = 0;
 	if (ms_consent < FS_TERMS_ONLINE) return;
 	// Connected: nothing queued while disconnected may be signed after a later disconnect.
-	if (clientstate() != 1) { MT_ClearQueue(); mt_qstale = FALSE; return; }
+	if (clientstate() != 1) { MT_ClearQueue(); mt_qstale = FALSE; mt_ingame = TRUE; return; }
+	// Dropped or quit out of a launched tournament: open on this tab (its Rejoin button), freshly polled.
+	if (mt_ingame)
+	{
+		mt_ingame = FALSE;
+		if (mt_launchaddr != "") { menu_screen = SCREEN_TOURNAMENT; mt_next = 0; }
+	}
 	if (!mt_metadata && menu_screen == SCREEN_TOURNAMENT)
 	{
 		mt_metadata = TRUE;
@@ -994,6 +1077,8 @@ void(float i) MT_Connect =
 	// Legacy name kept for menu fixture callers; joining is now BACKEND-ONLY.
 	if (i < 0 || i >= mt_nd || !MT_Hex(MT_Dir(i, 0), 32)) return;
 	if (stof(MT_Dir(i, 5)) < 1) { mt_dirnext = 0; return; }
+	// A started room's button is Watch: the same join, refused by today's surfd (MT_Fail).
+	MT_Set((MT_Dir(i, 4) != "lobby") ? MT_Dir(i, 0) : "", mt_watch);
 	MT_Action("join", MT_Dir(i, 0), "-", "-", 0, stof(MT_Dir(i, 5)));
 };
 
@@ -1093,6 +1178,36 @@ void(vector pos, vector size, string text, float want, vector colour, float alig
 	}
 	sui_native_text([x, pos_y + (size_y - glyph_y) / 2 + FONT_CAPDROP * glyph_y], text, want, colour, 1);
 	Font_Set(previous);
+};
+
+// Word-wrapped text, at most maxlines lines of (want + 4) px; the last one is fitted with "...".
+// Returns the lines used; draw FALSE only measures.
+float(vector pos, float width, string text, float want, vector colour, float maxlines, float draw) MT_Para =
+{
+	local float n, at, cut, j;
+	local string rest, line;
+	rest = text; n = 0;
+	while (rest != "" && n < maxlines)
+	{
+		cut = 0;
+		if (n < maxlines - 1)
+		if (MT_Width(rest, want, 0) > width)
+		{
+			j = 0;
+			while (TRUE)
+			{
+				at = strstrofs(rest, " ", j);
+				if (at < 0) break;
+				if (MT_Width(substring(rest, 0, at), want, 0) > width) break;
+				cut = at; j = at + 1;
+			}
+		}
+		line = rest; rest = "";
+		if (cut > 0) { rest = substring(line, cut + 1, -1); line = substring(line, 0, cut); }
+		if (draw) MT_Place(pos + [0, n * (want + 4)], [width, want + 4], line, want, colour);
+		n += 1;
+	}
+	return n;
 };
 
 // A small status tag; returns its width so a row can be laid out right to left.
@@ -1308,13 +1423,14 @@ void(vector pos, vector size, float i) MT_SpecRow =
 	sui_style_box(pos, size, 8, mine ? SUI_THEME_SELECTED : SUI_THEME_WELL, mine ? SUI_THEME_ACCENT : SUI_THEME_EDGE, 1);
 	sui_roundbox(pos + [16, floor(size_y / 2) - 4], '8 8 0', 4, stof(MT_Player(i, 8)) ? SUI_THEME_GOOD : SUI_THEME_MUTED, 1);
 	right = size_x - 10;
+	// P1650's host can remove a spectator until launch; today's surfd refuses it outside the lobby (MT_Friendly).
+	if (mt_me == mt_host && !mt_started && !mine)
+	{
+		if (MT_KickButton(pos + [right - 64, floor((size_y - 30) / 2)], who, i)) MT_Action("kick", mt_id, who, "-", 0);
+		right -= 72;
+	}
 	if (mt_me == mt_host && mt_phase == "lobby")
 	{
-		if (!mine)
-		{
-			if (MT_KickButton(pos + [right - 64, floor((size_y - 30) / 2)], who, i)) MT_Action("kick", mt_id, who, "-", 0);
-			right -= 72;
-		}
 		if (MT_Button(sprintf("mt_seat%g", i), pos + [right - 110, floor((size_y - 30) / 2)], '110 30 0', "Give seat", 3, (mt_ok && mt_seated < mt_capacity)))
 			MT_Action("seat", mt_id, who, "-", 1);
 		right -= 118;
@@ -1546,8 +1662,9 @@ float(vector p, vector size, float i, float clickable) MT_MapCard =
 void(vector size) MT_DrawDraft =
 {
 	local float i, c, bans, picks, myturn, gap, cols, cardw, cardh, thumbh, rows, top, avail, first, last, row, pagerh, need;
+	local float left, urgent, hint, want, tw, cw;
 	local vector p, colour;
-	local string text;
+	local string text, clock;
 	MT_Label('16 14 0', "map draft", 24, SUI_THEME_ACCENT, size_x - 250);
 	bans = picks = 0;
 	for (i = 0; i < mt_nm; i += 1)
@@ -1563,13 +1680,21 @@ void(vector size) MT_DrawDraft =
 	sui_fill(p + '0 10 0', '4 32 0', colour, 1, 0);
 	if (myturn) text = (mt_turnkind == "ban") ? "Your turn: ban a map" : "Your turn: pick a map";
 	else text = sprintf("%s is %s", mt_turnname, (mt_turnkind == "ban") ? "banning a map" : "picking a map");
-	// The hint gives way first: on a narrow panel the turn line needs the width.
-	if (size_x >= 640)
-	{
-		MT_Place(p + '18 0 0', [size_x - 60 - 200, 52], text, 20, myturn ? SUI_THEME_FOCUS : SUI_THEME_TEXT);
-		MT_Place(p + [size_x - 236, 0], '200 52 0', myturn ? "Click a map card." : "The cards update live.", 12, myturn ? SUI_THEME_TEXT : SUI_THEME_MUTED, 2);
-	}
-	else MT_Place(p + '18 0 0', [size_x - 60, 52], text, (size_x >= 440) ? 20 : 16, myturn ? SUI_THEME_FOCUS : SUI_THEME_TEXT);
+	// P1650's turn clock beside it; at 0 the server bans/picks for whoever is up.
+	left = -1;
+	if (mt_turnleft >= 0) left = max(0, ceil(mt_turnleft - (time - mt_turnat)));
+	urgent = (left >= 0 && left < 10);
+	clock = "";
+	if (left >= 0) clock = (myturn && urgent) ? sprintf("(%g s, or one is chosen for you)", left) : sprintf("(%g s)", left);
+	// The hint gives way first: on a narrow panel, or to the urgent clock, the turn line needs the width.
+	hint = (size_x >= 640 && !(myturn && urgent));
+	want = (size_x >= 440) ? 20 : 16;
+	tw = size_x - 60 - (hint ? 200 : 0);
+	cw = 0;
+	if (clock != "") cw = min(ceil(MT_Width(clock, 16, 0)), floor(tw * 0.6));
+	MT_Place(p + '18 0 0', [tw - (cw ? cw + 8 : 0), 52], text, want, myturn ? SUI_THEME_FOCUS : SUI_THEME_TEXT);
+	if (cw) MT_Place(p + [26 + min(ceil(MT_Width(text, want, 0)), tw - cw - 8), 0], [cw, 52], clock, 16, urgent ? SUI_THEME_WARN : SUI_THEME_DIM);
+	if (hint) MT_Place(p + [size_x - 236, 0], '200 52 0', myturn ? "Click a map card." : "The cards update live.", 12, myturn ? SUI_THEME_TEXT : SUI_THEME_MUTED, 2);
 	top = 116; gap = 12;
 	if (size_y >= 420)
 	{
@@ -1795,6 +1920,10 @@ void() MT_Status =
 	{
 		mt_stext = (mt_launchmap != "") ? sprintf("Starting: the server is loading %s. Everyone joins automatically.", mt_launchmap)
 			: "Starting: the server is getting ready. Everyone joins automatically.";
+		// Back at the menu after the auto-connect (dropped, quit, or a refused connect).
+		if (mt_launchaddr != "")
+			mt_stext = isplayer ? "The tournament is running. Click Rejoin to get back on the server."
+				: "The tournament is running. Click Watch on the server to spectate.";
 		mt_scolour = SUI_THEME_GOOD;
 	}
 	else if (mt_phase == "lobby")
@@ -1826,7 +1955,7 @@ void() MT_Status =
 // caller has pushed. draw FALSE only counts them, so the panel can reserve room.
 float(vector size, float draw, float textinside) MT_Actions =
 {
-	local float i, me, host, isplayer, myaccepted, myready, nacc, nready, x, y, bw, n;
+	local float i, me, host, isplayer, myaccepted, myready, nacc, nready, x, y, bw, n, rw;
 	host = (mt_me == mt_host); me = MT_MeIndex();
 	isplayer = myaccepted = myready = FALSE;
 	if (me >= 0)
@@ -1844,6 +1973,17 @@ float(vector size, float draw, float textinside) MT_Actions =
 		}
 	bw = bound(140, floor(size_x * 0.28), 200); x = size_x - 16; y = size_y - 50; n = 0;
 	if (draw) sui_fill([16, size_y - 62], [size_x - 32, 1], SUI_THEME_EDGE, 1, 0);
+	// Not gated on mt_ok: a stale snapshot must not keep anyone off the server.
+	if (mt_started)
+	if (mt_launchaddr != "")
+	{
+		rw = min(size_x - 32, 300);
+		x -= rw; n += 1;
+		if (draw)
+		if (MT_Button("mt_rejoin", [x, y], [rw, 40], isplayer ? "Rejoin the tournament server" : "Watch on the server", 1))
+			MT_Rejoin();
+		x -= 10;
+	}
 	if (!mt_started)
 	if (mt_phase == "lobby")
 	{
@@ -1898,24 +2038,53 @@ float() MT_SpaceBelow =
 
 void(vector scr) MT_DrawRoom =
 {
-	local float wide, lw, y0, bh, host, w3, below, strip, ph, chath, rh, unread;
-	local string label;
+	local float wide, lw, y0, bh, host, w3, below, strip, ph, chath, rh, unread, me, risky, armed, cw, sw, rulew, lines;
+	local string label, code, warn;
 	local vector size;
 	host = (mt_me == mt_host);
 	wide = (scr_x >= 820);
 	MT_Status();
 	below = (MT_SpaceBelow() >= 34);
 	strip = (MT_Actions(scr, FALSE, FALSE) || !below) ? 64 : 0;
-	MT_Label('2 0 0', MT_RoomTitle(mt_name), wide ? 40 : 32, SUI_THEME_TEXT, scr_x - 184, 1);
-	label = host ? ((time < mt_confirm) ? "Confirm close" : "Close room") : "Leave room";
-	if (MT_Button("mt_leave", [scr_x - 160, 4], '160 36 0', label, (host && time < mt_confirm) ? 2 : 0))
+	// The browser row's code, for the host to read out.
+	code = strcat("Room ", substring(mt_id, 0, 8));
+	cw = ceil(MT_Width(code, 20, 0)) + 12;
+	MT_Label('2 0 0', MT_RoomTitle(mt_name), wide ? 40 : 32, SUI_THEME_TEXT, scr_x - 184 - cw, 1);
+	MT_Place([scr_x - 172 - cw, 4], [cw, 36], code, 20, SUI_THEME_ACCENT, 2);
+	// Closing, or a seated player leaving once the draft has started, takes a second click
+	// within 4 s: today's surfd aborts the tournament, P1650's resets it to the lobby.
+	risky = host;
+	me = MT_MeIndex();
+	warn = "Click again to close the room for everyone.";
+	if (host && mt_phase != "lobby") warn = "Click again to close the room. This ends the tournament for everyone.";
+	if (!host && me >= 0 && mt_phase != "lobby")
+	if (MT_Player(me, 2) == "player")
 	{
-		if (host && time >= mt_confirm) { mt_confirm = time + 4; MT_Note("Click again to close the room for everyone."); }
+		risky = TRUE;
+		warn = mt_started ? "Click again to leave. Leaving now counts as dropping out of the tournament."
+			: "Click again to leave. Leaving sends the room back to the lobby (or ends it on an older server).";
+	}
+	armed = (risky && time < mt_confirm);
+	label = host ? (armed ? "Confirm close" : "Close room") : (armed ? "Confirm leave" : "Leave room");
+	if (MT_Button("mt_leave", [scr_x - 160, 4], '160 36 0', label, armed ? 2 : 0))
+	{
+		if (risky && !armed)
+		{
+			mt_confirm = time + 4;
+			MT_Note(warn); mt_notetime = time - 4; // the toast lasts as long as the window
+		}
 		else { mt_confirm = 0; MT_Action(host ? "cancel" : "leave", mt_id, "-", "-", 0); }
 	}
-	MT_Steps('2 52 0', min(scr_x - 4, 760), MT_PhaseStep());
+	// The format in one line: beside the steps when it fits in two lines there, else under them.
+	sw = min(scr_x - 4, 760); rulew = scr_x - sw - 22;
+	MT_Steps('2 52 0', sw, MT_PhaseStep());
+	lines = 3;
+	if (rulew >= 240) lines = MT_Para('0 0 0', rulew, MT_RULE, 12, SUI_THEME_DIM, 3, FALSE);
 	// The panels run to the bottom of the shell, level with the sidebar's chat.
-	y0 = 94; bh = scr_y - y0;
+	y0 = 94;
+	if (lines <= 2) MT_Para([sw + 20, 66 - lines * 8], rulew, MT_RULE, 12, SUI_THEME_DIM, 2, TRUE);
+	else y0 = 94 + MT_Para('2 86 0', scr_x - 4, MT_RULE, 12, SUI_THEME_DIM, 2, TRUE) * 16 + 4;
+	bh = scr_y - y0;
 	if (wide)
 	{
 		lw = bound(360, floor(scr_x * 0.38), 500);
@@ -2042,26 +2211,54 @@ void(vector scr) MT_DrawPool =
 	sui_pop_frame();
 };
 
+// n 0 draws no number badge; the body wraps to two lines.
 void(vector p, vector size, float n, string title, string body) MT_HowCard =
 {
+	local float x, top, lines;
 	sui_style_box(p, size, 10, SUI_THEME_PANEL, SUI_THEME_EDGE, 1);
-	sui_style_box(p + [14, floor((size_y - 28) / 2)], '28 28 0', 14, SUI_THEME_PANEL * 0.6 + SUI_THEME_ACCENT * 0.3, SUI_THEME_ACCENT, 1);
-	MT_Place(p + [14, floor((size_y - 28) / 2)], '28 28 0', ftos(n), 16, SUI_THEME_ACCENT, 1);
-	MT_Place(p + [54, floor(size_y / 2) - 22], [size_x - 66, 20], title, 16, SUI_THEME_TEXT);
-	MT_Place(p + [54, floor(size_y / 2) + 2], [size_x - 66, 18], body, 12, SUI_THEME_DIM);
+	x = 16;
+	if (n > 0)
+	{
+		sui_style_box(p + [14, floor((size_y - 28) / 2)], '28 28 0', 14, SUI_THEME_PANEL * 0.6 + SUI_THEME_ACCENT * 0.3, SUI_THEME_ACCENT, 1);
+		MT_Place(p + [14, floor((size_y - 28) / 2)], '28 28 0', ftos(n), 16, SUI_THEME_ACCENT, 1);
+		x = 54;
+	}
+	lines = MT_Para('0 0 0', size_x - x - 12, body, 12, SUI_THEME_DIM, 2, FALSE);
+	top = floor((size_y - 22 - lines * 16) / 2);
+	MT_Place(p + [x, top], [size_x - x - 12, 20], title, 16, SUI_THEME_TEXT);
+	MT_Para(p + [x, top + 22], size_x - x - 12, body, 12, SUI_THEME_DIM, 2, TRUE);
 };
 
 void(vector scr) MT_DrawBrowser =
 {
-	local float y, i, rh, top, ph, howh, w, statw, playw, joinw, first, last, namew, cw;
-	local string phase, label;
+	local float y, i, rh, top, ph, howh, ruleh, w, statw, playw, joinw, first, last, namew, cw, lines, lh, started;
+	local string phase, label, text;
 	local vector colour, p;
 	MT_Label('2 0 0', "Tournaments", (scr_x >= 820) ? 40 : 32, SUI_THEME_TEXT, scr_x - 250, 1);
 	if (MT_Button("mt_new", [scr_x - 220, 4], '220 40 0', MT_Busy("create") ? "Creating..." : "Host a tournament", 1, (mt_ok || !mt_fresh)))
 		MT_Action("create", "-", "-", "-", 0);
 	MT_Place('2 52 0', [scr_x - 4, 22], "Everyone gathers in a room first. The host sets the rules, you draft maps together, then one click sends the whole group to a server.", 16, SUI_THEME_DIM);
+	top = 88;
+	// surfd refused this install as unlinked: the existing Steam sign-in (m_main.qc screen_steam).
+	if (mt_needlink)
+	{
+		text = "You join a lobby, sign in on Steam's page in your browser, then type the number it shows back into the game. Then leave the lobby and come back here.";
+		lines = MT_Para('0 0 0', scr_x - 236, text, 12, SUI_THEME_DIM, 2, FALSE);
+		lh = 44 + lines * 16;
+		sui_style_box([0, top], [scr_x, lh], 10, SUI_THEME_PANEL * 0.75 + SUI_THEME_WARN * 0.12, SUI_THEME_PANEL * 0.3 + SUI_THEME_WARN * 0.7, 1);
+		MT_Place([16, top + 10], [scr_x - 236, 22], "Link your Steam account to play tournaments.", 16, SUI_THEME_WARN);
+		MT_Para([16, top + 34], scr_x - 236, text, 12, SUI_THEME_DIM, 2, TRUE);
+		if (MT_Button("mt_link", [scr_x - 196, top + floor((lh - 40) / 2)], '180 40 0', "Link Steam", 1))
+		{
+			// The lobby's Enter prompt comes once a game (cl_account.qc _acct_prompted); this click asks for it.
+			localcmd("set _acct_prompted 0\n");
+			ui_steam_t0 = time; menu_screen = SCREEN_STEAM;
+		}
+		top += lh + 12;
+	}
 	howh = (scr_x >= 820 && scr_y >= 560) ? 76 : 0;
-	top = 88; ph = scr_y - top - (howh ? howh + 12 : 0);
+	ruleh = (scr_y >= 520) ? 56 : 0;
+	ph = scr_y - top - (howh ? howh + 12 : 0) - (ruleh ? ruleh + 12 : 0);
 	sui_push_frame([0, top], [scr_x, ph]);
 	sui_style_panel('0 0 0', [scr_x, ph], 12, 1);
 	MT_Label('16 14 0', "open rooms", 24, SUI_THEME_ACCENT, scr_x - 160);
@@ -2099,8 +2296,10 @@ void(vector scr) MT_DrawBrowser =
 		if (phase == "draft") { label = "DRAFTING"; colour = SUI_THEME_INFO; }
 		if (phase == "loading") { label = "READY CHECK"; colour = SUI_THEME_WARN; }
 		MT_Pill(p + [16 + namew + 8 + playw, floor((rh - 20) / 2)], label, colour);
-		if (MT_Button(sprintf("mt_join%g", i), p + [w - joinw - 12, floor((rh - 36) / 2)], [joinw, 36], (phase == "lobby") ? "Join" : "Started", 1, (phase == "lobby" && !MT_Busy("join"))))
+		started = (phase != "lobby");
+		if (MT_Button(sprintf("mt_join%g", i), p + [w - joinw - 12, floor((rh - 36) / 2)], [joinw, 36], started ? "Watch" : "Join", started ? 3 : 1, !MT_Busy("join")))
 			MT_Connect(i);
+		if (started) sui_tooltip_for(sprintf("mt_join%g", i), "Join as a spectator.", 2);
 		y += rh + 8;
 	}
 	if (mt_nd > mt_dirrows)
@@ -2110,29 +2309,34 @@ void(vector scr) MT_DrawBrowser =
 		if (MT_Button("mt_next", [124, y], '84 30 0', "Next", 0, last < mt_nd)) mt_dirpage = min(floor((mt_nd - 1) / mt_dirrows), mt_dirpage + 1);
 	}
 	sui_pop_frame();
+	y = top + ph + 12;
 	if (howh)
 	{
-		cw = floor((scr_x - 24) / 3); y = top + ph + 12;
+		cw = floor((scr_x - 24) / 3);
 		MT_HowCard([0, y], [cw, howh], 1, "Lobby", "The host sets the rules; players take seats.");
 		MT_HowCard([cw + 12, y], [cw, howh], 2, "Map draft", "Everyone bans a map, then picks one.");
 		MT_HowCard([2 * cw + 24, y], [scr_x - 2 * cw - 24, howh], 3, "Launch", "One click sends the whole group to a server.");
+		y += howh + 12;
 	}
+	if (ruleh) MT_HowCard([0, y], [scr_x, ruleh], howh ? 4 : 0, "Rounds", MT_RULE);
 };
 
 void(vector scr, float bottom) MT_DrawToast =
 {
 	local string text;
 	local vector colour, p;
-	local float w;
+	local float w, h;
 	text = ""; colour = SUI_THEME_WARN;
 	if (mt_note != "" && time - mt_notetime < 8) text = mt_note;
 	else if (mt_req && mt_userop) { text = "Sending..."; colour = SUI_THEME_DIM; }
 	else if (mt_id != "" && !mt_ok) { text = "Reconnecting to the tournament service..."; colour = SUI_THEME_DIM; }
 	if (text == "") return;
+	// Two lines on a narrow screen rather than cutting off the next step.
 	w = min(scr_x - 24, ceil(MT_Width(text, 16, 0)) + 36);
-	p = [floor((scr_x - w) / 2), bottom - 40];
-	sui_style_box(p, [w, 34], 10, SUI_THEME_PANEL * 0.75 + colour * 0.12, SUI_THEME_PANEL * 0.3 + colour * 0.7, 1);
-	MT_Place(p + '18 0 0', [w - 36, 34], text, 16, colour, 1);
+	h = 14 + 20 * MT_Para('0 0 0', w - 36, text, 16, colour, 2, FALSE);
+	p = [floor((scr_x - w) / 2), bottom - 6 - h];
+	sui_style_box(p, [w, h], 10, SUI_THEME_PANEL * 0.75 + colour * 0.12, SUI_THEME_PANEL * 0.3 + colour * 0.7, 1);
+	MT_Para(p + '18 7 0', w - 36, text, 16, colour, 2, TRUE);
 };
 
 void(vector scr, string title, string body) MT_DrawMessage =
@@ -2153,7 +2357,7 @@ void(vector scr) MT_Draw =
 	mt_ok = (mt_fresh && time - mt_fresh < 12);
 	if (clientstate() != 1)
 	{
-		MT_DrawMessage(scr, "You are in a game", "Tournament controls are on F6 while you are connected.");
+		MT_DrawMessage(scr, "You are in a game", "Press F6 for tournament controls while you are in a game.");
 		return;
 	}
 	if (ms_consent < FS_TERMS_ONLINE)

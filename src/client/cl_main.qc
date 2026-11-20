@@ -1651,6 +1651,9 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (Friends_ToastKey(scanx))    // Patch 788: and F2 adds back
 			return TRUE;
 		if (evtype == IE_KEYDOWN)
+		if (Tour_Key(scanx))            // P1649: F6 is the tournament's while this server has a match
+			return TRUE;
+		if (evtype == IE_KEYDOWN)
 		if (PE_Key(scanx))              // Patch 1195: F6 sends a prederror report
 			return TRUE;
 		if (evtype == IE_KEYDOWN)
@@ -1705,6 +1708,8 @@ float(float evtype, float scanx, float chary, float devid) CL_InputChain =
 		if (Results_PassiveKey(scanx))
 			return TRUE;
 		if (Friends_ToastKey(scanx))    // P788: F2 adds back, only while the toast is up
+			return TRUE;
+		if (Tour_Key(scanx))            // P1649: F6 is the tournament's while this server has a match
 			return TRUE;
 		if (PE_Key(scanx))              // P1195: F6 sends a prederror report, only while its box is up
 			return TRUE;
@@ -2378,6 +2383,7 @@ void(float vwidth, float vheight, float notmenu) CSQC_UpdateView =
 		MapMsg_Draw(scr);               // Patch 870: game_text and env_hudhint
 		SaveLoc_Draw(scr);
 		Vote_Draw(scr);                 // Patch 372: over saveloc and the chatbox
+		Tour_Hud(scr);                  // P1649: banner, standings and announcements while a match exists
 		Share_Draw(scr);                // Patch 777
 		if (HC_Begin(1))                // Patch 871: hud_fps's second layer
 		{
