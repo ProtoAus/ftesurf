@@ -43,6 +43,9 @@ IDENTITIES = {
 REQUIRED = ("menu.dat", "csprogs.dat", "qwprogs.dat")  # below the identity's gamedir
 # default.fmf's GAME switches the signed updater and install lock on (qkupdate.c); BASEGAME picks the identity.
 MANIFEST_GAME = {LEGACY: "FTESurf", WORLDOFSURF: "WorldofSurf"}
+# P1666: the launcher is never a feed file (an old reader refuses an unknown path); the payload names it per
+# platform in "launcher", which old launchers and engines ignore and the engine's in-game check installs.
+LAUNCHER = {"win64": "WOS-Launcher.exe", "linux64": "WOS-Launcher"}
 # P1593 stage 2: the launcher moves a legacy install only under a worldofsurf default.fmf that keeps the
 # player's cfg where the engine reads it (Quakers-Launcher ftesurf_migrate.rs fmf_cfg); one value per line.
 WOS_MAINCONFIG = {"ftesurf", "ftesurf.cfg", "worldofsurf", "worldofsurf.cfg"}
@@ -246,6 +249,18 @@ def validate(payload: dict, game: str | None = None) -> dict[str, int]:
         if h in objects and objects[h] != size:
             raise ValueError("inconsistent object size")
         objects[h] = size
+    launcher = payload.get("launcher", {})
+    if not isinstance(launcher, dict) or not set(launcher) <= set(LAUNCHER):
+        raise ValueError("invalid launcher descriptor")
+    for platform, d in launcher.items():
+        h, size = d.get("hash") if isinstance(d, dict) else None, d.get("size") if isinstance(d, dict) else None
+        if (not isinstance(d, dict) or set(d) != {"path", "hash", "size"} or d["path"] != LAUNCHER[platform]
+                or not isinstance(h, str) or not re.fullmatch(r"[0-9a-f]{64}", h)
+                or type(size) is not int or not 0 < size <= 32 * 1024 * 1024):
+            raise ValueError("invalid launcher descriptor")
+        if h in objects and objects[h] != size:
+            raise ValueError("inconsistent object size")
+        objects[h] = size
     # The launchers sum every entry, "all" ones once (ftesurf_update.rs validate).
     if sum(f["size"] for f in files) > 160 * 1024 * 1024:
         raise ValueError("feed exceeds small-install limits")
@@ -410,6 +425,7 @@ def build(stages: dict[str, Path], output: Path, version: str, mirrors: list[str
         for q in sorted(platforms(old) - set(stages)):
             files.extend(dict(f, platform=q) for f in old["files"] if f["platform"] in (q, "all"))
     executables = dict(old.get("exec_by_platform", {})) if same else {}
+    launcher = {q: d for q, d in old.get("launcher", {}).items() if q not in stages} if same else {}
     omitted = []
     for platform, stage in stages.items():
         if platform not in ("win64", "linux64"):
@@ -428,6 +444,16 @@ def build(stages: dict[str, Path], output: Path, version: str, mirrors: list[str
                 # Anything player-owned in a stage is still a fatal publishing mistake.
                 if p in ("WOS-Launcher.exe", "WOS-Launcher", "ftesurf-launcher.exe", "ftesurf-launcher"):  # P1209
                     omitted.append(p)
+                    if p == LAUNCHER[platform]:  # P1666: named in "launcher", stored like any object
+                        content = source.read_bytes()
+                        if not 0 < len(content) <= 32 * 1024 * 1024:
+                            raise ValueError(f"launcher exceeds small-install limit: {p}")
+                        h = hashlib.blake2b(content, digest_size=32).hexdigest()
+                        obj = output / "objects" / h[:2] / h
+                        obj.parent.mkdir(parents=True, exist_ok=True)
+                        if not obj.exists():
+                            obj.write_bytes(content)
+                        launcher[platform] = {"path": p, "hash": h, "size": len(content)}
                     continue
                 raise ValueError(f"stage contains an unmanaged file: {p}")
             if p.lower() in paths:
@@ -454,6 +480,8 @@ def build(stages: dict[str, Path], output: Path, version: str, mirrors: list[str
                "files": sorted(files, key=lambda f: (f["path"], f["platform"])),
                "exec": {"cmd": exes["win64"], "args": ["-manifest", "default.fmf"]},
                "exec_by_platform": executables, "removed": []}
+    if launcher:
+        payload["launcher"] = dict(sorted(launcher.items()))
     objects = validate(payload, game)
     # Retained platforms need their bytes too, not only descriptors in the new feed.
     for h, size in objects.items():

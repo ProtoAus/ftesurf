@@ -147,6 +147,69 @@ class PublisherTests(unittest.TestCase):
         (self.win / 'WOS-Launcher.exe').write_bytes(b'bootstrap')
         self.assertEqual(self.build()['omitted'], ['WOS-Launcher.exe'])
 
+    def test_p1666_launcher_descriptor_names_the_staged_launcher(self):
+        """Old readers ignore "launcher"; the engine installs it. Never a "files" entry."""
+        (self.win / 'WOS-Launcher.exe').write_bytes(b'bootstrap win')
+        linux = stage(self.root / 'linux', 'linux64')
+        (linux / 'WOS-Launcher').write_bytes(b'bootstrap linux')
+        feed.build({'win64': self.win, 'linux64': linux}, self.root / 'feed', '0.1.25',
+                   ['https://dl.proto.bar/ftesurf/update'], SEED, KEY)
+        m = feed.verify((self.root / 'feed/update.json').read_bytes(), KEY)
+        self.assertNotIn('WOS-Launcher.exe', {f['path'] for f in m['files']})
+        self.assertEqual(set(m['launcher']), {'win64', 'linux64'})
+        for platform, body in (('win64', b'bootstrap win'), ('linux64', b'bootstrap linux')):
+            d = m['launcher'][platform]
+            self.assertEqual(d, {'path': feed.LAUNCHER[platform], 'size': len(body),
+                                 'hash': hashlib.blake2b(body, digest_size=32).hexdigest()})
+            self.assertEqual(feed.object_bytes(self.root / 'feed/objects', d['hash'], d['size']), body)
+        objects = feed.verify_objects(self.root / 'feed/objects', m)
+        inventory = (self.root / 'feed/objects.txt').read_text().splitlines()
+        self.assertEqual(len(inventory), len(objects))
+        self.assertIn(f"{m['launcher']['win64']['hash'][:2]}/{m['launcher']['win64']['hash']}", inventory)
+        # the closure check covers the launcher object too
+        d = m['launcher']['linux64']
+        (self.root / 'feed/objects' / d['hash'][:2] / d['hash']).unlink()
+        with self.assertRaisesRegex(ValueError, 'missing referenced object'):
+            feed.verify_objects(self.root / 'feed/objects', m)
+
+    def test_p1666_no_staged_launcher_no_descriptor(self):
+        self.build()
+        self.assertNotIn('launcher', feed.verify((self.root / 'feed/update.json').read_bytes(), KEY))
+
+    def test_p1666_windows_only_release_keeps_the_linux_launcher(self):
+        linux = stage(self.root / 'linux', 'linux64')
+        (linux / 'WOS-Launcher').write_bytes(b'bootstrap linux')
+        (self.win / 'WOS-Launcher.exe').write_bytes(b'old win')
+        feed.build({'win64': self.win, 'linux64': linux}, self.root / 'both', '0.1.24',
+                   ['https://dl.proto.bar/ftesurf/update'], SEED, KEY)
+        old = feed.verify((self.root / 'both/update.json').read_bytes(), KEY)
+        (self.win / 'WOS-Launcher.exe').write_bytes(b'new win')
+        self.build(previous=(self.root / 'both/update.json').read_bytes(), previous_objects=self.root / 'both/objects')
+        m = feed.verify((self.root / 'feed/update.json').read_bytes(), KEY)
+        self.assertEqual(m['launcher']['linux64'], old['launcher']['linux64'])
+        self.assertEqual(m['launcher']['win64']['hash'], hashlib.blake2b(b'new win', digest_size=32).hexdigest())
+        feed.verify_objects(self.root / 'feed/objects', m)
+
+    def test_p1666_bad_launcher_descriptors_are_refused(self):
+        (self.win / 'WOS-Launcher.exe').write_bytes(b'bootstrap win')
+        self.build()
+        good = feed.verify((self.root / 'feed/update.json').read_bytes(), KEY)
+        d = good['launcher']['win64']
+        bad = [{'win64': dict(d, path='ftesurf-launcher.exe')}, {'win64': dict(d, path='WOS-Launcher')},
+               {'linux64': dict(d, path='WOS-Launcher.exe')}, {'macos64': d}, {'win64': dict(d, extra=1)},
+               {'win64': {k: v for k, v in d.items() if k != 'size'}}, {'win64': dict(d, size=0)},
+               {'win64': dict(d, size=32 * 1024 * 1024 + 1)}, {'win64': dict(d, size=True)},
+               {'win64': dict(d, hash=d['hash'].upper())}, {'win64': dict(d, hash=d['hash'][:63])},
+               {'win64': [d]}, [d], 'WOS-Launcher.exe']
+        for launcher in bad:
+            with self.assertRaisesRegex(ValueError, 'launcher descriptor|object size', msg=repr(launcher)):
+                feed.validate(dict(good, launcher=launcher))
+        # one hash, two sizes: a file and the launcher may share bytes, never disagree on their length
+        f = good['files'][0]
+        with self.assertRaisesRegex(ValueError, 'inconsistent object size'):
+            feed.validate(dict(good, launcher={'win64': dict(d, hash=f['hash'], size=f['size'] + 1)}))
+        feed.validate(dict(good, launcher={'win64': dict(d, hash=f['hash'], size=f['size'])}))
+
     def test_missing_required_game_file_fails(self):
         (self.win / 'ftesurf/menu.dat').unlink()
         with self.assertRaisesRegex(ValueError, 'required'): self.build()
