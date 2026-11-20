@@ -185,7 +185,6 @@ void(vector screensize) MM_Frame;
 void(vector screensize) MM_Backdrop;
 void(vector screensize) MM_DrawFps;
 void(vector screensize) MM_ScreenMain;
-void(vector screensize) MM_ScreenVisuals;
 void(vector screensize) MM_ScreenMusic;
 void() MM_Open;
 void() MM_Close;
@@ -268,7 +267,8 @@ float menu_screen;
 float() ui_browser_screen =
 {
 	return (menu_screen == SCREEN_MAIN || menu_screen == SCREEN_CREATE || menu_screen == SCREEN_STORY
-	        || menu_screen == SCREEN_STATS || menu_screen == SCREEN_TOURNAMENT);
+	        || menu_screen == SCREEN_STATS || menu_screen == SCREEN_TOURNAMENT
+	        || menu_screen == SCREEN_SETTINGS || menu_screen == SCREEN_VISUALS);   // P1638
 };
 float ui_boot_savedshowall;
 float ui_boot_savedalso, ui_boot_bhop;  // P1583: the saved Bhop chips; the Bhop-only count
@@ -6441,6 +6441,7 @@ void(vector screensize) screen_name =
 // window here is ~690x390 menu units, and the four did not fit one panel. The title screen
 // keeps a hint line (MU_Hint); the first boot's terms screen is still the gate.
 float ui_f2_tab;                    // 0 patch notes, 1 updates, 2 input journal, 3 terms
+float ui_f2_back;                   // P1638: where Back/Esc go; Settings' links set it after opening
 
 // "" keeps the last page, or Updates while an update waits for a restart.
 void(string pg) ui_f2_open =
@@ -6451,6 +6452,7 @@ void(string pg) ui_f2_open =
 	else if (pg == "terms") ui_f2_tab = 3;
 	else if (cvar_string("update_state") == "restart" || cvar_string("update_state") == "launcher") ui_f2_tab = 1;
 	menu_screen = SCREEN_JOURNAL;
+	ui_f2_back = SCREEN_MAIN;
 };
 void(vector screensize) screen_journal =
 {
@@ -6466,7 +6468,7 @@ void(vector screensize) screen_journal =
 	// P796: first, so Back and not Allow is the keyboard's default.
 	if (ui_button("journal_back", [p_x + w - 16 - 90, p_y + 12], [90, 30], "Back"))
 	{
-		menu_screen = SCREEN_MAIN;
+		menu_screen = ui_f2_back;
 		return;
 	}
 	x = p_x + 16;
@@ -6542,7 +6544,8 @@ vector(vector screensize) MH_ShellSize;
 vector(vector screensize) MH_ShellOrigin;
 vector(vector screensize) MH_ContentSize;
 void(vector size) MH_Sidebar;
-void(vector screensize) MH_Settings;
+void(vector size) MSet_Draw;            // P1638: m_settings.qc
+void(string arg) MSet_Command;
 void() MH_Poll;
 void() MH_Probe;
 float mh_mode, mh_modes_has;           // P1122: m_home.qc's, for ui_home_kind
@@ -8611,18 +8614,16 @@ void(vector screensize) m_draw =
 		MT_Draw(MH_ContentSize(screensize));
 	else if (menu_screen == SCREEN_CHAT)
 		MC_Draw(screensize);
-	else if (menu_screen == SCREEN_SETTINGS)
-		MH_Settings(screensize);
+	else if (menu_screen == SCREEN_SETTINGS || menu_screen == SCREEN_VISUALS)
+		MSet_Draw(MH_ContentSize(screensize));
 	else if (menu_screen == SCREEN_STORY)
 		screen_story(MH_ContentSize(screensize));
 	else if (menu_screen == SCREEN_STATS)
 		MStats_Draw(MH_ContentSize(screensize));
-	else if (menu_screen == SCREEN_VISUALS)
-		MM_ScreenVisuals(screensize);
 	else if (menu_screen == SCREEN_MUSIC)
 	{
 		menu_screen = SCREEN_VISUALS;
-		MM_ScreenVisuals(screensize);
+		MSet_Draw(MH_ContentSize(screensize));
 	}
 	else
 	{
@@ -8756,7 +8757,7 @@ float(float evtype, float scanx, float chary, float devid) Menu_InputEvent =
 	}
 	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE && menu_screen == SCREEN_JOURNAL)
 	{
-		menu_screen = SCREEN_MAIN;
+		menu_screen = ui_f2_back;
 		return TRUE;
 	}
 	if (evtype == IE_KEYDOWN && scanx == K_ESCAPE && menu_screen == SCREEN_STATS)
@@ -9076,10 +9077,9 @@ float(string cmd) m_consolecommand =
 		return TRUE;
 	}
 
-	if (argv(0) == "ui_settings")      // P1453: the Settings screen, for arms
+	if (argv(0) == "ui_settings")      // P1453: the Settings screen, for arms; P1638: [section|probe]
 	{
-		menu_screen = SCREEN_SETTINGS;
-		print("ui_settings: open\n");
+		MSet_Command(argv(1));
 		return TRUE;
 	}
 

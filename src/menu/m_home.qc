@@ -600,33 +600,6 @@ void(vector p, vector size) MH_Stats =
 	if (sui_is_released("home_stats_open")) MStats_Open();
 };
 
-void(vector screensize) MH_Settings =
-{
-	local vector size, pos;
-	local float v;
-	size = [min(780, screensize_x - 32), min(440, screensize_y - 32)];
-	pos = [floor((screensize_x - size_x) * 0.5), floor((screensize_y - size_y) * 0.5)];
-	sui_style_panel(pos, size, 12, 1);
-	sui_push_frame(pos, size);
-	sui_text('24 22 0', SZ_HEAD, "Settings", COL_ACCENT, 1, 0);
-	if (ui_button("home_visuals", '24 66 0', '184 36 0', "Visuals & display")) menu_screen = SCREEN_VISUALS;
-	if (ui_button("home_privacy", '224 66 0', '250 36 0', "Privacy & online terms")) menu_screen = SCREEN_TERMS;
-	v = cvar("sensitivity");
-	sui_text('24 134 0', SZ_LABEL, sprintf("Mouse sensitivity: %.2f", v), COL_TEXT, 1, 0);
-	if (ui_button("home_sens_down", '320 124 0', '48 32 0', "-")) cvar_set("sensitivity", ftos(max(0.1, v - 0.1)));
-	if (ui_button("home_sens_up", '380 124 0', '48 32 0', "+")) cvar_set("sensitivity", ftos(min(100, v + 0.1)));
-	v = cvar("volume");
-	sui_text('24 182 0', SZ_LABEL, sprintf("Effects volume: %g%%", floor(v * 100 + 0.5)), COL_TEXT, 1, 0);
-	if (ui_button("home_vol_down", '320 172 0', '48 32 0', "-")) cvar_set("volume", ftos(max(0, v - 0.05)));
-	if (ui_button("home_vol_up", '380 172 0', '48 32 0', "+")) cvar_set("volume", ftos(min(1, v + 0.05)));
-	v = MM_ChipRow('24 222 0', "home_lwire", "Loading-screen models", "side on|from above",
-	               cvar("ls_wireangle") >= 22.5, 296);
-	if (v >= 0)
-		MM_Seta("ls_wireangle", v ? "45" : "0");     // P1453
-	sui_text('24 286 0', SZ_LABEL, "Use the tabs above to return to lobbies, maps or your progress.", COL_DIM, 1, 0);
-	sui_pop_frame();
-};
-
 vector(vector size) MH_ContentSize =
 {
 	return [size_x - min(400, max(260, floor(size_x * 0.28))) - 12, size_y];
