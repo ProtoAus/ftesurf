@@ -1,23 +1,5 @@
 # World of Surf patch notes
 
-### P1623 Linux development tooling
-- PowerShell build/deployment tooling now supports native Linux compiler paths and safe owned workspaces. This is an operator-tooling change, not a gameplay update or live-server rollout.
-
-### P1622 Story targets based on real groups, plus new maps
-- Bronze means completing the map. Silver targets G4 and gold targets G2 using a fixed snapshot of real group times; maps without enough time data stay finish-only.
-- Added fuchnut, despair, centipedes, shape, remeanian, autumn_fix, ferros and highlands to Story, and autosave/gary_barlow to Events. Nightingale B4/B5 are set up as finish-only Events and become available after their bonus zones are published.
-
-### P1621 Stage results follow Splits
-- The stage-complete time and placement now use plain HUD text below Splits, following its position, size and visibility in hud_edit. The Splits settings also control the stage-result display and duration.
-
-### P1620 Map and course in global chat
-- New chat lines sent from a game show the sender's map and stage/bonus instead of the lobby number. Previously saved messages keep their original tags.
-
-### P1619 Cleaner leaderboard controls
-- Normal is shown when no optional mode is selected. Click a mode to select it, then click it again to return to Normal.
-- WOS/Momentum/KSF selection no longer needs a Filter switch, and Fetch no longer shifts the selector. The menu leaderboard matches the in-game column/control layout and starts near your record when available.
-- The Download map button's two-line label is centered vertically.
-
 <!--
   What each update changes, written for players. The release turns this file into
   patchnotes.json beside update.json (src/release/releaselib.ps1 ConvertFrom-PatchNotes);
@@ -38,6 +20,14 @@
 -->
 
 ## next
+
+### P1635 Tournament rounds start and end cleanly
+- In a tournament the F6 panel closes when the countdown starts, and a run still going when the round ends is cancelled rather than posted to the leaderboards.
+
+### P1634 Tournament lobbies
+- A Tournament tab in the main menu, shown once tournaments are switched on: join a room before connecting, see every setting the host picks, then ban and pick maps in turn.
+- When the host launches, everyone goes to one server together. Rooms have their own chat, and the host can move players between seats and spectators.
+- In a tournament game, F6 shows the standings, the round clock and the maps in play order.
 
 ### P1633 Taskbar icon on Linux
 - On Linux the game window now has the World of Surf icon and name in the taskbar (KDE, GNOME and wlroots desktops); the launcher keeps a menu entry and icons up to date.
@@ -74,6 +64,21 @@
 
 ### P1624 QuakeC build tools
 - Fixed two compiler bugs affecting builtin calls and array checks. This is a source/build-tool repair, not a live-server update.
+
+### P1622 Story targets based on real groups, plus new maps
+- Bronze means completing the map. Silver targets G4 and gold targets G2 using a fixed snapshot of real group times; maps without enough time data stay finish-only.
+- Added fuchnut, despair, centipedes, shape, remeanian, autumn_fix, ferros and highlands to Story, and autosave/gary_barlow to Events. Nightingale B4/B5 are set up as finish-only Events and become available after their bonus zones are published.
+
+### P1621 Stage results follow Splits
+- The stage-complete time and placement now use plain HUD text below Splits, following its position, size and visibility in hud_edit. The Splits settings also control the stage-result display and duration.
+
+### P1620 Map and course in global chat
+- New chat lines sent from a game show the sender's map and stage/bonus instead of the lobby number. Previously saved messages keep their original tags.
+
+### P1619 Cleaner leaderboard controls
+- Normal is shown when no optional mode is selected. Click a mode to select it, then click it again to return to Normal.
+- WOS/Momentum/KSF selection no longer needs a Filter switch, and Fetch no longer shifts the selector. The menu leaderboard matches the in-game column/control layout and starts near your record when available.
+- The Download map button's two-line label is centered vertically.
 
 ### P1618 Faster map downloads
 - Maps now download through Cloudflare's network, cached close to you, instead of straight from our storage in Australia. A map someone near you has already fetched arrives much faster.
@@ -118,7 +123,8 @@
 - With vsync off the frame rate is no longer capped at the refresh rate, and a hidden window keeps the game running instead of freezing it.
 
 ### P1598 Pick your movement mode in game
-- In a game you host, the console command hud_gamemode opens a small panel listing the seven movement modes (Default, Half-Life 2 pre and post, AG 100, 250 and 1000, Counter-Strike 1.6). Click one or press its number and the map reloads in that mode. Bind it to a key with bind <key> hud_gamemode.
+- In a game you host, the console command hud_gamemode opens a small panel listing the seven movement modes (Default, Half-Life 2 pre and post, AG 100, 250 and 1000, Counter-Strike 1.6). Click one or press its number and the map reloads in that mode.
+- Bind it to a key with bind <key> hud_gamemode.
 - On a lobby the panel shows the modes but cannot switch them: a lobby keeps its own mode. These modes are unranked for now.
 
 ### P1593 World of Surf names, part 1
@@ -126,17 +132,21 @@
 - WOS-Launcher now passes only these start options to the game: `+map <map>`, `+connect <host[:port]>`, `-window`, `-fullscreen`, `-width N`, `-height N`. Set anything else in the game's console or settings.
 
 ### P1597 Ranked runs on the lobbies need the current online terms
-- The lobbies now ask for the online terms that 0.1.48 shows (the journal also names programs that load into or change the game). If you accepted them in 0.1.48, nothing changes. On an older version, or if you chose Stay offline there, ranked uploads and the online features stop until you update and choose Play online.
+- The lobbies now ask for the online terms that 0.1.48 shows (the journal also names programs that load into or change the game). If you accepted them in 0.1.48, nothing changes.
+- On an older version, or if you chose Stay offline there, ranked uploads and the online features stop until you update and choose Play online.
 
 ### P1596 Bhop platforms reset you, HL-mode teleports land on your feet
-- On bhop maps the platforms that sank under you in CS:S (doors and buttons over a reset) now send you back to the reset as in Momentum Mod: stay on one for about a fifth of a second, or land on the same one again within a second, and you are reset. They still do not move.
+- On bhop maps the platforms that sank under you in CS:S (doors and buttons over a reset) now send you back to the reset as in Momentum Mod: stay on one for about a fifth of a second, or land on the same one again within a second, and you are reset.
+- They still do not move.
 - In the Half-Life movement modes (AG 100, 250 and 1000, Counter-Strike 1.6) teleports, !r, stage and bonus moves no longer leave you half in the floor.
 
 ### P1595 ahop_coast and 76 more bhop maps are back in Maps
-- ahop_coast, the kz, df, deathrun and hl bhop maps and a few others that Momentum lists as bhop were hidden from the Maps list (even if you had them) because their names do not start with bhop_. They are listed and playable again, and they count toward profile completion, so completion percentages dip a little.
+- ahop_coast, the kz, df, deathrun and hl bhop maps and a few others that Momentum lists as bhop were hidden from the Maps list (even if you had them) because their names do not start with bhop_.
+- They are listed and playable again, and they count toward profile completion, so completion percentages dip a little.
 
 ### P1594 The game records how closely your key presses follow your keyboard
-- During a recorded run, the game now notes how long after your keyboard reported each key press and release the game received it, and writes the counts into the run's input record. A tool that delays or reshapes key presses inside the game shows up there. Nothing changes on screen.
+- During a recorded run, the game now notes how long after your keyboard reported each key press and release the game received it, and writes the counts into the run's input record.
+- A tool that delays or reshapes key presses inside the game shows up there. Nothing changes on screen.
 
 ### P1591 Autohop in every movement mode
 - Holding jump now hops again the moment you land in every practice movement mode (Half-Life 2 pre and post, AG 100, 250 and 1000, Counter-Strike 1.6), as it already did in normal surf.
@@ -151,7 +161,8 @@
 - On the Stats page a map and its CS:S/KSF copy count as one map, so beating either one counts it as finished.
 
 ### P1589 New practice movement: Half-Life 2, AG 1000 and Counter-Strike 1.6
-- In your own game, type `sv_movementprofile hl2-pre` or `hl2-post` in the console, then load a map: you get Half-Life 2 movement with its jump boost, from before Valve limited it (every forward jump adds speed) or after (forward jumps stop at about 285, but jumping backwards still speeds you up). Shift sprints.
+- In your own game, type `sv_movementprofile hl2-pre` or `hl2-post` in the console, then load a map.
+- You get Half-Life 2 movement with its jump boost, from before Valve limited it (every forward jump adds speed) or after (forward jumps stop at about 285, but jumping backwards still speeds you up). Shift sprints.
 - `sv_movementprofile ag-1000` runs the Adrenaline Gamer movement at 1000 steps a second, beside the existing `ag-100` and `ag-250`.
 - `sv_movementprofile cs16` gives Counter-Strike 1.6 movement: knife speed, a hard slowdown when you land, lower chained jumps and the bunnyhop speed cap.
 - These are unranked practice modes with their own saves; `sv_movementprofile default` and a new map bring back normal surf movement.
