@@ -58,6 +58,12 @@
 - Pre-existing, seen while testing: tools/qcframes.py over main's csprogs.dat prints FRAME lines for Line_Alloc
   (ln_nath, ln_nat); qwprogs is clean. Not P1643's (csprogs is byte-identical with and without it).
 ## P1654-P1660 GoldSrc maps and Linux ImGui -- open items (20 Nov, worldofsurf-4a)
+- P1665 (worldofsurf-75): on a CS-eye map, during the 0.4 s duck blend, PMAg_WaterEye recovers the profile's eye by
+  inverting the shown blend in float32 and can differ from the pre-patch value by one float step (max 3.8e-6 u; review
+  round 2): waterlevel flips only for a surface inside that gap. Fix: store the own-eye blend beside viewheight in a
+  pmove output field (per-thread pmove, not a static) and return it. Also: an unrecognised sv_goldsrcview value is auto.
+- P1665: a 0.1.50 client on a newer dedicated server predicts eye 28 where the server uses 17 (GoldSrc maps are local
+  games today). QC that samples origin + view_ofs (underwater sounds) now uses the shown eye on CS maps.
 - Records: artifacts and reports in FTESurf-worktrees/agmaps-20261120-4a/artifacts/ (rel/, ents/, menu/ REPORT.md;
   review-*.md). Packages: tools/gsrcpack.py; R2 objects/goldsrc/<sha>.xz + goldsrc/catalog.txt via the Pi root
   /srv/nvme/agent-work/agmaps-20261120-4a (own r2mirror ledger; the PC's r2 token is read-only).
