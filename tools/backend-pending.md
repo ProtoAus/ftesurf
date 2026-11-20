@@ -4,6 +4,8 @@
 - Pin tools/census/recsim.py at or after the P1671 commit in SURFD_TOOLS. Effect: the stored, never-acted-on
   similarity scores start covering lobby runs from 10 Nov on (REC 14); no player-visible change. The surfd similarity
   and admin tests pass with it on the Pi (scratch run 21 Nov). Expect more same-player near-1.0 pairs (BACKLOG P1671).
+- P1689 rides the same pin (shared-runid pairs skipped by the census; yaw_agreement). For simcheck to STORE the yaw
+  figure its projection must allow the key first (surfd change, not written yet).
 
 ## P1659 follow-up pending: lobbies show their movement style (20 Nov 2026, worldofsurf-4a)
 Lex: "is it possible for the Lobbys to state their movement style (Surf/Bhop/AG250) with the map they are playing? and have

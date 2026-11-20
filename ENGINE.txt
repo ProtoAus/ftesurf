@@ -1,4 +1,7 @@
 # The engine build this QuakeC requires.
+# P1689 (game tools/census/recsim.py; Lex's anti-cheat finish list, worldofsurf-6f): two files with one `runid` are one
+# run stored twice, not a negative pair, and a yaw-delta agreement statistic sits beside match (lobby census 21 Nov:
+# honest max 0.41, replays 1.0, jittered 0.996). Tools only; surfd stores it in a later generation. Record: P1689.
 # P1671 (game tools/census/recsim.py; Lex's anti-cheat finish list, worldofsurf-6f): the similarity reader reads
 # REC 12 and 14 move rows (the inclusive viewing clock adds held seconds, not input); every lobby run since 10 Nov is
 # REC 14, which it refused, so surfd/simcheck compared none of them. Reaches surfd with a guarded generation (not yet).

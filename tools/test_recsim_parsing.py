@@ -310,6 +310,24 @@ class Parsing(Fixture):
                 verdict, detail = rs.compare_paths(str(self.a), str(self.b), max_bytes=1 << 20, max_moves=100000)
                 self.assertNotEqual(verdict, 'unmodelled recording')
 
+    def test_runid_and_yaw_agreement(self):
+        # P1689: the header's runid is kept; turn steps agree on a copy, not on a different turning pattern.
+        text = recording().replace('begin', 'runid 20261121-0-p1\nbegin', 1)
+        self.a.write_text(text)
+        a = rs.parse_rec(str(self.a), strict=True)
+        self.assertEqual(a.runid, '20261121-0-p1')
+        self.assertEqual(len(a.yaw), len(a.moves))
+        b = rs.parse_rec(str(self.a), strict=True)
+        a.yaw = [i * 0.7 for i in range(len(a.yaw))]
+        b.yaw = list(a.yaw)
+        agree, turning = rs.yaw_agreement(a, b)
+        self.assertEqual((agree, turning), (len(a.yaw) - 1, len(a.yaw) - 1))
+        b.yaw = [(i * 0.7 + (0.3 if i % 2 else 0.0)) for i in range(len(a.yaw))]
+        agree, turning = rs.yaw_agreement(a, b)
+        self.assertEqual(agree, 0)
+        b.yaw = [y + 360.0 for y in a.yaw]          # a wrap is not a turn
+        self.assertEqual(rs.yaw_agreement(a, b)[0], len(a.yaw) - 1)
+
     def test_sv_timer_viewclock_format_is_explicitly_unsupported(self):
         for version in (13, 16):
             with self.subTest(version=version):

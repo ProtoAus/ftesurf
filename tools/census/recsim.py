@@ -78,6 +78,7 @@ import glob
 import io
 import locale
 import hashlib
+import math
 import os
 import re
 import sys
@@ -152,7 +153,7 @@ def who_of(path):
 
 class Rec(object):
     __slots__ = ("path", "map", "leg", "ver", "tickrate", "moves", "btns",
-                 "mt", "end_ticks", "source")
+                 "mt", "end_ticks", "source", "runid", "yaw")
 
     def __init__(self, path):
         self.path = path
@@ -165,6 +166,8 @@ class Rec(object):
         self.mt = []          # <mt> per move: the tick epoch, for alignment
         self.end_ticks = None
         self.source = None  # only the bounded binary buffer is captured
+        self.runid = ""       # P1676: the header's `runid`; two files with one are one run stored twice
+        self.yaw = []         # P1676: <yaw> per move, degrees as the server received it
 
 
 class MalformedRec(ValueError):
@@ -254,6 +257,10 @@ def _parse_rec(path, max_bytes=None, max_moves=None):
                         if lineno != 1:
                             raise MalformedRec("native held recording must start at the first byte")
                         rec_native.append(line)
+                elif line.split(None, 1)[:1] == ["runid"]:
+                    f = line.split()
+                    if len(f) > 1:
+                        r.runid = f[1].strip()
                 elif line.split(None, 1)[:1] == ["map"]:
                     f = line.split()
                     if len(f) < 2:
@@ -294,15 +301,22 @@ def _parse_rec(path, max_bytes=None, max_moves=None):
                     btn = int(float(f[10]))
                 except (ValueError, OverflowError) as exc:
                     raise MalformedRec("malformed input row") from exc
+                # P1689: the yaw never decides whether a row is readable (the move stream's verdicts stay as before).
+                try:
+                    yaw = float(f[8]) if f[8].isascii() and "_" not in f[8] else 0.0
+                except (ValueError, OverflowError):
+                    yaw = 0.0
                 r.mt.append(mt)
                 r.moves.append(move)
                 r.btns.append(btn)
+                r.yaw.append(yaw if math.isfinite(yaw) else 0.0)
             elif tag == ["takeover"]:
                 # P1569: a shared save's run passed to another player here (P1567); only the rows
                 # after the last takeover are this file's own, the prefix is another player's.
                 r.mt.clear()
                 r.moves.clear()
                 r.btns.clear()
+                r.yaw.clear()
             elif tag and tag[0] in heldmeta.SCHEMAS and r.ver not in heldmeta.NATIVE_VERSIONS:
                 raise MalformedRec("native held metadata requires REC13 or REC15")
             elif line.startswith("end "):
@@ -358,7 +372,7 @@ def stream(r):
     Angles and timing are deliberately EXCLUDED -- see the module docstring.  A
     playback reproduces this exactly; an honest re-play does not.
     """
-    if not len(r.mt) == len(r.moves) == len(r.btns):
+    if not len(r.mt) == len(r.moves) == len(r.btns) == len(r.yaw):
         raise MalformedRec("incomplete move stream")
     return list(zip(r.moves, r.btns))
 
@@ -427,6 +441,31 @@ def best_offset(a, b, max_shift=None, min_len=0):
         if matched > best[1] or (best[2] == 0 and compared > 0):
             best = (d, matched, compared, pl, pl / float(longer))
     return best
+
+
+# P1676: a playback reproduces the view; two people do not turn alike tick for tick.  Degrees: the wire quantum is
+# 360/65536 (0.0055), so a tolerance of 0.05 forgives a playback's rounding and little else.
+YAW_TOL = 0.05
+YAW_TURN = 0.001
+
+
+def yaw_agreement(a, b, d=0, tol=YAW_TOL, eps=YAW_TURN):
+    """Over the aligned rows (best_offset's row shift d) where either run turns, how many turn-steps agree within
+    tol degrees.  -> (agree, turning).  Rows where neither turns are not evidence either way (standing, a held
+    line), which is what makes this separate where the move columns, a small alphabet, cannot."""
+    ya, yb = getattr(a, "yaw", ()), getattr(b, "yaw", ())
+    i, j = max(0, -d) + 1, max(0, d) + 1
+    agree = turning = 0
+    while i < len(ya) and j < len(yb):
+        da = (ya[i] - ya[i - 1] + 180.0) % 360.0 - 180.0
+        db = (yb[j] - yb[j - 1] + 180.0) % 360.0 - 180.0
+        if abs(da) > eps or abs(db) > eps:
+            turning += 1
+            if abs(da - db) <= tol:
+                agree += 1
+        i += 1
+        j += 1
+    return agree, turning
 
 
 def prefix_len(a, b, d=0):
@@ -748,6 +787,8 @@ def cmd_pairs(args):
                   % (k[0], k[1], len(v), min(len(recs[x].moves) for x in v),
                      max(len(recs[x].moves) for x in v)))
 
+    samerun = 0                     # P1676
+    yaws = []                       # P1676: ((agree, turning), match, map, leg, a, b, who a, who b)
     neg = []
     fixpairs = 0
     short = 0
@@ -768,12 +809,18 @@ def cmd_pairs(args):
                     fixpairs += 1
                     continue
                 a, b = recs[ps[i]], recs[ps[j]]
+                ra = getattr(a, "runid", "")
+                if ra and ra == getattr(b, "runid", ""):
+                    samerun += 1    # P1676: one run stored twice (a shared runid), not two performances
+                    continue
                 d, matched, compared, pl, cover = best_offset(
                     a, b, min_len=args.min_len)
                 if not compared:
                     short += 1
                     continue
                 frac = matched / float(compared)
+                yaws.append((yaw_agreement(a, b, d), frac, m, leg, os.path.basename(ps[i]),
+                             os.path.basename(ps[j]), who_of(ps[i]), who_of(ps[j])))
                 neg.append((cover, frac, pl, max(len(a.moves), len(b.moves)),
                             m, leg, os.path.basename(ps[i]),
                             os.path.basename(ps[j]),
@@ -782,6 +829,7 @@ def cmd_pairs(args):
                 done += 1
 
     print("pairs skipped as fixtures: %d" % fixpairs)
+    print("pairs of one run stored twice (shared runid), not compared: %d" % samerun)
     print("NEGATIVE pairs (different runs, same map+leg): %d" % len(neg))
     pfs = []
     if neg:
@@ -900,6 +948,36 @@ def cmd_pairs(args):
             continue
         pos.append((cover, matched / float(compared), pl, len(a.moves),
                     os.path.basename(p), d))
+    yawpos = []                     # P1676: (exact copy, jittered copy) agreement for the positives
+    rng = __import__("random").Random(1676)
+    for p in sample:
+        a = recs[p]
+        if len(getattr(a, "yaw", ())) < args.min_len:
+            continue
+        b = copy.copy(a)
+        e1 = yaw_agreement(a, b, 0)
+        b.yaw = [y + rng.gauss(0.0, 0.01) for y in a.yaw]   # a playback rendered and re-quantised
+        e2 = yaw_agreement(a, b, 0)
+        if e1[1] and e2[1]:
+            yawpos.append((e1[0] / float(e1[1]), e2[0] / float(e2[1])))
+    print()
+    print("YAW agreement (P1676): share of turning rows whose turn steps agree within %.3f deg" % YAW_TOL)
+    yn = [(ag / float(tu), m, mi, lg, pa, pb, wa, wb, tu) for (ag, tu), m, mi, lg, pa, pb, wa, wb in yaws if tu]
+    if yn:
+        yv = sorted(x[0] for x in yn)
+        print("  NEGATIVE: max %.4f  p99 %.4f  median %.4f  (n %d)"
+              % (yv[-1], yv[min(len(yv) - 1, int(0.99 * len(yv)))], yv[len(yv) // 2], len(yv)))
+        for x in sorted(yn, reverse=True)[:5]:
+            print("    yaw %.4f  match %.4f  turning %d  %s/%s  %s vs %s" % (x[0], x[1], x[8], x[2], x[3], x[4], x[5]))
+        same = [x[0] for x in yn if x[6] and x[6] == x[7]]
+        cross = [x[0] for x in yn if x[6] and x[7] and x[6] != x[7]]
+        if same:
+            print("  SAME identity max %.4f (n %d)" % (max(same), len(same)))
+        if cross:
+            print("  CROSS identity max %.4f (n %d)" % (max(cross), len(cross)))
+    if yawpos:
+        print("  POSITIVE exact copy: min %.4f   jittered copy (0.01 deg noise): min %.4f  (n %d)"
+              % (min(x[0] for x in yawpos), min(x[1] for x in yawpos), len(yawpos)))
     print()
     print("pairs below min_len %d, not compared at all: %d" % (args.min_len, short))
     print("POSITIVE pairs (same recording, shifted tick epoch): %d" % len(pos))

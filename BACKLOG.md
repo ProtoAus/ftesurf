@@ -4,8 +4,13 @@
 - With REC 12/14 read, the lobbies' comparable pairs went from 5,147 to 193,303 (census on the Pi, 21 Nov). The pairs
   run (600 negatives, 556 synthetic replays) no longer separates on move columns: replays 1.0000, honest negatives up to
   0.9977 -- all one player's `_shadow.rec` files sharing long identical prefixes (one performance stored twice, e.g.
-  14,906 of 15,224 rows), cross-identity max 0.8994. Next (finish item 4): a yaw-delta agreement statistic, and a rule
-  for files that hold the same performance; then surfd stores it (guarded generation).
+  14,906 of 15,224 rows), cross-identity max 0.8994.
+- P1689 (same day): a shared `runid` marks one run stored twice (47 such pairs) and is not a negative. Then on 600
+  negatives: match max 0.8659 (replays 1.0000, margin 1.15x); YAW agreement (turning rows whose turn steps agree
+  within 0.05 deg) max 0.4100, p99 0.3129, median 0.0442 (same-identity max 0.41, cross 0.38), against replays 1.0000
+  and a replay with 0.01 deg noise 0.9957 -- margin 2.4x. Left: surfd/simcheck stores the yaw figure (its stored
+  detail is an allowlisted projection: a schema change, guarded generation); a replay that re-aims (adds its own
+  turning) is not modelled; no real playback corpus yet.
 - Deploy: surfd/simcheck imports recsim from SURFD_TOOLS on the Pi; it needs the next guarded generation to pin the new
   recsim (tools/backend-pending.md).
 
