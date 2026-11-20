@@ -39,11 +39,23 @@ A 1% speedhack at 1000 u/s is d(v^2) ~ 20000 a tick; a skipped tick is ~15 u.
 import argparse
 import json
 import math
-import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from reccheck import file_float, is_sample  # noqa: E402  one tokenizer for one format
+F32_MAX = 3.4028234663852886e38
+
+
+def is_sample(tok):
+    """reccheck.is_sample: a sample starts with a digit (padding samples with '-')."""
+    return bool(tok) and (tok[0].isdigit() or (tok[0] == "-" and len(tok) > 1 and tok[1].isdigit()))
+
+
+def file_float(tok):
+    """reccheck.file_float without its float32 rounding detail. Inlined so the upload
+    service (surfd/tasupd.py) ships this file alone; reccheck imports heldmeta."""
+    x = float(tok)
+    if not math.isfinite(x) or abs(x) > F32_MAX:
+        raise ValueError("non-finite or out-of-range number")
+    return x
 
 GRAVITY = 800.0
 AIR_DV2 = 900.0          # 30 u/s air cap, squared
@@ -58,6 +70,8 @@ ZONE_PAD = 48.0          # u around a checkpoint/stage box, plus one tick of tra
 EDGE_PAD = 16.0          # u at the start and the end: the hull's half-width, plus one tick of travel
 START_CAP = 380.0        # horizontal u/s at t=0 under limitStartGroundSpeed (measured max 306)
 DEFAULT_MAXVEL = 3500.0
+WORLD = 131072.0         # |coordinate|: Source's +-16384 map limit, eight times over
+MAX_TICKS = 100000000    # surfd.MAX_TICKS
 CLOCK_RATIO = (0.9985, 1.002)
 # Native records that move the body or the clock outside the movement code.
 NATIVE_STATE = ("resume", "session", "pause", "hold", "warp", "restart", "takeover")
@@ -111,7 +125,7 @@ def read(path=None, text=None):
                 run.decimals = max(run.decimals, len(x.split(".")[1]))
         run.samples.append((nums[0], nums[1:4], nums[4:7]))
         try:
-            run.yaw.append(float(tok[8]))
+            run.yaw.append(file_float(tok[8]))
         except ValueError:
             run.yaw.append(0.0)
     return run
@@ -194,6 +208,8 @@ def check(run, zones=None, maxvel=None):
             rate = float(run.hdr.get(k, "") or 0)
         except ValueError:
             rate = 0.0
+        if not math.isfinite(rate):   # "nan" passes every comparison below
+            rate = 0.0
         if rate > 0:
             break
     s = run.samples
@@ -203,8 +219,11 @@ def check(run, zones=None, maxvel=None):
     if rate <= 0 or rate > 0.1:
         note(FAIL, None, f"no usable tickrate ({rate})")
         return out
-    if run.end is None or run.end <= 0:
+    if run.end is None or run.end <= 0 or run.end > MAX_TICKS:
         note(FAIL, None, "no finish (end line)")
+        return out
+    if any(abs(c) > WORLD for _, o, _ in s for c in o) or any(abs(c) > 1e5 for _, _, v in s for c in v):
+        note(FAIL, None, "a sample is outside the world")   # also keeps x ** 2 below finite
         return out
     fin = run.end * rate
     try:

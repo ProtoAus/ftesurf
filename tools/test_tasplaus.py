@@ -224,6 +224,53 @@ class Synthetic(unittest.TestCase):
         self.assertEqual(tp.check(tp.read(text="FTESURF-REC 5\ntickrate 0.015\nbegin\nend 5\n"), ZONES)["verdict"], "FAIL")
 
 
+class Hostile(unittest.TestCase):
+    """Uploads are anyone's bytes: a verdict always comes back, and odd numbers never PASS."""
+
+    def setUp(self):
+        self.rows, self.fin = simulate()
+
+    def test_nan_tickrate_fails(self):
+        body = text(self.rows, self.fin).replace(f"tickrate {RATE}", "tickrate nan")
+        self.assertEqual(tp.check(tp.read(text=body), ZONES)["verdict"], "FAIL")
+
+    def test_huge_end_fails(self):
+        body = text(self.rows, self.fin).replace(f"end {self.fin} ", "end " + "9" * 4000 + " ")
+        self.assertEqual(tp.check(tp.read(text=body), ZONES)["verdict"], "FAIL")
+        body = text(self.rows, self.fin).replace(f"end {self.fin} ", "end 100000001 ")
+        self.assertEqual(tp.check(tp.read(text=body), ZONES)["verdict"], "FAIL")
+
+    def test_far_position_fails_without_raising(self):
+        rows = [(t, list(o), list(v)) for t, o, v in self.rows]
+        rows[len(rows) // 2][1][0] = 3.0e38
+        self.assertEqual(verdict(rows, self.fin)["verdict"], "FAIL")
+
+    def test_non_finite_sample_is_dropped(self):
+        body = text(self.rows, self.fin)
+        lines = body.split("\n")
+        k = next(i for i, x in enumerate(lines) if x.startswith("0.3000"))
+        lines[k] = lines[k].replace(lines[k].split()[4], "nan", 1)
+        r = tp.check(tp.read(text="\n".join(lines)), ZONES)
+        self.assertEqual(len(tp.read(text="\n".join(lines)).samples), len(self.rows) - 1)
+        self.assertIn(r["verdict"], ("PASS", "HOLD"))   # one dropped sample is a 2-tick step
+
+    def test_fuzz_never_raises(self):
+        import random
+        rnd = random.Random(1120)
+        toks = ["nan", "inf", "-inf", "1e39", "-0", "9" * 5000, "0.015", "1e-300", "x", "-", "1", "begin", "end"]
+        base = text(self.rows, self.fin).split("\n")
+        for _ in range(300):
+            lines = list(base)
+            for _ in range(rnd.randint(1, 12)):
+                i = rnd.randrange(len(lines))
+                parts = lines[i].split()
+                if parts:
+                    parts[rnd.randrange(len(parts))] = rnd.choice(toks + [repr(rnd.uniform(-1e6, 1e6))])
+                lines[i] = " ".join(parts)
+            r = tp.check(tp.read(text="\n".join(lines)), ZONES)
+            self.assertIn(r["verdict"], ("PASS", "HOLD", "FAIL"))
+
+
 @unittest.skipUnless(os.environ.get("TASPLAUS_CORPUS"), "set TASPLAUS_CORPUS (+ TASPLAUS_ZONES) to real .rec files")
 class Corpus(unittest.TestCase):
     def test_honest_runs_pass(self):
