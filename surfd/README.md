@@ -1514,25 +1514,31 @@ not just HTTP status. Successful mutations return `status=ok` (release returns
   This connect-first handoff is **not an authenticated pre-connect reservation**.
 - Subsequent mutations: `id=<match id>,revision=<current revision>`. Snapshot
   `epoch` equals the randomly generated match ID (immutable ownership epoch).
-  `generation` equals the round index (1..7). Both persist through backend reload
-  and map changes; neither is a process PID/time-based lease.
+  `generation` equals the round index (1..8; the reserve can add an eighth).
+  Both persist through backend reload and map changes; neither is a process
+  PID/time-based lease.
 - Actor ops additionally send `token`: `enter`, `seat(target=<public who>)`,
   `accept`, `lock`, `ban(map=<exact card spelling>)`, `pick(map=...)`, `ready`,
   `start`, `next`, `leave`, `cancel`. Only host can seat/lock/start/next/cancel;
   ban/pick requires the actual account's draft turn, **not host proxy voting**.
-  Seating toggles player/spectator in lobby and invalidates every competitor's
-  acceptance so the new roster is acknowledged.
+  Seating toggles player/spectator in lobby and clears only that player's
+  acceptance. Before launch (draft, or loading before the party Start or the
+  map's arrival) the host may still unseat a competitor: the match returns to
+  lobby with the draft cleared and the other acceptances kept.
   Every competitor must accept to lock; entrants and rules then freeze. New
   arrivals can only enter as spectators (max64 spectators, max8 competitor/eliminated
   rows, max72 total; 256 distinct proven accounts per match lifetime to bound history).
 - Server-only ops have **no token**, but require `epoch=<snapshot epoch>` as well
   as ownership ID, CAS revision and request: `arrive`, `go`, `score`, `settle`,
-  `advance`, `abort`, `release`. Fleet-key holders are trusted event issuers;
-  clients must never be able to invoke these directly through command forwarding.
+  `advance`, `abort`, `release`, `autostart`. Fleet-key holders are trusted event
+  issuers; clients must never be able to invoke these directly through command
+  forwarding.
 - `arrive`: `current_map=<exact scheduled map>,generation=<snapshot generation>`.
   Only in loading; the first arrival establishes the round, repeats never reset
   readiness. `ready` sends the same two fields and requires a surviving seat.
   Host `start` requires everyone ready and moves to countdown, not live.
+  Server `autostart` does exactly the same (same checks), so play never waits
+  on the host once every surviving competitor is ready.
 - `go`: `elapsed_ms=5000..3600000,tickrate=1..1000` after common 5-second countdown.
   Locks the round tickrate. The game server owns actual live/deadline clocks after
   this ACK. Neither state polling nor repeated snapshots restart those clocks.
@@ -1545,16 +1551,25 @@ not just HTTP status. Successful mutations return `status=ok` (release returns
   Best ticks are round-owned, never personal/world PBs. The trusted QC producer
   must admit only clean, unassisted, main-course finishes whose run began live;
   the backend does not parse recorder files or independently attest that predicate.
-- `settle`: `elapsed_ms>=round_seconds*1000` (max3600000). A unique DNF loses;
-  otherwise the unique slowest best loses. Results assign loser place equal to
-  the pre-elimination surviving count, final winner place1. Tied slowest best,
-  multiple DNF or all DNF **abort with explicit no-contest**. No random elimination
-  and no claimed tiebreak/reserve replay support. `advance`/host `next` moves results
-  to the next loading generation, clearing readiness and round bests, or finished.
-- Competitor `leave` after lock aborts no-contest: withdrawal replay is not
-  implemented. It never creates a second round elimination. Spectators can leave
-  without cancelling a live match. Host `cancel` works only before the first GO;
-  no post-GO host veto. Server `abort` gives no-contest without freeing the node.
+- `settle`: `elapsed_ms>=round_seconds*1000` (max3600000). Settle never aborts.
+  Nobody finished: everyone goes through. Some DNF: every DNF is out. Everyone
+  finished: the slowest best is out, ties included, unless that is everyone
+  (then everyone goes through). Losers share place = survivors - losers + 1; a
+  lone survivor gets place 1 and `outcome=winner`. The map becomes `played`; the
+  note names who went out in plain words. No random elimination.
+- `advance`/host `next`: one or no survivors -> finished. Otherwise the next
+  scheduled round loads (readiness and round bests cleared); past the schedule the
+  unused reserve is appended once (`round_total+1`, card `picked`); with no map
+  left the survivors share place 1 (`outcome=shared`).
+- Competitor `leave` before launch (see seating above) removes them and returns
+  to lobby; a host leave then cancels, as in lobby. After launch it is a forfeit:
+  `eliminated`, last place among those still in; a lone survivor wins and the
+  match finishes, otherwise play goes on and the leaver blocks nothing. Host
+  leaves forfeit the same way. Spectators can leave without cancelling. Host
+  `cancel` works only before the first GO; no post-GO host veto.
+- Server `abort` gives no-contest without freeing the node. Its `reason=` code
+  becomes a plain note (`No contest: the host left the server.`); unknown codes
+  read `the server stopped the match`.
 - `release`: only finished/cancelled/aborted and requires `restored=1`, the trusted
   QC acknowledgement that public mode was restored. This is the **only** reservation
   removal. Abort/release remain available even if the backend feature is turned off.
@@ -1562,9 +1577,16 @@ not just HTTP status. Successful mutations return `status=ok` (release returns
 The candidate cards are a seeded subset of exactly 3N qualified builds. Draft
 order is seeded/shuffled once, bans in seeded entrant order then picks in
 reverse order. There is one distinct ban and one distinct pick per entrant, no
-skipping. Picks are seeded/shuffled into N-1 scheduled rounds and one reserve.
-The reserve is displayed but unused in this alpha. Later rounds require explicit
-host start after fresh arrival/readiness; no wall-clock readiness assumption.
+skipping. Picks are seeded/shuffled into N-1 scheduled rounds and one reserve,
+played only as the extra round above. Later rounds need fresh arrival/readiness
+and host `start` or server `autostart`; no wall-clock readiness assumption.
+
+Menu party rooms (`/api/tournament-lobbies/action`) use the same rules before
+launch. Each party draft turn has 45 s (`turn_left` in the snapshot); any member
+action, state poll or directory poll that finds it expired makes that player's
+ban/pick from the seeded pool, recorded as theirs with a note. `join` works in
+any open room, always as a spectator and without the revision check; after
+launch the joiner gets the same `launch` reply as the other members.
 
 ### Persistence, exclusions and public browser
 
@@ -1584,6 +1606,12 @@ Direct friend/connect links still require QC spectator admission on arrival; the
 do not allocate/changelevel a node. Unresolved/aborted nodes stay protected until
 explicit restoration/release. A stuck owner requires deliberate operator recovery,
 not a shorter TTL. No extra server is spawned automatically.
+
+Tournament hold (`SURFD_TOURNAMENT_HOLD`, default 1, only with
+`SURFD_TOURNAMENTS=1`): `/api/join` also skips unreserved nodes whose capability
+poll is under 20 s old, so viewers' map requests leave tournament servers free.
+They stay in `/lobbies.json` for anyone joining on purpose. 0 restores the old
+picker.
 
 `GET /api/tournaments` is public and read-only:
 `{v:1,enabled:0|1,rows:[{id,node,name,addr,phase,players,capacity,map}],slots:[{node,name,addr,map}]}`.
@@ -1625,10 +1653,11 @@ python -B surfd/test_schema_compat.py --work-root <owned-root>/schema
 The new suite uses pure transition checks and real Flask/SQLite fixtures: permission
 failures, stale revisions, duplicate requests/scores, concurrent admission/CAS,
 reservation same-map/pending/idle/fallback exclusion, incomplete draft/readiness,
-strict score cutoff, map/backend restore, unique DNF/slowest, ties/all-DNF explicit
-no-contest, winner places and explicit release. All accounts/tokens are synthetic;
-this is not a new test of Steam signature verification (existing accounts/social
-suites cover that boundary).
+strict score cutoff, map/backend restore, DNF/slowest/tie/everyone-through settle,
+reserve round and shared first, forfeits, autostart, abort notes, party draft
+clock, late join, tournament hold, winner places and explicit release. All
+accounts/tokens are synthetic; this is not a new test of Steam signature
+verification (existing accounts/social suites cover that boundary).
 
 Native fixture tools additionally take explicit **owned** work roots and pinned
 compiler/engine paths; they do not use the shared install or real player data:
@@ -1670,8 +1699,8 @@ four discovered lifecycle findings were fixed and covered by native/API fixtures
 Pending acceptance: linked real-client reconnect/native spectator lifecycle,
 actual clean-main finishes, common starts/cutoffs with several clients, 2D visual
 and input behavior, thumbnails, manual-ready UX and qualified Source content.
-Manual ready is not proof of renderer/shader readiness. Full tiebreak/reserve
-replay, forfeit/recovery continuation, private mode, scoreboard/history polish,
+Manual ready is not proof of renderer/shader readiness. Tiebreaks beyond the one
+reserve round, crash recovery continuation, private mode, scoreboard/history polish,
 paid entitlements and payment handling remain incomplete. Nothing here is
 paid-ready, deployed or production-enabled by these local tests.
 
