@@ -22,7 +22,7 @@
 ## next
 
 ### P1653 Faster Story and Event screens
-- The Story and Event screens draw about four times faster, so the menu stays smooth on slower PCs.
+- The Story and Event screens draw about four times faster, and screens that look up maps by name (Story, lobbies, tournaments) no longer search the whole map list each time.
 
 ### P1651 A friendlier Tournament tab
 - Leaving a tournament room takes a second click, and the warning says what leaving does.

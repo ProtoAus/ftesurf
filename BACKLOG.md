@@ -64,11 +64,15 @@
 - P1638 (read, not tested -- the rig has no pointer): with milk_panels 1 ("in the world"), MM_PanelScreen still counts
   SCREEN_MAIN, so a real mouse on Lobbies is remapped onto an empty slab. Drop SCREEN_MAIN there or retire the option.
   Settings' "Privacy & online terms" opens the terms screen without the F2 flag: Esc does nothing there (as before).
-- P1642 console: no undo (Ctrl+Z) on the input line. The engine's Wayland keyboard maps K_ keys by evdev keycode
+- P1642 console (undo landed in P1644): the engine's Wayland keyboard maps K_ keys by evdev keycode
   (gl_vidwayland.c, waylandinputsucksbighairydonkeyballs) and only the typed character through xkb, so a virtual
   keyboard with its own keymap (wtype; likely on-screen keyboards) sends wrong keys -- wtype's first letter arrives as
   Escape. Map from the keysym when the keymap is not the evdev one. Rig: artifacts/vptr drives a virtual pointer.
 - P1641: only cvars a server publishes under their own name show its value; others print the local copy.
+- P1653 menu: the first draw of Story's per-map thumbnails (drawsubpic, ~20 ms profiled) and of arriving profile
+  pictures (MP_Upload) decode on the main thread -- one slow frame on first visit; async 2D image decode would remove
+  it. The first frame after a switch can also wait 10-18 ms in swap/present on the nested-labwc rig. sui's rounded box
+  (~7 drawsubpic a box) is the largest QC self cost on every screen; a native box builtin only if a screen slows again.
 - mod_unresolved lists a model's FIRST failure only: a model that failed on an earlier map is not retried, so the
   banner omits it on the next map (gl_model.c Mod_ModelLoaded; falsifier: two maps sharing a missing prop).
 - assetgames.txt labels by directory: materials/de_dust reads "CS:S/CS:GO" though only CS:S has rockwall01.
