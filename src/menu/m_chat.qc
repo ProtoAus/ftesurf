@@ -557,7 +557,8 @@ void(vector pos, vector size, float embedded) MC_Panel =
 	}
 	compact = (embedded && size_y < 300);
 	message_y = compact ? 72 : 96;
-	field_y = size_y - (compact ? 62 : 86);
+	// P1676: the note floats in the bottom padding under the box (it had a 34 px row of its own).
+	field_y = size_y - (compact ? 48 : 56);
 	field_h = compact ? 30 : 34;
 	sui_text([right, compact ? 48 : 62], compact ? SZ_LABEL : SZ_HEAD,
 		ui_fit_text(MC_Plain(mc_peer_name), width, compact ? SZ_LABEL : SZ_HEAD), COL_TEXT, 1, 0);
@@ -587,6 +588,7 @@ void(vector pos, vector size, float embedded) MC_Panel =
 		mc_cursor = ui_emo_c;
 	}
 	if (ui_button("mc_send", [size_x - 96, field_y], [80, field_h], mc_wire ? "wait..." : "send")) MC_Send();
-	sui_text([right, size_y - (compact ? 24 : 36)], '12 12 0', ui_fit_text(MC_Plain(mc_note), width, '12 12 0'), COL_DIM, 1, 0);
+	if (mc_note != "")
+		sui_text([right + 2, field_y + field_h + 3], '12 12 0', ui_fit_text(MC_Plain(mc_note), width - 2, '12 12 0'), COL_DIM, 1, 0);
 	sui_pop_frame();
 };
