@@ -47,10 +47,13 @@ class Upgrade(unittest.TestCase):
         self.calls, self.envs, self.probes, self.held, self.chains, self.imports = [], [], [], [], [], []
         self.active, self.dropins, self.loaded, self.serving = 'active', '', OLD, OLD
         self.fail_new = self.fail_old_after = False
+        self.pending = 'Id=surfd.service\nNeedDaemonReload=no\n\nId=nginx.service\nNeedDaemonReload=no'
         t.run = self.fake_run; t.probe_app = self.fake_probe
         t.check_accounts = lambda path: None; t.check_chain = self.chains.append
         self.euid = os.geteuid; os.geteuid = lambda: 0
         self.umask = os.umask(0o022); os.umask(self.umask)
+
+    def installer_blob(self): return Path(t.__file__).resolve().read_bytes()
 
     def install_old(self, root):
         old = root / OLD; old.mkdir(parents=True)
@@ -74,14 +77,16 @@ class Upgrade(unittest.TestCase):
         if args[:1] == ('git',):
             self.envs.append(kw.get('env'))
             if 'rev-parse' in args: out = (NEW + '\n').encode()
+            elif 'cat-file' in args and args[-1].endswith(':tools/install_tasupd.py'): out = self.installer_blob()
             elif 'cat-file' in args: out = b'# committed ' + args[-1].encode() + b'\n'
         elif args[:1] == (sys.executable,):   # the import check: what proto would see
             cwd = Path(kw['cwd'])
             self.imports.append([stat.S_IMODE(p.stat().st_mode) for p in [cwd, cwd / 'tools', cwd / 'tasupd.py', cwd / 'tools/tasplaus.py']])
         elif args[:2] == ('/usr/bin/systemctl', 'show'):
             prop = [x for x in args if x.startswith('--property=')][0].split('=', 1)[1]
-            out = {'ActiveState': self.active, 'DropInPaths': self.dropins, 'NeedDaemonReload': 'no',
-                   'FragmentPath': str(t.UNIT)}[prop].encode() + b'\n'
+            out = (self.pending if prop == 'Id,NeedDaemonReload' else {
+                'ActiveState': self.active, 'DropInPaths': self.dropins, 'NeedDaemonReload': 'no',
+                'FragmentPath': str(t.UNIT)}[prop]).encode() + b'\n'
         elif args[:2] == ('/usr/bin/systemctl', 'daemon-reload'):
             if self.fail_reload_after_switch and self.serving == NEW: raise OSError('systemd busy')
             self.loaded = self.source_of_unit()
@@ -140,6 +145,11 @@ class Upgrade(unittest.TestCase):
         self.assertEqual(self.calls[init[0]][0], 'proto')
         self.assertEqual(self.calls[init[0]][2], str(t.RELEASES / NEW / 'tasupd.py'))
         self.assertLess(init[0], restart[0])
+
+    def test_an_upgrade_refuses_pending_unit_edits(self):
+        self.pending = 'Id=surfd.service\nNeedDaemonReload=yes'
+        with self.assertRaisesRegex(RuntimeError, 'surfd.service'): self.main('--apply')
+        self.assertFalse((t.RELEASES / NEW).exists())
 
     def test_a_later_upgrade_from_an_opt_release(self):
         (t.ROOT / OLD / 'SOURCE.json').unlink(); (t.ROOT / OLD).rmdir()
@@ -255,9 +265,12 @@ class Fresh(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); d = Path(self.tmp.name)
-        names = ('ROOT', 'STATE', 'UNIT', 'SNIPPET', 'SITE', 'BACKUPS', 'run', 'probe_app', 'check_accounts', 'check_port', 'pwd')
+        names = ('ROOT', 'RELEASES', 'STATE', 'UNIT', 'SNIPPET', 'SITE', 'BACKUPS', 'run', 'probe_app', 'check_accounts',
+                 'check_port', 'pwd', 'check_chain')
         self.saved = {k: getattr(t, k) for k in names}
-        t.ROOT, t.STATE = d / 'srv-ops/tasupd', d / 'srv-ops/tasupd-state'
+        t.ROOT, t.STATE, t.RELEASES = d / 'srv-ops/tasupd', d / 'srv-ops/tasupd-state', d / 'opt-tasupd'
+        t.check_chain = lambda p: None
+        self.pending = 'Id=surfd.service\nNeedDaemonReload=no'
         t.UNIT, t.SNIPPET, t.SITE, t.BACKUPS = d / 'unit.service', d / 'snippet.conf', d / 'site.conf', d
         (d / 'srv-ops').mkdir()
         t.SITE.write_bytes(SITE)
@@ -268,6 +281,7 @@ class Fresh(unittest.TestCase):
         t.run = self.fake_run; t.probe_app = self.fake_probe
         self.calls, self.probes, self.held, self.cwds = [], [], [], {}
         self.loadstate, self.public_fails, self.serving = 'not-found', False, None
+        self.nginx_tests, self.nginx_t_fails_at = 0, None
         self.euid = os.geteuid; os.geteuid = lambda: 0
         self.sleep = t.time.sleep; t.time.sleep = lambda s: None   # the time module itself: put back below
 
@@ -283,8 +297,13 @@ class Fresh(unittest.TestCase):
         out = b''
         if args[:1] == ('git',):
             if 'rev-parse' in args: out = (NEW + '\n').encode()
+            elif 'cat-file' in args and args[-1].endswith(':tools/install_tasupd.py'): out = self.installer_blob()
             elif 'cat-file' in args: out = b'# committed ' + args[-1].encode() + b'\n'
+        elif args[:2] == ('/usr/bin/systemctl', 'show') and '--property=Id,NeedDaemonReload' in args: out = self.pending.encode()
         elif args[:2] == ('/usr/bin/systemctl', 'show'): out = (self.loadstate + '\n').encode()
+        elif args[:2] == ('/usr/sbin/nginx', '-t'):
+            self.nginx_tests += 1
+            if self.nginx_tests == self.nginx_t_fails_at: raise OSError('nginx -t failed')
         elif args[:2] == ('/usr/bin/systemctl', 'enable'): self.serving = NEW
         elif args[:2] == ('/usr/sbin/nginx', '-T'):
             out = t.SITE.read_bytes() + (t.SNIPPET.read_bytes() if b'ftesurf-tasupd.conf' in t.SITE.read_bytes() else b'')
@@ -293,6 +312,8 @@ class Fresh(unittest.TestCase):
         elif args[:2] == ('/usr/bin/python3', '-I'):
             self.cwds['flask'] = kw.get('cwd')
         return types.SimpleNamespace(stdout=out, returncode=0)
+
+    def installer_blob(self): return Path(t.__file__).resolve().read_bytes()
 
     def fake_probe(self, commit, url=None):
         self.probes.append(url)
@@ -332,15 +353,14 @@ class Fresh(unittest.TestCase):
         self.assertEqual(self.probes[0], None)                       # loopback before nginx changes
         self.assertEqual(self.probes[-1], t.PUBLIC_URL + '/api/health')
         self.assertTrue(self.held and all(self.held))               # Ctrl-C and hangup held from the unit on
-        flask = [c for c in self.calls if c[1:4] == ('/usr/bin/python3', '-I', '-c')]
-        self.assertEqual([c[0] for c in flask], [None])
         self.assertIn('MemorySwapMax=0', unit)
         self.assertIn('TASUPD_MAPCFG=/srv/nvme/ftesurf-server/game/ftesurf/cfg/maps', unit)
         self.assertEqual((t.BACKUPS / ('site.conf.pre-tasupd-' + NEW[:12])).read_bytes(), SITE)
         init = [c for c in self.calls if 'init' in c]
         self.assertEqual([c[0] for c in init], ['proto'])
         for src, dest in t.FILES.items():
-            self.assertEqual((t.ROOT / NEW / dest).read_bytes(), b'# committed ' + ('%s:%s' % (NEW, src)).encode() + b'\n')
+            self.assertEqual((t.RELEASES / NEW / dest).read_bytes(), b'# committed ' + ('%s:%s' % (NEW, src)).encode() + b'\n')
+        self.assertFalse((t.ROOT / NEW).exists())                     # not under proto's /srv/nvme/ftesurf-ops
 
     def test_a_public_route_that_does_not_answer_puts_nginx_back(self):
         self.public_fails = True
@@ -377,6 +397,26 @@ class Fresh(unittest.TestCase):
     def test_the_flask_check_runs_isolated_from_the_owner_directory(self):
         self.main()
         self.assertEqual(self.cwds.get('flask'), '/')
+
+    def test_a_rollback_whose_nginx_test_fails_still_disables_the_unit(self):
+        self.public_fails = True; self.nginx_t_fails_at = 3   # preflight, after the include, the rollback's
+        with self.assertRaisesRegex(RuntimeError, 'rollback: nginx put back but not reloaded'): self.main('--apply')
+        self.assertEqual(t.SITE.read_bytes(), SITE)
+        self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service'), self.calls)
+
+    def test_pending_unit_edits_are_refused(self):
+        self.pending = 'Id=surfd.service\nNeedDaemonReload=yes\n\nId=nginx.service\nNeedDaemonReload=no'
+        with self.assertRaisesRegex(RuntimeError, 'surfd.service'): self.main('--apply')
+        self.assertFalse(t.UNIT.exists())
+
+    def test_another_installer_is_refused(self):
+        self.installer_blob = lambda: b'# some other installer\n'
+        with self.assertRaisesRegex(RuntimeError, 'not tools/install_tasupd.py'): self.main()
+
+    def test_the_flask_check_runs_as_proto(self):
+        self.main()
+        flask = [c for c in self.calls if c[1:4] == ('/usr/bin/python3', '-I', '-c')]
+        self.assertEqual([c[0] for c in flask], ['proto'])
 
     def test_changed_nginx_is_refused(self):
         with self.assertRaisesRegex(RuntimeError, 'nginx changed'): self.main('--apply', nginx='0' * 64)

@@ -36,6 +36,10 @@ cannot make passes only if it costs the speed a wall or ramp would (|v'| <= |v| 
 + air control), on contact ticks too; the clock starts within 128 u of the start box floor.
 Ground ticks may step up or down 18 u; checkpoints count from t=0; the precision is the
 most decimals any number shows (a shortest-form printer writes 0.0 beside 123.456789).
+Review 3: a jump needs vz 0 reached by a clip (landing, even rising: the engine lands at vz <= 140)
+or standing, not by gravity alone; a landing on a slope may keep up to the 3D speed (slope fix);
+the precision is the coarser of positions and velocities; steps of 2+ ticks count with off-tick
+ones and their turns are bounded by k x 2 asin(30/|v|) unless a wall or ramp took the speed.
 Bounds, measured on 117 KSF + Momentum replays of surf_sandtrap2 bonus 4
 (20 Nov 2026, 2-6 decimal files):
   free flight / ramps  d(|v|^2 + 2 g z) per tick  max 921; theory 900 = 30^2, the
@@ -99,7 +103,7 @@ START_CAP = 380.0        # horizontal u/s at t=0 under limitStartGroundSpeed (me
 START_CAP_3D = 480.0     # |v| at t=0 (measured max 406); and at the first sample where no start limit exists
 GROUND_DV2 = 10000.0     # d(|v_h|^2) a ground tick: 2 A W - A^2, A = 19.5, W = 260 (measured max 3269)
 MIN_DECIMALS = 2         # every position/velocity printed to 0.01 or finer (all 281 real files)
-FRICTION, STOPSPEED = 4.0, 100.0   # cfg/default.cfg sv_friction / sv_stopspeed (no map cfg changes them)
+FRICTION, STOPSPEED = 4.0, 75.0    # cfg/default.cfg sv_friction / sv_stopspeed (mode_ahop's 100 only takes more)
 OPEN_CAP = 1500.0        # |v| a recording may open with on a course with no start limit (measured 1209: falling in)
 STEP = 18.0              # u a ground move steps up or down (sv_stepheight)
 DRIFT_SECOND = 24.0      # u: unexplained horizontal travel summed over 66 ticks (corpus max 0.3; check())
@@ -133,7 +137,8 @@ class Run:
         self.odd_breaks = False
         self.samples = []    # (t, o[3], v[3])
         self.end = None
-        self.decimals = 0    # most decimals of any position/velocity number, at most 6 (exponent form 0)
+        self.decimals = 0    # the coarser of positions and velocities, each its most decimals (at most 6)
+        self._dec = [0, 0]
         self.short = 0       # sample lines with fewer than 14 columns (dropped)
         self.records = set()
         self.yaw = []        # view yaw per sample (runcompare reads it)
@@ -177,12 +182,14 @@ def read(path=None, text=None, header_only=False):
             nums = [file_float(x) for x in tok[:7]]
         except ValueError:
             continue
-        # The most, not the fewest: a shortest-form printer writes 0.0 beside 123.456789, and coarse
-        # numbers under fine tolerances only fail more checks.
-        for x in tok[1:7]:
+        # The most a group shows, not the fewest: a shortest-form printer writes 0.0 beside 123.456789.
+        # The coarser group sets the precision: positions at 0.1 under velocities' 0.01 would read as
+        # energy jumps rather than as the precision HOLD.
+        for col, x in enumerate(tok[1:7]):
             dot = x.find(".")
             if dot >= 0 and x[dot + 1:].isdigit():
-                run.decimals = min(6, max(run.decimals, len(x) - dot - 1))
+                run._dec[col // 3] = min(6, max(run._dec[col // 3], len(x) - dot - 1))
+        run.decimals = min(run._dec)
         run.samples.append((nums[0], tuple(nums[1:4]), tuple(nums[4:7])))
         try:
             run.yaw.append(file_float(tok[8]))
@@ -405,8 +412,10 @@ def check(run, zones=None, maxvel=None):
         k = (b[0] - a[0]) / rate
         aligned = abs(k - round(k)) < 0.02
         kk = max(1, math.ceil(k - 0.02))   # mover steps: the air cap and the tolerances are per step
-        if not aligned or k < 0.98:
-            offtick += 1   # each pair gets a whole step's allowance: ten samples a tick would get ten
+        if not aligned or k < 0.98 or (round(k) >= 2 and a[0] >= 0):
+            # Each pair gets a whole step's allowance (ten samples a tick would get ten), and a step of
+            # 2+ ticks skips the one-tick turn and drift tests: both counted (honest: 0-1 of the latter).
+            offtick += 1
         over_cap = next((c for c in range(3) if abs(b[2][c]) > maxvel + GRAVITY * rate + 0.5), None)
         if over_cap is not None:
             # HOLD, not FAIL: the cap given may be lower than the map's (cfg/maps, a trigger, a stage).
@@ -421,10 +430,14 @@ def check(run, zones=None, maxvel=None):
         r = resid(a, b)
         dvz = vb[2] - va[2]
         free = abs(dvz + GRAVITY * rate * k) < 0.05
-        prev_vz = win[i - 1][2][2] if i > 0 else 0.0
-        # From the ground: vz was clipped to 0 by a landing or was 0 already (all 476 real jumps; the
-        # sample before is never rising -- an arc's top is).
-        jump = abs(va[2]) < 0.01 and prev_vz <= 0.01 and JUMP_VZ[0] <= vb[2] <= JUMP_VZ[1]
+        # From the ground: standing (vz 0 before too) or landed (the tick into it is a clip, not free
+        # flight: the engine lands rising at vz <= 140). An arc's top reaches 0 by gravity alone.
+        if i > 0:
+            pv, pdt = win[i - 1][2][2], a[0] - win[i - 1][0]
+            landed = abs(pv) < 0.01 or abs(va[2] - pv + GRAVITY * pdt) >= 0.05
+        else:
+            landed = True
+        jump = abs(va[2]) < 0.01 and landed and JUMP_VZ[0] <= vb[2] <= JUMP_VZ[1]
         ground = abs(va[2]) < 0.01 and abs(vb[2]) < 0.01
         shift = 0.0
         if math.hypot(r[0], r[1]) < 2.0 * kk and DUCK_SHIFT[0] <= abs(r[2]) <= DUCK_SHIFT[1] and not ground:
@@ -434,8 +447,8 @@ def check(run, zones=None, maxvel=None):
             if abs(duck_net) > DUCK_NET:
                 note(HOLD, t, f"duck shifts add up to {duck_net:+.1f} u of height")
                 duck_net = max(-DUCK_NET, min(DUCK_NET, duck_net))
-        if ground:
-            duck_net = 0.0   # standing up on the ground shifts nothing back
+        if ground or jump:
+            duck_net = 0.0   # standing up on the ground (or on a bhop's jump tick) shifts nothing back
         d = math.sqrt(r[0] ** 2 + r[1] ** 2 + (r[2] - shift) ** 2)
         if d > POS_TOL * kk and not (ground and math.hypot(r[0], r[1]) <= POS_TOL * kk and abs(r[2]) <= STEP + 1):
             ntele += 1
@@ -522,6 +535,14 @@ def check(run, zones=None, maxvel=None):
         if gain > AIR_DV2 * kk + tol:
             note(HOLD, t, f"energy +{gain:.0f} in {k:.2g} tick(s), air cap {AIR_DV2 * kk:.0f}"
                  f" ({gain / (AIR_DV2 * kk):.1f}x): push, booster or speed change")
+        elif aligned and round(k) >= 2 and t >= 0 and min(ha, hb) > 1.0:
+            # A step of k ticks: air control turns at most 2 asin(30/|v|) a tick, a wall or ramp only
+            # by taking speed.
+            turn = turn_deg(va, vb, 2)
+            most = math.degrees(2 * math.asin(min(1.0, AIR_CAP / min(ha, hb)))) * round(k) + 1.0
+            if turn > most and not clip_ok(va, vb, 2, AIR_CAP * kk + GRAVITY * rate * kk + 4 * q):
+                note(HOLD, t, f"{ha:.0f} -> {hb:.0f} u/s turning {turn:.1f} deg in {round(k)} ticks: air control"
+                     f" turns at most {most:.1f}, and a wall or ramp would have taken speed")
         elif aligned and round(k) == 1 and t >= 0:
             # Air control adds a*w with w horizontal and v'.w <= 30, so v'.(v' - v) <= 30 |v' - v|
             # whatever sv_airaccelerate is. A wall or ramp breaks that only by taking speed (clip_ok).
@@ -532,6 +553,10 @@ def check(run, zones=None, maxvel=None):
             else:   # contact: the ramp adds gravity's share along it
                 over = sum(vb[c] * (vb[c] - va[c]) for c in range(3)) - AIR_CAP * dvh - GRAVITY * rate * max(0.0, -vb[2])
                 n, extra = 3, AIR_CAP + GRAVITY * rate + 4 * q
+                if va[2] < -1.0 and abs(vb[2]) < 0.01:
+                    # A landing on a slope keeps the velocity clipped onto it, then zeroes vz
+                    # (pm_source.c slope fix, FullWalkMove): the run speed may take up to the 3D speed.
+                    over = min(over, hb - math.sqrt(sum(c * c for c in va)) - extra)
             worst_turn = max(worst_turn, over)
             if over > TURN_TOL + 6 * math.sqrt(3) * max(ha, hb, abs(vb[2])) * q and not clip_ok(va, vb, n, extra):
                 note(HOLD, t, f"{ha:.0f} -> {hb:.0f} u/s turning {turn_deg(va, vb, n):.1f} deg in one tick: air control"
@@ -550,7 +575,7 @@ def check(run, zones=None, maxvel=None):
     elif not CLOCK_RATIO[0] <= clock <= CLOCK_RATIO[1]:
         note(HOLD, None, f"the body moves {clock:.4f}x what its speed and clock allow: clock edited?")
     if offtick > 2 + len(win) // 500:   # packet timing: 1-2 in 3 of 164 of our own recordings
-        note(HOLD, None, f"{offtick} sample steps are not whole ticks: the per-tick bounds cannot be applied"
+        note(HOLD, None, f"{offtick} sample steps are not one whole tick: the per-tick bounds cannot be applied"
              " (one sample a tick, please; native recordings need the exact verifier)")
 
     # Zones: start, every checkpoint in order, finish.

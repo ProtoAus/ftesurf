@@ -416,7 +416,9 @@ class Service(unittest.TestCase):
         self.upload(c, rec())
         with contextlib.closing(sqlite3.connect(self.store)) as db:
             n, size = db.execute('SELECT n, bytes FROM spend').fetchone()
-        self.assertEqual((n, size), (4, len(rec())))
+            kept = db.execute('SELECT size + LENGTH(sig) FROM runs').fetchone()[0]
+        self.assertEqual((n, size), (4, kept))   # the file and its motion blob, nothing for the refused
+        self.assertGreater(kept, len(rec()))
 
     def test_owner_approved_label(self):
         c, _ = self.sign_in(ALICE)
@@ -595,9 +597,11 @@ class Service(unittest.TestCase):
         self.surfd('UPDATE runs SET millis = 5000')                     # synth's record: 5 s
         self.surfd("INSERT INTO runs VALUES ('synth', 0, 1, 'ranked', 'clean', 'q', 'n', 1, 0.015, 100, 0, 'n', 'r', 1)")
         self.surfd("INSERT INTO runs VALUES ('synth', 0, 0, 'ksf', 'sw', 'q', 'n', 1, 0.015, 100, 0, 'n', 'r', 1)")
-        j = self.upload(c, rec()).get_json()                             # 1.2 s: a leg and a sideways run do not count
+        for tier, style in (('banned:ranked', 'clean'), ('community', 'clean'), ('ranked', 'tas'), ('ranked', 'segmented')):
+            self.surfd("INSERT INTO runs VALUES ('synth', 0, 0, ?, ?, 'z', 'n', 1, 0.015, 300, 0, 'n', 'r', 1)", tier, style)
+        j = self.upload(c, rec()).get_json()   # 1.2 s: legs, sideways, banned, community, tas, segmented do not count
         self.assertEqual((j['verdict'], j['state']), ('PASS', 'held'), j)
-        self.assertIn('faster than every known time on this course (5.000)', j['reasons'][-1]['what'])
+        self.assertIn('faster than the best known time on this course (5.000)', j['reasons'][-1]['what'])
         self.assertEqual(self.cli('approve', str(j['id']))[0], 0)
         b, _ = self.sign_in(BOB)
         slower, sfin = variant(2.0, cap=230.0)                            # 1.29 s, behind the approved 1.2
@@ -605,7 +609,10 @@ class Service(unittest.TestCase):
         faster, ffin = variant(17.0)                                     # 1.11 s
         j = self.upload(b, rec(faster, ffin)).get_json()
         self.assertEqual(j['state'], 'held')
-        self.assertIn('faster than every known time on this course (1.200)', j['reasons'][-1]['what'])
+        self.assertIn('faster than the best known time on this course (1.200)', j['reasons'][-1]['what'])
+        tie = self.upload(c, rec() + b'\n').get_json()                  # Alice's own 1.2 s, re-exported
+        self.assertEqual(tie['state'], 'held', tie)                      # 1.2 s again: a tie with the best waits too
+        self.assertIn('matches the best known time', tie['reasons'][-1]['what'])
 
     def test_the_first_upload_on_a_course_waits(self):
         self.surfd('DELETE FROM runs')
@@ -673,7 +680,63 @@ class Service(unittest.TestCase):
     def test_a_sparse_file_has_a_bounded_series(self):
         tp = svc.load_tasplaus()
         run = tp.read(text=fx.text([(i * 2.0, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]) for i in range(50)], 10000))
-        self.assertEqual(len(svc.motion_series(run)) // 3, 8 * 50 + 1)
+        self.assertEqual(len(svc.motion_series(run)) // 3, 2 * 50 + 600 + 1)
+
+    def test_a_copy_with_edited_velocities_is_seen_by_its_path(self):
+        # Positions untouched, the recorded velocity turned 3 deg on every 4th sample (review 3).
+        c, _ = self.sign_in(ALICE)
+        rows, fin = variant(9.0)
+        self.assertEqual(self.upload(c, rec(rows, fin)).get_json()['state'], 'shown')
+        ca, sa = math.cos(math.radians(3)), math.sin(math.radians(3))
+        bent = [(t, o, [v[0] * ca - v[1] * sa, v[0] * sa + v[1] * ca, v[2]] if i % 4 == 0 else v) for i, (t, o, v) in enumerate(rows)]
+        tp = svc.load_tasplaus()
+        mine, theirs = (svc.motion_series(tp.read(text=rec(x, fin).decode())) for x in (bent, rows))
+        self.assertFalse(svc.same_motion(mine, theirs))                  # the velocities alone no longer match
+        b, _ = self.sign_in(BOB)
+        r = self.upload(b, rec(bent, fin))
+        self.assertEqual(r.status_code, 409, r.get_json())
+
+    def test_a_record_held_for_physics_says_so(self):
+        self.surfd('UPDATE runs SET millis = 5000')
+        c, _ = self.sign_in(ALICE)
+        j = self.upload(c, edited_speed()).get_json()
+        self.assertEqual(j['verdict'], 'HOLD')
+        self.assertIn('faster than the best known time', json.dumps(j['reasons']))
+
+    def test_the_store_cap_counts_the_motion_blob(self):
+        c, _ = self.sign_in(ALICE)
+        self.assertEqual(self.upload(c, rec()).status_code, 200)
+        with contextlib.closing(sqlite3.connect(self.store)) as db:
+            size1, sig1 = db.execute('SELECT size, LENGTH(sig) FROM runs').fetchone()
+        b, _ = self.sign_in(BOB)
+        body = rec(*variant(14.0))
+        # Room for the new file and a blob like the first, not for the first run's blob as well.
+        saved, svc.STORE_CAP = svc.STORE_CAP, size1 + sig1 // 2 + len(body) + sig1
+        try:
+            r = self.upload(b, body)
+        finally:
+            svc.STORE_CAP = saved
+        self.assertEqual(r.status_code, 507, r.get_json())
+
+    def test_an_upload_without_a_session_is_refused_before_its_body(self):
+        anon = self.app.test_client()
+        parts = {'f%d' % i: 'x' for i in range(20)}                     # would be "too many parts" if read
+        r = anon.post('/tasup/upload', data=parts, content_type='multipart/form-data')
+        self.assertEqual(r.status_code, 401)
+
+    def test_a_refused_upload_leaves_another_requests_file(self):
+        # Another request has put these bytes in place and not committed yet; this one is refused in the
+        # write transaction (store full) and must not delete that file.
+        body = rec()
+        path = svc.rec_path(self.store, svc.hashlib.sha256(body).hexdigest())
+        path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(body)
+        saved, svc.STORE_CAP = svc.STORE_CAP, 10
+        try:
+            c, _ = self.sign_in(ALICE)
+            self.assertEqual(self.upload(c, body).status_code, 507)
+        finally:
+            svc.STORE_CAP = saved
+        self.assertTrue(path.exists())
 
     def test_the_map_cfg_speed_cap_counts(self):
         cfgdir = Path(self.tmp.name) / 'cfgmaps'; cfgdir.mkdir()

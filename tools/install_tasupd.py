@@ -6,6 +6,10 @@ the service reads. Like it: a clean inspected source commit, an exact nginx pred
 hash and --apply (the files are the commit's git objects). Never changes or restarts surfd, its DB, tasrevd, zonepub or a lobby. Refuses existing
 destination files rather than taking over a peer's.
 
+Run it as `sudo python3 -I` and it refuses to be anything but that commit's own tools/install_tasupd.py.
+Releases go under RELEASES (/opt, every directory above root's alone) for the first install too; the
+state directory is chowned through its fd. Refuses while any systemd unit has edits not yet loaded.
+
 --upgrade-from <installed commit> (tasrevd's P1119): a new release under RELEASES (every directory above it
 root's alone), and the unit pointed at it. Root runs no code a checkout or a release controls: git
 and the import check run as proto (root still reads proto's data). Only when the unit is byte for byte what this installer wrote for that release and
@@ -95,6 +99,31 @@ def write_site(body):
         os.replace(tmp, SITE)
     finally:
         if tmp.exists(): tmp.unlink()
+
+
+def pending_reloads():
+    # daemon-reload loads every unit's staged edits (a peer's surfd drop-in too): refused while any waits.
+    out = run('/usr/bin/systemctl', 'show', '--property=Id,NeedDaemonReload', '*').stdout.decode()
+    units, cur = [], None
+    for line in out.splitlines():
+        if line.startswith('Id='): cur = line[3:]
+        elif line == 'NeedDaemonReload=yes' and cur: units.append(cur)
+    if units: raise RuntimeError('Units with edits systemd has not loaded (daemon-reload would load them): %s' % ', '.join(units))
+
+
+def check_self(source, commit):
+    # The installer that runs as root must be the inspected commit's own (run it as `sudo python3 -I`).
+    if Path(__file__).resolve().read_bytes() != git(source, 'cat-file', 'blob', '%s:tools/install_tasupd.py' % commit):
+        raise RuntimeError('This installer is not tools/install_tasupd.py of %s; run that one' % commit[:12])
+
+
+def make_state():
+    # Root in a directory proto owns: no path-based chown a symlink swap could redirect.
+    owner = pwd.getpwnam('proto')
+    STATE.mkdir(mode=0o700)
+    fd = os.open(STATE, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try: os.fchown(fd, owner.pw_uid, owner.pw_gid)
+    finally: os.close(fd)
 
 
 def check_port():
@@ -230,6 +259,7 @@ def upgrade(a, blobs):
     check_chain(RELEASES if RELEASES.exists() or RELEASES.is_symlink() else RELEASES.parent)
     probe_app(a.upgrade_from)   # what serves now is the old release
     check_accounts(a.account_db)
+    pending_reloads()
     check_imports(blobs)
     print('Preflight (upgrade): the commit\'s files, the unit and snippet this installer wrote for %s, state present, serving it'
           % a.upgrade_from[:12])
@@ -304,6 +334,7 @@ def main():
     elif not re.fullmatch('[0-9a-f]{64}', a.expected_nginx_sha256 or ''): ap.error('Expected exact predecessor nginx SHA256')
     for p in (a.source, a.account_db): safe_path(p)
     if git(a.source, 'rev-parse', 'HEAD').decode().strip() != a.commit: raise RuntimeError('Source ref differs')
+    check_self(a.source, a.commit)
     blobs = commit_blobs(a.source, a.commit)
     if a.upgrade_from is not None:
         upgrade(a, blobs)
@@ -312,7 +343,7 @@ def main():
     if sha(before) != a.expected_nginx_sha256: raise RuntimeError('nginx changed; inspect again')
     anchor = b'include snippets/surfd.conf;'
     if before.count(anchor) != 1: raise RuntimeError('Expected one existing public surfd include')
-    if any(p.exists() or p.is_symlink() for p in (SNIPPET, UNIT, STATE, ROOT / a.commit)):
+    if any(p.exists() or p.is_symlink() for p in (SNIPPET, UNIT, STATE, ROOT / a.commit, RELEASES / a.commit)):
         raise RuntimeError('Destination already exists; do not overwrite a peer/previous installation')
     if not a.account_db.is_file(): raise RuntimeError('Configured accounts DB absent')
     check_accounts(a.account_db)
@@ -320,9 +351,12 @@ def main():
     if run('/usr/bin/systemctl', 'show', '--value', '--property=LoadState', 'ftesurf-tasupd.service').stdout.decode().strip() != 'not-found':
         raise RuntimeError('Existing loaded unit requires owner inspection')
     check_imports(blobs)
+    check_chain(RELEASES if RELEASES.exists() or RELEASES.is_symlink() else RELEASES.parent)
     backup = BACKUPS / (SITE.name + '.pre-tasupd-' + a.commit[:12])
     if backup.exists(): raise RuntimeError('nginx backup collision; nothing overwritten')
-    run('/usr/bin/python3', '-I', '-c', 'import flask,gunicorn', cwd='/')   # -I, /: nothing planted beside the owner's shell
+    run(*as_user('proto', '/usr/bin/python3', '-I', '-c', 'import flask,gunicorn'), cwd='/')   # as the service will
+    run('/usr/sbin/nginx', '-t')   # a config that fails already would also fail the rollback's test
+    pending_reloads()
     missing = [d for d in ZONE_DIRS if not Path(d).is_dir()]
     print('Preflight: the files of that commit, exact nginx predecessor, separate new service/state; zone directories'
           ' absent (skipped at lookup): %s' % (', '.join(missing) or 'none'))
@@ -330,9 +364,11 @@ def main():
         print('DRY RUN: no changes; owner may rerun under sudo with --apply')
         return
     if os.geteuid() != 0: raise RuntimeError('Owner sudo/root is required for --apply')
-    release = ROOT / a.commit
+    RELEASES.mkdir(mode=0o755, exist_ok=True); RELEASES.chmod(0o755)
+    check_chain(RELEASES)
+    release = RELEASES / a.commit   # root's alone, as upgrades are (not under proto's /srv/nvme/ftesurf-ops)
     write_release(release, a.commit, blobs)
-    owner = pwd.getpwnam('proto'); STATE.mkdir(mode=0o700); os.chown(STATE, owner.pw_uid, owner.pw_gid)
+    make_state()
     init_store(release)
     unit = unit_text(release, service_env(release, a.account_db, a.commit))
     wanted = before.replace(anchor, anchor + b'\n    include snippets/ftesurf-tasupd.conf;')
@@ -363,12 +399,20 @@ def main():
             except (OSError, ValueError, RuntimeError):
                 if attempt == 19: raise
                 time.sleep(.5)
-    except BaseException:
-        if written and wanted.startswith(SITE.read_bytes()):
-            write_site(before); run('/usr/sbin/nginx', '-t'); run('/usr/bin/systemctl', 'reload', 'nginx')
+    except BaseException as first:
+        # Each step on its own: a failing nginx test must not leave the unit enabled, nor hide the cause.
+        failed = []
+        if written:
+            try:
+                if wanted.startswith(SITE.read_bytes()):
+                    write_site(before); run('/usr/sbin/nginx', '-t'); run('/usr/bin/systemctl', 'reload', 'nginx')
+            except BaseException as e: failed.append('nginx put back but not reloaded (%r)' % e)
         if unit_written:
-            if UNIT.read_text() != unit: raise RuntimeError('Unit changed; foreign service not stopped')
-            run('/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service')
+            try:
+                if UNIT.read_text() != unit: failed.append('the unit changed meanwhile: not stopped')
+                else: run('/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service')
+            except BaseException as e: failed.append('unit not disabled (%r)' % e)
+        if failed: raise RuntimeError('install failed (%r); rollback: %s' % (first, '; '.join(failed))) from first
         raise   # source, state, unit, snippet and backup stay for inspection
     finally:
         for n, h in held.items(): signal.signal(n, h)

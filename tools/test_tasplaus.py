@@ -193,11 +193,13 @@ class Synthetic(unittest.TestCase):
         self.assertEqual(r["verdict"], "HOLD", self.reasons(r))
         self.assertIn("clock edited", self.reasons(r))
 
-    def test_sparse_samples_pass(self):
-        # several ticks a sample, as after packet loss: drop every third sample
-        rows = [r for i, r in enumerate(self.rows) if i % 3 != 1]
-        r = verdict(rows, self.fin)
+    def test_sparse_samples_hold(self):
+        # A 2+ tick step skips the one-tick turn and drift tests (review 3): a couple pass, more hold.
+        k = self.i0 + 10
+        r = verdict(self.rows[:k] + self.rows[k + 1:], self.fin)
         self.assertEqual(r["verdict"], "PASS", self.reasons(r))
+        rows = [r for i, r in enumerate(self.rows) if i % 3 != 1]
+        self.assertIn("not one whole tick", self.reasons(verdict(rows, self.fin)))
 
     def test_native_state_records_hold(self):
         txt = text(self.rows, self.fin).replace("begin\n", "begin\nresume 0 0\n")
@@ -318,7 +320,7 @@ class Review1640(unittest.TestCase):
             rows.append((round((a[0] + b[0]) / 2, 6), [(x + y) / 2 for x, y in zip(a[1], b[1])],
                          [(x + y) / 2 for x, y in zip(a[2], b[2])]))
         rows.append(self.rows[-1])
-        self.assertHeld(verdict(rows, self.fin), "not whole ticks")
+        self.assertHeld(verdict(rows, self.fin), "not one whole tick")
 
     def test_low_precision_holds(self):
         body = text(self.rows, self.fin)
@@ -464,12 +466,14 @@ class Review1640Round2(unittest.TestCase):
         self.assertHeld(verdict(rows, self.fin), "friction allows")
 
     def test_jump_from_an_arc_top_holds(self):
-        k = next(i for i, r in enumerate(self.rows) if r[0] > 0 and 0 < r[2][2] <= 12.5) + 1
-        self.rows[k][2][2] = 0.0                    # exactly 0 at the top, after a rising sample
-        dz = 289.99
+        # The jump at 288 makes the arc reach exactly 0 by gravity alone (12 a tick), then jump again.
+        j0 = next(i for i, r in enumerate(self.rows) if r[2][2] > 250)
+        for j in range(j0, len(self.rows)):
+            self.rows[j][2][2] -= 1.99
+        k = next(i for i, r in enumerate(self.rows) if i > j0 and abs(r[2][2]) < 1e-6)
         for j in range(k + 1, len(self.rows)):
-            self.rows[j][2][2] += dz
-        self.refly_from(k)
+            self.rows[j][2][2] += 288.0
+        self.refly_from(j0)
         r = verdict(self.rows, self.fin)
         self.assertEqual(r["stats"]["jumps"], 1, self.why(r))   # only the real one from the ground
         self.assertEqual(r["verdict"], "HOLD")
@@ -567,20 +571,89 @@ class Review1640Round2(unittest.TestCase):
 
     def test_duck_shifts_reset_on_the_ground(self):
         # Three hops, each ducking in the air (+8.5 u) and landing; standing up on the ground shifts nothing.
-        o, vx, rows, t, g = [0.0, 0.0, 0.0], 250.0, [], 0.0, tp.GRAVITY * RATE
-        for hop in range(3):
-            for _ in range(3):                      # on the ground
-                rows.append((round(t, 6), list(o), [vx, 0.0, 0.0])); o[0] += vx * RATE; t += RATE
-            vz = 289.99
-            for n in range(46):
-                rows.append((round(t, 6), list(o), [vx, 0.0, vz]))
-                o[0] += vx * RATE; o[2] += (vz + vz - g) * 0.5 * RATE + (8.5 if n == 10 else 0.0)
-                vz -= g; t += RATE
-            o[2] -= (vz + g + vz) * 0.5 * RATE - (vz + g) * 0.5 * RATE   # the landing tick ends at vz 0
-        r = verdict(rows, round(t / RATE) - 5, zones=None)
+        rows = self.hops(ground_ticks=3)
+        r = verdict(rows, round(rows[-1][0] / RATE) - 2, zones=None)
         self.assertEqual(r["stats"]["duck_shifts"], 3, self.why(r))
         self.assertEqual(r["stats"]["teleports"], 0, self.why(r))
         self.assertNotIn("duck shifts add up", self.why(r))
+
+    def test_duck_shifts_reset_on_a_bhop_jump_tick(self):
+        # Autobunny: land and jump with no ground tick between; the unduck on the jump tick shifts nothing.
+        rows = self.hops(ground_ticks=0)
+        r = verdict(rows, round(rows[-1][0] / RATE) - 2, zones=None)
+        self.assertEqual((r["stats"]["duck_shifts"], r["stats"]["jumps"]), (3, 3), self.why(r))
+        self.assertNotIn("duck shifts add up", self.why(r))
+
+    def hops(self, ground_ticks):
+        """Standing from t=-0.3 at 250 u/s (friction allows it), then three hops ducking in the air;
+        each lands (vz clipped to 0) and stands `ground_ticks` (0: jumps on the landing sample)."""
+        vx, g, rows, t, o = 250.0, tp.GRAVITY * RATE, [], -0.3, [0.0, 0.0, 0.0]
+
+        def put(vz):
+            nonlocal t
+            rows.append((round(t, 6), list(o), [vx, 0.0, vz])); t += RATE
+
+        for _ in range(20):
+            put(0.0); o[0] += vx * RATE
+        for hop in range(3):
+            vz = 289.99
+            for n in range(46):
+                put(vz)
+                o[0] += vx * RATE; o[2] += (vz + vz - g) * 0.5 * RATE + (8.5 if n == 10 else 0.0)
+                vz -= g
+            o[2] -= (vz + g) * 0.5 * RATE           # the landing tick moves on half its fall, ending at vz 0
+            for _ in range(ground_ticks):
+                put(0.0); o[0] += vx * RATE
+            if ground_ticks == 0:
+                put(0.0); o[0] += vx * RATE         # the landing sample itself; the next one is the jump
+        for _ in range(30):
+            put(0.0); o[0] += vx * RATE
+        return rows
+
+    def test_mixed_precision_names_the_precision(self):
+        body = text(self.rows, self.fin)
+        lines = body.split("\n")
+        for i, line in enumerate(lines):
+            tok = line.split()
+            if tok and tp.is_sample(tok[0]):
+                tok[1:4] = ["%.1f" % float(x) for x in tok[1:4]]   # positions at 0.1, velocities as written
+                lines[i] = " ".join(tok)
+        self.assertIn("more than 1 decimals", self.why(tp.check(tp.read(text="\n".join(lines)), ZONES)))
+
+    def test_a_jump_straight_after_a_rising_landing_passes(self):
+        # The engine lands rising (vz <= 140, floor within 1 u): vz +30 -> 0 is a clip, then autobunny.
+        j0 = next(i for i, r in enumerate(self.rows) if r[2][2] > 250)
+        k = next(i for i, r in enumerate(self.rows) if i > j0 and 20 < r[2][2] <= 32)
+        self.rows[k + 1][2][2] = 0.0
+        for j in range(k + 2, len(self.rows)):
+            self.rows[j][2][2] = self.rows[j][2][2] - self.rows[k + 2][2][2] + 289.99
+        self.refly_from(k)
+        r = verdict(self.rows, self.fin, zones=None)
+        self.assertEqual(r["stats"]["jumps"], 2, self.why(r))
+        self.assertNotIn("energy", self.why(r))
+
+    def test_a_landing_on_a_down_slope_passes(self):
+        # 276 u/s falling at 790 onto a slope: the clip keeps up to the 3D speed, then vz 0 (lt_unicorn).
+        rows = [(round(-0.3 + n * RATE, 6), [0.0, 0.0, 0.0], [276.0, 0.0, -790.0 - 12.0 * n]) for n in range(30)]
+        rows += [(round(-0.3 + n * RATE, 6), [0.0, 0.0, 0.0], [529.0, 0.0, 0.0]) for n in range(30, 140)]   # lands at t=0.135
+        for j in range(1, len(rows)):
+            a, b = rows[j - 1], rows[j]
+            for c in range(3):
+                b[1][c] = a[1][c] + (a[2][c] + b[2][c]) * 0.5 * RATE
+        r = verdict(rows, 100, zones=None)
+        self.assertNotIn("air control cannot", self.why(r))
+        self.assertGreater(rows[30][0], 0.0)
+
+    def test_a_turn_inside_a_multi_tick_step_holds(self):
+        k = self.at(0.6)
+        del self.rows[k + 1:k + 7]                  # one 7-tick step ...
+        t, o, v = self.rows[k + 1]
+        ca, sa = math.cos(math.radians(90)), math.sin(math.radians(90))
+        for j in range(k + 1, len(self.rows)):    # ... turning 90 deg at the same speed
+            t, o, v = self.rows[j]
+            self.rows[j] = (t, o, [v[0] * ca - v[1] * sa, v[0] * sa + v[1] * ca, v[2]])
+        r = verdict(self.rows, self.fin, zones=None)
+        self.assertIn("ticks: air control turns at most", self.why(r))
 
     def test_strafing_on_the_jump_tick_passes(self):
         k = next(i for i, r in enumerate(self.rows) if r[2][2] > 250)
