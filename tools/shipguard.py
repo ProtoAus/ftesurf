@@ -175,6 +175,10 @@ DENY_EXACT = {
                            "Mmm_DepsPath falls back to shipped data/mapdeps.txt.",
     "data/mapmedia.tmp": "P1099: Mmm_Step's runtime HTTP reply scratch, written "
                          "before validation; never release input.",
+    "data/goldsrc.net.txt": "P1658: Mgs_Step's validated runtime GoldSrc catalogue cache "
+                            "(maps.proto.bar/goldsrc/catalog.txt); absent, no GoldSrc rows.",
+    "data/goldsrc.net.tmp": "P1658: Mgs_Step's runtime HTTP reply scratch, renamed over "
+                            "data/goldsrc.net.txt only after validation; never release input.",
     "data/mapbuild.txt": "Player's alternate map-build preferences, persisted "
                          "by ui_pick_set; absence keeps the default build.",
     "data/friends_menu.txt": "Patch 781: the menu's last friends list (names and "
