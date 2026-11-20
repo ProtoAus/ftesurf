@@ -63,7 +63,7 @@ def calibrate(text, snapshot):
         out.append('  bronze finish')
         if 'ms' not in row:
             continue
-        for medal, i, group in [('silver', 4, 'G4'), ('gold', 2, 'G2')]:
+        for medal, i, group in [('silver', 6, 'G6'), ('gold', 4, 'G4')]:   # P1681: were G4 / G2
             ms = row['ms'][i] + 1  # time is strict-under; groups include boundary ties
             minutes, rem = divmod(ms, 60000)
             seconds, millis = divmod(rem, 1000)

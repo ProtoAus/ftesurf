@@ -42,7 +42,7 @@
 // its best medal: bronze 1, silver 2, gold 3. The one-run challenges count runs
 // from 20 Oct 2026 on, when the lobbies started reporting them.
 //
-// Ordinary Story: bronze full finish; silver G4, gold G2, from the static public
+// Ordinary Story: bronze full finish; silver G6, gold G4 (P1681; were G4/G2), from the static public
 // aggregate snapshot tools/story-groups.json (Normal, selected imported source).
 // Strict-under cutoffs add 1 ms to include the group's exact boundary and ties.
 // No cuts means finish-only; collapsed groups intentionally share a cutoff.
@@ -59,409 +59,409 @@ list story "Story"
 chapter "Tier 1"
 level surf_colin_blaster_69000
   bronze finish
-  silver time 1:45.346 // G4 momentum n=4670; boundary +1 ms
-  gold time 1:39.646 // G2 momentum n=4670; boundary +1 ms
+  silver time 2:38.611 // G6 momentum n=4670; boundary +1 ms
+  gold time 1:45.346 // G4 momentum n=4670; boundary +1 ms
 level surf_demise
   bronze finish
-  silver time 0:39.271 // G4 momentum n=10284; boundary +1 ms
-  gold time 0:38.191 // G2 momentum n=10284; boundary +1 ms
+  silver time 0:44.821 // G6 momentum n=10284; boundary +1 ms
+  gold time 0:39.271 // G4 momentum n=10284; boundary +1 ms
 level surf_mesa
   bronze finish
-  silver time 0:55.111 // G4 momentum n=1550; boundary +1 ms
-  gold time 0:51.706 // G2 momentum n=1550; boundary +1 ms
+  silver time 1:00.886 // G6 momentum n=1550; boundary +1 ms
+  gold time 0:55.111 // G4 momentum n=1550; boundary +1 ms
 level surf_ace
   bronze finish
-  silver time 0:48.901 // G4 momentum n=7685; boundary +1 ms
-  gold time 0:45.451 // G2 momentum n=7685; boundary +1 ms
+  silver time 1:05.041 // G6 momentum n=7685; boundary +1 ms
+  gold time 0:48.901 // G4 momentum n=7685; boundary +1 ms
 level surf_garden
   bronze finish
-  silver time 1:29.851 // G4 momentum n=6517; boundary +1 ms
-  gold time 1:25.516 // G2 momentum n=6517; boundary +1 ms
+  silver time 2:19.606 // G6 momentum n=6517; boundary +1 ms
+  gold time 1:29.851 // G4 momentum n=6517; boundary +1 ms
 chapter "Tier 1"
 level surf_zoomathon
   bronze finish
-  silver time 2:24.001 // G4 momentum n=1742; boundary +1 ms
-  gold time 2:11.281 // G2 momentum n=1742; boundary +1 ms
+  silver time 2:41.401 // G6 momentum n=1742; boundary +1 ms
+  gold time 2:24.001 // G4 momentum n=1742; boundary +1 ms
 level surf_aesthetic
   bronze finish
-  silver time 1:00.631 // G4 momentum n=6731; boundary +1 ms
-  gold time 0:54.871 // G2 momentum n=6731; boundary +1 ms
+  silver time 1:50.281 // G6 momentum n=6731; boundary +1 ms
+  gold time 1:00.631 // G4 momentum n=6731; boundary +1 ms
 level surf_anzchamps
   bronze finish
-  silver time 1:34.321 // G4 momentum n=8627; boundary +1 ms
-  gold time 1:23.971 // G2 momentum n=8627; boundary +1 ms
+  silver time 3:33.031 // G6 momentum n=8627; boundary +1 ms
+  gold time 1:34.321 // G4 momentum n=8627; boundary +1 ms
 level surf_nuclear
   bronze finish
-  silver time 1:04.861 // G4 momentum n=7099; boundary +1 ms
-  gold time 1:01.291 // G2 momentum n=7099; boundary +1 ms
+  silver time 1:20.761 // G6 momentum n=7099; boundary +1 ms
+  gold time 1:04.861 // G4 momentum n=7099; boundary +1 ms
 level surf_r-ne
   bronze finish
-  silver time 1:12.991 // G4 momentum n=3386; boundary +1 ms
-  gold time 1:05.866 // G2 momentum n=3386; boundary +1 ms
+  silver time 3:55.396 // G6 momentum n=3386; boundary +1 ms
+  gold time 1:12.991 // G4 momentum n=3386; boundary +1 ms
 chapter "Tier 1"
 level surf_utopia
   bronze finish
-  silver time 0:57.886 // G4 momentum n=15914; boundary +1 ms
-  gold time 0:56.131 // G2 momentum n=15914; boundary +1 ms
+  silver time 1:03.826 // G6 momentum n=15914; boundary +1 ms
+  gold time 0:57.886 // G4 momentum n=15914; boundary +1 ms
 level surf_botanica
   bronze finish
-  silver time 1:10.891 // G4 momentum n=4928; boundary +1 ms
-  gold time 1:06.406 // G2 momentum n=4928; boundary +1 ms
+  silver time 2:31.876 // G6 momentum n=4928; boundary +1 ms
+  gold time 1:10.891 // G4 momentum n=4928; boundary +1 ms
 level surf_citypop
   bronze finish
-  silver time 0:48.361 // G4 momentum n=3057; boundary +1 ms
-  gold time 0:42.991 // G2 momentum n=3057; boundary +1 ms
+  silver time 0:58.726 // G6 momentum n=3057; boundary +1 ms
+  gold time 0:48.361 // G4 momentum n=3057; boundary +1 ms
 level surf_lovetunnel
   bronze finish
-  silver time 0:49.141 // G4 momentum n=9247; boundary +1 ms
-  gold time 0:47.266 // G2 momentum n=9247; boundary +1 ms
+  silver time 0:54.001 // G6 momentum n=9247; boundary +1 ms
+  gold time 0:49.141 // G4 momentum n=9247; boundary +1 ms
 level surf_sodacity
   bronze finish
-  silver time 0:58.381 // G4 momentum n=2674; boundary +1 ms
-  gold time 0:51.616 // G2 momentum n=2674; boundary +1 ms
+  silver time 2:06.421 // G6 momentum n=2674; boundary +1 ms
+  gold time 0:58.381 // G4 momentum n=2674; boundary +1 ms
 chapter "Tier 1"
 level surf_whiteout
   bronze finish
-  silver time 1:07.501 // G4 momentum n=7127; boundary +1 ms
-  gold time 1:00.271 // G2 momentum n=7127; boundary +1 ms
+  silver time 2:08.491 // G6 momentum n=7127; boundary +1 ms
+  gold time 1:07.501 // G4 momentum n=7127; boundary +1 ms
 level surf_tendies
   bronze finish
-  silver time 0:42.076 // G4 ksf n=1145; boundary +1 ms
-  gold time 0:41.760 // G2 ksf n=1145; boundary +1 ms
+  silver time 0:42.584 // G6 ksf n=1145; boundary +1 ms
+  gold time 0:42.076 // G4 ksf n=1145; boundary +1 ms
 level surf_artois
   bronze finish
-  silver time 0:54.721 // G4 momentum n=4176; boundary +1 ms
-  gold time 0:52.471 // G2 momentum n=4176; boundary +1 ms
+  silver time 1:19.681 // G6 momentum n=4176; boundary +1 ms
+  gold time 0:54.721 // G4 momentum n=4176; boundary +1 ms
 level surf_aura
   bronze finish
-  silver time 1:24.511 // G4 momentum n=5130; boundary +1 ms
-  gold time 1:20.311 // G2 momentum n=5130; boundary +1 ms
+  silver time 2:27.616 // G6 momentum n=5130; boundary +1 ms
+  gold time 1:24.511 // G4 momentum n=5130; boundary +1 ms
 level surf_pools
   bronze finish
-  silver time 0:50.866 // G4 momentum n=1905; boundary +1 ms
-  gold time 0:48.466 // G2 momentum n=1905; boundary +1 ms
+  silver time 0:58.906 // G6 momentum n=1905; boundary +1 ms
+  gold time 0:50.866 // G4 momentum n=1905; boundary +1 ms
 chapter "Tier 2" unlock 29
 level surf_me
   bronze finish
-  silver time 2:13.321 // G4 momentum n=4784; boundary +1 ms
-  gold time 1:58.666 // G2 momentum n=4784; boundary +1 ms
+  silver time 3:56.236 // G6 momentum n=4784; boundary +1 ms
+  gold time 2:13.321 // G4 momentum n=4784; boundary +1 ms
 level surf_colin_blaster_69000 bonus 5
   bronze finish
-  silver time 2:03.301 // G4 momentum n=193; boundary +1 ms
-  gold time 1:47.701 // G2 momentum n=193; boundary +1 ms
+  silver time 3:33.301 // G6 momentum n=193; boundary +1 ms
+  gold time 2:03.301 // G4 momentum n=193; boundary +1 ms
 level surf_anoobis
   bronze finish
-  silver time 0:51.841 // G4 momentum n=1769; boundary +1 ms
-  gold time 0:45.526 // G2 momentum n=1769; boundary +1 ms
+  silver time 3:15.301 // G6 momentum n=1769; boundary +1 ms
+  gold time 0:51.841 // G4 momentum n=1769; boundary +1 ms
 level surf_cyberwave
   bronze finish
-  silver time 1:03.301 // G4 momentum n=3929; boundary +1 ms
-  gold time 1:01.111 // G2 momentum n=3929; boundary +1 ms
+  silver time 1:10.921 // G6 momentum n=3929; boundary +1 ms
+  gold time 1:03.301 // G4 momentum n=3929; boundary +1 ms
 level surf_leidenfrost
   bronze finish
-  silver time 0:59.851 // G4 momentum n=1006; boundary +1 ms
-  gold time 0:57.046 // G2 momentum n=1006; boundary +1 ms
+  silver time 1:11.101 // G6 momentum n=1006; boundary +1 ms
+  gold time 0:59.851 // G4 momentum n=1006; boundary +1 ms
 chapter "Tier 2" unlock 38
 level surf_hotwheels
   bronze finish
-  silver time 1:15.046 // G4 momentum n=320; boundary +1 ms
-  gold time 1:01.516 // G2 momentum n=320; boundary +1 ms
+  silver time 1:51.871 // G6 momentum n=320; boundary +1 ms
+  gold time 1:15.046 // G4 momentum n=320; boundary +1 ms
 level surf_classics
   bronze finish
-  silver time 12:59.476 // G4 momentum n=794; boundary +1 ms
-  gold time 9:35.311 // G2 momentum n=794; boundary +1 ms
+  silver time 25:30.871 // G6 momentum n=794; boundary +1 ms
+  gold time 12:59.476 // G4 momentum n=794; boundary +1 ms
 level surf_borderlands
   bronze finish
-  silver time 1:44.746 // G4 momentum n=5366; boundary +1 ms
-  gold time 1:38.521 // G2 momentum n=5366; boundary +1 ms
+  silver time 2:50.236 // G6 momentum n=5366; boundary +1 ms
+  gold time 1:44.746 // G4 momentum n=5366; boundary +1 ms
 level surf_sandtrap2
   bronze finish
-  silver time 0:51.241 // G4 momentum n=2246; boundary +1 ms
-  gold time 0:49.606 // G2 momentum n=2246; boundary +1 ms
+  silver time 0:55.306 // G6 momentum n=2246; boundary +1 ms
+  gold time 0:51.241 // G4 momentum n=2246; boundary +1 ms
 level surf_not_so_sinister
   bronze finish
-  silver time 1:35.686 // G4 momentum n=672; boundary +1 ms
-  gold time 1:24.541 // G2 momentum n=672; boundary +1 ms
+  silver time 5:51.691 // G6 momentum n=672; boundary +1 ms
+  gold time 1:35.686 // G4 momentum n=672; boundary +1 ms
 chapter "Chapter 7" unlock 47
 level surf_not_so_disaster
   bronze finish
-  silver time 1:26.026 // G4 momentum n=478; boundary +1 ms
-  gold time 1:18.826 // G2 momentum n=478; boundary +1 ms
+  silver time 1:34.726 // G6 momentum n=478; boundary +1 ms
+  gold time 1:26.026 // G4 momentum n=478; boundary +1 ms
 level surf_fuchnut
   bronze finish
-  silver time 0:40.615 // G4 ksf n=169; boundary +1 ms
-  gold time 0:40.066 // G2 ksf n=169; boundary +1 ms
+  silver time 0:42.104 // G6 ksf n=169; boundary +1 ms
+  gold time 0:40.615 // G4 ksf n=169; boundary +1 ms
 level surf_classics2
   bronze finish
-  silver time 11:09.256 // G4 momentum n=639; boundary +1 ms
-  gold time 7:36.031 // G2 momentum n=639; boundary +1 ms
+  silver time 24:47.176 // G6 momentum n=639; boundary +1 ms
+  gold time 11:09.256 // G4 momentum n=639; boundary +1 ms
 level surf_affliction
   bronze finish
-  silver time 0:54.530 // G4 ksf n=819; boundary +1 ms
-  gold time 0:51.391 // G2 ksf n=819; boundary +1 ms
+  silver time 1:01.649 // G6 ksf n=819; boundary +1 ms
+  gold time 0:54.530 // G4 ksf n=819; boundary +1 ms
 level surf_despair
   bronze finish
-  silver time 1:00.485 // G4 ksf n=289; boundary +1 ms
-  gold time 0:58.617 // G2 ksf n=289; boundary +1 ms
+  silver time 3:16.429 // G6 ksf n=289; boundary +1 ms
+  gold time 1:00.485 // G4 ksf n=289; boundary +1 ms
 chapter "Chapter 8" unlock 51
 level surf_executioner
   bronze finish
-  silver time 0:57.406 // G4 momentum n=411; boundary +1 ms
-  gold time 0:53.701 // G2 momentum n=411; boundary +1 ms
+  silver time 0:59.101 // G6 momentum n=411; boundary +1 ms
+  gold time 0:57.406 // G4 momentum n=411; boundary +1 ms
 level surf_centipedes
   bronze finish
-  silver time 1:17.749 // G4 ksf n=210; boundary +1 ms
-  gold time 1:15.212 // G2 ksf n=210; boundary +1 ms
+  silver time 1:22.036 // G6 ksf n=210; boundary +1 ms
+  gold time 1:17.749 // G4 ksf n=210; boundary +1 ms
 level surf_classics3
   bronze finish
-  silver time 30:01.261 // G4 momentum n=229; boundary +1 ms
-  gold time 22:07.156 // G2 momentum n=229; boundary +1 ms
+  silver time 59:09.916 // G6 momentum n=229; boundary +1 ms
+  gold time 30:01.261 // G4 momentum n=229; boundary +1 ms
 level surf_fiellu
   bronze finish
-  silver time 0:55.246 // G4 momentum n=836; boundary +1 ms
-  gold time 0:53.701 // G2 momentum n=836; boundary +1 ms
+  silver time 0:58.456 // G6 momentum n=836; boundary +1 ms
+  gold time 0:55.246 // G4 momentum n=836; boundary +1 ms
 level surf_whoknows
   bronze finish
-  silver time 1:08.551 // G4 momentum n=414; boundary +1 ms
-  gold time 1:07.081 // G2 momentum n=414; boundary +1 ms
+  silver time 1:10.471 // G6 momentum n=414; boundary +1 ms
+  gold time 1:08.551 // G4 momentum n=414; boundary +1 ms
 chapter "Tier 3" unlock 58
 level surf_borderlands_h
   bronze finish
-  silver time 4:20.056 // G4 momentum n=578; boundary +1 ms
-  gold time 2:11.506 // G2 momentum n=578; boundary +1 ms
+  silver time 14:36.676 // G6 momentum n=578; boundary +1 ms
+  gold time 4:20.056 // G4 momentum n=578; boundary +1 ms
 level surf_chateau
   bronze finish
-  silver time 0:46.365 // G4 ksf n=650; boundary +1 ms
-  gold time 0:43.291 // G2 ksf n=650; boundary +1 ms
+  silver time 0:48.600 // G6 ksf n=650; boundary +1 ms
+  gold time 0:46.365 // G4 ksf n=650; boundary +1 ms
 level surf_facility
   bronze finish
-  silver time 0:58.305 // G4 ksf n=562; boundary +1 ms
-  gold time 0:56.416 // G2 ksf n=562; boundary +1 ms
+  silver time 1:00.361 // G6 ksf n=562; boundary +1 ms
+  gold time 0:58.305 // G4 ksf n=562; boundary +1 ms
 level surf_overgrowth
   bronze finish
-  silver time 5:28.006 // G4 momentum n=427; boundary +1 ms
-  gold time 3:08.941 // G2 momentum n=427; boundary +1 ms
+  silver time 22:23.701 // G6 momentum n=427; boundary +1 ms
+  gold time 5:28.006 // G4 momentum n=427; boundary +1 ms
 level surf_overgrowth2
   bronze finish
-  silver time 4:55.531 // G4 ksf n=185; boundary +1 ms
-  gold time 4:48.751 // G2 ksf n=185; boundary +1 ms
+  silver time 5:05.892 // G6 ksf n=185; boundary +1 ms
+  gold time 4:55.531 // G4 ksf n=185; boundary +1 ms
 chapter "Tier 4" unlock 60
 level surf_loweffort
   bronze finish
-  silver time 1:13.600 // G4 ksf n=206; boundary +1 ms
-  gold time 1:11.186 // G2 ksf n=206; boundary +1 ms
+  silver time 1:20.700 // G6 ksf n=206; boundary +1 ms
+  gold time 1:13.600 // G4 ksf n=206; boundary +1 ms
 level surf_kaaba
   bronze finish
-  silver time 2:29.971 // G4 momentum n=281; boundary +1 ms
-  gold time 1:20.131 // G2 momentum n=281; boundary +1 ms
+  silver time 12:44.581 // G6 momentum n=281; boundary +1 ms
+  gold time 2:29.971 // G4 momentum n=281; boundary +1 ms
 level surf_rise
   bronze finish
-  silver time 0:48.151 // G4 momentum n=165; boundary +1 ms
-  gold time 0:45.556 // G2 momentum n=165; boundary +1 ms
+  silver time 0:50.836 // G6 momentum n=165; boundary +1 ms
+  gold time 0:48.151 // G4 momentum n=165; boundary +1 ms
 level surf_runewords2_lod
   bronze finish
-  silver time 1:15.075 // G4 ksf n=181; boundary +1 ms
-  gold time 1:13.873 // G2 ksf n=181; boundary +1 ms
+  silver time 1:16.305 // G6 ksf n=181; boundary +1 ms
+  gold time 1:15.075 // G4 ksf n=181; boundary +1 ms
 level surf_yellow
   bronze finish
-  silver time 1:03.961 // G4 momentum n=196; boundary +1 ms
-  gold time 1:02.581 // G2 momentum n=196; boundary +1 ms
+  silver time 1:05.551 // G6 momentum n=196; boundary +1 ms
+  gold time 1:03.961 // G4 momentum n=196; boundary +1 ms
 chapter "Tier 4" unlock 69
 level surf_whoknows2
   bronze finish
-  silver time 1:05.311 // G4 momentum n=531; boundary +1 ms
-  gold time 1:03.391 // G2 momentum n=531; boundary +1 ms
+  silver time 1:08.296 // G6 momentum n=531; boundary +1 ms
+  gold time 1:05.311 // G4 momentum n=531; boundary +1 ms
 level surf_loweffort2
   bronze finish
-  silver time 1:29.849 // G4 ksf n=146; boundary +1 ms
-  gold time 1:26.476 // G2 ksf n=146; boundary +1 ms
+  silver time 2:37.563 // G6 ksf n=146; boundary +1 ms
+  gold time 1:29.849 // G4 ksf n=146; boundary +1 ms
 level surf_runewords
   bronze finish
-  silver time 3:20.701 // G4 momentum n=263; boundary +1 ms
-  gold time 1:54.706 // G2 momentum n=263; boundary +1 ms
+  silver time 18:24.886 // G6 momentum n=263; boundary +1 ms
+  gold time 3:20.701 // G4 momentum n=263; boundary +1 ms
 level surf_runewords2
   bronze finish
-  silver time 3:45.286 // G4 momentum n=207; boundary +1 ms
-  gold time 1:54.556 // G2 momentum n=207; boundary +1 ms
+  silver time 17:01.081 // G6 momentum n=207; boundary +1 ms
+  gold time 3:45.286 // G4 momentum n=207; boundary +1 ms
 level surf_cannonball
   bronze finish
-  silver time 1:19.861 // G4 momentum n=708; boundary +1 ms
-  gold time 1:18.166 // G2 momentum n=708; boundary +1 ms
+  silver time 1:22.951 // G6 momentum n=708; boundary +1 ms
+  gold time 1:19.861 // G4 momentum n=708; boundary +1 ms
 chapter "Tier 5" unlock 86
 level surf_stonework3 // no zones yet
   bronze finish
-  silver time 3:05.041 // G4 ksf n=163; boundary +1 ms
-  gold time 3:00.105 // G2 ksf n=163; boundary +1 ms
+  silver time 4:29.911 // G6 ksf n=163; boundary +1 ms
+  gold time 3:05.041 // G4 ksf n=163; boundary +1 ms
 level surf_spacemonkeys
   bronze finish
-  silver time 1:43.111 // G4 ksf n=161; boundary +1 ms
-  gold time 1:41.809 // G2 ksf n=161; boundary +1 ms
+  silver time 1:44.585 // G6 ksf n=161; boundary +1 ms
+  gold time 1:43.111 // G4 ksf n=161; boundary +1 ms
 level surf_ab
   bronze finish
-  silver time 17:19.590 // G4 ksf n=164; boundary +1 ms
-  gold time 10:17.431 // G2 ksf n=164; boundary +1 ms
+  silver time 35:20.207 // G6 ksf n=164; boundary +1 ms
+  gold time 17:19.590 // G4 ksf n=164; boundary +1 ms
 level soon // awaiting level 59 clarification
 level surf_lt_omnific
   bronze finish
-  silver time 7:54.046 // G4 ksf n=205; boundary +1 ms
-  gold time 6:06.105 // G2 ksf n=205; boundary +1 ms
+  silver time 12:07.501 // G6 ksf n=205; boundary +1 ms
+  gold time 7:54.046 // G4 ksf n=205; boundary +1 ms
 chapter "Chapter 13" unlock 98
 level surf_666
   bronze finish
-  silver time 3:12.091 // G4 ksf n=1899; boundary +1 ms
-  gold time 3:04.155 // G2 ksf n=1899; boundary +1 ms
+  silver time 14:02.311 // G6 ksf n=1899; boundary +1 ms
+  gold time 3:12.091 // G4 ksf n=1899; boundary +1 ms
 level surf_earthmover
   bronze finish
-  silver time 1:13.826 // G4 ksf n=83; boundary +1 ms
-  gold time 1:09.210 // G2 ksf n=83; boundary +1 ms
+  silver time 4:40.260 // G6 ksf n=83; boundary +1 ms
+  gold time 1:13.826 // G4 ksf n=83; boundary +1 ms
 level surf_bugs
   bronze finish
-  silver time 0:38.985 // G4 ksf n=479; boundary +1 ms
-  gold time 0:36.946 // G2 ksf n=479; boundary +1 ms
+  silver time 7:59.446 // G6 ksf n=479; boundary +1 ms
+  gold time 0:38.985 // G4 ksf n=479; boundary +1 ms
 level surf_shape
   bronze finish
-  silver time 0:41.975 // G4 ksf n=990; boundary +1 ms
-  gold time 0:40.798 // G2 ksf n=990; boundary +1 ms
+  silver time 0:44.522 // G6 ksf n=990; boundary +1 ms
+  gold time 0:41.975 // G4 ksf n=990; boundary +1 ms
 level surf_garden_h
   bronze finish
-  silver time 2:40.229 // G4 ksf n=203; boundary +1 ms
-  gold time 1:59.581 // G2 ksf n=203; boundary +1 ms
+  silver time 4:41.851 // G6 ksf n=203; boundary +1 ms
+  gold time 2:40.229 // G4 ksf n=203; boundary +1 ms
 chapter "Chapter 14" unlock 106
 level surf_monkeys
   bronze finish
-  silver time 1:36.060 // G4 ksf n=213; boundary +1 ms
-  gold time 1:34.366 // G2 ksf n=213; boundary +1 ms
+  silver time 1:37.905 // G6 ksf n=213; boundary +1 ms
+  gold time 1:36.060 // G4 ksf n=213; boundary +1 ms
 level surf_sinister_evil
   bronze finish
-  silver time 4:22.336 // G4 momentum n=335; boundary +1 ms
-  gold time 1:55.666 // G2 momentum n=335; boundary +1 ms
+  silver time 15:14.551 // G6 momentum n=335; boundary +1 ms
+  gold time 4:22.336 // G4 momentum n=335; boundary +1 ms
 level surf_remeanian
   bronze finish
-  silver time 1:13.201 // G4 ksf n=64; boundary +1 ms
-  gold time 1:11.805 // G2 ksf n=64; boundary +1 ms
+  silver time 7:17.401 // G6 ksf n=64; boundary +1 ms
+  gold time 1:13.201 // G4 ksf n=64; boundary +1 ms
 level surf_autumn_fix
   bronze finish
-  silver time 1:15.852 // G4 ksf n=649; boundary +1 ms
-  gold time 1:13.681 // G2 ksf n=649; boundary +1 ms
+  silver time 1:18.886 // G6 ksf n=649; boundary +1 ms
+  gold time 1:15.852 // G4 ksf n=649; boundary +1 ms
 level surf_ferros
   bronze finish
-  silver time 0:43.606 // G4 momentum n=1450; boundary +1 ms
-  gold time 0:42.301 // G2 momentum n=1450; boundary +1 ms
+  silver time 0:47.086 // G6 momentum n=1450; boundary +1 ms
+  gold time 0:43.606 // G4 momentum n=1450; boundary +1 ms
 chapter "Tier 7" unlock 110
 level surf_sandtrap2 bonus 4
   bronze finish
-  silver time 0:08.491 // G4 momentum n=134; boundary +1 ms
-  gold time 0:08.251 // G2 momentum n=134; boundary +1 ms
+  silver time 0:08.671 // G6 momentum n=134; boundary +1 ms
+  gold time 0:08.491 // G4 momentum n=134; boundary +1 ms
 level surf_whynot
   bronze finish
-  silver time 4:14.446 // G4 ksf n=349; boundary +1 ms
-  gold time 1:55.021 // G2 ksf n=349; boundary +1 ms
+  silver time 20:42.900 // G6 ksf n=349; boundary +1 ms
+  gold time 4:14.446 // G4 ksf n=349; boundary +1 ms
 level surf_hades2
   bronze finish
-  silver time 2:35.101 // G4 ksf n=853; boundary +1 ms
-  gold time 1:43.995 // G2 ksf n=853; boundary +1 ms
+  silver time 16:49.755 // G6 ksf n=853; boundary +1 ms
+  gold time 2:35.101 // G4 ksf n=853; boundary +1 ms
 level surf_spectra
   bronze finish
-  silver time 1:39.946 // G4 ksf n=219; boundary +1 ms
-  gold time 1:36.676 // G2 ksf n=219; boundary +1 ms
+  silver time 1:41.881 // G6 ksf n=219; boundary +1 ms
+  gold time 1:39.946 // G4 ksf n=219; boundary +1 ms
 level surf_starvald // no zones yet
   bronze finish
-  silver time 0:58.441 // G4 ksf n=93; boundary +1 ms
-  gold time 0:57.764 // G2 ksf n=93; boundary +1 ms
+  silver time 1:00.249 // G6 ksf n=93; boundary +1 ms
+  gold time 0:58.441 // G4 ksf n=93; boundary +1 ms
 chapter "Chapter 16" unlock 119
 level surf_olivia // no zones yet
   bronze finish
-  silver time 0:57.583 // G4 ksf n=61; boundary +1 ms
-  gold time 0:57.001 // G2 ksf n=61; boundary +1 ms
+  silver time 0:58.816 // G6 ksf n=61; boundary +1 ms
+  gold time 0:57.583 // G4 ksf n=61; boundary +1 ms
 level surf_sidistic
   bronze finish
-  silver time 2:09.361 // G4 ksf n=37; boundary +1 ms
-  gold time 2:07.411 // G2 ksf n=37; boundary +1 ms
+  silver time 59:59.674 // G6 ksf n=37; boundary +1 ms
+  gold time 2:09.361 // G4 ksf n=37; boundary +1 ms
 level surf_goliath
   bronze finish
-  silver time 7:24.966 // G4 ksf n=102; boundary +1 ms
-  gold time 4:00.511 // G2 ksf n=102; boundary +1 ms
+  silver time 16:38.031 // G6 ksf n=102; boundary +1 ms
+  gold time 7:24.966 // G4 ksf n=102; boundary +1 ms
 level surf_antagonist
   bronze finish
-  silver time 4:44.143 // G4 ksf n=200; boundary +1 ms
-  gold time 1:15.645 // G2 ksf n=200; boundary +1 ms
+  silver time 15:56.565 // G6 ksf n=200; boundary +1 ms
+  gold time 4:44.143 // G4 ksf n=200; boundary +1 ms
 level surf_highlands
   bronze finish
-  silver time 3:58.186 // G4 momentum n=554; boundary +1 ms
-  gold time 2:07.636 // G2 momentum n=554; boundary +1 ms
+  silver time 18:54.361 // G6 momentum n=554; boundary +1 ms
+  gold time 3:58.186 // G4 momentum n=554; boundary +1 ms
 chapter "Tier 8" unlock 122
 level surf_axiom bonus 4
   bronze finish
-  silver time 0:14.521 // G4 momentum n=185; boundary +1 ms
-  gold time 0:14.431 // G2 momentum n=185; boundary +1 ms
+  silver time 0:14.701 // G6 momentum n=185; boundary +1 ms
+  gold time 0:14.521 // G4 momentum n=185; boundary +1 ms
 level surf_prosurf
   bronze finish
-  silver time 11:18.207 // G4 ksf n=280; boundary +1 ms
-  gold time 4:26.951 // G2 ksf n=280; boundary +1 ms
+  silver time 31:55.906 // G6 ksf n=280; boundary +1 ms
+  gold time 11:18.207 // G4 ksf n=280; boundary +1 ms
 level surf_hunty
   bronze finish
-  silver time 39:48.886 // G4 momentum n=39; boundary +1 ms
-  gold time 18:32.506 // G2 momentum n=39; boundary +1 ms
+  silver time 113:58.336 // G6 momentum n=39; boundary +1 ms
+  gold time 39:48.886 // G4 momentum n=39; boundary +1 ms
 level surf_sinister // no zones yet
   bronze finish
 level soon
 chapter "Tier 8" unlock 129
 level surf_ruse
   bronze finish
-  silver time 5:54.061 // G4 ksf n=84; boundary +1 ms
-  gold time 2:01.951 // G2 ksf n=84; boundary +1 ms
+  silver time 55:03.030 // G6 ksf n=84; boundary +1 ms
+  gold time 5:54.061 // G4 ksf n=84; boundary +1 ms
 level surf_dune
   bronze finish
-  silver time 6:47.446 // G4 ksf n=130; boundary +1 ms
-  gold time 2:00.464 // G2 ksf n=130; boundary +1 ms
+  silver time 23:28.575 // G6 ksf n=130; boundary +1 ms
+  gold time 6:47.446 // G4 ksf n=130; boundary +1 ms
 level surf_exonic
   bronze finish
-  silver time 1:46.305 // G4 ksf n=103; boundary +1 ms
-  gold time 1:44.859 // G2 ksf n=103; boundary +1 ms
+  silver time 1:48.953 // G6 ksf n=103; boundary +1 ms
+  gold time 1:46.305 // G4 ksf n=103; boundary +1 ms
 level surf_gigapede
   bronze finish
-  silver time 1:48.112 // G4 ksf n=95; boundary +1 ms
-  gold time 1:46.216 // G2 ksf n=95; boundary +1 ms
+  silver time 1:50.866 // G6 ksf n=95; boundary +1 ms
+  gold time 1:48.112 // G4 ksf n=95; boundary +1 ms
 level soon
 chapter "Tier 9" unlock 137
 level surf_devil
   bronze finish
-  silver time 11:36.032 // G4 ksf n=201; boundary +1 ms
-  gold time 4:50.446 // G2 ksf n=201; boundary +1 ms
+  silver time 29:43.921 // G6 ksf n=201; boundary +1 ms
+  gold time 11:36.032 // G4 ksf n=201; boundary +1 ms
 level soon
 level surf_antagonist2 // no zones yet
   bronze finish
-  silver time 26:26.200 // G4 ksf n=80; boundary +1 ms
-  gold time 17:14.959 // G2 ksf n=80; boundary +1 ms
+  silver time 57:06.714 // G6 ksf n=80; boundary +1 ms
+  gold time 26:26.200 // G4 ksf n=80; boundary +1 ms
 level surf_corruption
   bronze finish
-  silver time 3:16.636 // G4 ksf n=84; boundary +1 ms
-  gold time 3:06.405 // G2 ksf n=84; boundary +1 ms
+  silver time 3:22.427 // G6 ksf n=84; boundary +1 ms
+  gold time 3:16.636 // G4 ksf n=84; boundary +1 ms
 level surf_tensor2
   bronze finish
-  silver time 27:05.371 // G4 ksf n=126; boundary +1 ms
-  gold time 13:23.161 // G2 ksf n=126; boundary +1 ms
+  silver time 46:30.041 // G6 ksf n=126; boundary +1 ms
+  gold time 27:05.371 // G4 ksf n=126; boundary +1 ms
 chapter "Tier 10" unlock 143
 level surf_deity_ksf // no zones yet
   bronze finish
-  silver time 43:58.545 // G4 ksf n=49; boundary +1 ms
-  gold time 22:00.980 // G2 ksf n=49; boundary +1 ms
+  silver time 58:47.853 // G6 ksf n=49; boundary +1 ms
+  gold time 43:58.545 // G4 ksf n=49; boundary +1 ms
 level surf_doomsday
   bronze finish
-  silver time 31:44.326 // G4 ksf n=59; boundary +1 ms
-  gold time 21:04.200 // G2 ksf n=59; boundary +1 ms
+  silver time 55:56.205 // G6 ksf n=59; boundary +1 ms
+  gold time 31:44.326 // G4 ksf n=59; boundary +1 ms
 level surf_joutsenlaulu
   bronze finish
-  silver time 4:17.165 // G4 ksf n=20; boundary +1 ms
-  gold time 4:17.165 // G2 ksf n=20; boundary +1 ms
+  silver time 4:17.165 // G6 ksf n=20; boundary +1 ms
+  gold time 4:17.165 // G4 ksf n=20; boundary +1 ms
 level surf_sirena // no zones yet
   bronze finish
-  silver time 44:58.160 // G4 ksf n=36; boundary +1 ms
-  gold time 31:23.700 // G2 ksf n=36; boundary +1 ms
+  silver time 58:38.366 // G6 ksf n=36; boundary +1 ms
+  gold time 44:58.160 // G4 ksf n=36; boundary +1 ms
 level surf_anubis
   bronze finish
-  silver time 46:47.910 // G4 ksf n=25; boundary +1 ms
-  gold time 38:04.019 // G2 ksf n=25; boundary +1 ms
+  silver time 46:47.910 // G6 ksf n=25; boundary +1 ms
+  gold time 46:47.910 // G4 ksf n=25; boundary +1 ms
 
 list events "Events"
 chapter

@@ -250,8 +250,8 @@ class Story(unittest.TestCase):
                 continue
             self.assertGreater(ref['x'], 10)
             self.assertEqual(len(ref['ms']), 7)
-            self.assertLessEqual(ref['ms'][2], ref['ms'][4])
-            for medal, index in [('s', 4), ('g', 2)]:
+            self.assertLessEqual(ref['ms'][4], ref['ms'][6])
+            for medal, index in [('s', 6), ('g', 4)]:   # P1681: silver G6, gold G4
                 ch = next(ch for ch in lv['ch'] if ch['m'] == medal)
                 self.assertEqual((ch['k'], ch['v']), ('time', ref['ms'][index] + 1))
                 facts = dict(ms=ref['ms'][index], sums=[])
