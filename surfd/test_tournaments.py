@@ -1087,5 +1087,34 @@ class API(unittest.TestCase):
         self.assertTrue(self.create()['id'])
 
 
+
+class Standings(unittest.TestCase):
+    """Lex 21 Nov: tournament wins and an Elo-style rating from finished matches."""
+    def match(self, places, phase='finished'):
+        return dict(phase=phase, players=[dict(who=w, name=w.upper(), place=p) for w, p in places])
+
+    def test_wins_shared_played_and_pairwise_elo(self):
+        rows = R.standings([self.match([('a', 1), ('b', 2), ('c', 3)]),
+                            self.match([('a', 1), ('b', 1)]),            # shared first place
+                            self.match([('b', 1), ('c', 2)], 'aborted'),  # never counted
+                            self.match([('a', 1), ('x', 0)])])            # a spectator (place 0): no pair
+        by = {r['who']: r for r in rows}
+        self.assertEqual([r['who'] for r in rows], ['a', 'b', 'c'])
+        self.assertEqual({k: (by[k]['played'], by[k]['wins'], by[k]['shared'], by[k]['best']) for k in by},
+                         {'a': (2, 1, 1, 1), 'b': (2, 0, 1, 1), 'c': (1, 0, 0, 3)})
+        # Equal starts: a beats both (+16 total), b splits (0), c loses both (-16); then a/b draw at 1016/1000.
+        self.assertEqual([by[k]['rating'] for k in 'abc'], [1015, 1001, 984])
+        self.assertEqual(by['a']['name'], 'A')
+
+    def test_one_match_moves_a_rating_by_at_most_k_and_order_is_stable(self):
+        big = self.match([('p%d' % i, i + 1) for i in range(8)])
+        rows = R.standings([big])
+        self.assertTrue(all(abs(r['rating'] - 1000) <= R.RATING_K for r in rows))
+        self.assertEqual(rows[0]['who'], 'p0')
+        self.assertEqual(sum(r['rating'] for r in rows), 8000)
+        self.assertEqual(R.standings([]), [])
+        self.assertEqual(R.standings([dict(phase='finished', players=[dict(who='a', place=1), dict(who='a', place=2)])]), [])
+
+
 if __name__ == '__main__':
     unittest.main()

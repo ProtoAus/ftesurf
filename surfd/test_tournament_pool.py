@@ -139,6 +139,25 @@ class Pool(unittest.TestCase):
         with self.assertRaisesRegex(R.Refusal, 'qualification changed'):
             P.revalidate(self.db, self.d, m)
 
+    def test_one_build_per_family_momentum_first_lex_21nov(self):
+        families = {'surf_Exact': 'surf_Exact', 'surf_Exact_css': 'surf_Exact'}
+        self.d.variant_base = families.get
+        rows, unqualified = self.pool()
+        self.assertEqual((list(rows), unqualified), (['surf_Exact'], 0))
+        # The base outside the filter (or unqualified): its variant stands in for the family.
+        self.tiers['surf_exact'] = 5
+        self.assertEqual(list(self.pool()[0]), ['surf_Exact_css'])
+        self.assertEqual(list(self.pool(tiers='16')[0]), ['surf_Exact'])
+        self.tiers['surf_exact'] = 1
+        self.records['surf_Exact']['default']['approved'] = 0
+        self.save()
+        self.assertEqual(self.pool(), ({'surf_Exact_css': self.pool()[0]['surf_Exact_css']}, 1))
+        # No catalogue (variant_base answers None): nothing is folded.
+        self.d.variant_base = lambda name: None
+        self.records['surf_Exact']['default']['approved'] = 1
+        self.save()
+        self.assertEqual(list(self.pool()[0]), ['surf_Exact', 'surf_Exact_css'])
+
 
 if __name__ == '__main__':
     unittest.main()

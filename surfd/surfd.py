@@ -8589,14 +8589,14 @@ tournaments.register(app, types.SimpleNamespace(
     get_db=get_db, clock=lambda: time.time(), secret=lambda: SECRET,
     setting=setting, game_json=game_json, log=log, lobby_ttl=LOBBY_TTL,
     assign_ttl=ASSIGN_TTL, map_index=map_index, zone_file_index=zone_file_index,
-    map_tiers=map_tiers, maps_root=MAPS_DIR,
+    map_tiers=map_tiers, maps_root=MAPS_DIR, variant_base=variant_base,
     rate_key=rate_key, rate_ok=rate_ok))
 
 party_lobbies.register(app, types.SimpleNamespace(
     get_db=get_db, clock=lambda: time.time(), secret=lambda: SECRET,
     setting=setting, game_json=game_json, log=log, lobby_ttl=LOBBY_TTL,
     assign_ttl=ASSIGN_TTL, map_index=map_index, zone_file_index=zone_file_index,
-    map_tiers=map_tiers, maps_root=MAPS_DIR,
+    map_tiers=map_tiers, maps_root=MAPS_DIR, variant_base=variant_base,
     rate_key=rate_key, rate_ok=rate_ok))
 
 social.register(app, types.SimpleNamespace(

@@ -825,5 +825,31 @@ class PartyAPI(unittest.TestCase):
         self.assertNotIn('_pins', json.dumps(self.client.get('/api/tournament-lobbies').get_json()))
 
 
+    def test_create_announces_in_lobby_chat_once_lex_21nov(self):
+        self.db.execute("DELETE FROM social_messages WHERE recipient='@menu'")
+        self.db.commit()
+        m = self.act('create')['party']
+        rows = self.db.execute("SELECT sender, body FROM social_messages WHERE recipient='@menu'").fetchall()
+        self.assertEqual([(r[0], r[1]) for r in rows],
+                         [(str(76561198000000001), '* opened a tournament room -- join from the TOURNAMENT tab')])
+        self.act('cancel', 0, m)
+        self.act('create')
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM social_messages WHERE recipient='@menu'").fetchone()[0], 1)
+
+    def test_browse_stats_lex_21nov(self):
+        self.db.execute('DELETE FROM tournament_matches')
+        for n, places in enumerate(([('aaaaaaaa', 1), ('bbbbbbbb', 2)], [('bbbbbbbb', 1), ('aaaaaaaa', 2)],
+                                    [('aaaaaaaa', 1), ('bbbbbbbb', 2)])):
+            state = dict(phase='finished', players=[dict(who=w, name='N' + w[0], place=p) for w, p in places])
+            self.db.execute('INSERT INTO tournament_matches VALUES(?,?,?)', ('m%d' % n, 'node', json.dumps(state)))
+        self.db.execute('INSERT INTO tournament_matches VALUES(?,?,?)', ('live', 'node', json.dumps(dict(phase='live'))))
+        self.db.commit()
+        out = self.client.get('/api/tournament-lobbies?stats=1&limit=1').get_json()
+        self.assertEqual(out['enabled'], 1)
+        self.assertEqual(out['stats']['matches'], 3)
+        self.assertEqual([(r['who'], r['wins'], r['played']) for r in out['stats']['rows']], [('aaaaaaaa', 2, 3)])
+        self.assertEqual(len(self.client.get('/api/tournament-lobbies?stats=1&limit=x').get_json()['stats']['rows']), 2)
+        self.assertNotIn('stats', self.client.get('/api/tournament-lobbies').get_json())
+
 if __name__ == '__main__':
     unittest.main()

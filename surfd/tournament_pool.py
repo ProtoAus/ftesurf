@@ -95,6 +95,18 @@ def catalogue(db, d, settings):
                                    kt=row.get('kt', 0), pin={k: pin[k] for k in PIN_FIELDS})
         else:
             unqualified += 1
+    # Lex 21 Nov: one build per map, the Momentum one when it qualifies here. Families are mapwatch's `of`
+    # (surfd.variant_base: a build listed there was byte-compared with KSF's archive); dropped builds are not
+    # "unqualified". Runs after the kind/tier filter: a base and its variant can sit in different tiers.
+    base_of = getattr(d, 'variant_base', None)
+    if base_of is not None:
+        keep = {}
+        for name in qualified:
+            family = base_of(name) or name
+            have = keep.get(family)
+            if have is None or (have != family and (name == family or name < have)):
+                keep[family] = name
+        qualified = {n: qualified[n] for n in sorted(keep.values())}
     rules.require(len(qualified) <= 8192, 'candidate pool exceeds 8192 maps')
     return qualified, unqualified
 

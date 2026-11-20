@@ -227,6 +227,23 @@ def register(app, d):
                     launch = dict(id=m['id'], epoch=m['epoch'], addr=m['addr'], map=m['schedule'][0], ready=ready)
         return dict(ok=1, status=status, me=accounts.who_of(sid), party=snapshot(db, m, now) if m else None, launch=launch)
 
+    stats_cache = dict(key=None, rows=[], matches=0)
+
+    def stats_view(db, limit):
+        # Finished matches stay in tournament_matches; rowid is creation order. A finished state never changes,
+        # and a live one changes length as it advances, so this key is enough to reuse the replay.
+        key = tuple(db.execute('SELECT count(*), max(rowid), sum(length(state)) FROM tournament_matches').fetchone())
+        if key != stats_cache['key']:
+            states = []
+            for (raw,) in db.execute('SELECT state FROM tournament_matches ORDER BY rowid'):
+                try:
+                    states.append(json.loads(raw))
+                except ValueError:
+                    continue
+            stats_cache.update(key=key, rows=rules.standings(states),
+                               matches=sum(1 for m in states if isinstance(m, dict) and m.get('phase') == 'finished'))
+        return dict(matches=stats_cache['matches'], rows=stats_cache['rows'][:limit])
+
     @app.get('/api/tournament-lobbies', endpoint='party_browse')
     def browse():
         if not enabled():
@@ -234,6 +251,12 @@ def register(app, d):
         db, now = d.get_db(), int(d.clock())
         if not d.rate_ok(d.rate_key(), now, 240, 'party-browse'):
             return response(dict(ok=0, error='try again shortly'), 429)
+        if request.args.get('stats') == '1':   # on this route because play.proto.bar forwards exact paths only
+            try:
+                limit = max(1, min(200, int(request.args.get('limit', '50'))))
+            except ValueError:
+                limit = 50
+            return response(dict(enabled=1, stats=stats_view(db, limit)))
         rows = []
         brief = request.args.get('brief') == '1'
         with db:
@@ -435,7 +458,12 @@ def register(app, d):
                     db.execute('DELETE FROM tournament_party_requests WHERE account=? AND rowid NOT IN '
                                '(SELECT rowid FROM tournament_party_requests WHERE account=? ORDER BY rowid DESC LIMIT ?)',
                                (sid, sid, JOURNAL_KEEP))
-                return response(result(db, m, sid, now))
+                out = result(db, m, sid, now)
+            if op == 'create':
+                # Lex 21 Nov: the public lobby chat hears about a new room, as the host's board line (after the
+                # commit; social.announce paces one per player per two minutes and never raises).
+                social.announce(db, sid, 'opened a tournament room -- join from the TOURNAMENT tab', now)
+            return response(out)
         except rules.Refusal as exc:
             return response(dict(ok=0, status='refused', error=str(exc)[:160], me=accounts.who_of(sid) if sid else '', party=None, launch=None))
         except sqlite3.Error:

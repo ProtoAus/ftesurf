@@ -21,6 +21,23 @@
 
 ## next
 
+### P1674 One build per map in tournaments, and tournament standings
+- A tournament's map pool and draws now hold one build of each map: the Momentum Mod one when it qualifies, otherwise its CSS, KSF or fix build. No more two copies of the same map in a draft.
+- The server now keeps tournament standings: wins, shared wins, tournaments played and a rating (Elo from final places; everyone starts at 1000).
+
+### P1673 Tournament tab: equal cards, player pictures and a leaderboard
+- The four how-it-works cards under the room list are the same size.
+- Players and spectators in a tournament room show their Steam picture.
+- CSS, KSF and fix builds of a map show the Momentum Mod build's picture when they have none of their own.
+- A Leaderboard button next to Refresh shows the tournament standings: rating, wins, shared wins and tournaments played, with your own row always visible.
+
+### P1672 Tournament matches: you can see the others, and a proper start lock
+- Competitors are visible to each other in a match again; they were invisible after the round's map loaded.
+- While you are held (before GO and after a round), holding jump no longer bounces your view: the lock now also stops your own game's prediction.
+- The winner's line and the list of who is out no longer overlap, and the banner's phase name no longer runs into the round number.
+- The countdown and round announcements sit on a dark plate, and a map's own centre text waits until they are gone.
+- No more "vote: vote cancelled" over and over after a tournament, and an idle tournament server rotates its maps again.
+
 ## 0.1.53 2026-11-21
 
 ### P1668 Run graphs on Linux

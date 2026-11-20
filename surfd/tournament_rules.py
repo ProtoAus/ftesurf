@@ -483,3 +483,46 @@ def transition(original, op, actor, display, data, pool=()):
         m['note'] = short(m['note'])
     m['revision'] += 1
     return m
+
+
+RATING_START, RATING_K = 1000.0, 32.0
+
+
+def standings(matches):
+    """Tournament stats (Lex 21 Nov) from finished matches' final places, oldest first. Rating is Elo over every pair
+    in a match (a better place wins the pair, an equal place draws), K / (n - 1) per pair so one match moves a rating
+    by at most K; all of a match's changes use the ratings from before it. Shared first place counts as `shared`."""
+    table = {}
+    for m in matches:
+        if not isinstance(m, dict) or m.get('phase') != 'finished':
+            continue
+        seen, ranked = set(), []
+        for p in m.get('players') or ():
+            who, place = (p.get('who'), p.get('place')) if isinstance(p, dict) else (None, None)
+            if isinstance(who, str) and who and who not in seen and type(place) is int and place > 0:
+                seen.add(who)
+                ranked.append(p)
+        if len(ranked) < 2:
+            continue
+        before = {p['who']: table.get(p['who'], {}).get('rating', RATING_START) for p in ranked}
+        n, firsts = len(ranked), sum(1 for p in ranked if p['place'] == 1)
+        for a in ranked:
+            change = 0.0
+            for b in ranked:
+                if b is not a:
+                    score = 1.0 if a['place'] < b['place'] else 0.5 if a['place'] == b['place'] else 0.0
+                    expect = 1.0 / (1.0 + 10 ** ((before[b['who']] - before[a['who']]) / 400.0))
+                    change += RATING_K * (score - expect) / (n - 1)
+            row = table.setdefault(a['who'], dict(who=a['who'], name='', rating=RATING_START, played=0, wins=0,
+                                                  shared=0, best=0))
+            row['rating'] = before[a['who']] + change
+            row['played'] += 1
+            if isinstance(a.get('name'), str) and a['name']:
+                row['name'] = short(a['name'], NAME_BYTES)
+            if a['place'] == 1:
+                row['wins' if firsts == 1 else 'shared'] += 1
+            row['best'] = min(row['best'] or a['place'], a['place'])
+    rows = sorted(table.values(), key=lambda r: (-r['rating'], -r['wins'], -r['played'], r['who']))
+    for r in rows:
+        r['rating'] = int(round(r['rating']))
+    return rows
