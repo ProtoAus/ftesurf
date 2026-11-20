@@ -1,4 +1,10 @@
 # The engine build this QuakeC requires.
+# P1641-P1642 (engine cvar.c console.c keys.c + QC cl_hud.qc; Lex's request, worldofsurf-bb): on a remote server the
+# console's cvar query, completion rows and set note show the server's live value (serverinfo key of the same name);
+# hud_debug reads tick/accel/airaccel/friction/stopspeed/gravity/maxspeed/maxvelocity/mode and the hull/eye heights
+# from the server's keys (tick was a constant 0.015). The console's input line edits like a text box: caret bar,
+# Shift/Ctrl+A/mouse selection, copy only on Ctrl+C, no ctrl/alt glyphs, Home/End move the caret; con_edittest.
+# Record: engine ENGINE_PATCHES.md P1641-P1642; tools/p1641..p1642-claim.md; lextest; BACKLOG.
 # P1639 (QC + surfd + tools; worldofsurf-ed): tournaments on bhop maps. The default movement profile keeps each map
 # kind's own tick (surf 66.7 Hz, bhop 100 Hz under mode_bhop.cfg) in tournament_rules (tick_for/node_ticks), the server's
 # Tour_ProfileTick and the menu's MT_ProfileTick; an idle default node may sit at either tick and is checked at arrival.

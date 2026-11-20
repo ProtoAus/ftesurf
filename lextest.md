@@ -5,6 +5,16 @@
 - Nothing else should look different until tournaments are switched on. Then follow the P1634/P1635/P1639 checks below
   (two accounts).
 
+## P1641-P1642 -- server values + text-box console (worldofsurf-bb)
+
+- P1641: join a lobby, open the console, type `sv_airaccelerate`: it should say the value "on the server" (1000 on bhop,
+  150 on surf) and, if yours differs, "Your own copy is ...". `hud_debug 1`: the bottom rows (tick, aacc, accel, fric,
+  stop, grav, maxspd, maxvel, mode) should match the server; on a bhop map tick reads 0.0100 100.00 Hz.
+- P1642: open the console and type. Is there a blinking | after the last letter? Try Shift+Left, Ctrl+A, then type to
+  replace; Ctrl+C / Ctrl+V; click inside the line to move the cursor, drag to select, double-click a word; select text in
+  the log with the mouse (it should stay highlighted and NOT be copied until Ctrl+C). Home/End move the cursor now;
+  Ctrl+Home/End scroll the log. Anything that still feels like a terminal, say which key.
+
 ## P1636-P1638 -- Lex's follow-ups (worldofsurf-bb)
 
 - surf_affliction: your zone file and map settings now say 10000 (backups *.bak-20261120-bb beside them). In zone_edit

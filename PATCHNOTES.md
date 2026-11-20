@@ -21,6 +21,15 @@
 
 ## next
 
+### P1642 A normal text box for the console
+- The console's typing line has a blinking | cursor between letters and works like any text box: Shift with the arrows, Home or End selects, Ctrl+A selects the line, and you can click to place the cursor, drag to select or double-click a word.
+- Typing or pasting replaces the selection, Ctrl+C and Ctrl+X copy and cut it, and Ctrl+Backspace and Ctrl+Delete delete a word. Home and End move the cursor (Ctrl+Home and Ctrl+End still jump to the top and bottom of the log).
+- Selecting text no longer copies it by itself; select, then press Ctrl+C. Ctrl or Alt with a letter no longer types odd symbols.
+
+### P1641 Server values in the console and hud_debug
+- On a server, typing a setting like `sv_airaccelerate` in the console shows the value that server is running, and says so when your own copy is different.
+- hud_debug shows the server's tick rate, acceleration, air acceleration, friction, stop speed, gravity, max speed, speed cap and mode, updated live when the server changes them.
+
 ### P1638 New Settings page
 - Settings is now a full page beside Lobbies and Maps, with the friends list and chat on the right: sections for Controls, Audio, Menu scene, Performance, In-game sky and Online & privacy, each setting with a slider or buttons and its current value.
 - The old Visuals & display screen is folded in.
