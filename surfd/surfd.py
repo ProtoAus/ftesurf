@@ -2823,21 +2823,40 @@ def _ordinary_handoff(db, node, now):
                " DO UPDATE SET until=MAX(until,excluded.until)", (node, now + ASSIGN_TTL))
 
 
+# Longer than tournaments.CAP_TTL (20 s) so the hold survives a node's map load without polls.
+TOURNAMENT_HOLD_TTL = 90
+
+
 def _tournament_held(db, now):
-    # P1650: an unreserved server advertising tournament capability waits for tournaments, not
-    # ordinary map requests. /lobbies.json still lists it for anyone joining on purpose.
-    if setting("SURFD_TOURNAMENTS", "0") != "1" or setting("SURFD_TOURNAMENT_HOLD", "1") != "1":
+    # P1650: an idle, unreserved server advertising tournament capability waits for tournaments
+    # while they can be hosted. Occupied or arriving ones and /lobbies.json are unaffected.
+    if (setting("SURFD_TOURNAMENT_HOLD", "1") != "1" or
+            not tournaments.hosting_allowed(types.SimpleNamespace(setting=setting))):
         return frozenset()
     return frozenset(r[0] for r in db.execute(
-        "SELECT node FROM tournament_nodes WHERE seen > ? AND seen <= ?",
-        (now - tournaments.CAP_TTL, now)))
+        "SELECT t.node FROM tournament_nodes t JOIN lobbies l ON l.node = t.node"
+        " WHERE t.seen > ? AND t.seen <= ? AND t.native_occupants = 0 AND l.players = 0"
+        " AND NOT EXISTS (SELECT 1 FROM assignments a WHERE a.node = t.node)"
+        " AND NOT EXISTS (SELECT 1 FROM lobby_handoffs h WHERE h.node = t.node AND h.until >= ?)",
+        (now - TOURNAMENT_HOLD_TTL, now, now)))
 
 
 def _join_lobby(db, now, src, mapname, map_dir, timed):
     """Read/select/claim under join_map's single write transaction."""
     db.execute("DELETE FROM assignments WHERE asked_at < ?", (now - ASSIGN_TTL,))
+    rows = live_rows(now)
     held = _tournament_held(db, now)
-    rows = [r for r in live_rows(now) if r["node"] not in held]
+    if held:
+        # Held servers take a request only when nothing else can (second pass).
+        reply = _join_pick(db, now, src, mapname, map_dir, timed,
+                           [r for r in rows if r["node"] not in held], last=False)
+        if reply is not None:
+            return reply
+    return _join_pick(db, now, src, mapname, map_dir, timed, rows)
+
+
+def _join_pick(db, now, src, mapname, map_dir, timed, rows, last=True):
+    """Steps 1-3 over `rows`; None instead of the busy reply unless `last`."""
     claims = {r["node"]: r for r in db.execute(
         "SELECT node, map, map_dir, asked_at FROM assignments").fetchall()}
 
@@ -2905,6 +2924,8 @@ def _join_lobby(db, now, src, mapname, map_dir, timed):
     # Idle heartbeats do not refresh this order. A live claim is never stolen.
     free = sorted((r for r in rows if r["players"] == 0 and r["node"] not in claims),
                   key=lambda r: (r["last_used"], r["node"]))
+    if not free and not last:
+        return None
     if not free:
         # WHAT IS RUNNING IS PART OF THE REFUSAL.  A bare 503 leaves the menu
         # with nothing to offer; the list lets it say "all servers are busy --

@@ -1612,11 +1612,12 @@ do not allocate/changelevel a node. Unresolved/aborted nodes stay protected unti
 explicit restoration/release. A stuck owner requires deliberate operator recovery,
 not a shorter TTL. No extra server is spawned automatically.
 
-Tournament hold (`SURFD_TOURNAMENT_HOLD`, default 1, only with
-`SURFD_TOURNAMENTS=1`): `/api/join` also skips unreserved nodes whose capability
-poll is under 20 s old, so viewers' map requests leave tournament servers free.
-They stay in `/lobbies.json` for anyone joining on purpose. 0 restores the old
-picker.
+Tournament hold (`SURFD_TOURNAMENT_HOLD`, default 1, only while free-Beta
+hosting is on): `/api/join` serves a map request from an unreserved, idle (no
+players, no native occupants, no pending arrival) node with a capability poll
+under 90 s old only when no other node can, so tournament servers stay free.
+Occupied capable nodes are ordinary, and all stay in `/lobbies.json`. 0 restores
+the old picker.
 
 `GET /api/tournaments` is public and read-only:
 `{v:1,enabled:0|1,rows:[{id,node,name,addr,phase,players,capacity,map}],slots:[{node,name,addr,map}]}`.

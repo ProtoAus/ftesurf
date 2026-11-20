@@ -625,24 +625,48 @@ class API(unittest.TestCase):
         self.assertNotIn('76561198', body)
         self.assertNotIn('_accounts', body)
 
-    def test_hold_p1650_capable_idle_node_skips_ordinary_joins_but_stays_listed(self):
-        # setUp advertised n1 with an enabled=1 state poll.
-        for name in ('surf_b', 'surf_alpha'):
-            self.assertEqual(self.client.get('/api/join?map=' + name).status_code, 503, name)
-        self.assertEqual(len(self.client.get('/lobbies.json').get_json()['lobbies']), 1)
-        self.heartbeat(node='n2', mapname='surf_c')
-        self.assertEqual(self.client.get('/api/join?map=surf_b').status_code, 200)
-        self.assertEqual([r[0] for r in self.db.execute('SELECT node FROM assignments')], ['n2'])
-        self.db.execute('DELETE FROM assignments')
+    def test_hold_p1650_idle_capable_node_is_last_choice_occupied_stays_joinable(self):
+        def beat(node, mapname, players=0):
+            port = 27510 if node == 'n1' else 27520
+            self.assertEqual(self.client.post('/api/heartbeat', data=dict(key='testkey', node=node, map=mapname,
+                             players=players, max=16, port=port, name=node)).status_code, 200)
+        def join(name):
+            out = self.client.get('/api/join?map=' + name)
+            self.db.execute('DELETE FROM assignments')
+            self.db.execute('DELETE FROM lobby_handoffs')
+            self.db.commit()
+            return out.status_code, out.get_json().get('why'), out.get_json().get('name')
+        beat('n1', 'surf_Alpha')
+        beat('n2', 'surf_c')
+        # n1 is idle and advertised (setUp): held while n2 can serve, even for n1's own map.
+        self.assertEqual(join('surf_alpha'), (200, 'starting', 'n2'))
+        self.assertEqual(join('surf_b'), (200, 'starting', 'n2'))
+        self.assertEqual(len(self.client.get('/lobbies.json').get_json()['lobbies']), 2)
+        for env in (dict(SURFD_TOURNAMENT_HOLD='0'), dict(SURFD_TOURNAMENT_ACCESS='paid'), dict(SURFD_TOURNAMENTS='0')):
+            with patch.dict(os.environ, env):
+                self.assertEqual(join('surf_alpha'), (200, 'already running', 'n1'), env)
+        # Occupied (native slot or heartbeat) capable nodes are never held.
+        self.post('state', enabled=1, occupants=1)
+        self.assertEqual(join('surf_alpha'), (200, 'already running', 'n1'))
+        self.post('state', enabled=1, occupants=0)
+        beat('n1', 'surf_Alpha', players=2)
+        self.assertEqual(join('surf_alpha'), (200, 'already running', 'n1'))
+        beat('n1', 'surf_Alpha')
+        # The hold outlives CAP_TTL (a long map load) and lapses after TOURNAMENT_HOLD_TTL.
+        self.now += T.CAP_TTL + 10
+        beat('n1', 'surf_Alpha')
+        beat('n2', 'surf_c')
+        self.assertEqual(join('surf_alpha'), (200, 'starting', 'n2'))
+        self.now += S.TOURNAMENT_HOLD_TTL
+        beat('n1', 'surf_Alpha')
+        beat('n2', 'surf_c')
+        self.assertEqual(join('surf_alpha'), (200, 'already running', 'n1'))
+        # With nothing else free a held node serves the request instead of a 503.
+        self.post('state', enabled=1, occupants=0)
         self.db.execute("DELETE FROM lobbies WHERE node='n2'")
         self.db.commit()
-        for env in (dict(SURFD_TOURNAMENT_HOLD='0'), dict(SURFD_TOURNAMENTS='0')):
-            with patch.dict(os.environ, env):
-                self.assertEqual(self.client.get('/api/join?map=surf_alpha').get_json()['why'], 'already running', env)
-        # A capability poll older than CAP_TTL no longer holds the node.
-        self.now += T.CAP_TTL + 1
-        self.heartbeat()
-        self.assertEqual(self.client.get('/api/join?map=surf_alpha').status_code, 200)
+        self.assertEqual(join('surf_b'), (200, 'starting', 'n1'))
+        self.assertEqual(join('surf_alpha'), (200, 'already running', 'n1'))
 
     def test_auth_ban_unlink_wrong_node_and_host_permissions(self):
         m = self.create()
