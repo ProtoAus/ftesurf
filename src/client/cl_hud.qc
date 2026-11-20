@@ -5330,6 +5330,15 @@ void(vector scr) HUD_DrawKeys =
 	HUD_Rect("keys", ui_kb_pos, ui_kb_size, ui_kb_org);
 };
 
+// P1641: one hud_debug row from a serverinfo key; `--` when the server does not publish it.
+void(vector p, float rx, float sz, float lh, string label, string key, string fmt) HUD_DebugKey =
+{
+	local string v;
+	v = serverkey(key);
+	HUD_Text(p, label, sz, '0.6 0.6 0.6', 0.7);
+	HUD_TextR([rx, p_y], (v != "") ? sprintf(fmt, stof(v)) : "--", sz, '0.6 0.6 0.6', 0.7);
+};
+
 /*
   Physics readout.  Off by default now (hud_debug 0) -- it is a debugger,
   not part of the HUD -- but every line it ever had is still here, because
@@ -5338,7 +5347,7 @@ void(vector scr) HUD_DrawKeys =
 void(vector scr, vector vel, float onground, vector gnorm, float mtype) HUD_DrawDebug =
 {
 	local vector p, bp;
-	local float sz, lh, rx;
+	local float sz, lh, rx, stand;
 	local string state;
 	local vector col;
 
@@ -5360,9 +5369,12 @@ void(vector scr, vector vel, float onground, vector gnorm, float mtype) HUD_Draw
 
 	// The 0.7 gate is the whole of surfing: normal_z >= 0.7 is ground,
 	// anything steeper leaves you airborne and sliding.
+	// P1641: the server's pm_standablenormal, which is the gate its mover uses.
+	stand = serverkeyfloat("pm_standablenormal");
+	if (!(stand > 0)) stand = PM_STANDABLE;
 	if (mtype == MOVETYPE_NOCLIP)      { state = "NOCLIP";  col = '0.6 0.6 1.0'; }
 	else if (onground)                 { state = "GROUND";  col = '0.5 0.9 0.5'; }
-	else if (gnorm != '0 0 0' && gnorm_z < PM_STANDABLE && gnorm_z > 0.05)
+	else if (gnorm != '0 0 0' && gnorm_z < stand && gnorm_z > 0.05)
 	                                   { state = "SURFING"; col = '0.34 0.78 1.0'; }
 	else                               { state = "AIR";     col = '0.9 0.9 0.6'; }
 
@@ -5391,7 +5403,7 @@ void(vector scr, vector vel, float onground, vector gnorm, float mtype) HUD_Draw
 	if (gnorm != '0 0 0')
 	{
 		local vector nc;
-		nc = (gnorm_z < PM_STANDABLE) ? '0.34 0.78 1.0' : '0.5 0.9 0.5';
+		nc = (gnorm_z < stand) ? '0.34 0.78 1.0' : '0.5 0.9 0.5';
 		HUD_Text(p, "n.z", sz, nc, 0.9);
 		HUD_TextR([rx, p_y], sprintf("%.4f", gnorm_z), sz, nc, 0.9);
 	}
@@ -5621,6 +5633,18 @@ void(vector scr, vector vel, float onground, vector gnorm, float mtype) HUD_Draw
 		// A vector constant is not swizzleable in place -- see sv_zones.qc:410.
 		hullv = ducked ? PM_DUCK_MAXS : PM_HULL_MAXS;
 		viewv = ducked ? PM_DUCK_VIEW_OFS : PM_VIEW_OFS;
+		/*
+		  P1641: the server's heights when it publishes them. The constants are the
+		  surf hull; an ahop/HL2 server runs 72/36 with eyes at 64/28, and against
+		  the constants this row went amber on every duck there.
+		*/
+		{
+			local float sh;
+			sh = serverkeyfloat(ducked ? "pm_duckheight" : "pm_standheight");
+			if (sh > 0) hullv_z = sh;
+			sh = serverkeyfloat(ducked ? "pm_duckviewheight" : "pm_viewheight");
+			if (sh > 0) viewv_z = sh;
+		}
 
 		eyeh = cam_z - pmove_org_z;
 
@@ -5729,14 +5753,38 @@ void(vector scr, vector vel, float onground, vector gnorm, float mtype) HUD_Draw
 	HUD_TextR([rx, p_y], ui_rs_armed ? "^11^7" : "0", sz, '0.6 0.6 0.6', 0.7); p_y += lh;
 	HUD_Text(p, "slheld", sz, '0.6 0.6 0.6', 0.7);
 	HUD_TextR([rx, p_y], rec_sl_held ? "^11^7" : "0", sz, '0.6 0.6 0.6', 0.7); p_y += lh;
-	HUD_Text(p, "tick", sz, '0.6 0.6 0.6', 0.7);
-	HUD_TextR([rx, p_y], sprintf("%.4f", PM_TICK), sz, '0.6 0.6 0.6', 0.7); p_y += lh;
-	HUD_Text(p, "aacc", sz, '0.6 0.6 0.6', 0.7);
-	HUD_TextR([rx, p_y], sprintf("%.1f", serverkeyfloat("sv_airaccelerate")), sz, '0.6 0.6 0.6', 0.7); p_y += lh;
-	HUD_Text(p, "fric", sz, '0.6 0.6 0.6', 0.7);
-	HUD_TextR([rx, p_y], sprintf("%.1f", serverkeyfloat("sv_friction")), sz, '0.6 0.6 0.6', 0.7); p_y += lh;
-	HUD_Text(p, "grav", sz, '0.6 0.6 0.6', 0.7);
-	HUD_TextR([rx, p_y], sprintf("%.1f", serverkeyfloat("sv_gravity")), sz, '0.6 0.6 0.6', 0.7); p_y += lh;
+	/*
+	  P1641: THE SERVER'S RULES, AS IT PUBLISHES THEM.
+
+	      "Can you ensure hud_debug reads the server values correctly ... I want
+	       the values to read correctly live as the server value."
+
+	  `tick` printed PM_TICK, a compile-time 0.015, so a bhop (100 Hz) or ahop
+	  server showed surf's tick. Every row here now reads the serverinfo key the
+	  engine predicts from (cl_main.c copies the same keys into movevars), and
+	  the server republishes on change, so a live `sv_airaccelerate` on the
+	  server reaches this panel on its next frame. `--` is a server that does
+	  not publish the key, rather than a 0 that looks like a real setting.
+	*/
+	{
+		local float tk;
+		local string mode;
+		tk = serverkeyfloat("pm_ticrate");
+		HUD_Text(p, "tick", sz, '0.6 0.6 0.6', 0.7);
+		HUD_TextR([rx, p_y], (tk > 0) ? sprintf("%.4f  %.2f Hz", tk, 1 / tk) : "--", sz, '0.6 0.6 0.6', 0.7); p_y += lh;
+		HUD_DebugKey(p, rx, sz, lh, "aacc",   "sv_airaccelerate", "%.1f");  p_y += lh;
+		HUD_DebugKey(p, rx, sz, lh, "accel",  "sv_accelerate",    "%.1f");  p_y += lh;
+		HUD_DebugKey(p, rx, sz, lh, "fric",   "sv_friction",      "%.1f");  p_y += lh;
+		HUD_DebugKey(p, rx, sz, lh, "stop",   "sv_stopspeed",     "%.0f");  p_y += lh;
+		HUD_DebugKey(p, rx, sz, lh, "grav",   "sv_gravity",       "%.1f");  p_y += lh;
+		HUD_DebugKey(p, rx, sz, lh, "maxspd", "sv_maxspeed",      "%.0f");  p_y += lh;
+		// The engine's own resolution: pm_maxvelocity overrides when it is set.
+		HUD_DebugKey(p, rx, sz, lh, "maxvel",
+		             (serverkeyfloat("pm_maxvelocity") > 0) ? "pm_maxvelocity" : "sv_maxvelocity", "%.0f");  p_y += lh;
+		mode = serverkey("gamemode");
+		HUD_Text(p, "mode", sz, '0.6 0.6 0.6', 0.7);
+		HUD_TextR([rx, p_y], (mode != "") ? mode : "--", sz, '0.6 0.6 0.6', 0.7); p_y += lh;
+	}
 
 	if (serverkeyfloat("pm_stamina"))
 	{
