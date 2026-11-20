@@ -284,6 +284,26 @@ python3 -B tools/test_surfd_guard_mapnew_profile.py --out /owned/NEW-mapnew-prof
 
 `--preimage` is the frozen tas86-v1 guard (d25deebb); same rules as the tas suite.
 
+## Schema26 tournament lobbies closure (P1634)
+
+The explicit `"runtime_profile":"tour91-v1"` requires explicit integer
+`"target_schema":26`. Its exact raw hash set is the `mapnew87-v1` set plus
+`party_lobbies.py`, `tournaments.py`, `tournament_rules.py` and
+`tournament_pool.py`: 91 members. `surfd.py` imports `party_lobbies` and
+`tournaments`; they import `tournament_rules` and `tournament_pool`, which import
+only the stdlib and `mapmanifest` (already sealed). `party_lobbies` loads the
+external pure `ed25519.py` from SURFD_TOOLS the way `social.py` already does.
+`mapnew87-v1` keeps its exact 87 and cannot admit the four. External converter
+rules, validators, locks, grants, receipts and lifetimes are unchanged. Their
+nine additive tables keep `user_version` 26; a guarded generation must create
+them before its reference (the post-reopen comparison refuses a changed table set).
+
+```
+python3 -B tools/test_surfd_guard_tour_profile.py --out /owned/NEW-tour-profile --preimage /owned/surfd_transition_guard.preimage.py
+```
+
+`--preimage` is the frozen mapnew87-v1 guard (de7c06f6); same rules as the tas suite.
+
 ## Offline acceptance tests
 
 Run only on local Linux/POSIX, with an exclusively NEW absolute synthetic output
