@@ -5,6 +5,7 @@ Needs Flask (2.2.2 on the Pi). Steam is a fake `http`; the run is tools/test_tas
 import contextlib
 import io
 import json
+import math
 from pathlib import Path
 import re
 import sqlite3
@@ -43,6 +44,35 @@ def edited_speed():
         dt = rows[j][0] - rows[j - 1][0]
         for c in range(3): rows[j][1][c] = rows[j - 1][1][c] + (rows[j - 1][2][c] + rows[j][2][c]) * 0.5 * dt
     return rec(rows, fin)
+
+
+XE = fx.ZONES['tracks']['main']['zones']['end']['regions'][0]['points'][0][0]
+
+
+def variant(vw=2.0, cap=250.0):
+    """fx.simulate with another strafe (v.w = vw: less gain a tick as vw grows) and prestrafe cap;
+    finishes where it enters the end box. Each (vw, cap) is a different motion."""
+    R = fx.RATE
+    o, v, rows, t, tick, jumped, fin = [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [], -0.6, 0, False, None
+    while fin is None or tick < fin + 40 + 60:
+        rows.append((t, list(o), list(v)))
+        if fin is None and t >= 0 and o[0] >= XE:
+            fin = round(t / R)
+        vo, h = list(v), math.hypot(v[0], v[1])
+        if not jumped and t >= -0.105:
+            v[2], jumped = 289.99, True
+        elif not jumped:
+            v[0], v[1] = min(cap, h + 18.0), 0.0
+        else:
+            side = 1 if tick % 40 < 20 else -1
+            ang = math.atan2(v[1], v[0]) + side * math.acos(vw / max(h, vw))
+            wx, wy = math.cos(ang), math.sin(ang)
+            add = 30.0 - (v[0] * wx + v[1] * wy)
+            v[0] += add * wx; v[1] += add * wy; v[2] -= 800.0 * R
+        for i in range(3):
+            o[i] += (vo[i] + v[i]) * 0.5 * R if jumped else v[i] * R
+        t = round(t + R, 6); tick += 1
+    return rows, fin
 
 
 class Service(unittest.TestCase):
@@ -257,8 +287,12 @@ class Service(unittest.TestCase):
     def test_header_refusals(self):
         c, _ = self.sign_in(ALICE)
         cases = [(rec(extra='foreign ksf 1 2 3'), 'imported'),
+                 (rec(extra='momdemo 4017998251465ca2'), 'imported'),
+                 (rec(extra='runid mom-4017998251465ca2'), 'imported'),
                  (rec().replace(b'tickrate 0.015', b'tickrate 0.01'), '66.67 tick'),
-                 (rec().replace(b'tickrate 0.015', b'tickrate nan'), '66.67 tick'),
+                 (rec().replace(b'tickrate 0.015', b'tickrate nan'), 'not a number'),
+                 (rec().replace(b'track 0\n', b'track 0\ntrack 1\n'), 'twice'),
+                 (rec().replace(b'track 0\n', b'track 0\x0bmovetickrate 0.02\n'), 'other than a newline'),
                  (rec(mapname='../etc'), 'no usable map'),
                  (rec().replace(b'track 0', b'track -1'), 'no usable track'),
                  (b'MZ\x00' + rec(), 'not a FTESURF-REC'),
@@ -268,6 +302,115 @@ class Service(unittest.TestCase):
             r = self.upload(c, body)
             self.assertEqual(r.status_code, 400, why)
             self.assertIn(why, r.get_json()['error'])
+
+    def test_movetickrate_zero_means_absent(self):
+        c, _ = self.sign_in(ALICE)
+        r = self.upload(c, rec().replace(b'movetickrate 0.015', b'movetickrate 0'))
+        self.assertEqual(r.get_json().get('state'), 'shown', r.get_json())
+
+    def test_copies_refused(self):
+        c, _ = self.sign_in(ALICE)
+        rows, fin = fx.simulate()
+        a = self.upload(c, rec(rows, fin)).get_json()
+        self.assertEqual(a['state'], 'shown')
+        b, _ = self.sign_in(BOB)
+        extra = rec(rows, fin).replace(b'\nend ', b'\n9.0000 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\nend ', 1)
+        moved = rec([(t, [o[0], o[1] + 3.0, o[2]], v) for t, o, v in rows], fin)
+        late = rec([(round(t + fx.RATE, 6), o, v) for t, o, v in rows], fin + 1)
+        noisy = rec([(t, [x + 0.3 for x in o], [x + 0.4 for x in v]) for t, o, v in rows], fin)
+        for body in (extra, moved, late, noisy):
+            r = self.upload(b, body)
+            self.assertEqual(r.status_code, 409, r.get_json())
+            self.assertIn("motion of run %d (another player's)" % a['id'], r.get_json()['error'])
+        files = list((self.store.parent / 'recs').rglob('*.rec'))
+        self.assertEqual(len(files), 1)   # refused copies leave nothing behind
+        other, ofin = variant(14.0)
+        self.assertEqual(self.upload(b, rec(other, ofin)).get_json()['state'], 'shown')
+
+    def test_failed_commit_leaves_no_file(self):
+        c, _ = self.sign_in(ALICE)
+        real, calls = svc.writing, []
+
+        @contextlib.contextmanager
+        def failing(db):
+            calls.append(1)
+            with real(db):
+                yield db
+                if len(calls) == 2:   # the upload's insert, after its file is written
+                    raise sqlite3.OperationalError('disk I/O error')
+        svc.writing = failing
+        try:
+            r = self.upload(c, rec())
+        finally:
+            svc.writing = real
+        self.assertEqual(r.status_code, 503)
+        self.assertEqual(list((self.store.parent / 'recs').rglob('*.rec')), [])
+        self.assertEqual(self.upload(c, rec()).get_json()['state'], 'shown')   # and the run can come again
+
+    def test_checker_error_is_held_not_500(self):
+        z = json.loads(json.dumps(fx.ZONES))
+        z['tracks']['main']['zones']['end']['regions'][0]['bottom'] = None
+        Path(self.zdirs[1], 'synth.json').write_text(json.dumps(z))
+        c, _ = self.sign_in(ALICE)
+        r = self.upload(c, rec())
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.get_json()['state'], 'held')
+        self.assertIn('could not finish', json.dumps(r.get_json()['reasons']))
+
+    def test_too_many_form_parts(self):
+        c, _ = self.sign_in(ALICE)
+        data = {'rec': (io.BytesIO(rec()), 'run.rec'), 'tool': 'x', 'csrf': self.csrf(c)}
+        for i in range(10): data['f%d' % i] = 'x'
+        r = c.post('/tasup/upload', data=data, content_type='multipart/form-data', headers={'Accept': 'application/json'})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('too many parts', r.get_json()['error'])
+
+    def test_steam_confirmations_capped(self):
+        old = svc.STEAM_MINUTE
+        svc.STEAM_MINUTE = 2
+        try:
+            codes = [self.sign_in(ALICE)[1].status_code for _ in range(3)]
+        finally:
+            svc.STEAM_MINUTE = old
+        self.assertEqual(codes, [303, 303, 429])
+        self.assertEqual(len(self.steam_calls), 2)
+
+    def test_head_counts_as_a_read(self):
+        anon = self.app.test_client()
+        codes = [anon.head('/tasup/api/recent').status_code for _ in range(svc.PEER_READS + 1)]
+        self.assertEqual(codes[-1], 429)
+
+    def test_tool_name_loses_markup(self):
+        c, _ = self.sign_in(ALICE)
+        j = self.upload(c, rec(), tool='^1red&link\\"bot";$x  v2').get_json()
+        run = self.app.test_client().get('/tasup/api/run/%d' % j['id']).get_json()['run']
+        self.assertEqual(run['tool'], '1redlinkbotx v2')   # ^ & \\ " ; $ dropped, spaces collapsed
+
+    def test_remove_frees_the_file(self):
+        c, _ = self.sign_in(ALICE)
+        j = self.upload(c, rec()).get_json()
+        self.assertEqual(len(list((self.store.parent / 'recs').rglob('*.rec'))), 1)
+        self.assertEqual(self.cli('remove', str(j['id']))[0], 0)
+        self.assertEqual(list((self.store.parent / 'recs').rglob('*.rec')), [])
+        with contextlib.closing(sqlite3.connect(self.store)) as db:
+            self.assertEqual(db.execute('SELECT size, state FROM runs').fetchone(), (0, 'removed'))
+        self.assertEqual(self.upload(c, rec()).status_code, 409)   # still refused as the same motion
+
+    def test_refused_bytes_do_not_spend_the_day(self):
+        c, _ = self.sign_in(ALICE)
+        for _ in range(3): self.upload(c, b'FTESURF-REC 5\n' + b'x' * 1000)
+        self.upload(c, rec())
+        with contextlib.closing(sqlite3.connect(self.store)) as db:
+            n, size = db.execute('SELECT n, bytes FROM spend').fetchone()
+        self.assertEqual((n, size), (4, len(rec())))
+
+    def test_owner_approved_label(self):
+        c, _ = self.sign_in(ALICE)
+        j = self.upload(c, edited_speed()).get_json()
+        self.cli('approve', str(j['id']))
+        page = self.app.test_client().get('/tasup/board?map=synth&track=0').get_data(as_text=True)
+        self.assertIn('owner approved', page)
+        self.assertNotIn('physics checked', page)
 
     def test_no_zones_is_held(self):
         c, _ = self.sign_in(ALICE)
@@ -304,26 +447,25 @@ class Service(unittest.TestCase):
 
     def test_best_per_player(self):
         c, _ = self.sign_in(ALICE)
-        rows, fin = fx.simulate()
-        slow = rec(rows, fin).replace(b'end %d ' % fin, b'end %d ' % (fin + 1))   # the clock says one tick later
-        moved = [(t, [o[0], o[1] + 1.0, o[2]], v) for t, o, v in rows]           # another motion, as fast
-        a = self.upload(c, slow).get_json()
-        b = self.upload(c, rec(moved, fin)).get_json()
+        (fast, ff), (slow, sf) = sorted([variant(2.0), variant(17.0)], key=lambda x: x[1])
+        self.assertGreater(sf, ff)
+        a = self.upload(c, rec(slow, sf)).get_json()
+        b = self.upload(c, rec(fast, ff)).get_json()
         self.assertEqual((a['state'], b['state']), ('shown', 'shown'), (a, b))
         runs = self.app.test_client().get('/tasup/api/board?map=synth&track=0').get_json()['runs']
-        self.assertEqual([(x['id'], x['ticks']) for x in runs], [(b['id'], fin)])
+        self.assertEqual([(x['id'], x['ticks']) for x in runs], [(b['id'], ff)])
 
     def test_daily_and_held_caps(self):
         c, _ = self.sign_in(ALICE)
-        rows, fin = fx.simulate()
         held = 0
-        for k in range(svc.HELD_CAP):
-            body = edited_speed().replace(b'track 0\n', b'track 0\nrun %d\n' % k)
-            body = body.replace(b'0.300', b'0.30%d' % k, 1) if k else body   # each a different motion
-            r = self.upload(c, body).get_json()
+        for vw in (2, 9, 12.5, 15, 17.5, 19.5, 21.5, 23, 24.5, 26):   # ten motions (v.w), each with a speed edit
+            rows, fin = variant(vw)
+            rows = [(t, list(o), [v[0] * 1.05, v[1] * 1.05, v[2]] if t >= 0.3 else list(v)) for t, o, v in rows]
+            r = self.upload(c, rec(rows, fin)).get_json()
             held += r.get('state') == 'held'
         self.assertEqual(held, svc.HELD_CAP)
-        r = self.upload(c, rec())
+        self.assertEqual(self.upload(c, rec()).get_json()['state'], 'shown')   # the cap is on the owner's queue only
+        r = self.upload(c, edited_speed())
         self.assertEqual(r.status_code, 429)
         self.assertIn('waiting for review', r.get_json()['error'])
         for _ in range(svc.USER_DAY):

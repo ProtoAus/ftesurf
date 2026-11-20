@@ -271,6 +271,147 @@ class Hostile(unittest.TestCase):
             self.assertIn(r["verdict"], ("PASS", "HOLD", "FAIL"))
 
 
+class Review1639(unittest.TestCase):
+    """The bypasses P1639's review demonstrated, each now HOLD or FAIL, beside a control that passes."""
+
+    def setUp(self):
+        self.rows, self.fin = simulate()
+        self.rows = [(t, list(o), list(v)) for t, o, v in self.rows]
+
+    def why(self, r):
+        return " | ".join(x["what"] for x in r["reasons"])
+
+    def assertHeld(self, r, phrase):
+        self.assertEqual(r["verdict"], "HOLD", self.why(r))
+        self.assertIn(phrase, self.why(r))
+
+    def at(self, t):
+        return next(i for i, r in enumerate(self.rows) if r[0] >= t - 1e-9)
+
+    def refly(self, i0, fn):
+        """Apply fn(t, o, v) -> (o, v) from row i0 on and rebuild positions from the velocities."""
+        for j in range(i0, len(self.rows)):
+            t, o, v = self.rows[j]
+            self.rows[j] = (t, *fn(t, list(o), list(v)))
+
+    def test_header_key_twice_fails(self):
+        body = text(self.rows, self.fin).replace("track 0\n", "track 0\ntrack 1\n")
+        r = tp.check(tp.read(text=body), ZONES)
+        self.assertEqual(r["verdict"], "FAIL")
+        self.assertIn("header repeats track", self.why(r))
+
+    def test_hidden_line_break_fails(self):
+        for sep in ("\x0b", " ", "\r"):
+            body = text(self.rows, self.fin).replace("track 0\n", "track 0" + sep + "movetickrate 0.02\n")
+            self.assertEqual(tp.check(tp.read(text=body), ZONES)["verdict"], "FAIL", repr(sep))
+        crlf = text(self.rows, self.fin).replace("\n", "\r\n")   # Windows line ends are fine
+        self.assertEqual(tp.check(tp.read(text=crlf), ZONES)["verdict"], "PASS")
+
+    def test_samples_between_ticks_hold(self):
+        rows = []
+        for a, b in zip(self.rows, self.rows[1:]):
+            rows.append(a)
+            rows.append((round((a[0] + b[0]) / 2, 6), [(x + y) / 2 for x, y in zip(a[1], b[1])],
+                         [(x + y) / 2 for x, y in zip(a[2], b[2])]))
+        rows.append(self.rows[-1])
+        self.assertHeld(verdict(rows, self.fin), "not whole ticks")
+
+    def test_low_precision_holds(self):
+        body = text(self.rows, self.fin)
+        lines = body.split("\n")
+        for i, line in enumerate(lines):
+            tok = line.split()
+            if tok and tp.is_sample(tok[0]):
+                tok[4:7] = ["%de-6" % round(float(x) * 1e6) for x in tok[4:7]]
+                lines[i] = " ".join(tok)
+        self.assertHeld(tp.check(tp.read(text="\n".join(lines)), ZONES), "decimals")
+
+    def test_fast_ground_slide_holds(self):
+        i0 = self.at(0.0)
+        rows = self.rows[:i0]
+        t, o, v = rows[-1]
+        o, v = list(o), [600.0, 0.0, 0.0]
+        while t < 1.6:
+            nv = [v[0] + 19.0, 0.0, 0.0]          # inside the 20 u/s step, but at 600+ u/s
+            o = [o[0] + (v[0] + nv[0]) * 0.5 * RATE, o[1], o[2]]
+            t, v = round(t + RATE, 6), nv
+            rows.append((t, list(o), list(v)))
+        self.assertHeld(verdict(rows, self.fin), "accelerating past run speed")
+
+    def test_mid_air_jump_holds(self):
+        # At the top of the arc (vz in [-13, 1]), where a jump from the ground looks the same in vz.
+        k = next(i for i, r in enumerate(self.rows) if r[0] > 0 and -13 <= r[2][2] <= 1) + 1
+        dz = 289.99 - self.rows[k][2][2]
+        self.refly(k, lambda t, o, v: (o, [v[0], v[1], v[2] + dz]))
+        for j in range(k + 1, len(self.rows)):   # positions follow the new vertical speed
+            a, b = self.rows[j - 1], self.rows[j]
+            b[1][2] = a[1][2] + (a[2][2] + b[2][2]) * 0.5 * RATE
+        self.assertHeld(verdict(self.rows, self.fin), "energy")
+
+    def test_unexplained_travel_on_a_contact_tick_holds(self):
+        k = self.at(0.6)
+        self.rows[k][2][2] += 0.06                # no longer exactly free flight
+        for j in range(k, len(self.rows)):
+            self.rows[j][1][0] += 10.0             # and 10 u further along from here on
+        self.assertHeld(verdict(self.rows, self.fin), "more than the velocity change explains")
+
+    def test_air_turn_too_sharp_holds(self):
+        k = self.at(0.6)
+        self.refly(k, lambda t, o, v: (o, [-v[1], v[0], v[2]]))   # 90 degrees in one tick, same speed
+        for j in range(k + 1, len(self.rows)):
+            a, b = self.rows[j - 1], self.rows[j]
+            for c in range(2):
+                b[1][c] = a[1][c] + (a[2][c] + b[2][c]) * 0.5 * RATE
+        r = verdict(self.rows, self.fin, zones=None)
+        self.assertIn("air control cannot change velocity", self.why(r))
+
+    def test_finish_claimed_early_holds(self):
+        # 16 u of hull reaches the zone first: at this run's ~330 u/s that is 3 ticks, so 5 is a false claim.
+        self.assertHeld(verdict(self.rows, self.fin - 5), "never reaches end")
+        self.assertEqual(verdict(self.rows, self.fin)["verdict"], "PASS")
+
+    def staged(self):
+        """ZONES plus a stage 2 start where the run is at t=0.6."""
+        z = json.loads(json.dumps(ZONES))
+        x6 = self.rows[self.at(0.6)][1][0]
+        z["tracks"]["main"]["zones"]["segments"].append(
+            {"checkpoints": [{"regions": [box(x6 - 20, x6 + 20, -500, 500, -2000, 4000)]}]})
+        return z
+
+    def test_stage_retry_passes_and_skip_holds(self):
+        z = self.staged()
+        i6, i9 = self.at(0.6), self.at(0.9)
+        # A fall at 0.9 s puts the body back on stage 2's start; it rides stage 2 again from there.
+        again = [(round(self.rows[i9][0] + RATE * (1 + j - i6), 6), list(o), list(v))
+                 for j, (t, o, v) in enumerate(self.rows[i6:], start=i6)]
+        rows = self.rows[:i9 + 1] + again
+        fin = self.fin + (i9 + 1 - i6)
+        r = verdict(rows, fin, zones=z)
+        self.assertEqual(r["verdict"], "PASS", self.why(r))
+        self.assertEqual(r["stats"]["teleports"], 1)
+        # The same fall landing with more speed than it had is not a fall; nor is falling turned into running.
+        fast = [(t, o, [c * 1.5 for c in v]) if j == 0 else (t, o, v) for j, (t, o, v) in enumerate(again)]
+        self.assertHeld(verdict(self.rows[:i9 + 1] + fast, fin, zones=z), "gaining")
+        vz9 = abs(self.rows[i9][2][2])
+        turned = [(t, o, [v[0] + vz9 * 0.7, v[1], 0.0]) if j == 0 else (t, o, v) for j, (t, o, v) in enumerate(again)]
+        self.assertHeld(verdict(self.rows[:i9 + 1] + turned, fin, zones=z), "gaining")
+        # Teleporting onto stage 2's start before reaching it is a skip (or a stage-end teleporter).
+        i3 = self.at(0.3)
+        skip = self.rows[:i3 + 1] + [(round(self.rows[i3][0] + RATE * (1 + j - i6), 6), list(o), list(v))
+                                     for j, (t, o, v) in enumerate(self.rows[i6:], start=i6)]
+        self.assertHeld(verdict(skip, self.fin - (i6 - i3 - 1), zones=z), "from stage 1")
+
+    def test_start_speed_rules(self):
+        z = json.loads(json.dumps(ZONES))
+        z["tracks"]["main"]["zones"]["segments"][0]["limitStartGroundSpeed"] = False
+        self.assertEqual(verdict(self.rows, self.fin, zones=z)["verdict"], "PASS")   # opens at rest
+        rows = [(t, o, [v[0] + 900.0, v[1], v[2]]) if j == 0 else (t, o, v) for j, (t, o, v) in enumerate(self.rows)]
+        self.assertHeld(verdict(rows, self.fin, zones=z), "opens already moving")
+        i0 = self.at(0.0)
+        rows = [(t, o, [v[0], v[1], -500.0]) if j == i0 else (t, o, v) for j, (t, o, v) in enumerate(self.rows)]
+        self.assertIn("counting vertical speed", self.why(verdict(rows, self.fin)))
+
+
 @unittest.skipUnless(os.environ.get("TASPLAUS_CORPUS"), "set TASPLAUS_CORPUS (+ TASPLAUS_ZONES) to real .rec files")
 class Corpus(unittest.TestCase):
     def test_honest_runs_pass(self):

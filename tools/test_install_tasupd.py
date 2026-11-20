@@ -148,7 +148,7 @@ class Upgrade(unittest.TestCase):
         self.assertEqual(self.imports, [[0o755, 0o755, 0o644, 0o644]])   # readable by proto under any umask
 
     def test_a_foreign_unit_is_refused(self):
-        t.UNIT.write_text(t.UNIT.read_text().replace('MemoryMax=384M', 'MemoryMax=1G'))
+        t.UNIT.write_text(t.UNIT.read_text().replace('MemoryMax=512M', 'MemoryMax=1G'))
         with self.assertRaisesRegex(RuntimeError, 'not the one this installer wrote'): self.main('--apply')
         self.assertFalse((t.RELEASES / NEW).exists())
 

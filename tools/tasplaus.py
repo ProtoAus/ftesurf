@@ -16,9 +16,15 @@ Verdicts:
         that stop before the finish, speed past sv_maxvelocity.
 Native recordings with saves, loads, warps or pauses are HOLD here: those are
 teleports by design and only the exact verifier (pm_verify) can judge them.
-Not yet known to it: a map's push/booster volumes (energy past the air cap is HOLD)
-and stage legs. 20 Nov, our own 111 recordings with samples: the energy HOLDs sit on
+Not known to it: collision (a wall clip or an invisible ledge at legal speed passes),
+a map's push/booster volumes and stage-end teleporters (both HOLD), stage legs (HOLD).
+20 Nov, our own 111 recordings with samples: the energy HOLDs sit on
 surf_classics/classics2/sodacity/mesa (boosters), none on push-free maps.
+P1639 review: one header reading (a key twice or a stray line break is FAIL); samples
+must be whole ticks apart and printed to 0.01; jumps start on the ground; contact ticks
+move no further than their velocity change explains; air control's direction is checked;
+teleports land on the ridden stage's start without gaining speed; the start speed is
+capped in 3D, and where a course has no start limit the recording must open slow.
 
 Bounds, measured on 117 KSF + Momentum replays of surf_sandtrap2 bonus 4
 (20 Nov 2026, 2-6 decimal files):
@@ -33,12 +39,18 @@ Bounds, measured on 117 KSF + Momentum replays of surf_sandtrap2 bonus 4
   duck in the air      origin z moves +-8.5 with velocity unchanged (2 g 8.5 = 13600 of
                        "energy"), so a shift is taken out before the energy test and the
                        shifts must cancel (running sum within +-19).
+  air turn             v'.(v'-v) - 30|v'-v| over one free tick: max 12.8 (tolerance 30 + precision)
+  ground d(|v_h|^2)    max 3269 a tick (cap 10000)
+  contact residual     |do - v_avg dt| - |dv| dt: max ~2 u after the start
+  start                |v| at t=0 max 406; finish within 16 u (the hull) of the end zone, all 117
 A 1% speedhack at 1000 u/s is d(v^2) ~ 20000 a tick; a skipped tick is ~15 u.
 """
 
 import argparse
+import io
 import json
 import math
+import re
 import sys
 
 F32_MAX = 3.4028234663852886e38
@@ -69,40 +81,59 @@ MAX_GAP = 8              # ticks between samples before the checker says it cann
 ZONE_PAD = 48.0          # u around a checkpoint/stage box, plus one tick of travel
 EDGE_PAD = 16.0          # u at the start and the end: the hull's half-width, plus one tick of travel
 START_CAP = 380.0        # horizontal u/s at t=0 under limitStartGroundSpeed (measured max 306)
+START_CAP_3D = 480.0     # |v| at t=0 (measured max 406); and at the first sample where no start limit exists
+GROUND_DV2 = 10000.0     # d(|v_h|^2) a ground tick: 2 A W - A^2, A = 19.5, W = 260 (measured max 3269)
+MIN_DECIMALS = 2         # every position/velocity printed to 0.01 or finer (all 281 real files)
 DEFAULT_MAXVEL = 3500.0
 WORLD = 131072.0         # |coordinate|: Source's +-16384 map limit, eight times over
 MAX_TICKS = 100000000    # surfd.MAX_TICKS
+AIR_CAP = 30.0           # sv_air_max_wishspeed (CS:S, Momentum)
+TURN_TOL = 30.0          # u^2/s^2 over v'.(v'-v) - 30|v'-v|; see the turn test in check()
 CLOCK_RATIO = (0.9985, 1.002)
 # Native records that move the body or the clock outside the movement code.
 NATIVE_STATE = ("resume", "session", "pause", "hold", "warp", "restart", "takeover")
 PASS, HOLD, FAIL = "PASS", "HOLD", "FAIL"
 
 
+# A .rec breaks lines on \n (CRLF allowed); splitlines() would also break on these, so a header key
+# could hide inside a line one reader sees and another does not (review of P1639). None occurs in 281
+# real files (164 of ours, 117 imports), nor does a repeated header key.
+ODD_BREAK = re.compile('[\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]|\r(?!\n)')
+
+
 class Run:
     def __init__(self):
         self.hdr = {}
+        self.dups = set()    # header keys given twice: FAIL, readers would disagree on which counts
+        self.has_body = False   # a `begin` line was seen
+        self.odd_breaks = False
         self.samples = []    # (t, o[3], v[3])
         self.end = None
-        self.decimals = 0
+        self.decimals = 99   # fewest decimals of any position/velocity number (exponent form counts 0)
         self.records = set()
         self.yaw = []        # view yaw per sample (runcompare reads it)
 
 
-def read(path=None, text=None):
+def read(path=None, text=None, header_only=False):
+    """One reader for the header and the samples (surfd/tasupd.py reads the header through it too)."""
     run = Run()
     if text is None:
         with open(path, encoding="utf-8", errors="replace") as f:
             text = f.read()
-    lines = text.splitlines()
+    run.odd_breaks = bool(ODD_BREAK.search(text))
     body = False
-    for line in lines:
+    for line in io.StringIO(text):   # newline="\n": splits on \n only, like the game
         tok = line.split()
         if not tok:
             continue
         if not body:
             if tok[0] == "begin":
-                body = True
+                body = run.has_body = True
+                if header_only:
+                    break
             else:
+                if tok[0] in run.hdr:
+                    run.dups.add(tok[0])
                 run.hdr[tok[0]] = " ".join(tok[1:])
             continue
         if tok[0] == "end":
@@ -120,10 +151,10 @@ def read(path=None, text=None):
             nums = [file_float(x) for x in tok[:7]]
         except ValueError:
             continue
-        for x in tok[4:7]:
-            if "." in x:
-                run.decimals = max(run.decimals, len(x.split(".")[1]))
-        run.samples.append((nums[0], nums[1:4], nums[4:7]))
+        for x in tok[1:7]:
+            dot = x.find(".")
+            run.decimals = min(run.decimals, len(x) - dot - 1 if dot >= 0 and x[dot + 1:].isdigit() else 0)
+        run.samples.append((nums[0], tuple(nums[1:4]), tuple(nums[4:7])))
         try:
             run.yaw.append(file_float(tok[8]))
         except ValueError:
@@ -194,6 +225,28 @@ def _seg_dist(x, y, a, b):
     return math.hypot(x - (ax + u * dx), y - (ay + u * dy))
 
 
+def hdr_int(hdr, key, default=0):
+    """The header's first word as an int, or `default` (absent, empty or not a number)."""
+    try:
+        return int(hdr.get(key, "").split()[0])
+    except (ValueError, IndexError):
+        return default
+
+
+def _bbox(regions, pad):
+    pts = [p for r in regions for p in (r.get("points") or [])]
+    if not pts:
+        return None
+    lo = min(float(r.get("bottom", -1e9)) for r in regions) - pad
+    hi = max(float(r.get("bottom", -1e9)) + float(r.get("height", 1e9)) for r in regions) + pad
+    return (min(p[0] for p in pts) - pad, max(p[0] for p in pts) + pad,
+            min(p[1] for p in pts) - pad, max(p[1] for p in pts) + pad, lo, hi)
+
+
+def _in_bbox(o, b):
+    return b is not None and b[0] <= o[0] <= b[1] and b[2] <= o[1] <= b[3] and b[4] <= o[2] <= b[5]
+
+
 def check(run, zones=None, maxvel=None):
     out = {"verdict": PASS, "reasons": [], "stats": {}}
 
@@ -213,6 +266,10 @@ def check(run, zones=None, maxvel=None):
         if rate > 0:
             break
     s = run.samples
+    if run.dups or run.odd_breaks:
+        note(FAIL, None, "header repeats " + ", ".join(sorted(run.dups)) if run.dups
+             else "line breaks other than newline: readers would disagree about the header")
+        return out
     if not s or len(s) < 3:
         note(FAIL, None, "no samples")
         return out
@@ -226,14 +283,7 @@ def check(run, zones=None, maxvel=None):
         note(FAIL, None, "a sample is outside the world")   # also keeps x ** 2 below finite
         return out
     fin = run.end * rate
-    try:
-        track = int(run.hdr.get("track", "0").split()[0])
-    except ValueError:
-        track = 0
-    try:
-        startseg = int(run.hdr.get("startseg", "0").split()[0])
-    except ValueError:
-        startseg = 0
+    track, startseg = hdr_int(run.hdr, "track"), hdr_int(run.hdr, "startseg")
     if startseg:
         note(HOLD, None, f"stage leg (startseg {startseg}): this checker covers whole courses")
         zones = None
@@ -242,9 +292,14 @@ def check(run, zones=None, maxvel=None):
     if maxvel is None:
         maxvel = float((zones or {}).get("maxVelocity") or DEFAULT_MAXVEL)
 
-    q = 0.5 * 10.0 ** (-run.decimals) if run.decimals else 0.5
-    # A teleport mid-run may land on a stage start only: into the end is a skip, into the start a reset.
-    tele_dest = [(lab, regs) for lab, regs in (seq or []) if lab.startswith("stage ")]
+    if run.decimals < MIN_DECIMALS:
+        # The tolerances follow the print precision: "1234e-3" or "12" would widen them past the caps.
+        note(HOLD, None, f"numbers printed with {run.decimals} decimals: the bounds need {MIN_DECIMALS} or more")
+    q = 0.5 * 10.0 ** (-max(run.decimals, MIN_DECIMALS))
+    # Teleport destinations: stage starts, numbered (the main start is stage 1 and a teleport into it
+    # is a reset, into the end a skip). Back to the stage being ridden is a fall; on to the next one
+    # is the map's stage-end teleporter, which the checker cannot see, so a person looks.
+    stages = [(int(lab.split()[1]), regs, _bbox(regs, ZONE_PAD)) for lab, regs in (seq or []) if lab.startswith("stage ")]
 
     # Our own recordings sample once a packet, so dt need not be whole ticks; bounds scale with dt.
     for (t0, _, _), (t1, _, _) in zip(s, s[1:]):
@@ -277,14 +332,26 @@ def check(run, zones=None, maxvel=None):
         if disc(s[i - 1], s[i]) > POS_TOL * max(1, k):
             i0 = i
     win = [x for x in s[i0:] if x[0] <= fin + rate + 1e-6]
-    worst_air = worst_ground = 0.0
-    nchk = njump = ntele = nduck = 0
+    worst_air = worst_ground = worst_turn = 0.0
+    nchk = njump = ntele = nduck = offtick = 0
     duck_net = 0.0
-    for a, b in zip(win, win[1:]):
+    reached = [1, 0]   # highest stage start visited, samples scanned
+
+    def stage_reached(upto):
+        for x in win[reached[1]:upto + 1]:
+            for n, regs, bb in stages:
+                if n > reached[0] and _in_bbox(x[1], bb) and any(_inside(x[1], r, ZONE_PAD) for r in regs):
+                    reached[0] = n
+        reached[1] = max(reached[1], upto + 1)
+        return reached[0]
+
+    for i, (a, b) in enumerate(zip(win, win[1:])):
         t = a[0]
         k = (b[0] - a[0]) / rate
         aligned = abs(k - round(k)) < 0.02
         kk = max(1, math.ceil(k - 0.02))   # mover steps: the air cap and the tolerances are per step
+        if not aligned or k < 0.98:
+            offtick += 1   # each pair gets a whole step's allowance: ten samples a tick would get ten
         for c in range(3):
             if abs(b[2][c]) > maxvel + GRAVITY * rate + 0.5:   # half gravity lands after the clamp
                 note(FAIL, b[0], f"velocity {b[2][c]:.1f} past sv_maxvelocity {maxvel:.0f}")
@@ -311,17 +378,30 @@ def check(run, zones=None, maxvel=None):
                 note(HOLD, t, f"vertical speed fell exactly {m} ticks of gravity in {round(k)}: missing or edited ticks")
         if free and FREE_TOL * kk < d <= POS_TOL * kk:
             note(HOLD, t, f"free-flight position off by {d:.1f} u in {k:.2g} tick(s): missing or edited ticks")
-        if d > POS_TOL * kk:
-            ntele += 1
-            where = next((lab for lab, regs in tele_dest if any(_inside(b[1], r, ZONE_PAD) for r in regs)), None)
-            if where:
-                continue
-            note(HOLD, t, f"position jumps {d:.0f} u, not onto a stage start"
-                 + ("" if seq else " (no zones to check against)"))
-            continue
+        elif not free and t >= 0 and d <= POS_TOL * kk:
+            # Contact (a ramp clip) moves the body with a velocity between the two samples', so the
+            # residual is bounded by the change: measured excess <= 2 u after the start (t < 0: one
+            # import's start zone zeroes velocity but not motion, 3.9 u a tick).
+            dv = math.sqrt(sum((b[2][c] - a[2][c]) ** 2 for c in range(3)))
+            if d > dv * (b[0] - a[0]) + FREE_TOL * kk:
+                note(HOLD, t, f"moves {d:.1f} u off its velocity in {k:.2g} tick(s), more than the velocity change explains")
         va, vb = a[2], b[2]
         ha, hb = math.hypot(va[0], va[1]), math.hypot(vb[0], vb[1])
-        jump = -13.0 * kk <= va[2] <= 1.0 and JUMP_VZ[0] <= vb[2] <= JUMP_VZ[1]
+        if d > POS_TOL * kk:
+            ntele += 1
+            dest = next((n for n, regs, bb in stages
+                         if _in_bbox(b[1], bb) and any(_inside(b[1], r, ZONE_PAD) for r in regs)), None)
+            # A teleport keeps or zeroes velocity (a yaw turn at most): it never turns falling into running.
+            gained = max(hb - ha, abs(vb[2]) - abs(va[2]))
+            if dest is not None and dest == stage_reached(i) and gained <= 40.0 * kk:
+                continue   # a fall back to the start of the stage being ridden
+            note(HOLD, t, f"position jumps {d:.0f} u" + (
+                " (no zones to check against)" if not seq else
+                ", not onto a stage start" if dest is None else
+                f" onto stage {dest}'s start, gaining {gained:.0f} u/s" if dest == reached[0] else
+                f" onto stage {dest}'s start from stage {reached[0]}: a stage-end teleporter? (not known to the checker)"))
+            continue
+        jump = abs(va[2]) < 0.01 and JUMP_VZ[0] <= vb[2] <= JUMP_VZ[1]   # from the ground: all 118 real ones
         ground = abs(va[2]) < 0.01 and abs(vb[2]) < 0.01
         if jump or ground:
             njump += jump
@@ -330,6 +410,9 @@ def check(run, zones=None, maxvel=None):
             worst_ground = max(worst_ground, gain / (GROUND_DV * kk))
             if gain > lim:
                 note(HOLD, t, f"ground speed +{gain:.1f} u/s in {k:.2g} tick(s) (cap {GROUND_DV * kk:.0f})")
+            elif hb * hb - ha * ha > GROUND_DV2 * kk + 4 * math.sqrt(2) * hb * q + 1.0:
+                # Ground accel only adds speed below wishspeed: past it a tick adds at most 2AW - A^2 to v^2.
+                note(HOLD, t, f"ground speed {ha:.0f} -> {hb:.0f} u/s in {k:.2g} tick(s): accelerating past run speed")
             continue
         ea = va[0] ** 2 + va[1] ** 2 + va[2] ** 2 + 2 * GRAVITY * a[1][2]
         eb = vb[0] ** 2 + vb[1] ** 2 + vb[2] ** 2 + 2 * GRAVITY * (b[1][2] - shift)
@@ -340,6 +423,17 @@ def check(run, zones=None, maxvel=None):
         if gain > AIR_DV2 * kk + tol:
             note(HOLD, t, f"energy +{gain:.0f} in {k:.2g} tick(s), air cap {AIR_DV2 * kk:.0f}"
                  f" ({gain / (AIR_DV2 * kk):.1f}x): push, booster or speed change")
+        elif free and aligned and round(k) == 1:
+            # Air control adds a*w with w horizontal and v'.w <= 30, so v'.(v' - v) <= 30 |v' - v|
+            # whatever sv_airaccelerate is: a constant-speed turn moves v by at most 60 u/s a tick.
+            dvx, dvy = vb[0] - va[0], vb[1] - va[1]
+            dh = math.hypot(dvx, dvy)
+            over = vb[0] * dvx + vb[1] * dvy - AIR_CAP * dh
+            worst_turn = max(worst_turn, over)
+            if over > TURN_TOL + 6 * math.sqrt(2) * max(ha, hb) * q:
+                turn = math.degrees(abs(math.atan2(va[0] * vb[1] - va[1] * vb[0], va[0] * vb[0] + va[1] * vb[1])))
+                note(HOLD, t, f"{ha:.0f} -> {hb:.0f} u/s turning {turn:.1f} deg in one tick: air control cannot"
+                     " change velocity like that")
 
     # The clock against the motion: distance over speed x claimed time, median of moving samples.
     ratios = []
@@ -353,6 +447,9 @@ def check(run, zones=None, maxvel=None):
         note(HOLD, None, "too little movement to check the clock")
     elif not CLOCK_RATIO[0] <= clock <= CLOCK_RATIO[1]:
         note(HOLD, None, f"the body moves {clock:.4f}x what its speed and clock allow: clock edited?")
+    if offtick > 2 + len(win) // 500:   # packet timing: 1-2 in 3 of 164 of our own recordings
+        note(HOLD, None, f"{offtick} sample steps are not whole ticks: the per-tick bounds cannot be applied"
+             " (one sample a tick, please; native recordings need the exact verifier)")
 
     # Zones: start, every checkpoint in order, finish.
     t0s = min(s, key=lambda x: abs(x[0]))
@@ -365,13 +462,20 @@ def check(run, zones=None, maxvel=None):
         start_regs = seq[0][1]
         if not any(_inside(t0s[1], r, EDGE_PAD + travel(t0s)) for r in start_regs):
             note(HOLD, 0.0, "the clock starts outside the start zone")
+        v0 = math.sqrt(sum(c * c for c in t0s[2]))
         if limit_start and h0 > START_CAP:
             note(HOLD, 0.0, f"leaves the start at {h0:.0f} u/s (cap {START_CAP:.0f})")
+        elif limit_start and v0 > START_CAP_3D:
+            note(HOLD, 0.0, f"leaves the start at {v0:.0f} u/s counting vertical speed (cap {START_CAP_3D:.0f})")
+        first = math.sqrt(sum(c * c for c in win[0][2]))
+        if not limit_start and first > START_CAP_3D:
+            # Nothing caps the start here, so the speed the recording opens with would be free.
+            note(HOLD, win[0][0], f"opens already moving at {first:.0f} u/s on a course with no start speed limit")
         j = 0
         for lab, regs in seq[1:]:
             hit = None
             for jj in range(j, len(win)):
-                p = EDGE_PAD + travel(win[jj]) if lab == "end" else pad(win[jj])
+                p = EDGE_PAD if lab == "end" else pad(win[jj])   # the hull's half-width: all 117 real finishes
                 if any(_inside(win[jj][1], r, p) for r in regs):
                     hit = jj
                     break
@@ -385,6 +489,7 @@ def check(run, zones=None, maxvel=None):
     out["stats"] = {"finish": round(fin, 4), "ticks_checked": nchk, "jumps": njump,
                     "teleports": ntele, "duck_shifts": nduck, "clock_ratio": round(clock, 5) if clock else None, "start_speed": round(h0, 1),
                     "worst_air_ratio": round(worst_air, 3), "worst_ground_ratio": round(worst_ground, 3),
+                    "worst_turn_excess": round(worst_turn, 1),
                     "decimals": run.decimals, "window_from": round(win[0][0], 4) if win else None}
     return out
 

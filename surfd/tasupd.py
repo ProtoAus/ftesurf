@@ -23,6 +23,7 @@ import argparse
 import hashlib
 import hmac
 import html
+import ipaddress
 import json
 import math
 import os
@@ -34,6 +35,8 @@ import sys
 import threading
 import time
 import urllib.parse
+import zlib
+from array import array
 from contextlib import contextmanager
 from flask import Flask, Response, jsonify, redirect, request
 import steam
@@ -46,7 +49,10 @@ USER_DAY, DAY_ITEMS, DAY_BYTES = 30, 1000, 1024 ** 3   # uploads an account / ev
 HELD_CAP = 10                       # an account's runs waiting for the owner
 STORE_CAP = 4 * 1024 ** 3
 SESSION_TTL, STATE_TTL = 12 * 3600, 600
-PEER_READS, PEER_SIGNINS = 120, 10  # a minute
+PEER_READS, PEER_SIGNINS = 120, 10  # a minute, per address (an IPv6 /64)
+STEAM_ATONCE, STEAM_MINUTE = 2, 30  # Steam confirmations in flight / a minute, everyone (surfd: OUT_ATONCE 2)
+FORM_PARTS = 8                      # multipart boundaries in an upload: Werkzeug 2.2.2 does not cap parts
+SIGNOUT_BODY = 4096
 HEAVY_WAIT = 30                     # s an upload waits for the one checker slot
 NAME_TTL = 300
 TOOL_MAX = 64
@@ -54,15 +60,21 @@ REASONS_MAX = 40                    # kept and shown per run; a bad file can giv
 MAPNAME = re.compile(r'[a-z0-9_][a-z0-9_.+-]{0,63}')
 STATE_RE = re.compile(r'[0-9a-f]{32}')
 _CTRL = re.compile(r'[\x00-\x1f\x7f]')
+# accounts._NAME_PUNCT: a tool name may be shown in game one day, so nothing the engine reads as markup.
+TOOL_PUNCT = frozenset(" ._-!?()[]+=*#@'~,|")
 STATES = ('shown', 'held', 'rejected', 'removed')
+# Header keys only surfd's KSF/Momentum importers write (117 imports against 164 of our recordings).
+IMPORT_KEYS = frozenset(('foreign', 'demodata', 'ksfdemo', 'ksfground', 'ksfmoves', 'ksftime', 'mapbuild',
+                         'momdemo', 'momquality', 'moves'))
 SQL = '''
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS runs(id INTEGER PRIMARY KEY AUTOINCREMENT, sha TEXT NOT NULL UNIQUE,
  samples_sha TEXT NOT NULL UNIQUE, steamid TEXT NOT NULL, map TEXT NOT NULL, track INTEGER NOT NULL,
  ticks INTEGER NOT NULL, verdict TEXT NOT NULL, state TEXT NOT NULL, reasons TEXT NOT NULL,
  stats TEXT NOT NULL, tool TEXT NOT NULL, size INTEGER NOT NULL, uploaded_at INTEGER NOT NULL,
- reviewed_at INTEGER NOT NULL DEFAULT 0, note TEXT NOT NULL DEFAULT '');
+ reviewed_at INTEGER NOT NULL DEFAULT 0, note TEXT NOT NULL DEFAULT '', sig BLOB NOT NULL);
 CREATE INDEX IF NOT EXISTS runs_board ON runs(map, track, state, ticks);
+CREATE INDEX IF NOT EXISTS runs_course ON runs(map, track, ticks);
 CREATE INDEX IF NOT EXISTS runs_owner ON runs(steamid, id);
 CREATE INDEX IF NOT EXISTS runs_recent ON runs(state, id);
 CREATE TABLE IF NOT EXISTS nonces(nonce TEXT PRIMARY KEY, seen_at INTEGER NOT NULL);
@@ -121,17 +133,6 @@ def rec_path(store, sha):
     return Path(store).parent / 'recs' / sha[:2] / (sha + '.rec')
 
 
-def header(text):
-    """The header's key -> rest of line, up to `begin` (at most 400 lines)."""
-    hdr = {}
-    for n, line in enumerate(text.split('\n', 401)[:401]):
-        tok = line.split()
-        if not tok: continue
-        if tok[0] == 'begin': return hdr
-        if n and tok[0] not in hdr: hdr[tok[0]] = ' '.join(tok[1:])
-    return None
-
-
 def samples_digest(run):
     """The motion, rounded (0.001 s, 0.1 u, 0.1 u/s): a reprint or a new header is the same run."""
     h = hashlib.sha256()
@@ -140,14 +141,43 @@ def samples_digest(run):
     return h.hexdigest()
 
 
+def motion_series(run):
+    """Velocity at each sample from the start to the finish, flat [vx, vy, vz, ...]: the run's motion
+    whatever its position offset, header or extra samples."""
+    fin = run.end * TICK + 1e-6
+    return array('f', [c for t, o, v in run.samples if -1e-6 <= t <= fin for c in v])
+
+
+def same_motion(a, b, shifts=8):
+    """b is a's motion, give or take a few ticks: velocity within 2 u/s + 1% on 95% of the overlap."""
+    na, nb = len(a) // 3, len(b) // 3
+    for sh in range(-shifts, shifts + 1):
+        lo, hi = max(0, sh), min(na, nb + sh)
+        n = hi - lo
+        if n < 20 or n < 0.9 * min(na, nb):
+            continue
+        allowed, bad = n // 20, 0
+        for i in range(lo, hi):
+            j = 3 * (i - sh)
+            ax, ay, az = a[3 * i], a[3 * i + 1], a[3 * i + 2]
+            dx, dy, dz = ax - b[j], ay - b[j + 1], az - b[j + 2]
+            if dx * dx + dy * dy + dz * dz > (2.0 + 0.01 * math.sqrt(ax * ax + ay * ay + az * az)) ** 2:
+                bad += 1
+                if bad > allowed:
+                    break
+        else:
+            return True
+    return False
+
+
 def course(track): return 'Main' if track == 0 else 'Bonus %d' % track
 def fmt_time(s): return '%d:%06.3f' % divmod(s, 60) if s >= 60 else '%.3f' % s
 def day_of(t): return time.strftime('%Y-%m-%d', time.gmtime(t))
 
 
 def clean_tool(s):
-    s = _CTRL.sub('', (s or '').encode('utf-8', 'replace').decode('utf-8')).strip()
-    return s[:TOOL_MAX]
+    s = ''.join(ch for ch in (s or '') if ch.isalnum() or ch in TOOL_PUNCT)
+    return ' '.join(s.split())[:TOOL_MAX]
 
 
 def zones_for(dirs, mapname):
@@ -190,6 +220,10 @@ ul.why{padding-left:18px}code{font-size:13px}button.link{background:none;color:v
 LABEL = {'shown': 'physics checked', 'held': 'waiting for review', 'rejected': 'rejected', 'removed': 'removed'}
 
 
+def label(r):
+    return 'owner approved' if r['state'] == 'shown' and r['verdict'] != 'PASS' else LABEL[r['state']]
+
+
 def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=time.time):
     tp = load_tasplaus()
     app = Flask(__name__)
@@ -204,6 +238,7 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
     with connect(store) as db:
         secret = bytes.fromhex(db.execute("SELECT v FROM meta WHERE k = 'secret'").fetchone()['v'])
     heavy = threading.BoundedSemaphore(1)
+    steam_slots = threading.BoundedSemaphore(STEAM_ATONCE)
     spend_lock = threading.Lock()
     hits, hits_lock = {}, threading.Lock()
     names, names_lock = {}, threading.Lock()
@@ -212,12 +247,21 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         return hmac.new(secret, '\x1f'.join(fields).encode(), hashlib.sha256).hexdigest()[:32]
 
     def peer():
-        return mac('peer', request.remote_addr or '')[:24]
+        addr = request.remote_addr or ''
+        try:
+            ip = ipaddress.ip_address(addr)
+            if ip.version == 6: addr = str(ipaddress.ip_network('%s/64' % ip, strict=False))
+        except ValueError:
+            pass
+        return mac('peer', addr)[:24]
 
-    def limited(kind, cap):
-        k = (kind, peer(), int(clock() // 60))
+    def limited(kind, cap, who=None):
+        minute = int(clock() // 60)
+        k = (kind, peer() if who is None else who, minute)
         with hits_lock:
-            if len(hits) > 50000: hits.clear()
+            if len(hits) > 50000:   # drop past minutes; a flood inside one minute is refused, not reset
+                for old in [x for x in hits if x[2] < minute]: del hits[old]
+                if len(hits) > 50000: return True
             hits[k] = hits.get(k, 0) + 1
             return hits[k] > cap
 
@@ -297,8 +341,17 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
 
     @app.before_request
     def budgets():
-        if request.method == 'GET' and limited('read', PEER_READS):
+        if request.method in ('GET', 'HEAD') and limited('read', PEER_READS):
             return refuse('Too many requests; try again in a minute.', 429)
+        if request.method == 'POST' and request.path == base + '/signout' and (request.content_length or 0) > SIGNOUT_BODY:
+            return refuse('That form is too large.', 413)
+        if request.method == 'POST' and request.path == base + '/upload':
+            # Read the body once and count its parts before Werkzeug parses it (2.2.2: no part cap).
+            boundary = request.mimetype_params.get('boundary', '')
+            if request.mimetype != 'multipart/form-data' or not boundary:
+                return refuse('Upload the file with the form.', 400)
+            if request.get_data(cache=True).count(b'--' + boundary.encode('latin-1', 'replace')) > FORM_PARTS:
+                return refuse('That form has too many parts.', 400)
 
     @app.after_request
     def headers(resp):
@@ -353,7 +406,7 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                         '<td class="n"><a href="%s/run/%d">%s</a></td>%s<td>%s</td><td><span class="b %s">%s</span></td><td>%s</td></tr>' % (
                             '<td class="n">%d</td>' % (i + 1) if ranked else '', base, urllib.parse.quote(r['map']), r['track'],
                             html.escape(r['map']), course(r['track']), base, r['id'], fmt_time(r['ticks'] * TICK), player,
-                            html.escape(r['tool']) or '&ndash;', r['state'], LABEL[r['state']], day_of(r['uploaded_at'])))
+                            html.escape(r['tool']) or '&ndash;', r['state'], label(r), day_of(r['uploaded_at'])))
         return '<div class="wrap"><table>%s%s</table></div>' % (head, ''.join(body))
 
     @app.get(base)
@@ -449,7 +502,7 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                  '<p>By <a href="https://steamcommunity.com/profiles/%s" rel="nofollow noopener">%s</a>%s, uploaded %s. '
                  '<span class="b %s">%s</span></p>' % (
                      r['steamid'], html.escape(who(r['steamid'], accts)),
-                     ' with ' + html.escape(r['tool']) if r['tool'] else '', day_of(r['uploaded_at']), r['state'], LABEL[r['state']])]
+                     ' with ' + html.escape(r['tool']) if r['tool'] else '', day_of(r['uploaded_at']), r['state'], label(r))]
         if r['note']: inner.append('<p>Review note: %s</p>' % html.escape(r['note']))
         inner.append('<div class="card"><b>Physics check: <span class="%s">%s</span></b>%s</div>' % (
             r['verdict'], r['verdict'], '<ul class="why">%s</ul>' % why if why else
@@ -503,7 +556,14 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                 db.execute('DELETE FROM nonces WHERE seen_at < ?', (now - 4 * steam.NONCE_SKEW,))
                 try: db.execute('INSERT INTO nonces(nonce, seen_at) VALUES (?, ?)', (nonce, now))
                 except sqlite3.IntegrityError: raise steam.Refused('nonce seen')
-            steam.confirm(args, http)
+            if limited('steam', STEAM_MINUTE, who='everyone'):
+                return refuse('Too many sign-ins right now; try again in a minute.', 429)
+            if not steam_slots.acquire(blocking=False):
+                return refuse('Too many sign-ins right now; try again in a moment.', 503)
+            try:
+                steam.confirm(args, http)
+            finally:
+                steam_slots.release()
         except steam.Refused:
             return refuse('Steam did not confirm that sign-in.', 400)
         except steam.Unavailable:
@@ -535,17 +595,21 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         resp.delete_cookie(sess_cookie, path='/', secure=secure, httponly=True, samesite='Lax')
         return resp
 
-    def spend(db, sid, size, now):
-        """Counts the attempt (refused ones too) before any work; a reason string when over."""
+    def spend(db, sid, now):
+        """Counts the attempt (refused ones too) before any work; a reason string when over. Bytes are
+        counted when a run is kept (`kept`), so refused junk cannot fill everyone's day."""
         day = int(now // 86400)
         tot = db.execute('SELECT COALESCE(SUM(n), 0), COALESCE(SUM(bytes), 0) FROM spend WHERE day = ?', (day,)).fetchone()
         mine = db.execute('SELECT n FROM spend WHERE who = ? AND day = ?', (sid, day)).fetchone()
         if mine is not None and mine['n'] >= USER_DAY: return 'You have uploaded %d runs today; try again tomorrow.' % USER_DAY
-        if tot[0] >= DAY_ITEMS or tot[1] + size > DAY_BYTES: return 'The upload service is full for today; try again tomorrow.'
-        db.execute('INSERT INTO spend(who, day, n, bytes) VALUES (?, ?, 1, ?) ON CONFLICT(who, day)'
-                   ' DO UPDATE SET n = n + 1, bytes = bytes + ?', (sid, day, size, size))
+        if tot[0] >= DAY_ITEMS or tot[1] >= DAY_BYTES: return 'The upload service is full for today; try again tomorrow.'
+        db.execute('INSERT INTO spend(who, day, n, bytes) VALUES (?, ?, 1, 0) ON CONFLICT(who, day)'
+                   ' DO UPDATE SET n = n + 1', (sid, day))
         db.execute('DELETE FROM spend WHERE day < ?', (day - 2,))
         return None
+
+    def kept(db, sid, size, now):
+        db.execute('UPDATE spend SET bytes = bytes + ? WHERE who = ? AND day = ?', (size, sid, int(now // 86400)))
 
     @app.post(base + '/upload')
     def upload():
@@ -561,36 +625,47 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         tool = clean_tool(request.form.get('tool'))
         now = int(clock())
         with spend_lock, connect(store) as db, writing(db):
-            over = spend(db, sid, len(body), now)
+            over = spend(db, sid, now)
         if over: return refuse(over, 429)
         try: text = body.decode('utf-8')
         except UnicodeDecodeError: return refuse('That is not a text .rec file.', 400)
         if '\x00' in text or not text.startswith('FTESURF-REC '): return refuse('That is not a FTESURF-REC recording.', 400)
-        hdr = header(text)
-        if hdr is None: return refuse('The recording has no header (no begin line).', 400)
+        pre = tp.read(text=text, header_only=True)   # the checker's own header reader: one reading of it
+        if not pre.has_body: return refuse('The recording has no header (no begin line).', 400)
+        if pre.dups: return refuse('The header gives %s twice.' % ', '.join(sorted(pre.dups)), 400)
+        if pre.odd_breaks: return refuse('The file breaks lines with something other than a newline.', 400)
+        hdr = pre.hdr
         mapname = (hdr.get('map') or '').strip().lower()
         if not MAPNAME.fullmatch(mapname): return refuse('The header names no usable map.', 400)
-        try: track = int(hdr.get('track', '0').split()[0])
-        except (ValueError, IndexError): track = -1
+        track = tp.hdr_int(hdr, 'track', -1) if 'track' in hdr else 0
         if not 0 <= track <= MAX_TRACK: return refuse('The header names no usable track.', 400)
-        if 'foreign' in hdr: return refuse('That is an imported run (KSF or Momentum): it is its player\'s, not an upload.', 400)
-        for k in ('tickrate', 'movetickrate'):
-            try: rate = float(hdr.get(k, str(TICK)).split()[0])
-            except (ValueError, IndexError): rate = float('nan')
-            if not abs(rate - TICK) <= 1e-6:
-                return refuse('This board is 66.67 tick: the header must say %s %s.' % (k, TICK), 400)
+        if IMPORT_KEYS.intersection(hdr) or (hdr.get('runid') or '').startswith(('mom-', 'ksf-')):
+            return refuse('That is an imported run (KSF or Momentum): it is its player\'s, not an upload.', 400)
+        rates = []
+        for k in ('movetickrate', 'tickrate'):   # movetickrate 0 is "no engine value" (grammar)
+            try: x = float((hdr.get(k) or '0').split()[0])
+            except (ValueError, IndexError): x = float('nan')
+            if not math.isfinite(x) or x < 0: return refuse('The header\'s %s is not a number.' % k, 400)
+            if x > 0: rates.append(x)
+        if not rates or any(abs(x - TICK) > 1e-6 for x in rates):
+            return refuse('This board is 66.67 tick: the header must say tickrate %s.' % TICK, 400)
         sha = hashlib.sha256(body).hexdigest()
         with connect(store) as db:
             if db.execute('SELECT 1 FROM runs WHERE sha = ?', (sha,)).fetchone():
                 return refuse('That file has already been uploaded.', 409)
-            if db.execute("SELECT COUNT(*) FROM runs WHERE steamid = ? AND state = 'held'", (sid,)).fetchone()[0] >= HELD_CAP:
-                return refuse('You have %d runs waiting for review; wait for those first.' % HELD_CAP, 429)
-            if db.execute('SELECT COALESCE(SUM(size), 0) FROM runs').fetchone()[0] + len(body) > STORE_CAP:
-                return refuse('The upload store is full; the owner has been told.', 507)
         if not heavy.acquire(timeout=HEAVY_WAIT): return refuse('The checker is busy; try again in a minute.', 503)
         try:
             run = tp.read(text=text)
-            res = tp.check(run, zones_for(zone_dirs, mapname))
+            if run.end is None or not 0 < run.end <= tp.MAX_TICKS or len(run.samples) < 3:
+                res = tp.check(run, None)   # refuses it, saying why
+            else:
+                try:
+                    res = tp.check(run, zones_for(zone_dirs, mapname))
+                except Exception as e:   # e.g. a zone file with the wrong types: cannot see, so a person looks
+                    app.logger.exception('tasplaus failed on an upload for %s', mapname)
+                    res = {'verdict': tp.HOLD, 'stats': {}, 'reasons': [
+                        {'level': tp.HOLD, 't': None, 'what': 'the checker could not finish (%s)' % type(e).__name__}]}
+            series = motion_series(run) if res['verdict'] != tp.FAIL else None
         finally:
             heavy.release()
         reasons = res['reasons']
@@ -601,21 +676,45 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         if res['verdict'] == tp.FAIL:
             return refuse('The physics check refused it.', 422, reasons)
         digest = samples_digest(run)
+        sig = zlib.compress(series.tobytes())
+        state = 'shown' if res['verdict'] == tp.PASS else 'held'
         path = rec_path(store, sha)
         path.parent.mkdir(mode=0o700, exist_ok=True)
-        tmp = path.with_name(path.name + '.%s.tmp' % secrets.token_hex(4))
-        tmp.write_bytes(body)
-        os.replace(tmp, path)
-        state = 'shown' if res['verdict'] == tp.PASS else 'held'
+        committed = False
         try:
             with connect(store) as db, writing(db):
+                # Inside the write transaction: concurrent uploads cannot both pass a cap.
+                if state == 'held' and db.execute("SELECT COUNT(*) FROM runs WHERE steamid = ? AND state = 'held'",
+                                                  (sid,)).fetchone()[0] >= HELD_CAP:
+                    return refuse('You have %d runs waiting for review; wait for those first.' % HELD_CAP, 429)
+                if db.execute('SELECT COALESCE(SUM(size), 0) FROM runs').fetchone()[0] + len(body) > STORE_CAP:
+                    return refuse('The upload store is full; the owner has been told.', 507)
+                lo, hi = run.end - max(30, run.end // 33), run.end + max(30, run.end // 33)
+                for other in db.execute('SELECT id, steamid, sig FROM runs WHERE map = ? AND track = ? AND ticks BETWEEN ? AND ?',
+                                        (mapname, track, lo, hi)).fetchall():
+                    if same_motion(series, array('f', zlib.decompress(other['sig']))):
+                        return refuse('That is the motion of run %d%s, with small changes.' % (
+                            other['id'], '' if other['steamid'] == sid else ' (another player\'s)'), 409)
                 cur = db.execute('INSERT INTO runs(sha, samples_sha, steamid, map, track, ticks, verdict, state, reasons,'
-                                 ' stats, tool, size, uploaded_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                                 ' stats, tool, size, uploaded_at, sig) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                                  (sha, digest, sid, mapname, track, run.end, res['verdict'], state,
-                                  json.dumps(reasons), json.dumps(res['stats']), tool, len(body), now))
+                                  json.dumps(reasons), json.dumps(res['stats']), tool, len(body), now, sig))
                 rid = cur.lastrowid
+                kept(db, sid, len(body), now)
+                tmp = path.with_name(path.name + '.%s.tmp' % secrets.token_hex(4))
+                try:
+                    tmp.write_bytes(body)
+                    os.replace(tmp, path)
+                finally:
+                    if tmp.exists(): tmp.unlink()
+            committed = True
         except sqlite3.IntegrityError:
             return refuse('That run has already been uploaded (the same motion, maybe under another header).', 409)
+        finally:
+            if not committed and path.exists():
+                # Content-addressed: keep it if a committed row (a concurrent upload of these bytes) names it.
+                with connect(store) as db:
+                    if not db.execute('SELECT 1 FROM runs WHERE sha = ?', (sha,)).fetchone(): path.unlink()
         if wants_json():
             return jsonify(ok=1, id=rid, state=state, verdict=res['verdict'], reasons=reasons, time=round(run.end * TICK, 3))
         return redirect('%s/run/%d' % (base, rid), 303)
@@ -656,8 +755,16 @@ def main(argv=None):
         allowed = {'approve': ('held',), 'reject': ('held', 'shown'), 'remove': STATES}[a.cmd]
         if r['state'] not in allowed: print('run %d is %s; %s needs %s' % (a.id, r['state'], a.cmd, '/'.join(allowed))); return 1
         with writing(db):
-            db.execute('UPDATE runs SET state = ?, reviewed_at = ?, note = ? WHERE id = ? AND state = ?',
-                       (to, int(time.time()), a.note[:200], a.id, r['state']))
+            changed = db.execute('UPDATE runs SET state = ?, reviewed_at = ?, note = ? WHERE id = ? AND state = ?',
+                                 (to, int(time.time()), a.note[:200], a.id, r['state'])).rowcount
+            if changed == 1 and to == 'removed':
+                db.execute('UPDATE runs SET size = 0 WHERE id = ?', (a.id,))   # the store cap counts kept files
+        if changed != 1: print('run %d changed meanwhile; nothing done' % a.id); return 1
+        if to == 'removed':
+            # The row stays (its motion is still refused as a copy); the file goes, unless another row has it.
+            if not db.execute("SELECT 1 FROM runs WHERE sha = ? AND state != 'removed'", (r['sha'],)).fetchone():
+                try: rec_path(a.store, r['sha']).unlink()
+                except FileNotFoundError: pass
         print('run %d: %s -> %s' % (a.id, r['state'], to))
         return 0
 
