@@ -18,6 +18,10 @@
   Hook points: sv_goldsrc.qc GS_PlayerUse / GS_MultiTouch, before the master check (artifacts/ents/REPORT.md).
 - Still static or on Source code on GoldSrc maps: func_pendulum, func_pushable, func_vehicle, func_plat; env_sprite (.spr),
   ambient_generic, func_rotating, env_glow, env_beam/env_laser, trigger_gravity. Slanted ladders on kz_man_dragon.
+- The menu fetches the GoldSrc catalogue only at the online terms tier (consent version 9), so an offline-tier player
+  has no goldsrc library; nothing is shipped. Falsifier: rec_terms below 9, open Maps: no goldsrc chip.
+- Shared install rebuilt 20 Nov 10:01Z from engine f828b9e0d / game dfe68694 (git-8916-patch-1660), with
+  fteplug_ui_imgui_amd64.so (wos-build.sh now builds and installs it) and scripts/wadcolours.txt.
 - No thumbnails for GoldSrc rows (kreedz.com has 364 of 923 by name, "all rights reserved"; or render our own).
 - The menu does not fetch goldsrc/wadcolours.txt; players without Half-Life get flat colours from the next release's
   scripts/wadcolours.txt (release.ps1 Gates refuses a release without it: run tools/wadcolours.py on a PC with Half-Life).
