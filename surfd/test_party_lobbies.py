@@ -339,7 +339,7 @@ class PartyAPI(unittest.TestCase):
         self.db.commit()
         self.now += P.TURN_SECONDS
         note = self.act('state', 0)['party']['note']
-        self.assertTrue(note.endswith('...') and len(note.encode()) <= P.rules.NOTE_BYTES, note)
+        self.assertEqual(note, '\U0001f642' * 4 + '... ran out of time; a map was banned for them.')
 
     def test_p1650_draft_clock_skips_a_room_it_cannot_move(self):
         m = self.locked()
@@ -429,6 +429,28 @@ class PartyAPI(unittest.TestCase):
             self.assertEqual((response.status_code, response.get_json()['rows'][0]['id']), (200, m['id']))
             self.assertEqual(self.act('leave', 2, m)['party']['phase'], 'draft')
         self.assertTrue(logged.called)
+
+    def test_p1650_menu_ready_and_accept_resends_keep_the_revision(self):
+        m = self.ready()
+        self.assertEqual(self.act('ready', 0, m, value=1)['party']['revision'], m['revision'])
+        out = self.act('ready', 0, m, value=0)['party']
+        self.assertEqual(out['revision'], m['revision'] + 1)
+        self.act('cancel', 0, out)
+        m = self.act('create')['party']
+        m = self.act('accept', 0, m)['party']
+        self.assertEqual(self.act('accept', 0, m)['party']['revision'], m['revision'])
+
+    def test_p1650_directory_skips_bad_rooms_and_logs_each_once(self):
+        good = self.act('create')['party']
+        for ident, state in (('b' * 32, '{not json'), ('c' * 32, json.dumps(dict(id='c' * 32, phase='lobby')))):
+            self.db.execute('INSERT INTO tournament_parties VALUES(?,?,?)', (ident, state, self.now))
+        self.db.commit()
+        with patch.object(S.log, 'exception') as logged:
+            for query in ('?brief=1', '', '?brief=1'):
+                response = self.client.get('/api/tournament-lobbies' + query)
+                self.assertEqual((response.status_code, [r['id'] for r in response.get_json()['rows']]), (200, [good['id']]))
+            self.assertEqual(self.act('state', 0)['party']['id'], good['id'])
+        self.assertEqual(logged.call_count, 2)
 
     def test_host_kick_removes_and_bars_rejoin(self):
         m = self.act('create')['party']

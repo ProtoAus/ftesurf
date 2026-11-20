@@ -236,8 +236,43 @@ class Rules(unittest.TestCase):
         for p in m['players']:
             p['name'] = '\U0001f642' * 64
         note = self.settle(m, [('host', 100), ('p1', 200)])['note']
-        self.assertTrue(note.endswith('...') and len(note.encode()) <= R.NOTE_BYTES and '\ufffd' not in note, note)
+        self.assertEqual(note, '%s..., %s... and 4 others did not finish and are out.' % (('\U0001f642' * 4,) * 2))
+        self.assertLessEqual(len(note.encode()), R.NOTE_BYTES)
         self.assertEqual(R.short('x' * 400), 'x' * (R.NOTE_BYTES - 3) + '...')
+
+    def test_notes_p1650_winner_clause_survives_three_long_losers(self):
+        m = R.transition(self.lobby(4), 'lock', 'host', '', {}, self.wide(4))
+        while m['phase'] == 'draft':
+            card = next(c for c in m['maps'] if c['status'] == 'pool')
+            m = R.transition(m, m['turn_kind'], m['turn_who'], '', dict(map=card['name']))
+        m = self.play(m)
+        for p, name in zip(m['players'], ('D' * 31, 'A' * 31, 'B' * 31, '\u00e9' * 15 + 'C')):
+            p['name'] = name
+        note = self.settle(m, [('host', 100)])['note']
+        self.assertEqual(note, '%s..., %s... and 1 other did not finish and are out. %s... wins!' % ('A' * 17, 'B' * 17, 'D' * 17))
+        self.assertLessEqual(len(note.encode()), R.NOTE_BYTES)
+        # A cut name stays valid UTF-8 (2-byte characters cut on a boundary).
+        self.assertEqual(R.nick(dict(name='\u00e9' * 15 + 'C')), '\u00e9' * 8 + '...')
+
+    def test_accept_ready_p1650_repeats_are_no_ops(self):
+        m = self.lobby(2)
+        self.assertEqual(R.transition(m, 'accept', 'p1', '', {}), m)
+        m = self.drafted(2)
+        data = observation(m)
+        m = R.transition(R.transition(m, 'arrive', '', '', data), 'ready', 'p1', '', data)
+        self.assertEqual(R.transition(m, 'ready', 'p1', '', data), m)
+        with self.assertRaisesRegex(R.Refusal, 'zone generation'):
+            R.transition(m, 'ready', 'p1', '', dict(data, zonegen=2))
+
+    def test_autostart_p1650_everyone_absent_after_round_one_shares_first(self):
+        m = self.settle(self.live(3), [('host', 100), ('p1', 200)])
+        m = R.transition(m, 'advance', '', '', {})
+        data = observation(m)
+        m = R.transition(m, 'arrive', '', '', data)
+        out = R.transition(m, 'autostart', '', '', dict(data, absent='p1,host'))
+        self.assertEqual((out['phase'], out['outcome']), ('finished', 'shared'))
+        self.assertEqual(self.roles(out), dict(host=('player', 1), p1=('player', 1), p2=('eliminated', 3)))
+        self.assertEqual(out['note'], 'Nobody arrived for round 2: Host and p1 share first place.')
 
     def test_leave_p1650_forfeited_host_match_still_plays_out(self):
         m = self.drafted(3)
@@ -371,7 +406,7 @@ class Rules(unittest.TestCase):
         m = R.transition(m, 'advance', '', '', {})
         self.assertEqual((m['phase'], m['outcome']), ('finished', 'shared'))
         self.assertEqual([p['place'] for p in m['players']], [1, 1, 1])
-        self.assertEqual(m['note'], 'Out of maps: Host, p1 and p2 share first place.')
+        self.assertEqual(m['note'], 'Out of maps: Host, p1 and 1 other share first place.')
 
     def test_advance_p1650_one_survivor_finishes_early_and_eighth_round_observes(self):
         # Two DNFs in round one of three scheduled rounds leave a winner: no further round loads.

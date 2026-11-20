@@ -1542,8 +1542,10 @@ not just HTTP status. Successful mutations return `status=ok` (release returns
   vouches for every survivor it does not name in `absent=<who,...>` (unready
   survivors only, else `absent list invalid`), and those are marked ready. Named
   ones are forfeited first, sharing last place; one survivor left wins
-  (finished), otherwise countdown. All named: `No contest: nobody arrived.`
-  with roles and places untouched.
+  (finished), otherwise countdown. All named, nobody is forfeited: in round 1
+  `No contest: nobody arrived.`; after that the survivors share first place
+  (`outcome=shared`), keeping places already earned. Repeated `accept`/`ready`
+  (and party menu ready re-sends) change nothing, not even the revision.
 - `go`: `elapsed_ms=5000..3600000,tickrate=1..1000` after common 5-second countdown.
   Locks the round tickrate. The game server owns actual live/deadline clocks after
   this ACK. Neither state polling nor repeated snapshots restart those clocks.
@@ -1575,8 +1577,9 @@ not just HTTP status. Successful mutations return `status=ok` (release returns
 - Server `abort` gives no-contest without freeing the node. Its `reason=` code
   becomes a plain note (`No contest: the host left the server.`); unknown codes
   read `the server stopped the match`. Notes are capped at 160 UTF-8 bytes (the
-  game server sends them escaped in a 1024-character client line) and long name
-  lists read `A, B and N others`.
+  game server sends them escaped in a 1024-character client line); each name in
+  a note at 20 bytes, and lists past two names read `A, B and N others`, so a
+  winner clause always fits.
 - `release`: only finished/cancelled/aborted and requires `restored=1`, the trusted
   QC acknowledgement that public mode was restored. This is the **only** reservation
   removal. Abort/release remain available even if the backend feature is turned off.
@@ -1597,6 +1600,7 @@ room; after launch the joiner gets the same `launch` reply as the other members.
 `say`, `join`, `leave`, `ban` and `pick` skip the room revision check (the turn
 and card status guard ban/pick), so join/leave churn cannot keep members stale.
 The host may remove spectators until launch, competitors in the waiting room.
+A room the directory cannot read or list is skipped and logged once per process.
 
 ### Persistence, exclusions and public browser
 

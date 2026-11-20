@@ -28,6 +28,7 @@ OPS = frozenset(('configure', 'create', 'state', 'join', 'leave', 'cancel', 'sea
 CHAT_KEEP = 40
 CHAT_TEXT = 200
 HEX32 = re.compile(r'[0-9a-f]{32}\Z')
+_BAD_ROOMS = set()  # room ids already logged as unreadable: one log per room per process, not per poll
 DDL = (
     'CREATE TABLE IF NOT EXISTS tournament_parties(id TEXT PRIMARY KEY,state TEXT NOT NULL,touched INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS tournament_party_members(account TEXT PRIMARY KEY,party TEXT NOT NULL,seen INTEGER NOT NULL)',
@@ -72,6 +73,13 @@ def parse_payload(payload):
     return data
 
 
+def bad_room(log, ident):
+    """Call from an except block: logs a room that cannot be read or listed, once."""
+    if ident not in _BAD_ROOMS and len(_BAD_ROOMS) < 1024:
+        _BAD_ROOMS.add(ident)
+        log.exception('party room %s skipped', ident)
+
+
 def turn_clock(m, now):
     """Party draft clock: stamps each new turn and makes an overdue turn's ban/pick.
     Returns the new state, or None when nothing changed. Callers hold BEGIN IMMEDIATE."""
@@ -94,7 +102,8 @@ def turn_clock(m, now):
         m = rules.transition(m, kind, who, name, dict(map=chosen))
     except rules.Refusal:
         return None  # an odd room must not refuse every member action or break the directory
-    m['note'] = rules.short('%s ran out of time; a map was %s for them.' % (name, 'banned' if kind == 'ban' else 'picked'))
+    m['note'] = '%s ran out of time; a map was %s for them.' % (
+        rules.short(name, rules.NAME_BYTES), 'banned' if kind == 'ban' else 'picked')
     if m['phase'] == 'draft':
         m['_turn_at'] = [m['_turn'], now]
     else:
@@ -128,19 +137,24 @@ def register(app, d):
     def expire(db, now):
         # No launched party is ever retired by a waiting-room clock.
         for row in db.execute('SELECT * FROM tournament_parties').fetchall():
-            m = json.loads(row['state'])
-            if m.get('menu_started'):
-                live = db.execute('SELECT state FROM tournament_matches WHERE id=?', (m['id'],)).fetchone()
-                phase = json.loads(live['state'])['phase'] if live else None
-                # A closed room's row goes at once: its members are gone and nothing reads it
-                # again (the match row stays for release/restoration), so the scan stays the live set.
-                if phase in rules.TERMINAL:
+            try:
+                m = json.loads(row['state'])
+                if m.get('menu_started'):
+                    live = db.execute('SELECT state FROM tournament_matches WHERE id=?', (m['id'],)).fetchone()
+                    phase = json.loads(live['state'])['phase'] if live else None
+                    # A closed room's row goes at once: its members are gone and nothing reads it
+                    # again (the match row stays for release/restoration), so the scan stays the live set.
+                    if phase in rules.TERMINAL:
+                        db.execute('DELETE FROM tournament_party_members WHERE party=?', (m['id'],))
+                        db.execute('DELETE FROM tournament_parties WHERE id=?', (m['id'],))
+                    continue
+                if m['phase'] in rules.TERMINAL or row['touched'] < now-IDLE_TTL:
                     db.execute('DELETE FROM tournament_party_members WHERE party=?', (m['id'],))
                     db.execute('DELETE FROM tournament_parties WHERE id=?', (m['id'],))
-                continue
-            if m['phase'] in rules.TERMINAL or row['touched'] < now-IDLE_TTL:
-                db.execute('DELETE FROM tournament_party_members WHERE party=?', (m['id'],))
-                db.execute('DELETE FROM tournament_parties WHERE id=?', (m['id'],))
+            except sqlite3.Error:
+                raise
+            except Exception:
+                bad_room(d.log, row['id'])
 
     def snapshot(db, m, now):
         out = rules.public(m)
@@ -161,8 +175,28 @@ def register(app, d):
         try:
             return turn_clock(m, now)
         except Exception:  # one bad room must not fail the directory or its members' requests
-            d.log.exception('party draft clock skipped room %s', m.get('id') if isinstance(m, dict) else None)
+            bad_room(d.log, m.get('id') if isinstance(m, dict) else None)
             return None
+
+    def listing(db, row, now, brief):
+        m = json.loads(row['state'])
+        ticked = clock(m, now)
+        if ticked:
+            m = ticked
+            db.execute('UPDATE tournament_parties SET state=? WHERE id=?', (d.game_json(m), m['id']))
+        if m['phase'] in rules.TERMINAL or not (m.get('menu_started') or row['touched'] >= now-IDLE_TTL):
+            return None
+        if brief:
+            # The menu browser needs no rosters/map pools. Bound its
+            # wire size even with 200 rooms of 72 long-named members.
+            return dict(id=m['id'], host=m['host'], name=m['name'], capacity=m['capacity'],
+                        phase=m['phase'], revision=m['revision'], members=len(m['players']))
+        # Room chat and who is at the menu right now are for members only.
+        out = snapshot(db, m, now)
+        out.pop('chat', None)
+        for p in out['players']:
+            p.pop('menu_online', None)
+        return out
 
     def result(db, m, sid, now, status='ok'):
         launch = None
@@ -193,24 +227,15 @@ def register(app, d):
             expire(db, now)
             # Historical rows must not consume the bounded active-directory quota.
             for row in db.execute('SELECT * FROM tournament_parties ORDER BY id').fetchall():
-                m = json.loads(row['state'])
-                ticked = clock(m, now)
-                if ticked:
-                    m = ticked
-                    db.execute('UPDATE tournament_parties SET state=? WHERE id=?', (d.game_json(m), m['id']))
-                if m['phase'] not in rules.TERMINAL and (m.get('menu_started') or row['touched'] >= now-IDLE_TTL):
-                    if brief:
-                        # The menu browser needs no rosters/map pools. Bound its
-                        # wire size even with 200 rooms of 72 long-named members.
-                        rows.append(dict(id=m['id'], host=m['host'], name=m['name'], capacity=m['capacity'],
-                                         phase=m['phase'], revision=m['revision'], members=len(m['players'])))
-                    else:
-                        # Room chat and who is at the menu right now are for members only.
-                        row = snapshot(db, m, now)
-                        row.pop('chat', None)
-                        for p in row['players']:
-                            p.pop('menu_online', None)
-                        rows.append(row)
+                try:
+                    out = listing(db, row, now, brief)
+                except sqlite3.Error:
+                    raise
+                except Exception:
+                    bad_room(d.log, row['id'])
+                    continue
+                if out is not None:
+                    rows.append(out)
                     if len(rows) == 200:
                         break
         return response(dict(enabled=1, rows=rows))
@@ -341,8 +366,9 @@ def register(app, d):
                             rules.require(m['menu_phase'] == 'ready', 'draft required')
                             p = next(p for p in m['players'] if p['who'] == who)
                             rules.require(p['role'] == 'player', 'no competitor seat')
-                            p['menu_ready'] = int(data['value'])
-                            m['revision'] += 1
+                            if p.get('menu_ready', 0) != int(data['value']):  # a re-send changes nothing
+                                p['menu_ready'] = int(data['value'])
+                                m['revision'] += 1
                         elif op == 'start':
                             rules.require(who == m['host'] and m['menu_phase'] == 'ready', 'host start after draft only')
                             for p in rules.competitors(m):

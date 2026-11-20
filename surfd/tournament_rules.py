@@ -24,6 +24,7 @@ ABORT_REASONS = {
 }
 # The game server sends the note URL-escaped inside one client line capped at 1024 characters.
 NOTE_BYTES = 160
+NAME_BYTES = 20  # per name inside a note, so two names, a count and the winner fit NOTE_BYTES
 
 TIER_MASK = 1023 | 1 << 20
 MAP_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z')
@@ -147,17 +148,22 @@ def competitors(match):
     return [p for p in match['players'] if p['role'] == 'player']
 
 
-def listed(players):
-    names = [p['name'] for p in players]
-    if len(names) > 3:
-        return '%s, %s and %d others' % (names[0], names[1], len(names) - 2)
-    return names[0] if len(names) == 1 else ', '.join(names[:-1]) + ' and ' + names[-1]
-
-
-def short(note):
-    """Caps a note at NOTE_BYTES of UTF-8, cutting on a character boundary."""
+def short(note, limit=NOTE_BYTES):
+    """Caps text at `limit` bytes of UTF-8, cutting on a character boundary."""
     raw = note.encode()
-    return note if len(raw) <= NOTE_BYTES else raw[:NOTE_BYTES - 3].decode(errors='ignore') + '...'
+    return note if len(raw) <= limit else raw[:limit - 3].decode(errors='ignore') + '...'
+
+
+def nick(player):
+    return short(player['name'], NAME_BYTES)
+
+
+def listed(players):
+    names = [nick(p) for p in players]
+    if len(names) > 2:
+        extra = len(names) - 2
+        return '%s, %s and %d other%s' % (names[0], names[1], extra, '' if extra == 1 else 's')
+    return ' and '.join(names)
 
 
 def crown(match, note):
@@ -167,7 +173,7 @@ def crown(match, note):
         return note
     left[0]['place'] = 1
     match['outcome'] = 'winner'
-    return note + ' %s wins!' % left[0]['name']
+    return note + ' %s wins!' % nick(left[0])
 
 
 def launched(match):
@@ -258,9 +264,11 @@ def transition(original, op, actor, display, data, pool=()):
         target['accepted'] = 0
         if phase != 'lobby':
             to_lobby(m, '%s was moved to spectators: back to the lobby. The host can start the draft again.'
-                     % target['name'])
+                     % nick(target))
     elif op == 'accept':
         require(phase == 'lobby' and me is not None and me['role'] == 'player', 'no open seat')
+        if me['accepted']:
+            return m  # a repeat changes nothing, not even the revision
         me['accepted'] = 1
     elif op == 'lock':
         require(phase == 'lobby', 'not in lobby')
@@ -331,19 +339,28 @@ def transition(original, op, actor, display, data, pool=()):
                 m['_arrived'] = m['_launched'] = 1
         else:
             require(m['_arrived'] and me is not None and me['role'] == 'player', 'map has not arrived or no seat')
+            if me['ready']:
+                return m  # a repeat changes nothing, not even the revision
             me['ready'] = 1
     elif op in ('start', 'autostart'):
         require(phase == 'loading' and m['_arrived'], 'map has not arrived')
         if op == 'autostart':
-            # The game server vouches for every survivor it does not name in `absent`
-            # (named: still missing 90 s after arrival); those are forfeited first.
+            # The game server vouches for every survivor it does not name in `absent`; it names a player
+            # 120 s after arrival at the earliest, after 60 s of continuous absence (up to 300 s while
+            # someone is still connecting). Named players are forfeited first.
             roster = competitors(m)
             raw = data.get('absent') or ''
             require(isinstance(raw, str), 'absent list invalid')
             absent = raw.split(',') if raw else []
             unready = {p['who']: p for p in roster if not p['ready']}
             require(len(set(absent)) == len(absent) and all(who in unready for who in absent), 'absent list invalid')
-            if absent and len(absent) == len(roster):
+            if absent and len(absent) == len(roster) and (m['round_index'] > 1 or m.get('_started')):
+                # Places earned in earlier rounds stand; the survivors share first, nobody forfeits.
+                for p in roster:
+                    p['place'] = 1
+                m.update(phase='finished', outcome='shared',
+                         note='Nobody arrived for round %d: %s share first place.' % (m['round_index'], listed(roster)))
+            elif absent and len(absent) == len(roster):
                 m.update(phase='aborted', outcome='no-contest', note='No contest: nobody arrived.')
             else:
                 gone = [unready[who] for who in absent]
@@ -443,11 +460,11 @@ def transition(original, op, actor, display, data, pool=()):
                 if actor == m['host']:
                     m.update(phase='cancelled', note='Host left the lobby.')
                 else:
-                    to_lobby(m, '%s left: back to the lobby. The host can start the draft again.' % me['name'])
+                    to_lobby(m, '%s left: back to the lobby. The host can start the draft again.' % nick(me))
             elif len(competitors(m)) > 1:
                 # Forfeit, host included: last place among those still in (autostart replaces host Start).
                 me.update(role='eliminated', place=len(competitors(m)))
-                m['note'] = crown(m, '%s left the tournament.' % me['name'])
+                m['note'] = crown(m, '%s left the tournament.' % nick(me))
                 if len(competitors(m)) == 1:
                     m['phase'] = 'finished'
     elif op == 'cancel':
