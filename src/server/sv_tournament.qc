@@ -7,8 +7,8 @@
 // P1648: loading covers connecting, downloads and account checks for strangers; 120 s aborted real rooms.
 #define TQ_LOAD_LIMIT 600
 #define TQ_HOST_LIMIT 180
-float tq_allreadyat, tq_startsent, tq_readyscanat;
-.float tq_readysent, tq_nojournal;
+float tq_allreadyat, tq_startsent, tq_readyscanat, tq_arrivedat, tq_absentwarned, tq_autorefused, tq_emptysince;
+.float tq_nojournal;
 
 float tq_cvreg, tq_booted, tq_pollat, tq_request, tq_sentat, tq_retry;
 float tq_revision, tq_round, tq_roundtotal, tq_seconds, tq_countat, tq_goat;
@@ -72,6 +72,22 @@ float() Tour_Occupants =
 	return n;
 };
 
+// A connected client by account id. find(world, acct_who, ..) can return a disconnected slot:
+// Account_Disconnect leaves acct_who set (P1648 review).
+entity(string who) Tour_Client =
+{
+	local float i;
+	local entity e;
+	if (!strlen(who)) return world;
+	for (i = 1; i <= TQ_CLIENT_MAX; i = i + 1)
+	{
+		e = edict_num(i);
+		if (clienttype(e) == CLIENTTYPE_NOTACLIENT) break;
+		if (clienttype(e) == CLIENTTYPE_REAL && e.acct_who == who) return e;
+	}
+	return world;
+};
+
 float() Tour_Slots =
 {
 	local float i;
@@ -115,7 +131,7 @@ void(entity e) Tour_Connected =
 	if (e.tq_streambuf) buf_del(e.tq_streambuf);
 	e.tq_streambuf = e.tq_streamcount = e.tq_streamrev = 0;
 	e.tq_role = e.tq_seenrev = e.tq_stream = e.tq_hold = 0;
-	e.tq_runround = e.tq_runstart = e.tq_best = e.tq_bound = 0;
+	e.tq_runround = e.tq_runstart = e.tq_best = e.tq_bound = e.tq_nojournal = 0;
 	e.tq_streamat = e.tq_lastcmd = e.tq_boundrev = 0;
 	if (strlen(e.tq_boundwho)) strunzone(e.tq_boundwho);
 	e.tq_boundwho = "";
@@ -144,7 +160,7 @@ float() Tour_Remaining =
 	if (tq_phase == "live" && tq_live) return max(0, tq_goat + tq_seconds - time);
 	if (tq_phase == "results") return max(0, tq_resultsat + 15 - time);
 	// P1649: what the HUD counts down to: the loading abort, the release back to public play.
-	if (tq_phase == "loading" && tq_allreadyat && cvar("tournament_autostart") > 0)
+	if (tq_phase == "loading" && tq_allreadyat && !tq_autorefused && cvar("tournament_autostart") > 0)
 		return max(0, tq_allreadyat + cvar("tournament_autostart") - time);
 	if (tq_phase == "loading") return max(0, tq_phaseat + TQ_LOAD_LIMIT - time);
 	if (tq_phase == "finished" || tq_phase == "aborted" || tq_phase == "cancelled") return max(0, tq_resultsat + 30 - time);
@@ -336,6 +352,7 @@ void() Tour_Clear =
 	cvar_set("tournament_reserved", "");
 	cvar_set("tournament_revision", "0");
 	forceinfokey(world, "tournament", "");
+	forceinfokey(world, "tournament_auto", ""); forceinfokey(world, "tournament_starts", "");
 	if (cvar("lobby_cycle") > 0) lobby_cyc_next = time + max(60, cvar("lobby_cycle"));
 	// Empty state is polled repeatedly. Don't announce a nonexistent cancelled vote.
 	if (vote_on || lobby_vt_kind) Vote_Cancel();
@@ -465,8 +482,7 @@ void(string prev, string oldphase) Tour_Announce =
 {
 	local int nroot, oroot, np, op, row, orow;
 	local float i, j, n, best, rate, rank, oldbest, place, other, otherrate;
-	local string who, name, role, oldrole, outs, winners, line, suffix;
-	local entity e;
+	local string who, name, role, oldrole, outs, winners, line, crown;
 	nroot = json_parse(tq_json);
 	np = json_find_object_child(json_find_object_child(nroot, "match"), "players");
 	oroot = strlen(prev) ? json_parse(prev) : 0;
@@ -505,18 +521,19 @@ void(string prev, string oldphase) Tour_Announce =
 			otherrate = json_get_float(json_find_object_child(orow, "tickrate"));
 			if (other > 0 && otherrate > 0 && other / otherrate < best / rate) rank = rank + 1;
 		}
-		e = find(world, acct_who, who);
-		suffix = (e && e.tq_nojournal) ? "  ^8(input recording off: not on the leaderboard)" : "";
-		bprint(PRINT_CHAT, sprintf("%s^3%s^7  %s  ^5%s of %g^7%s\n", TQ_SAY, name, Time_TickString(best, 1 / rate), Tour_Ordinal(rank), n, suffix));
+		if (!strlen(prev)) continue; // a reloaded server does not re-announce every best
+		bprint(PRINT_CHAT, sprintf("%s^3%s^7  %s  ^5%s of %g^7\n", TQ_SAY, name, Time_TickString(best, 1 / rate), Tour_Ordinal(rank), n));
 	}
 	if (oroot) json_free(oroot);
 	if (nroot) json_free(nroot);
 	if (strlen(outs) && tq_phase != "results") // a forfeit mid-round; results say it in their own line
 		bprint(PRINT_CHAT, sprintf("%s^1Out:^7 %s\n", TQ_SAY, outs));
 	if (tq_phase == oldphase) return;
+	crown = (strstrofs(winners, ", ", 0) >= 0) ? strcat("^3", winners, " share first place!^7") : strcat("^3", winners, " wins the tournament!^7");
 	// Globals reset with each map, so the round's map announces itself once loaded (not again on the old one).
 	if (tq_phase == "loading" && tq_roundtotal > 0 && mapname == tq_map)
-		bprint(PRINT_CHAT, sprintf("%s^5Round %g of %g:^7 %s. Everyone is marked ready on arrival; the round starts when all are in.\n", TQ_SAY, tq_round, tq_roundtotal, tq_map));
+		bprint(PRINT_CHAT, sprintf("%s^5Round %g of %g:^7 %s. %s\n", TQ_SAY, tq_round, tq_roundtotal, tq_map,
+			(cvar("tournament_autostart") > 0) ? "The round starts by itself once everyone is here." : "The host starts the round once everyone is ready."));
 	else if (tq_phase == "countdown")
 		bprint(PRINT_CHAT, sprintf("%s^5Round %g starts in 5 seconds.^7 Set your best time on %s before the clock runs out.\n", TQ_SAY, tq_round, tq_map));
 	else if (tq_phase == "live")
@@ -526,12 +543,12 @@ void(string prev, string oldphase) Tour_Announce =
 		line = sprintf("%s^5Round %g over.^7", TQ_SAY, tq_round);
 		if (strlen(outs)) line = strcat(line, " ^1Out:^7 ", outs, ".");
 		else if (strlen(tq_note)) line = strcat(line, " ", tq_note);
-		if (strlen(winners)) line = strcat(line, " ^3", winners, " wins the tournament!^7");
+		if (strlen(winners)) line = strcat(line, " ", crown);
 		else line = strcat(line, " Next round in 15 seconds.");
 		bprint(PRINT_CHAT, strcat(line, "\n"));
 	}
 	else if (tq_phase == "finished")
-		bprint(PRINT_CHAT, strcat(TQ_SAY, strlen(winners) ? strcat("^3", winners, " wins the tournament!^7") : "^5The tournament is over.^7",
+		bprint(PRINT_CHAT, strcat(TQ_SAY, (strlen(winners) && oldphase != "results") ? crown : "^5The tournament is over.^7",
 			" Back to normal play in 30 seconds.\n"));
 	else if (tq_phase == "aborted" || tq_phase == "cancelled")
 		bprint(PRINT_CHAT, sprintf("%s^1Tournament over.^7 %s Back to normal play in 30 seconds.\n", TQ_SAY, tq_note));
@@ -676,7 +693,8 @@ void(int match, string envelope) Tour_Adopt =
 	if (phasechanged)
 	{
 		tq_phaseat = time;
-		tq_allreadyat = tq_startsent = 0;
+		tq_allreadyat = tq_startsent = tq_absentwarned = 0;
+		forceinfokey(world, "tournament_starts", "");
 		if (phase == "countdown")
 		{
 			tq_countat = time + 5;
@@ -712,7 +730,7 @@ void(int match, string envelope) Tour_Adopt =
 			tq_live = FALSE;
 		}
 	}
-	Tour_Announce(prev, oldphase);
+	if (changed || phasechanged) Tour_Announce(prev, oldphase);
 	if (strlen(prev)) strunzone(prev);
 	if (strlen(oldphase)) strunzone(oldphase);
 };
@@ -779,7 +797,22 @@ float(float reqid, float code, string body) Tour_Reply =
 	else if (ok && tq_pendingop == "state" && !Tour_Owns()) Tour_Clear();
 	// Sent is not arrived: local Ready stays gated until this exact ACK.
 	if (ok && tq_pendingop == "arrive" && !tq_broken && tq_observed_valid && mapname == tq_map)
+	{
 		tq_arrived = TRUE;
+		tq_arrivedat = time;
+	}
+	// A surfd without P1650 refuses the server's autostart (HTTP 200, no token): this map falls back
+	// to the manual buttons, and clients are told (serverinfo tournament_auto 0).
+	if (tq_pendingop == "autostart")
+	{
+		if (!ok && !tq_autorefused)
+		{
+			tq_autorefused = TRUE;
+			forceinfokey(world, "tournament_auto", "0"); forceinfokey(world, "tournament_starts", "");
+			bprint(PRINT_CHAT, strcat(TQ_SAY, "Automatic start isn't available here: each player presses F6 and clicks Ready on map, then the host clicks Start round.\n"));
+		}
+		else if (ok) forceinfokey(world, "tournament_auto", "1");
+	}
 	if (tq_pendingop == "create") tq_creating = FALSE;
 	if (tq_pendingop != "state")
 	{
@@ -870,7 +903,7 @@ void(entity e) Tour_Finished =
 	if (e.tq_runround != tq_round || time > tq_goat + tq_seconds || time < tq_goat) return;
 	Tour_Observe(); if (tq_broken || !tq_arrived) return;
 	// P1649: a newcomer must learn why a finish did not count, not just see no time appear.
-	if (e.run_t_finleg != 1) { Tour_Tell(e, "Only the main course counts in the tournament, not bonuses."); return; }
+	if (e.run_t_finleg != 1) { Tour_Tell(e, "Only full runs of the main course count in the tournament, not bonuses or single stages."); return; }
 	if (FS_RunClass(e.run_t_finflags) != RC_CLEAN)
 	{
 		Tour_Tell(e, sprintf("That was a %s run, so it doesn't count. Restart and run the map straight through from the start.",
@@ -891,7 +924,12 @@ void(entity e) Tour_Finished =
 	e.tq_best = e.run_t_finticks;
 	e.tq_nojournal = (e.run_t_finflags & TF_NOJOURNAL) ? TRUE : FALSE;
 	if (e.tq_nojournal)
-		Tour_Tell(e, "Your time counts for the tournament. Input recording is off, so it won't go on the leaderboard.");
+	{
+		// Lex 20 Nov: allowed, noted, not ranked. Privately: the bit is also set when a client never reported.
+		Tour_Tell(e, "Your time counts for the tournament. Input recording was off, so it won't be ranked on the leaderboard.");
+		if (Tour_Client(tq_host) && Tour_Client(tq_host) != e)
+			Tour_Tell(Tour_Client(tq_host), sprintf("%s's time counts, but input recording was off for it (not ranked).", substring(e.netname, 0, 32)));
+	}
 	data = sprintf("&who=%s&ticks=%d&tickrate=%.9g&elapsed_ms=%d&start_elapsed_ms=%d",
 		e.acct_who, e.run_t_finticks, rate, floor((time - tq_goat) * 1000), floor(e.tq_runstart * 1000));
 	data = strcat(data, "&clean=1&runid=", SV_RandHex(16));
@@ -1007,57 +1045,75 @@ void() Tour_Recycle =
 		registercvar("lobby_maploads_tour", "4");
 		cvar_set("lobby_maploads", ftos(cvar("lobby_maploads") + 1));
 	}
-	if (tq_mlquit || !cvar("lobby_enable") || time < 30) return;
+	if (tq_mlquit || !cvar("lobby_enable")) return;
 	loads = cvar("lobby_maploads");
 	if (cvar("tournament_enable")) cap = cvar("lobby_maploads_tour");
 	else cap = cvar("lobby_maploads_max");
-	if (cap <= 0 || loads < cap || Tour_Owns() || Tour_Occupants()) return;
+	if (cap <= 0 || loads < max(3, cap)) return; // >= 3: a quit every map would trip systemd's StartLimitBurst
+	// Empty for 120 s of this map: a run post or a directed arrival is never cut off (P1648 review).
+	if (Tour_Owns() || Tour_Occupants()) { tq_emptysince = 0; return; }
+	if (!tq_emptysince) tq_emptysince = time;
+	if (time - tq_emptysince < 120) return;
 	tq_mlquit = TRUE;
 	print(sprintf("lobby: %g map loads in this process and nobody here: restarting before the model table fills\n", loads));
 	localcmd("quit\n");
 };
 
 // P1648: players had no way to reach the in-game Ready/Start buttons (F6 was bound only in the playtest).
-// The server holds each linked player's own token (Tour_Queue's actor), so it readies a competitor on
-// the arrived map and starts the round tournament_autostart seconds after all are ready; the host's
-// own Start still works earlier. Without the host connected it asks P1650's server-only `autostart`;
-// an older surfd refuses that with HTTP 200 (no token), which never breaks the match.
+// The server starts the round itself, tournament_autostart seconds after every competitor is on the arrived
+// map (P1650 surfd's server-only autostart readies those present). A competitor still missing 90 s after
+// arrival is named in `absent` and forfeited instead of everyone waiting out the loading limit. Players'
+// and the host's own Ready/Start buttons still work; an older surfd refuses autostart (Tour_Reply).
 void() Tour_AutoReady =
 {
 	local int root, players, row;
-	local float i, n, ready, delay;
-	local entity e, host;
+	local float i, n, here, absent, late, delay;
+	local entity e;
+	local string who, gone, names, nm;
 	if (time < tq_readyscanat) return;
 	tq_readyscanat = time + 1;
+	late = (time > tq_arrivedat + 90);
 	root = json_parse(tq_json);
 	players = json_find_object_child(json_find_object_child(root, "match"), "players");
-	n = ready = 0;
+	n = here = absent = 0; gone = names = "";
 	for (i = 0; i < min(72, json_get_length(players)); i = i + 1)
 	{
 		row = json_get_child_at_index(players, i);
 		if (json_get_string(json_find_object_child(row, "role")) != "player") continue;
 		n = n + 1;
-		if (json_get_float(json_find_object_child(row, "ready"))) { ready = ready + 1; continue; }
-		e = find(world, acct_who, json_get_string(json_find_object_child(row, "who")));
-		if (!e || clienttype(e) != CLIENTTYPE_REAL || e.acct_state != ACCT_LINKED || !strlen(e.social_token)) continue;
-		if (e.tq_role != 1 || time < e.tq_readysent) continue;
-		e.tq_readysent = time + 10; // a refused or lost ready is retried, not repeated every scan
-		Tour_Queue("ready", "", e);
+		who = json_get_string(json_find_object_child(row, "who"));
+		e = Tour_Client(who);
+		if (json_get_float(json_find_object_child(row, "ready")) ||
+		    (e && e.acct_state == ACCT_LINKED && strlen(e.social_token) && e.tq_role == 1)) { here = here + 1; continue; }
+		if (!SV_RecIsHex(who, strlen(who))) continue;
+		absent = absent + 1;
+		nm = substring(json_get_string(json_find_object_child(row, "name")), 0, 32);
+		gone = strlen(gone) ? strcat(gone, ",", who) : who;
+		names = strlen(names) ? strcat(names, ", ", nm) : nm;
 	}
 	if (root) json_free(root);
-	if (!n || ready < n) { tq_allreadyat = 0; return; }
+	if (absent && !tq_absentwarned && time > tq_arrivedat + 30)
+	{
+		tq_absentwarned = TRUE;
+		bprint(PRINT_CHAT, sprintf("%sWaiting for ^3%s^7 to connect. The round starts without them in %g seconds.\n",
+			TQ_SAY, names, ceil(max(0, tq_arrivedat + 90 - time))));
+	}
 	delay = cvar("tournament_autostart");
+	if (!n || here + absent < n || (absent && !late) || delay <= 0 || tq_autorefused)
+	{
+		if (tq_allreadyat) forceinfokey(world, "tournament_starts", "");
+		tq_allreadyat = 0;
+		return;
+	}
 	if (!tq_allreadyat)
 	{
 		tq_allreadyat = time;
-		if (delay > 0) bprint(PRINT_CHAT, sprintf("%s^5Everyone is ready.^7 Round %g starts in %g seconds.\n", TQ_SAY, tq_round, delay));
+		forceinfokey(world, "tournament_starts", "1");
+		bprint(PRINT_CHAT, sprintf("%s^5Everyone is here.^7 Round %g starts in %g seconds.\n", TQ_SAY, tq_round, delay));
 	}
-	if (delay <= 0 || time < tq_startsent || time < tq_allreadyat + delay || tq_request || tq_qread != tq_qwrite) return;
+	if (time < tq_startsent || time < tq_allreadyat + delay || tq_request || tq_qread != tq_qwrite) return;
 	tq_startsent = time + 15;
-	host = find(world, acct_who, tq_host);
-	if (host && clienttype(host) == CLIENTTYPE_REAL && host.acct_state == ACCT_LINKED && strlen(host.social_token))
-		Tour_Queue("start", "", host);
-	else Tour_Queue("autostart", "", world);
+	Tour_Queue("autostart", strcat("&absent=", gone), world);
 };
 
 void() Tour_Frame =
@@ -1108,7 +1164,7 @@ void() Tour_Frame =
 				tq_broken = TRUE;
 				Tour_Queue("abort", "&reason=loading_timeout", world);
 			}
-			else if (tq_phase != "loading" && tq_hostgone && time - tq_hostgone > TQ_HOST_LIMIT)
+			else if (tq_hostgone && time - tq_hostgone > ((tq_phase == "loading") ? (tq_autorefused ? 120 : TQ_LOAD_LIMIT) : TQ_HOST_LIMIT))
 			{
 				tq_broken = TRUE;
 				Tour_Queue("abort", "&reason=host_gone", world);

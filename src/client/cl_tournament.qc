@@ -156,7 +156,7 @@ void(strbuf staged) Tour_Event =
 	local float i, minplace, place;
 	tokenize(tour_header);
 	nphase = argv(3);
-	if (strcmp(argv(1), tour_id) || nphase == tour_phase) return;
+	if (nphase == tour_phase || (strcmp(argv(1), tour_id) && !(tour_id == "" && nphase == "loading"))) return;
 	mname = uri_unescape(argv(12)); tour_evtsub = Tour_Text(argv(14), 180);
 	tour_evt = sprintf("ROUND %s OF %s", argv(6), argv(7));
 	minplace = 999; outs = wins = "";
@@ -176,14 +176,14 @@ void(strbuf staged) Tour_Event =
 	else if (nphase == "live") { tour_evt = "GO!"; tour_evtsub = ""; tour_evtfor = 1.5; tour_evtcolour = '0.45 1 0.55'; }
 	else if (nphase == "results")
 	{
-		tour_evt = strlen(wins) ? strcat(wins, " WINS!") : "ROUND OVER";
+		tour_evt = strlen(wins) ? ((strstrofs(wins, ", ", 0) >= 0) ? "SHARED FIRST PLACE" : strcat(wins, " WINS!")) : "ROUND OVER";
 		tour_evtsub = strlen(outs) ? strcat("Out: ", outs) : tour_evtsub; tour_evtfor = 5;
 		if (strlen(wins)) tour_evtcolour = '1 0.82 0.2';
 	}
 	else if (nphase == "finished")
 	{
-		tour_evt = strlen(wins) ? strcat(wins, " WINS THE TOURNAMENT") : "TOURNAMENT OVER";
-		tour_evtsub = ""; tour_evtfor = 8; tour_evtcolour = '1 0.82 0.2';
+		tour_evt = strlen(wins) ? ((strstrofs(wins, ", ", 0) >= 0) ? "SHARED FIRST PLACE" : strcat(wins, " WINS THE TOURNAMENT")) : "TOURNAMENT OVER";
+		tour_evtsub = (strstrofs(wins, ", ", 0) >= 0) ? wins : ""; tour_evtfor = 8; tour_evtcolour = '1 0.82 0.2';
 	}
 	else if (nphase == "aborted" || nphase == "cancelled") { tour_evt = "NO CONTEST"; tour_evtfor = 6; tour_evtcolour = '1 0.4 0.35'; }
 	else tour_evt = "";
@@ -703,7 +703,7 @@ void(vector scr) Tour_Draw =
 		else
 		{
 			tour_leaveat = cltime + 4;
-			tour_note = myplayer ? "Leaving takes you out of the tournament and may change it for everyone. Click again to leave." : "Click again to leave.";
+			tour_note = myplayer ? "Leaving takes you out of the tournament (it may end it for everyone). Click again to leave." : "Click again to leave.";
 		}
 	}
 	if (host && (phase == "lobby" || phase == "draft"))
@@ -790,9 +790,14 @@ string(float remaining) Tour_NextStep =
 	}
 	if (tour_phase == "loading")
 	{
-		if (n && rd == n) return sprintf("Everyone is ready: the round starts in %s%s", Tour_Clock(remaining), host ? "  (F6 to start now)" : "");
-		if (mine) return myready ? sprintf("You're ready. Waiting for %g more", n - rd) : "Loading in: you'll be marked ready automatically";
-		return sprintf("Players are getting ready (%g of %g)", rd, n);
+		if (serverkey("tournament_starts") == "1") return sprintf("Everyone is here: the round starts in %s%s", Tour_Clock(remaining), host ? "  (F6 to start now)" : "");
+		if (serverkey("tournament_auto") == "0")
+		{
+			if (mine && !myready) return "Press F6 and click Ready on map";
+			if (host && n && rd == n) return "Everyone is ready: press F6 and click Start round";
+			return sprintf("Ready: %g of %g. The host starts the round", rd, n);
+		}
+		return mine ? "Loading in. The round starts once everyone is here" : "Players are loading in";
 	}
 	if (tour_phase == "countdown") return mine ? "Get ready: you're held at the start until GO" : "The round is about to start";
 	if (tour_phase == "live")
@@ -810,66 +815,70 @@ string(float remaining) Tour_NextStep =
 void(vector scr) Tour_Hud =
 {
 	local vector p, at, colour;
-	local float w, h, x, remaining, i, rows, sw, rh, risk, big, n, dnf, ready;
+	local float w, h, x, remaining, i, rows, rh, risk, big, n, dnf, starts, sz1, sz2, lh1, lh2, pad;
 	local string line, title, name, tm;
-	if (tour_id == "" || tour_open || rec_sb_open || scr_x < 640) return;
+	// Plain draws only: sui_begin empties sui's single hit-test list and sui_end clears the click and typing
+	// buffers, so an always-on bracket here broke every menu drawn after it (P1649 review). Hidden while
+	// any panel holds the cursor.
+	if (tour_id == "" || tour_open || rec_sb_open || UI_CursorHeld() || scr_x < 640) return;
 	remaining = max(0, tour_remaining - (cltime - tour_clock_at));
 	Tour_Rank();
-	colour = SUI_THEME_DIM; line = strtoupper(tour_phase);
-	if (tour_phase == "live") { colour = SUI_THEME_GOOD; line = "LIVE"; }
-	if (tour_phase == "countdown") { colour = SUI_THEME_FOCUS; line = "GET READY"; }
-	if (tour_phase == "loading") { colour = SUI_THEME_WARN; line = "LOADING"; }
-	if (tour_phase == "results") { colour = SUI_THEME_INFO; line = "RESULTS"; }
-	if (tour_phase == "finished") { colour = SUI_THEME_ACCENT2; line = "FINISHED"; }
-	if (tour_phase == "aborted" || tour_phase == "cancelled") { colour = SUI_THEME_BAD; line = "NO CONTEST"; }
+	colour = '0.7 0.72 0.78'; line = strtoupper(tour_phase);
+	if (tour_phase == "live") { colour = '0.45 1 0.55'; line = "LIVE"; }
+	if (tour_phase == "countdown") { colour = '0.45 0.85 1'; line = "GET READY"; }
+	if (tour_phase == "loading") { colour = '1 0.82 0.2'; line = "LOADING"; }
+	if (tour_phase == "results") { colour = '0.45 0.85 1'; line = "RESULTS"; }
+	if (tour_phase == "finished") { colour = '1 0.82 0.2'; line = "FINISHED"; }
+	if (tour_phase == "aborted" || tour_phase == "cancelled") { colour = '1 0.4 0.35'; line = "NO CONTEST"; }
 	title = (tour_rounds > 0) ? sprintf("Round %g of %g", max(1, tour_round), tour_rounds) : "Tournament";
 	if (tour_map != "" && tour_map != "-") title = strcat(title, "  |  ", tour_map);
-
-	sui_begin(scr_x, scr_y);
-	Font_Set(ui_font_ui);
-	// Top-left: the run timer owns the top centre and the map card the top right (first playtest shots).
-	w = min(460, scr_x - 32); sw = w; h = 60;
+	sz1 = 9 * ui_cv_scale; sz2 = 6.5 * ui_cv_scale; lh1 = Font_Px(sz1); lh2 = Font_Px(sz2); pad = 8 * ui_cv_scale;
+	w = min(scr_x - 32, max(380, 34 * lh1)); h = pad * 2 + lh1 + 4 * ui_cv_scale + lh2;
 	p = '16 8 0';
-	sui_style_box(p, [w, h], 10, SUI_THEME_PANEL, SUI_THEME_EDGE, 0.9);
-	x = 12 + Tour_Pill(p + '12 9 0', line, colour) + 10;
-	Tour_Place(p + [x, 3], [w - x - 104, 30], title, 18, SUI_THEME_TEXT, 0, 1);
-	// Standings: rank, name, best. While live, who would be out now is red: everyone without a
-	// time, or else the slowest (surfd's settle).
-	n = dnf = ready = 0; risk = -1;
+	// Top-left: the run timer owns the top centre and the map card the top right (first playtest shots).
+	drawfill(p, [w, h], '0.05 0.06 0.09', 0.78, 0);
+	drawfill(p, [3 * ui_cv_scale, h], colour, 0.95, 0);
+	Font_Set(ui_font_display);
+	x = p_x + pad + 3 * ui_cv_scale;
+	HUD_Text([x, p_y + pad, 0], line, sz1, colour, 1);
+	x = x + stringwidth(line, TRUE, [lh1, lh1]) + pad;
+	HUD_Text([x, p_y + pad, 0], title, sz1, '1 1 1', 1);
+	n = dnf = 0; risk = -1;
 	for (i = 0; i < tour_hn; i += 1)
 	{
 		tokenize(bufstr_get(tour_players, tour_hrow[i]));
 		if (argv(3) != "player") continue;
 		n += 1; risk = i;
 		if (!(stof(argv(6)) > 0)) dnf += 1;
-		if (stof(argv(4))) ready += 1;
 	}
 	if (n < 2) risk = -1;
-	// Loading counts down only once all are ready (to the automatic start); the abort limit is not news.
-	if (tour_phase == "live" || tour_phase == "countdown" || tour_phase == "results" || (tour_phase == "loading" && n && ready == n))
-		Tour_Place(p + [w - 104, 2], '92 32 0', Tour_Clock(remaining), 24, (tour_phase == "live" && remaining <= 30) ? SUI_THEME_BAD : SUI_THEME_TEXT, 2, 1);
-	Tour_Place(p + [12, 34], [w - 24, 22], Tour_NextStep(remaining), 12, SUI_THEME_DIM);
-	rows = min(tour_hn, 8); rh = 22;
+	starts = (tour_phase == "loading" && serverkey("tournament_starts") == "1");
+	if (tour_phase == "live" || tour_phase == "countdown" || tour_phase == "results" || starts)
+		HUD_TextR([p_x + w - pad, p_y + pad, 0], Tour_Clock(remaining), sz1, (tour_phase == "live" && remaining <= 30) ? '1 0.4 0.35' : '1 1 1', 1);
+	Font_Set(ui_font_ui);
+	HUD_Text([p_x + pad + 3 * ui_cv_scale, p_y + pad + lh1 + 4 * ui_cv_scale, 0], Tour_NextStep(remaining), sz2, '0.75 0.78 0.84', 1);
+
+	// Standings: rank, name, best. While live, who would be out now is red: everyone without a time, or else
+	// the slowest (surfd's settle).
+	rows = min(tour_hn, 8); rh = lh2 + 5 * ui_cv_scale;
 	at = [p_x, p_y + h + 6];
 	if (rows > 0)
 	{
-		sui_style_box(at, [sw, rows * rh + 12], 10, SUI_THEME_PANEL, SUI_THEME_EDGE, 0.85);
+		drawfill(at, [w, rows * rh + pad], '0.05 0.06 0.09', 0.7, 0);
 		for (i = 0; i < rows; i += 1)
 		{
 			tokenize(bufstr_get(tour_players, tour_hrow[i]));
-			name = Tour_Text(argv(2), 32);
+			name = Tour_Text(argv(2), 28);
 			tm = (stof(argv(6)) > 0 && stof(argv(7)) > 0) ? Time_TickString(stof(argv(6)), 1 / stof(argv(7))) : "no time";
-			colour = SUI_THEME_TEXT;
-			if (argv(3) == "eliminated") { colour = SUI_THEME_MUTED; tm = "out"; }
-			else if (tour_phase == "live" && risk >= 0 && (dnf ? !(stof(argv(6)) > 0) : i == risk)) colour = SUI_THEME_BAD;
-			if (argv(3) == "player" && stof(argv(8)) == 1) { colour = SUI_THEME_GOOD; tm = "WINNER"; }
+			colour = '1 1 1';
+			if (argv(3) == "eliminated") { colour = '0.55 0.57 0.62'; tm = "out"; }
+			else if (tour_phase == "live" && risk >= 0 && (dnf ? !(stof(argv(6)) > 0) : i == risk)) colour = '1 0.45 0.4';
+			if (argv(3) == "player" && stof(argv(8)) == 1) { colour = '0.45 1 0.55'; tm = "WINNER"; }
 			if (!strcmp(argv(1), tour_me)) name = strcat(name, " (you)");
-			Tour_Place(at + [10, 6 + i * rh], [22, rh], ftos(i + 1), 12, colour);
-			Tour_Place(at + [34, 6 + i * rh], [sw - 130, rh], name, 12, colour);
-			Tour_Place(at + [sw - 96, 6 + i * rh], [86, rh], tm, 12, colour, 2);
+			HUD_Text([at_x + pad, at_y + pad * 0.5 + i * rh, 0], strcat(ftos(i + 1), "  ", name), sz2, colour, 1);
+			HUD_TextR([at_x + w - pad, at_y + pad * 0.5 + i * rh, 0], tm, sz2, colour, 1);
 		}
 	}
-	sui_end(); Font_Reset();
 
 	// Centre: the countdown digits, then the phase's announcement.
 	big = 44 * ui_cv_scale;
