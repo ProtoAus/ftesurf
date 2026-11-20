@@ -45,7 +45,7 @@ evidence code requires (CLAUDE.md).
 
 `surfd/tasupd.py` at `https://play.proto.bar/tasup/`: an isolated service like tasrevd (own
 store under `/srv/nvme/ftesurf-ops/tasupd-state`, read-only surfd `accounts`, no surfd schema or
-generation change, 127.0.0.1:8091).
+generation change, 127.0.0.1:8093; 8091 is the twitch bot).
 
 - **Who**: Steam OpenID sign-in on the page; the SteamID must have a World of Surf account (signed
   in once at `/board/link`, which states that names are shown) and no ban (Lex, 20 Nov: Steam-linked

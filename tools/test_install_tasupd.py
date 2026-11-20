@@ -520,7 +520,7 @@ class Probe(unittest.TestCase):
         try:
             t.urllib.request.urlopen = lambda url, timeout: self.fake(url, {'X-Tasupd-Source': NEW}, {'ok': 1, 'store': 1, 'accounts': 1})
             t.probe_app(NEW)
-            self.assertEqual(self.urls, ['http://127.0.0.1:8091/tasup/api/health'])
+            self.assertEqual(self.urls, ['http://127.0.0.1:8093/tasup/api/health'])
             t.urllib.request.urlopen = lambda url, timeout: self.fake(url, {'X-Tasupd-Source': NEW}, {'ok': 1})
             with self.assertRaisesRegex(RuntimeError, 'health control'): t.probe_app(NEW)
             t.urllib.request.urlopen = lambda url, timeout: self.fake(url, {'X-Tasupd-Source': OLD}, {'ok': 1, 'accounts': 1})

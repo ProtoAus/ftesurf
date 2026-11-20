@@ -46,7 +46,7 @@ BACKUPS = Path('/etc/nginx')   # never sites-enabled: a backup there would be lo
 SNIPPET = Path('/etc/nginx/snippets/ftesurf-tasupd.conf')
 ZONES = Path('/etc/nginx/conf.d/ftesurf-tasupd-zones.conf')   # http{} scope: limit_conn_zone is not valid lower
 UNIT = Path('/etc/systemd/system/ftesurf-tasupd.service')
-PORT = 8091
+PORT = 8093                 # 8091 is the twitch bot on the Pi (bound on 0.0.0.0; checked 21 Nov)
 PUBLIC_URL = 'https://play.proto.bar/tasup'
 # surfd._story_course_zoned's order on the Pi (its local and library directories are one there): the
 # lobbies' effective zone file is the first that exists.
