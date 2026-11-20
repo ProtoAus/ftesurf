@@ -46,6 +46,16 @@ MANIFEST_GAME = {LEGACY: "FTESurf", WORLDOFSURF: "WorldofSurf"}
 # P1666: the launcher is never a feed file (an old reader refuses an unknown path); the payload names it per
 # platform in "launcher", which old launchers and engines ignore and the engine's in-game check installs.
 LAUNCHER = {"win64": "WOS-Launcher.exe", "linux64": "WOS-Launcher"}
+
+
+def launcher_kind(platform: str, data: bytes) -> bool:
+    """A PE x86-64 image for win64, an ELF64 x86-64 file for linux64 (the engine checks the same before its swap)."""
+    if platform == "win64":
+        if len(data) < 64 or data[:2] != b"MZ":
+            return False
+        pe = int.from_bytes(data[60:64], "little")
+        return 64 <= pe and pe + 6 <= len(data) and data[pe:pe + 4] == b"PE\0\0" and data[pe + 4:pe + 6] == b"\x64\x86"
+    return len(data) >= 20 and data[:6] == b"\x7fELF\x02\x01" and data[18:20] == b"\x3e\x00"
 # P1593 stage 2: the launcher moves a legacy install only under a worldofsurf default.fmf that keeps the
 # player's cfg where the engine reads it (Quakers-Launcher ftesurf_migrate.rs fmf_cfg); one value per line.
 WOS_MAINCONFIG = {"ftesurf", "ftesurf.cfg", "worldofsurf", "worldofsurf.cfg"}
@@ -366,6 +376,9 @@ def verify_objects(root: Path, payload: dict) -> dict[str, int]:
     for f in payload["files"]:
         if f["path"] == "default.fmf":
             check_manifest(object_bytes(root, f["hash"], f["size"]), payload["game"])
+    for platform, d in payload.get("launcher", {}).items():
+        if not launcher_kind(platform, object_bytes(root, d["hash"], d["size"])):
+            raise ValueError(f"launcher object is not a {platform} x86-64 executable")
     return objects
 
 
@@ -448,6 +461,8 @@ def build(stages: dict[str, Path], output: Path, version: str, mirrors: list[str
                         content = source.read_bytes()
                         if not 0 < len(content) <= 32 * 1024 * 1024:
                             raise ValueError(f"launcher exceeds small-install limit: {p}")
+                        if not launcher_kind(platform, content):
+                            raise ValueError(f"launcher is not a {platform} x86-64 executable: {p}")
                         h = hashlib.blake2b(content, digest_size=32).hexdigest()
                         obj = output / "objects" / h[:2] / h
                         obj.parent.mkdir(parents=True, exist_ok=True)

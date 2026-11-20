@@ -36,6 +36,15 @@ def stage(root, platform='win64', game='ftesurf'):
     return root
 
 
+def pe(tail=b''):
+    """The smallest header launcher_kind accepts as a PE x86-64 image."""
+    return b'MZ' + bytes(58) + (64).to_bytes(4, 'little') + b'PE\0\0\x64\x86' + tail
+
+
+def elf(tail=b''):
+    return b'\x7fELF\x02\x01' + bytes(12) + b'\x3e\x00' + tail
+
+
 class PublisherTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='publisher-', dir=WORK)
@@ -144,20 +153,20 @@ class PublisherTests(unittest.TestCase):
             self.assertFalse(feed.managed(bad), bad)
 
     def test_launcher_is_bootstrap_not_self_replaced(self):
-        (self.win / 'WOS-Launcher.exe').write_bytes(b'bootstrap')
+        (self.win / 'WOS-Launcher.exe').write_bytes(pe(b'bootstrap'))
         self.assertEqual(self.build()['omitted'], ['WOS-Launcher.exe'])
 
     def test_p1666_launcher_descriptor_names_the_staged_launcher(self):
         """Old readers ignore "launcher"; the engine installs it. Never a "files" entry."""
-        (self.win / 'WOS-Launcher.exe').write_bytes(b'bootstrap win')
+        (self.win / 'WOS-Launcher.exe').write_bytes(pe(b'bootstrap win'))
         linux = stage(self.root / 'linux', 'linux64')
-        (linux / 'WOS-Launcher').write_bytes(b'bootstrap linux')
+        (linux / 'WOS-Launcher').write_bytes(elf(b'bootstrap linux'))
         feed.build({'win64': self.win, 'linux64': linux}, self.root / 'feed', '0.1.25',
                    ['https://dl.proto.bar/ftesurf/update'], SEED, KEY)
         m = feed.verify((self.root / 'feed/update.json').read_bytes(), KEY)
         self.assertNotIn('WOS-Launcher.exe', {f['path'] for f in m['files']})
         self.assertEqual(set(m['launcher']), {'win64', 'linux64'})
-        for platform, body in (('win64', b'bootstrap win'), ('linux64', b'bootstrap linux')):
+        for platform, body in (('win64', pe(b'bootstrap win')), ('linux64', elf(b'bootstrap linux'))):
             d = m['launcher'][platform]
             self.assertEqual(d, {'path': feed.LAUNCHER[platform], 'size': len(body),
                                  'hash': hashlib.blake2b(body, digest_size=32).hexdigest()})
@@ -178,20 +187,20 @@ class PublisherTests(unittest.TestCase):
 
     def test_p1666_windows_only_release_keeps_the_linux_launcher(self):
         linux = stage(self.root / 'linux', 'linux64')
-        (linux / 'WOS-Launcher').write_bytes(b'bootstrap linux')
-        (self.win / 'WOS-Launcher.exe').write_bytes(b'old win')
+        (linux / 'WOS-Launcher').write_bytes(elf(b'bootstrap linux'))
+        (self.win / 'WOS-Launcher.exe').write_bytes(pe(b'old win'))
         feed.build({'win64': self.win, 'linux64': linux}, self.root / 'both', '0.1.24',
                    ['https://dl.proto.bar/ftesurf/update'], SEED, KEY)
         old = feed.verify((self.root / 'both/update.json').read_bytes(), KEY)
-        (self.win / 'WOS-Launcher.exe').write_bytes(b'new win')
+        (self.win / 'WOS-Launcher.exe').write_bytes(pe(b'new win'))
         self.build(previous=(self.root / 'both/update.json').read_bytes(), previous_objects=self.root / 'both/objects')
         m = feed.verify((self.root / 'feed/update.json').read_bytes(), KEY)
         self.assertEqual(m['launcher']['linux64'], old['launcher']['linux64'])
-        self.assertEqual(m['launcher']['win64']['hash'], hashlib.blake2b(b'new win', digest_size=32).hexdigest())
+        self.assertEqual(m['launcher']['win64']['hash'], hashlib.blake2b(pe(b'new win'), digest_size=32).hexdigest())
         feed.verify_objects(self.root / 'feed/objects', m)
 
     def test_p1666_bad_launcher_descriptors_are_refused(self):
-        (self.win / 'WOS-Launcher.exe').write_bytes(b'bootstrap win')
+        (self.win / 'WOS-Launcher.exe').write_bytes(pe(b'bootstrap win'))
         self.build()
         good = feed.verify((self.root / 'feed/update.json').read_bytes(), KEY)
         d = good['launcher']['win64']
@@ -209,6 +218,26 @@ class PublisherTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'inconsistent object size'):
             feed.validate(dict(good, launcher={'win64': dict(d, hash=f['hash'], size=f['size'] + 1)}))
         feed.validate(dict(good, launcher={'win64': dict(d, hash=f['hash'], size=f['size'])}))
+
+    def test_p1666_launcher_must_be_this_platforms_executable(self):
+        for platform, body in (('win64', elf(b'x')), ('win64', b'MZ' + bytes(70)), ('win64', pe()[:-1]),
+                               ('linux64', pe(b'x')), ('linux64', b'\x7fELF\x01\x01' + bytes(14)), ('linux64', elf()[:-2] + b'\xb7\x00')):
+            self.assertFalse(feed.launcher_kind(platform, body), (platform, body[:24]))
+        self.assertTrue(feed.launcher_kind('win64', pe()) and feed.launcher_kind('linux64', elf()))
+        (self.win / 'WOS-Launcher.exe').write_bytes(elf(b'a linux build staged as the windows launcher'))
+        with self.assertRaisesRegex(ValueError, 'not a win64 x86-64 executable'):
+            self.build()
+        # and the object closure check refuses a signed descriptor whose bytes are the wrong kind
+        (self.win / 'WOS-Launcher.exe').write_bytes(pe(b'good'))
+        self.build(name='good')
+        m = feed.verify((self.root / 'good/update.json').read_bytes(), KEY)
+        d = m['launcher']['win64']
+        bad = elf(b'wrong kind')
+        h = hashlib.blake2b(bad, digest_size=32).hexdigest()
+        (self.root / 'good/objects' / h[:2]).mkdir(exist_ok=True)
+        (self.root / 'good/objects' / h[:2] / h).write_bytes(bad)
+        with self.assertRaisesRegex(ValueError, 'not a win64 x86-64 executable'):
+            feed.verify_objects(self.root / 'good/objects', dict(m, launcher={'win64': dict(d, hash=h, size=len(bad))}))
 
     def test_missing_required_game_file_fails(self):
         (self.win / 'ftesurf/menu.dat').unlink()
