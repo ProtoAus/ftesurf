@@ -21,6 +21,17 @@
 
 ## next
 
+### P1688 Hide the other players
+- Type !hide or !show in chat to hide or show the other players (their bodies, names and trails), for you only. Every new map starts with everyone shown again.
+
+### P1687 Half-Life and CS 1.6 mode fixes
+- Half-Life maps: your eye height now follows the mode you pick, Half-Life's in the AG modes and the lower Counter-Strike one in CS 1.6 mode, instead of depending on the map.
+- CS 1.6 mode no longer autohops: let go of jump between hops, as in Counter-Strike 1.6.
+- Noclip in the AG and CS 1.6 modes no longer sinks you into the floor, and flies at full noclip speed (four times run speed, double with the speed key) instead of run speed.
+
+### P1686 Smoother crouching
+- Crouching and standing up now lower and raise your view a little every frame at high frame rates, instead of in small steps at the server's tick rate.
+
 ### P1674 One build per map in tournaments, and tournament standings
 - A tournament's map pool and draws now hold one build of each map: the Momentum Mod one when it qualifies, otherwise its CSS, KSF or fix build. No more two copies of the same map in a draft.
 - The server now keeps tournament standings: wins, shared wins, tournaments played and a rating (Elo from final places; everyone starts at 1000).

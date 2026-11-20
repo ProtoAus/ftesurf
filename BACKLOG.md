@@ -1,5 +1,24 @@
 # BACKLOG.md
 
+## Lex's 21 Nov mechanics list -- what P1686-P1688 left (worldofsurf-41; root FTESurf-worktrees/mechanics-20261121-41)
+- ahop_coast ladder: P1630 (mover 13) climbs to the top on any current build (rig, dedicated server: 4971 -> 5413 looking
+  up and level), but the lobbies run the 17 Nov engine (patch-1604, mover 12), whose re-wound rock pushes a climber off.
+  Fix = the next lobby engine update (it carries every engine patch since 1604; tools/p1604-delivery.md is the recipe).
+- Noclip void <-> map frame-time spike: NOT reproduced. Rig at 300 fps with r_spikes: bhop_sandtrap2 out through a wall
+  into VOID VIEW and back, ahop_coast sideways and up through the sky and back -- 0 stutters in every crossing-only pass,
+  worst 6-7 ms against 3.3 (the 9 ms ones lined up with the arm's own screenshot). Needs Lex's map and an r_spikes 1 +
+  r_frametime_dump right after it happens. Suspects if it is CPU: R_GenWorldEBO's blocking sync (r_surf.c "Blocking for
+  scenecache generation") when the void view's all-cluster batch set is swapped; if GPU: first-sight uploads in void view.
+- bkz_goldbhop_gs healers: five invisible func_doors (dmg -10000, speed 10000) over the start. GS_DoorBlocked ignores
+  dmg, so here they neither heal nor push (rig: doors fire and block on the player, who walks on at 320 u/s) -- CS 1.6's
+  behaviour. Half-Life's knockback (CBaseMonster::TakeDamage's DamageForce, uncapped for negative damage) launches a
+  player at sv_maxvelocity, which is the HL ports' booster; not reproduced on purpose.
+- P1688: with lobby_av_stream 0 avatars take the engine's entity path and are not hidden (default 1, lobby.cfg);
+  aim-to-share (cl_share.qc) can still pick a hidden player.
+- P1687: no version gate on the AG noclip change: a pre-1687 client on a 1687 server mispredicts noclip on a GoldSrc
+  profile (local games today, where both are one binary).
+- P1686: the roof-clip lerp of the raw cap (mid-duck under a roof edge) is code-path only; no rig arm exercised it.
+
 ## P1671 similarity reader -- what the REC 14 census showed (21 Nov, worldofsurf-6f)
 - With REC 12/14 read, the lobbies' comparable pairs went from 5,147 to 193,303 (census on the Pi, 21 Nov). The pairs
   run (600 negatives, 556 synthetic replays) no longer separates on move columns: replays 1.0000, honest negatives up to
@@ -92,7 +111,7 @@
   round 2): waterlevel flips only for a surface inside that gap. Fix: store the own-eye blend beside viewheight in a
   pmove output field (per-thread pmove, not a static) and return it. Also: an unrecognised sv_goldsrcview value is auto.
 - P1665: a 0.1.50 client on a newer dedicated server predicts eye 28 where the server uses 17 (GoldSrc maps are local
-  games today). QC that samples origin + view_ofs (underwater sounds) now uses the shown eye on CS maps.
+  games today; since P1687 only with sv_goldsrcview cs, as auto no longer picks the CS eye under ag-*). QC that samples origin + view_ofs (underwater sounds) now uses the shown eye on CS maps.
 - Records: artifacts and reports in FTESurf-worktrees/agmaps-20261120-4a/artifacts/ (rel/, ents/, menu/ REPORT.md;
   review-*.md). Packages: tools/gsrcpack.py; R2 objects/goldsrc/<sha>.xz + goldsrc/catalog.txt via the Pi root
   /srv/nvme/agent-work/agmaps-20261120-4a (own r2mirror ledger; the PC's r2 token is read-only).

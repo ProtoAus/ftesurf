@@ -1,5 +1,15 @@
 # lextest.md — things waiting on a human
 
+## P1686-P1688 -- your 21 Nov mechanics list (worldofsurf-41; root FTESurf-worktrees/mechanics-20261121-41)
+1. Crouch smoothing (P1686), cl_maxfps 300 on a surf or bhop map: hold crouch and let go. The view should glide down and
+   up with no visible stair-steps (measured before: the eye held for 3 frames then jumped, every tick).
+2. bkz_goldbhop_gs in an AG mode (the default ag-250): the eye is Half-Life's again (higher). Pick CS 1.6 in the mode
+   picker and reload: the eye is lower, and holding jump makes one jump, not a chain.
+3. Noclip in CS 1.6 or AG mode: stand still for a few seconds (you stay put, no sinking), then fly (about 1000 u/s in
+   CS 1.6, 1280 in AG, double with the speed key if you have it bound).
+4. On a lobby (after the lobby QC deploy): type !hide -- other players, names and trails disappear for you only; !show
+   (or !hide again) brings them back; change map and everyone is shown again.
+
 ## 0.1.53 release -- PUBLISHED 21 Nov 15:01Z (record: tools/release-0.1.53.md); owner check PENDING
 - P1668 only (the Linux run-graph plugin through launcher 0.1.7). Production check passed from the live feed: a 0.1.52
   Linux install got 0.1.53, then launcher 0.1.7 from the game, then the plugin, which the engine loads.
