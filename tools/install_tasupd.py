@@ -9,8 +9,10 @@ destination files rather than taking over a peer's.
 --upgrade-from <installed commit> (tasrevd's P1119): a new release under RELEASES (every directory above it
 root's alone), and the unit pointed at it. Root runs no code a checkout or a release controls: git
 and the import check run as proto (root still reads proto's data). Only when the unit is byte for byte what this installer wrote for that release and
-the nginx snippet is unchanged; state and nginx are not touched. The old unit is put back
-and restarted if the new release does not serve its own source.
+the nginx snippet is unchanged; nginx is not touched, and the store gets the new release's `init`
+(additive schema steps, as proto) before the switch. The old unit is put back and restarted if the
+new release does not serve its own source. Both probes read /tasup/api/health: the service reading
+its store and surfd's accounts itself, inside its sandbox.
 """
 import argparse
 import contextlib
@@ -45,6 +47,7 @@ PUBLIC_URL = 'https://play.proto.bar/tasup'
 ZONE_DIRS = ['/srv/nvme/ftesurf-server/game/%s/maps/zones/%s' % d for d in (
     ('ftesurf', 'local'), ('ftesurf', 'curated'), ('momentum', 'curated'), ('momentum', 'local'),
     ('ftesurf', 'online'), ('momentum', 'online'))]
+MAPCFG_DIRS = ['/srv/nvme/ftesurf-server/game/ftesurf/cfg/maps']   # map_<map>.cfg: sv_maxvelocity
 NGINX = '''location = /tasup { return 301 /tasup/; }
 location ^~ /tasup/ {
     limit_except GET POST { deny all; }
@@ -55,6 +58,7 @@ location ^~ /tasup/ {
     proxy_connect_timeout 2s;
     proxy_read_timeout 90s;       # one checker slot: an upload can wait 30 s for it, then check
     proxy_send_timeout 60s;
+    limit_rate 1m;                # maps.nginx's; the app budgets .rec bytes a minute (tasupd.REC_*_BYTES)
     access_log off;
 }
 ''' % PORT
@@ -72,8 +76,25 @@ def safe_path(p):
 
 
 def check_accounts(path):
-    with contextlib.closing(sqlite3.connect('file:' + str(path) + '?mode=ro', uri=True)) as db:
+    # immutable: root must not recreate surfd's -wal/-shm, which would hide the sandboxed reader's view
+    # (AGENT_NOTES P1618); the health probe reads it as the service does. runs: the course records.
+    with contextlib.closing(sqlite3.connect('file:' + str(path) + '?mode=ro&immutable=1', uri=True)) as db:
         db.execute('SELECT steamid,name,banned_at FROM accounts LIMIT 0')
+        db.execute('SELECT map,track,leg,style,millis FROM runs LIMIT 0')
+
+
+def write_site(body):
+    # Whole or not at all: written beside the backups (never sites-enabled, which nginx includes) and
+    # renamed over the site file, keeping its mode and owner.
+    st = SITE.stat()
+    tmp = BACKUPS / ('.tasupd-site-%d.tmp' % os.getpid())
+    with open(tmp, 'xb') as f:
+        f.write(body); f.flush(); os.fsync(f.fileno())
+    try:
+        os.chmod(tmp, stat.S_IMODE(st.st_mode)); os.chown(tmp, st.st_uid, st.st_gid)
+        os.replace(tmp, SITE)
+    finally:
+        if tmp.exists(): tmp.unlink()
 
 
 def check_port():
@@ -92,16 +113,23 @@ def check_imports(blobs):
             raise RuntimeError('Service files do not import on their own: ' + (e.stderr or b'').decode(errors='replace')[-400:])
 
 
-def probe_app(commit, url='http://127.0.0.1:%d/tasup/api/board?map=tasupd_install_probe&track=0' % PORT):
+def probe_app(commit, url='http://127.0.0.1:%d/tasup/api/health' % PORT):
+    # 200 only when the service read its store and surfd's accounts itself, inside its sandbox.
     with urllib.request.urlopen(url, timeout=10) as response:
         if response.headers.get('X-Tasupd-Source') != commit: raise RuntimeError('Unexpected serving source')
         body = json.loads(response.read(65536))
-    if body.get('ok') != 1 or body.get('runs') != []: raise RuntimeError('New service board control did not act')
+    if body.get('ok') != 1 or body.get('accounts') != 1: raise RuntimeError('New service health control did not act')
+
+
+def init_store(release):
+    run('/usr/sbin/runuser', '-u', 'proto', '--', '/usr/bin/python3', str(release / 'tasupd.py'), '--store', str(STATE / 'tasup.sqlite3'), 'init',
+        cwd=str(release), env=dict(PATH='/usr/bin:/bin', SURFD_TOOLS=str(release / 'tools')))
 
 
 def service_env(release, account_db, commit):
     return dict(TASUPD_STORE=str(STATE / 'tasup.sqlite3'), TASUPD_ACCOUNTS=str(account_db),
-                TASUPD_ZONES=os.pathsep.join(ZONE_DIRS), TASUPD_URL=PUBLIC_URL, SURFD_TOOLS=str(release / 'tools'),
+                TASUPD_ZONES=os.pathsep.join(ZONE_DIRS), TASUPD_MAPCFG=os.pathsep.join(MAPCFG_DIRS),
+                TASUPD_URL=PUBLIC_URL, SURFD_TOOLS=str(release / 'tools'),
                 TASUPD_SOURCE=commit)
 
 
@@ -212,6 +240,7 @@ def upgrade(a, blobs):
     RELEASES.mkdir(mode=0o755, exist_ok=True); RELEASES.chmod(0o755)
     check_chain(RELEASES)
     write_release(new, a.commit, blobs)
+    init_store(new)   # additive schema steps; the old release keeps serving the store meanwhile
     newunit = unit_text(new, service_env(new, a.account_db, a.commit)).encode()
     if UNIT.read_bytes() != oldunit: raise RuntimeError('The unit changed during the upgrade; nothing switched (the new release directory stays)')
     # The switch and its proof are one step: Ctrl-C or a dropped session must not leave the unit ahead of systemd.
@@ -222,7 +251,7 @@ def upgrade(a, blobs):
             run('/usr/bin/systemctl', 'daemon-reload')
             run('/usr/bin/systemctl', 'restart', 'ftesurf-tasupd.service', timeout=120)
             await_probe(a.commit)
-            await_probe(a.commit, PUBLIC_URL + '/api/board?map=tasupd_install_probe&track=0', pause=.5)
+            await_probe(a.commit, PUBLIC_URL + '/api/health', pause=.5)
         except BaseException as e:
             outcome = rollback(oldunit, newunit, a.upgrade_from, e)
             record(new, outcome); say(outcome)
@@ -246,6 +275,7 @@ WorkingDirectory=%s
 ExecStart=/usr/bin/python3 -m gunicorn --bind 127.0.0.1:%d --workers 1 --threads 4 --timeout 90 --access-logfile /dev/null tasupd_wsgi:app
 %sRestart=on-failure
 MemoryMax=512M
+MemorySwapMax=0
 CPUQuota=50%%
 Nice=10
 NoNewPrivileges=yes
@@ -292,7 +322,7 @@ def main():
     check_imports(blobs)
     backup = BACKUPS / (SITE.name + '.pre-tasupd-' + a.commit[:12])
     if backup.exists(): raise RuntimeError('nginx backup collision; nothing overwritten')
-    run('/usr/bin/python3', '-c', 'import flask,gunicorn')
+    run('/usr/bin/python3', '-I', '-c', 'import flask,gunicorn', cwd='/')   # -I, /: nothing planted beside the owner's shell
     missing = [d for d in ZONE_DIRS if not Path(d).is_dir()]
     print('Preflight: the files of that commit, exact nginx predecessor, separate new service/state; zone directories'
           ' absent (skipped at lookup): %s' % (', '.join(missing) or 'none'))
@@ -303,12 +333,13 @@ def main():
     release = ROOT / a.commit
     write_release(release, a.commit, blobs)
     owner = pwd.getpwnam('proto'); STATE.mkdir(mode=0o700); os.chown(STATE, owner.pw_uid, owner.pw_gid)
-    run('/usr/sbin/runuser', '-u', 'proto', '--', '/usr/bin/python3', str(release / 'tasupd.py'), '--store', str(STATE / 'tasup.sqlite3'), 'init',
-        cwd=str(release), env=dict(PATH='/usr/bin:/bin', SURFD_TOOLS=str(release / 'tools')))
+    init_store(release)
     unit = unit_text(release, service_env(release, a.account_db, a.commit))
     wanted = before.replace(anchor, anchor + b'\n    include snippets/ftesurf-tasupd.conf;')
     backup.write_bytes(before); backup.chmod(0o600)
     written = unit_written = False
+    # As in upgrade: Ctrl-C or a dropped session must not leave the include on disk for the next reload.
+    held = {n: signal.signal(n, signal.SIG_IGN) for n in (signal.SIGINT, signal.SIGHUP)}
     try:
         with UNIT.open('x') as f: f.write(unit)
         unit_written = True
@@ -321,23 +352,26 @@ def main():
                 if attempt == 19: raise
                 time.sleep(.25)
         if SITE.read_bytes() != before: raise RuntimeError('nginx changed during service setup')
-        SITE.write_bytes(wanted); written = True
+        written = True   # before the write: whatever it leaves is put back
+        write_site(wanted)
         run('/usr/sbin/nginx', '-t')
         if b'location ^~ /tasup/' not in run('/usr/sbin/nginx', '-T').stdout:
             raise RuntimeError('nginx -T does not show the tasup route; nothing is public')
         run('/usr/bin/systemctl', 'reload', 'nginx')
         for attempt in range(20):
-            try: probe_app(a.commit, PUBLIC_URL + '/api/board?map=tasupd_install_probe&track=0'); break
+            try: probe_app(a.commit, PUBLIC_URL + '/api/health'); break
             except (OSError, ValueError, RuntimeError):
                 if attempt == 19: raise
                 time.sleep(.5)
-    except Exception:
-        if written and SITE.read_bytes() == wanted:
-            SITE.write_bytes(before); run('/usr/sbin/nginx', '-t'); run('/usr/bin/systemctl', 'reload', 'nginx')
+    except BaseException:
+        if written and wanted.startswith(SITE.read_bytes()):
+            write_site(before); run('/usr/sbin/nginx', '-t'); run('/usr/bin/systemctl', 'reload', 'nginx')
         if unit_written:
             if UNIT.read_text() != unit: raise RuntimeError('Unit changed; foreign service not stopped')
             run('/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service')
         raise   # source, state, unit, snippet and backup stay for inspection
+    finally:
+        for n, h in held.items(): signal.signal(n, h)
     print('Installed the TAS upload service at %s/' % PUBLIC_URL)
 
 

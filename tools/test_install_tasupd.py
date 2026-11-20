@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import sqlite3
 import stat
 import sys
 import tempfile
@@ -24,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import install_tasupd as t
 
 OLD, NEW = 'a' * 40, 'b' * 40
-PUBLIC = 'https://play.proto.bar/tasup/api/board?map=tasupd_install_probe&track=0'
+PUBLIC = 'https://play.proto.bar/tasup/api/health'
 REAL_EUID = os.geteuid()
 
 
@@ -130,6 +131,15 @@ class Upgrade(unittest.TestCase):
         self.assertTrue((t.ROOT / OLD).is_dir())
         self.assertIn('Upgraded', (new / 'UPGRADE.txt').read_text())
         self.assertEqual((t.STATE / 'tasup.sqlite3').read_bytes(), b'db')
+
+    def test_the_schema_step_runs_before_the_switch(self):
+        self.main('--apply')
+        init = [i for i, c in enumerate(self.calls) if 'init' in c and str(c[2]).endswith('tasupd.py')]
+        restart = [i for i, c in enumerate(self.calls) if c[1:3] == ('/usr/bin/systemctl', 'restart')]
+        self.assertEqual(len(init), 1)
+        self.assertEqual(self.calls[init[0]][0], 'proto')
+        self.assertEqual(self.calls[init[0]][2], str(t.RELEASES / NEW / 'tasupd.py'))
+        self.assertLess(init[0], restart[0])
 
     def test_a_later_upgrade_from_an_opt_release(self):
         (t.ROOT / OLD / 'SOURCE.json').unlink(); (t.ROOT / OLD).rmdir()
@@ -256,7 +266,7 @@ class Fresh(unittest.TestCase):
         t.check_accounts = lambda p: None; t.check_port = lambda: None
         t.pwd = types.SimpleNamespace(getpwnam=lambda n: types.SimpleNamespace(pw_uid=os.getuid(), pw_gid=os.getgid()))
         t.run = self.fake_run; t.probe_app = self.fake_probe
-        self.calls, self.probes = [], []
+        self.calls, self.probes, self.held, self.cwds = [], [], [], {}
         self.loadstate, self.public_fails, self.serving = 'not-found', False, None
         self.euid = os.geteuid; os.geteuid = lambda: 0
         self.sleep = t.time.sleep; t.time.sleep = lambda s: None   # the time module itself: put back below
@@ -280,12 +290,15 @@ class Fresh(unittest.TestCase):
             out = t.SITE.read_bytes() + (t.SNIPPET.read_bytes() if b'ftesurf-tasupd.conf' in t.SITE.read_bytes() else b'')
         elif len(args) > 1 and str(args[1]).endswith('tasupd.py') and 'init' in args:
             t.STATE.joinpath('tasup.sqlite3').write_bytes(b'db')
+        elif args[:2] == ('/usr/bin/python3', '-I'):
+            self.cwds['flask'] = kw.get('cwd')
         return types.SimpleNamespace(stdout=out, returncode=0)
 
     def fake_probe(self, commit, url=None):
         self.probes.append(url)
+        self.held.append(signal.getsignal(signal.SIGINT) is signal.SIG_IGN and signal.getsignal(signal.SIGHUP) is signal.SIG_IGN)
         if self.serving != commit: raise RuntimeError('not serving')
-        if url and self.public_fails: raise RuntimeError('public route does not answer')
+        if url and self.public_fails: raise self.public_fails if isinstance(self.public_fails, BaseException) else RuntimeError('public route does not answer')
 
     def main(self, *extra, nginx=None):
         argv = ['install_tasupd.py', '--source', str(self.src), '--commit', NEW, '--account-db', str(self.account_db),
@@ -317,7 +330,12 @@ class Fresh(unittest.TestCase):
         self.assertIn('ReadWritePaths=%s' % t.STATE, unit)
         self.assertEqual(len(t.ZONE_DIRS), len(set(t.ZONE_DIRS)))
         self.assertEqual(self.probes[0], None)                       # loopback before nginx changes
-        self.assertEqual(self.probes[-1], t.PUBLIC_URL + '/api/board?map=tasupd_install_probe&track=0')
+        self.assertEqual(self.probes[-1], t.PUBLIC_URL + '/api/health')
+        self.assertTrue(self.held and all(self.held))               # Ctrl-C and hangup held from the unit on
+        flask = [c for c in self.calls if c[1:4] == ('/usr/bin/python3', '-I', '-c')]
+        self.assertEqual([c[0] for c in flask], [None])
+        self.assertIn('MemorySwapMax=0', unit)
+        self.assertIn('TASUPD_MAPCFG=/srv/nvme/ftesurf-server/game/ftesurf/cfg/maps', unit)
         self.assertEqual((t.BACKUPS / ('site.conf.pre-tasupd-' + NEW[:12])).read_bytes(), SITE)
         init = [c for c in self.calls if 'init' in c]
         self.assertEqual([c[0] for c in init], ['proto'])
@@ -329,6 +347,36 @@ class Fresh(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'public route'): self.main('--apply')
         self.assertEqual(t.SITE.read_bytes(), SITE)
         self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service'), self.calls)
+
+    def test_an_interrupt_after_the_include_puts_nginx_back(self):
+        self.public_fails = KeyboardInterrupt()
+        with self.assertRaises(KeyboardInterrupt): self.main('--apply')
+        self.assertEqual(t.SITE.read_bytes(), SITE)
+        self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service'), self.calls)
+
+    def test_a_failed_site_write_leaves_the_site_whole(self):
+        real = t.os.replace
+        def failing(src, dst):
+            if Path(dst) == t.SITE: raise OSError(28, 'No space left on device')
+            return real(src, dst)
+        t.os.replace = failing
+        try:
+            with self.assertRaisesRegex(OSError, 'No space'): self.main('--apply')
+        finally:
+            t.os.replace = real
+        self.assertEqual(t.SITE.read_bytes(), SITE)
+        self.assertEqual(sorted(x.name for x in t.BACKUPS.iterdir() if x.name.startswith('.tasupd-site')), [])
+        self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service'), self.calls)
+
+    def test_the_site_keeps_its_mode(self):
+        t.SITE.chmod(0o640)
+        self.main('--apply')
+        self.assertEqual(stat.S_IMODE(t.SITE.stat().st_mode), 0o640)
+        self.assertIn(b'include snippets/ftesurf-tasupd.conf;', t.SITE.read_bytes())
+
+    def test_the_flask_check_runs_isolated_from_the_owner_directory(self):
+        self.main()
+        self.assertEqual(self.cwds.get('flask'), '/')
 
     def test_changed_nginx_is_refused(self):
         with self.assertRaisesRegex(RuntimeError, 'nginx changed'): self.main('--apply', nginx='0' * 64)
@@ -342,6 +390,56 @@ class Fresh(unittest.TestCase):
     def test_a_loaded_unit_is_refused(self):
         self.loadstate = 'loaded'
         with self.assertRaisesRegex(RuntimeError, 'owner inspection'): self.main('--apply')
+
+
+class Probe(unittest.TestCase):
+    def fake(self, url, headers, body):
+        class R:
+            def __enter__(s): return s
+            def __exit__(s, *a): return False
+            def read(s, n): return json.dumps(body).encode()
+        R.headers = headers
+        self.urls.append(url)
+        return R()
+
+    def test_the_probe_reads_health_and_wants_the_accounts(self):
+        self.urls, real = [], t.urllib.request.urlopen
+        try:
+            t.urllib.request.urlopen = lambda url, timeout: self.fake(url, {'X-Tasupd-Source': NEW}, {'ok': 1, 'store': 1, 'accounts': 1})
+            t.probe_app(NEW)
+            self.assertEqual(self.urls, ['http://127.0.0.1:8091/tasup/api/health'])
+            t.urllib.request.urlopen = lambda url, timeout: self.fake(url, {'X-Tasupd-Source': NEW}, {'ok': 1})
+            with self.assertRaisesRegex(RuntimeError, 'health control'): t.probe_app(NEW)
+            t.urllib.request.urlopen = lambda url, timeout: self.fake(url, {'X-Tasupd-Source': OLD}, {'ok': 1, 'accounts': 1})
+            with self.assertRaisesRegex(RuntimeError, 'serving source'): t.probe_app(NEW)
+        finally:
+            t.urllib.request.urlopen = real
+
+
+class Accounts(unittest.TestCase):
+    def test_the_preflight_leaves_no_side_files(self):
+        # P1618: root recreating -wal/-shm would hide what the sandboxed service sees.
+        with tempfile.TemporaryDirectory() as d:
+            db_path = Path(d) / 'surfd.db'
+            with contextlib.closing(sqlite3.connect(db_path)) as db:
+                db.execute('PRAGMA journal_mode=WAL')
+                with db: db.execute('CREATE TABLE accounts (steamid TEXT, name TEXT, banned_at INTEGER)')
+                with db: db.execute('CREATE TABLE runs (map TEXT, track INTEGER, leg INTEGER, style TEXT, millis INTEGER)')
+            self.assertEqual(os.listdir(d), ['surfd.db'])
+            t.check_accounts(db_path)
+            self.assertEqual(os.listdir(d), ['surfd.db'])
+            with contextlib.closing(sqlite3.connect(db_path)) as db:
+                db.execute('CREATE TABLE other (x)')
+            with contextlib.closing(sqlite3.connect(db_path)) as db:
+                db.execute('DROP TABLE accounts')
+            with self.assertRaises(sqlite3.Error): t.check_accounts(db_path)
+
+    def test_the_preflight_wants_the_board_runs(self):
+        with tempfile.TemporaryDirectory() as d:
+            db_path = Path(d) / 'surfd.db'
+            with contextlib.closing(sqlite3.connect(db_path)) as db, db:
+                db.execute('CREATE TABLE accounts (steamid TEXT, name TEXT, banned_at INTEGER)')
+            with self.assertRaisesRegex(sqlite3.Error, 'runs'): t.check_accounts(db_path)
 
 
 class Chain(unittest.TestCase):

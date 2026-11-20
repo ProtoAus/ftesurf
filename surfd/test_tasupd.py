@@ -62,7 +62,7 @@ def variant(vw=2.0, cap=250.0):
         if not jumped and t >= -0.105:
             v[2], jumped = 289.99, True
         elif not jumped:
-            v[0], v[1] = min(cap, h + 18.0), 0.0
+            v[0], v[1] = min(cap, max(0.0, h - max(h, 100.0) * 4.0 * R) + 18.0), 0.0
         else:
             side = 1 if tick % 40 < 20 else -1
             ang = math.atan2(v[1], v[0]) + side * math.acos(vw / max(h, vw))
@@ -75,7 +75,17 @@ def variant(vw=2.0, cap=250.0):
     return rows, fin
 
 
+SURFD_RUNS = ('CREATE TABLE runs (map TEXT NOT NULL, track INTEGER NOT NULL, leg INTEGER NOT NULL, tier TEXT NOT NULL,'
+              ' style TEXT NOT NULL, player TEXT NOT NULL, name TEXT NOT NULL, ticks INTEGER NOT NULL, tickrate REAL NOT NULL,'
+              ' millis INTEGER NOT NULL, flags INTEGER NOT NULL, node TEXT NOT NULL, runid TEXT NOT NULL,'
+              ' submitted INTEGER NOT NULL, PRIMARY KEY (map, track, leg, tier, style, player))')
+
+
 class Service(unittest.TestCase):
+    def record(self, db, mapname, track, millis, leg=0, style='clean', player='p'):
+        db.execute("INSERT INTO runs VALUES (?, ?, ?, 'ranked', ?, ?, 'n', ?, 0.015, ?, 0, 'node', 'r', 1)",
+                   (mapname, track, leg, style, player, round(millis / 15), millis))
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); d = Path(self.tmp.name)
         self.store = d / 'state' / 'tasup.sqlite3'
@@ -87,6 +97,9 @@ class Service(unittest.TestCase):
                        " DEFAULT 0, ban_note TEXT NOT NULL DEFAULT '')")
             db.executemany('INSERT INTO accounts (steamid, name, created_at, banned_at) VALUES (?, ?, 1, ?)',
                            [(ALICE, 'Alice <b>', 0), (BOB, 'Bob', 0), (BANNED, 'Mallory', 5)])
+            db.execute(SURFD_RUNS)
+            # synth's record: 0.5 s, under every simulated run (fin ~1.2 s), so they are not new records.
+            self.record(db, 'synth', 0, 500)
         zdir = d / 'zones'; zdir.mkdir()
         (zdir / 'synth.json').write_text(json.dumps(fx.ZONES))
         self.zdirs = [str(d / 'nozones'), str(zdir)]
@@ -292,7 +305,8 @@ class Service(unittest.TestCase):
                  (rec().replace(b'tickrate 0.015', b'tickrate 0.01'), '66.67 tick'),
                  (rec().replace(b'tickrate 0.015', b'tickrate nan'), 'not a number'),
                  (rec().replace(b'track 0\n', b'track 0\ntrack 1\n'), 'twice'),
-                 (rec().replace(b'track 0\n', b'track 0\x0bmovetickrate 0.02\n'), 'other than a newline'),
+                 (rec().replace(b'track 0\n', b'track 0\x0bmovetickrate 0.02\n'), 'other than newline, space and tab'),
+                 (rec().replace(b'track 0\n', b'track 0\nleg\xc2\xa04\n'), 'other than newline, space and tab'),
                  (rec(mapname='../etc'), 'no usable map'),
                  (rec().replace(b'track 0', b'track -1'), 'no usable track'),
                  (b'MZ\x00' + rec(), 'not a FTESURF-REC'),
@@ -502,6 +516,238 @@ class Service(unittest.TestCase):
         self.assertEqual(anon.get('/tasup/board?map=synth&track=999').status_code, 400)
         self.assertEqual(anon.get('/tasup').status_code, 301)
         self.assertIn("default-src 'none'", anon.get('/tasup/').headers['Content-Security-Policy'])
+
+    def test_health_reads_both_stores(self):
+        anon = self.app.test_client()
+        self.assertEqual(anon.get('/tasup/api/health').get_json(), {'ok': 1, 'store': 1, 'accounts': 1})
+        self.accounts.rename(self.accounts.with_suffix('.gone'))
+        r = anon.get('/tasup/api/health')
+        self.assertEqual((r.status_code, r.get_json()['ok']), (503, 0))
+
+    def test_closed_wal_accounts_read_without_side_files(self):
+        # P1618: surfd's last close deleted -wal/-shm and this sandbox cannot write beside surfd.db.
+        d = Path(self.tmp.name) / 'ro'; d.mkdir()
+        acc = d / 'surfd.db'
+        with contextlib.closing(sqlite3.connect(acc)) as db:
+            db.execute('PRAGMA journal_mode=WAL')
+            with db: db.execute("CREATE TABLE accounts (steamid TEXT PRIMARY KEY, name TEXT, banned_at INTEGER)")
+            with db: db.execute("INSERT INTO accounts VALUES (?, 'Alice', 0)", (ALICE,))
+            with db: db.execute(SURFD_RUNS)
+        self.assertEqual(sorted(x.name for x in d.iterdir()), ['surfd.db'])
+        d.chmod(0o555)
+        try:
+            try:
+                with svc.connect(acc, readonly=True) as db: db.execute('SELECT 1 FROM accounts').fetchall()
+                self.skipTest('this SQLite reads a closed WAL file read-only without side files: condition not made')
+            except sqlite3.OperationalError:
+                pass
+            app = svc.create_app(self.store, acc, self.zdirs, BASE, http=self.fake_http, clock=self.clock)
+            self.assertEqual(app.test_client().get('/tasup/api/health').get_json()['ok'], 1)
+            self.app = app
+            _, back = self.sign_in(ALICE)
+            self.assertEqual(back.status_code, 303)
+            self.assertEqual(sorted(x.name for x in d.iterdir()), ['surfd.db'])
+        finally:
+            d.chmod(0o755)
+
+    def test_downloads_are_budgeted_in_bytes(self):
+        c, _ = self.sign_in(ALICE)
+        body = rec()
+        rid = self.upload(c, body).get_json()['id']
+        saved = svc.REC_PEER_BYTES, svc.REC_ALL_BYTES
+        svc.REC_PEER_BYTES, svc.REC_ALL_BYTES = int(len(body) * 2.5), int(len(body) * 3.5)
+        try:
+            a = self.app.test_client()
+            self.assertEqual([a.get('/tasup/run/%d.rec' % rid).status_code for _ in range(3)], [200, 200, 429])
+            b = self.app.test_client()
+            got = [b.get('/tasup/run/%d.rec' % rid, environ_base={'REMOTE_ADDR': '10.0.0.2'}).status_code for _ in range(2)]
+            self.assertEqual(got, [200, 429])   # everyone's budget: 3 files a minute here
+        finally:
+            svc.REC_PEER_BYTES, svc.REC_ALL_BYTES = saved
+
+    def test_unlisted_reasons_are_counted(self):
+        tp = svc.load_tasplaus()
+        body = edited_speed()
+        n = len(tp.check(tp.read(text=body.decode()), fx.ZONES)['reasons'])
+        keep, tp.REASON_KEEP = tp.REASON_KEEP, 3   # the checker lists 3, the service shows 2 of them
+        saved, svc.REASONS_MAX = svc.REASONS_MAX, 2
+        try:
+            c, _ = self.sign_in(ALICE)
+            j = self.upload(c, body).get_json()
+        finally:
+            tp.REASON_KEEP, svc.REASONS_MAX = keep, saved
+        self.assertEqual(j['state'], 'held')
+        self.assertEqual(len(j['reasons']), 3, j['reasons'])
+        self.assertEqual(j['reasons'][-1]['what'], '%d more not listed' % (n - 2))
+
+    def test_an_older_store_is_refused(self):
+        with contextlib.closing(sqlite3.connect(self.store)) as db: db.execute('PRAGMA user_version = 0')
+        with self.assertRaisesRegex(RuntimeError, 'older than this release'):
+            svc.create_app(self.store, self.accounts, self.zdirs, BASE)
+        svc.initialize(self.store)   # init is the schema step and keeps the secret
+        svc.create_app(self.store, self.accounts, self.zdirs, BASE)
+
+    def surfd(self, sql, *args):
+        with contextlib.closing(sqlite3.connect(self.accounts)) as db, db: db.execute(sql, args)
+
+    def test_new_records_wait_for_the_owner(self):
+        c, _ = self.sign_in(ALICE)
+        self.surfd('UPDATE runs SET millis = 5000')                     # synth's record: 5 s
+        self.surfd("INSERT INTO runs VALUES ('synth', 0, 1, 'ranked', 'clean', 'q', 'n', 1, 0.015, 100, 0, 'n', 'r', 1)")
+        self.surfd("INSERT INTO runs VALUES ('synth', 0, 0, 'ksf', 'sw', 'q', 'n', 1, 0.015, 100, 0, 'n', 'r', 1)")
+        j = self.upload(c, rec()).get_json()                             # 1.2 s: a leg and a sideways run do not count
+        self.assertEqual((j['verdict'], j['state']), ('PASS', 'held'), j)
+        self.assertIn('faster than every known time on this course (5.000)', j['reasons'][-1]['what'])
+        self.assertEqual(self.cli('approve', str(j['id']))[0], 0)
+        b, _ = self.sign_in(BOB)
+        slower, sfin = variant(2.0, cap=230.0)                            # 1.29 s, behind the approved 1.2
+        self.assertEqual(self.upload(b, rec(slower, sfin)).get_json()['state'], 'shown')
+        faster, ffin = variant(17.0)                                     # 1.11 s
+        j = self.upload(b, rec(faster, ffin)).get_json()
+        self.assertEqual(j['state'], 'held')
+        self.assertIn('faster than every known time on this course (1.200)', j['reasons'][-1]['what'])
+
+    def test_the_first_upload_on_a_course_waits(self):
+        self.surfd('DELETE FROM runs')
+        c, _ = self.sign_in(ALICE)
+        j = self.upload(c, rec()).get_json()
+        self.assertEqual(j['state'], 'held')
+        self.assertIn('the first upload waits for the owner', j['reasons'][-1]['what'])
+
+    def test_an_unreadable_record_holds(self):
+        self.surfd('DROP TABLE runs')
+        c, _ = self.sign_in(ALICE)
+        j = self.upload(c, rec()).get_json()
+        self.assertEqual(j['state'], 'held')
+        self.assertIn('the course record could not be read', j['reasons'][-1]['what'])
+        self.assertEqual(self.app.test_client().get('/tasup/api/health').status_code, 503)
+
+    def test_own_runs_can_be_uploaded_again(self):
+        c, _ = self.sign_in(ALICE)
+        rows, fin = fx.simulate()
+        first = self.upload(c, rec(rows, fin)).get_json()
+        sharper = fx.text(rows, fin).replace('map synth', 'map synth').replace('\nend ', '\n\nend ', 1).encode()
+        again = self.upload(c, sharper)                                  # a re-export: same motion, new bytes
+        self.assertEqual(again.status_code, 200, again.get_json())
+        b, _ = self.sign_in(BOB)
+        self.assertEqual(self.upload(b, sharper + b'\n').status_code, 409)   # someone else's motion
+        self.cli('remove', str(first['id'])); self.cli('remove', str(again.get_json()['id']))
+        r = self.upload(c, sharper + b'\n\n')
+        self.assertEqual(r.status_code, 409)                             # removed by the owner: not even its uploader
+        self.assertIn('motion of run', r.get_json()['error'])
+
+    def test_thinned_and_gapped_copies_refused(self):
+        c, _ = self.sign_in(ALICE)
+        rows, fin = variant(9.0)
+        a = self.upload(c, rec(rows, fin)).get_json()
+        self.assertEqual(a['state'], 'shown', a)
+        b, _ = self.sign_in(BOB)
+        thin = [r for i, r in enumerate(rows) if i % 2 == 0 or r[0] >= fin * fx.RATE]
+        i0 = next(i for i, r in enumerate(rows) if r[0] >= 0.3)
+        gaps = [r for i, r in enumerate(rows) if not i0 <= i < i0 + 3]   # 3 of 76 ticks (a5: 15 of ~520)
+        for body in (rec(thin, fin), rec(gaps, fin)):
+            r = self.upload(b, body)
+            self.assertEqual(r.status_code, 409, r.get_json())
+
+    def test_kicked_copies_compare_on_their_own_samples(self):
+        # Velocity kicks every 4 ticks (ramp hits): interpolating a thinned copy across them misses
+        # a quarter of the ticks, so only the ticks it has samples on can be compared.
+        rows, fin = variant(9.0)
+        kicked = [(t, o, [v[0], v[1], v[2] + (150.0 if i % 4 == 1 and t > 0 else 0.0)]) for i, (t, o, v) in enumerate(rows)]
+        c, _ = self.sign_in(ALICE)
+        a = self.upload(c, rec(kicked, fin)).get_json()
+        self.assertIn(a['state'], ('shown', 'held'), a)
+        b, _ = self.sign_in(BOB)
+        thin = [r for i, r in enumerate(kicked) if i % 2 == 0]
+        r = self.upload(b, rec(thin, fin))
+        self.assertEqual(r.status_code, 409, r.get_json())
+
+    def test_a_copy_that_claims_a_later_finish_is_compared(self):
+        c, _ = self.sign_in(ALICE)
+        rows, fin = variant(9.0)
+        self.assertEqual(self.upload(c, rec(rows, fin)).get_json()['state'], 'shown')
+        b, _ = self.sign_in(BOB)
+        r = self.upload(b, rec([(t, [o[0], o[1] + 3.0, o[2]], v) for t, o, v in rows], fin + 6))   # not the same digest
+        self.assertEqual(r.status_code, 409, r.get_json())
+
+    def test_a_sparse_file_has_a_bounded_series(self):
+        tp = svc.load_tasplaus()
+        run = tp.read(text=fx.text([(i * 2.0, [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]) for i in range(50)], 10000))
+        self.assertEqual(len(svc.motion_series(run)) // 3, 8 * 50 + 1)
+
+    def test_the_map_cfg_speed_cap_counts(self):
+        cfgdir = Path(self.tmp.name) / 'cfgmaps'; cfgdir.mkdir()
+        (cfgdir / 'map_synth.cfg').write_text('// set sv_maxvelocity 100\nset sv_maxvelocity 4000\nset sv_maxvelocity 5000\n')
+        self.assertEqual(svc.mapcfg_maxvel([str(Path(self.tmp.name) / 'none'), str(cfgdir)], 'synth'), 5000.0)
+        self.assertIsNone(svc.mapcfg_maxvel([str(cfgdir)], 'other'))
+        rows, fin = fx.simulate()
+        k = next(i for i, r in enumerate(rows) if r[0] >= 0.5)
+        fast = [(t, o, [3600.0 if i == k else v[0], v[1], v[2]]) for i, (t, o, v) in enumerate(rows)]
+        c, _ = self.sign_in(ALICE)
+        why = json.dumps(self.upload(c, rec(fast, fin)).get_json()['reasons'])
+        self.assertIn('past sv_maxvelocity 3500', why)
+        self.app = svc.create_app(self.store, self.accounts, self.zdirs, BASE, http=self.fake_http, clock=self.clock,
+                                  map_cfg_dirs=[str(cfgdir)])
+        c, _ = self.sign_in(ALICE)
+        why = json.dumps(self.upload(c, rec(fast, fin) + b'\n').get_json()['reasons'])
+        self.assertNotIn('sv_maxvelocity', why)
+
+    def test_stage_legs_refused(self):
+        c, _ = self.sign_in(ALICE)
+        for extra in (b'leg 1\n', b'startseg 2\n'):
+            r = self.upload(c, rec().replace(b'track 0\n', b'track 0\n' + extra))
+            self.assertEqual(r.status_code, 400)
+            self.assertIn('whole courses', r.get_json()['error'])
+
+    def test_a_flood_of_addresses_does_not_refuse_everyone(self):
+        saved, svc.HITS_MAX = svc.HITS_MAX, 5
+        try:
+            a = self.app.test_client()
+            for i in range(10):
+                a.get('/tasup/api/recent', environ_base={'REMOTE_ADDR': '10.1.0.%d' % i})
+            r = a.get('/tasup/api/recent', environ_base={'REMOTE_ADDR': '192.0.2.7'})
+            self.assertEqual(r.status_code, 200)
+        finally:
+            svc.HITS_MAX = saved
+
+    def test_a_file_that_cannot_be_stored_is_503(self):
+        recs = self.store.parent / 'recs'
+        c, _ = self.sign_in(ALICE)
+        body = rec()
+        sub = svc.rec_path(self.store, svc.hashlib.sha256(body).hexdigest()).parent
+        sub.mkdir(mode=0o500)
+        try:
+            r = self.upload(c, body)
+        finally:
+            sub.chmod(0o700)
+        self.assertEqual(r.status_code, 503, r.get_json())
+        with contextlib.closing(sqlite3.connect(self.store)) as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM runs').fetchone()[0], 0)
+
+    def test_a_busy_checker_does_not_spend_the_attempt(self):
+        tp = svc.load_tasplaus()
+        import threading
+        inside, release = threading.Event(), threading.Event()
+        real = tp.check
+        def slow(*a, **k):
+            inside.set(); release.wait(5); return real(*a, **k)
+        tp.check, saved = slow, svc.HEAVY_WAIT
+        svc.HEAVY_WAIT = 0.05
+        try:
+            c, _ = self.sign_in(ALICE)
+            b, _ = self.sign_in(BOB)
+            first_body, other_body = rec(), rec(*variant(14.0))
+            ctoken, btoken = self.csrf(c), self.csrf(b)
+            t = threading.Thread(target=lambda: self.upload(c, first_body, csrf=ctoken)); t.start()
+            self.assertTrue(inside.wait(5))
+            r = self.upload(b, other_body, csrf=btoken)
+            self.assertEqual(r.status_code, 503)
+            release.set(); t.join(5)
+        finally:
+            tp.check, svc.HEAVY_WAIT = real, saved
+            release.set()
+        with contextlib.closing(sqlite3.connect(self.store)) as db:
+            self.assertEqual(db.execute('SELECT n FROM spend WHERE who = ?', (BOB,)).fetchone()[0], 0)
 
     def test_read_rate_limit(self):
         anon = self.app.test_client()

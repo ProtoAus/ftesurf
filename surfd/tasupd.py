@@ -15,6 +15,9 @@ OpenID through steam.py; each assertion's nonce is burned in this store.
   GET  /tasup/run/<id>                one upload: verdict, reasons, numbers
   GET  /tasup/run/<id>.rec            the file (shown runs; held ones to their uploader)
   GET  /tasup/api/board?map=&track=   JSON; also /tasup/api/run/<id>, /tasup/api/recent
+  GET  /tasup/api/health              reads the store and surfd.db as the service (install probe)
+A PASS faster than every known time on its course (surfd's record in any tier, or the best upload
+shown here), or the first on a course, is held: the checker cannot see the map's walls.
   GET  /tasup/steam, /tasup/steam/return
   POST /tasup/upload                  multipart: rec (file), tool (text), csrf
   POST /tasup/signout
@@ -50,6 +53,7 @@ HELD_CAP = 10                       # an account's runs waiting for the owner
 STORE_CAP = 4 * 1024 ** 3
 SESSION_TTL, STATE_TTL = 12 * 3600, 600
 PEER_READS, PEER_SIGNINS = 120, 10  # a minute, per address (an IPv6 /64)
+REC_PEER_BYTES, REC_ALL_BYTES = 32 * 1024 ** 2, 128 * 1024 ** 2   # .rec downloads a minute: an address / everyone
 STEAM_ATONCE, STEAM_MINUTE = 2, 30  # Steam confirmations in flight / a minute, everyone (surfd: OUT_ATONCE 2)
 FORM_PARTS = 8                      # multipart boundaries in an upload: Werkzeug 2.2.2 does not cap parts
 SIGNOUT_BODY = 4096
@@ -57,6 +61,9 @@ HEAVY_WAIT = 30                     # s an upload waits for the one checker slot
 NAME_TTL = 300
 TOOL_MAX = 64
 REASONS_MAX = 40                    # kept and shown per run; a bad file can give one a tick
+HITS_MAX = 50000                    # rate-limit keys a minute; past it new addresses go uncounted
+STYLES_RECORD = ('clean', 'segmented', 'tas')   # surfd.STYLES: the course record a PASS must not beat
+SCHEMA = 1                          # PRAGMA user_version `init` leaves; a release needs at least its own
 MAPNAME = re.compile(r'[a-z0-9_][a-z0-9_.+-]{0,63}')
 STATE_RE = re.compile(r'[0-9a-f]{32}')
 _CTRL = re.compile(r'[\x00-\x1f\x7f]')
@@ -65,11 +72,11 @@ TOOL_PUNCT = frozenset(" ._-!?()[]+=*#@'~,|")
 STATES = ('shown', 'held', 'rejected', 'removed')
 # Header keys only surfd's KSF/Momentum importers write (117 imports against 164 of our recordings).
 IMPORT_KEYS = frozenset(('foreign', 'demodata', 'ksfdemo', 'ksfground', 'ksfmoves', 'ksftime', 'mapbuild',
-                         'momdemo', 'momquality', 'moves'))
+                         'momdemo', 'momquality'))
 SQL = '''
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS runs(id INTEGER PRIMARY KEY AUTOINCREMENT, sha TEXT NOT NULL UNIQUE,
- samples_sha TEXT NOT NULL UNIQUE, steamid TEXT NOT NULL, map TEXT NOT NULL, track INTEGER NOT NULL,
+ samples_sha TEXT NOT NULL, steamid TEXT NOT NULL, map TEXT NOT NULL, track INTEGER NOT NULL,
  ticks INTEGER NOT NULL, verdict TEXT NOT NULL, state TEXT NOT NULL, reasons TEXT NOT NULL,
  stats TEXT NOT NULL, tool TEXT NOT NULL, size INTEGER NOT NULL, uploaded_at INTEGER NOT NULL,
  reviewed_at INTEGER NOT NULL DEFAULT 0, note TEXT NOT NULL DEFAULT '', sig BLOB NOT NULL);
@@ -77,6 +84,7 @@ CREATE INDEX IF NOT EXISTS runs_board ON runs(map, track, state, ticks);
 CREATE INDEX IF NOT EXISTS runs_course ON runs(map, track, ticks);
 CREATE INDEX IF NOT EXISTS runs_owner ON runs(steamid, id);
 CREATE INDEX IF NOT EXISTS runs_recent ON runs(state, id);
+CREATE INDEX IF NOT EXISTS runs_motion ON runs(samples_sha);
 CREATE TABLE IF NOT EXISTS nonces(nonce TEXT PRIMARY KEY, seen_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS spend(who TEXT NOT NULL, day INTEGER NOT NULL, n INTEGER NOT NULL,
  bytes INTEGER NOT NULL, PRIMARY KEY(who, day));
@@ -95,8 +103,8 @@ def load_tasplaus():
 
 
 @contextmanager
-def connect(path, readonly=False):
-    uri = Path(path).resolve().as_uri() + ('?mode=ro' if readonly else '?mode=rw')
+def connect(path, readonly=False, immutable=False):
+    uri = Path(path).resolve().as_uri() + ('?mode=ro' if readonly else '?mode=rw') + ('&immutable=1' if immutable else '')
     db = sqlite3.connect(uri, uri=True, timeout=15.0, isolation_level=None)
     db.row_factory = sqlite3.Row
     try:
@@ -125,6 +133,7 @@ def initialize(path):
         db.execute('PRAGMA journal_mode=WAL')
         with db: db.executescript(SQL)
         with db: db.execute("INSERT OR IGNORE INTO meta(k, v) VALUES ('secret', ?)", (secrets.token_hex(32),))
+        if db.execute('PRAGMA user_version').fetchone()[0] < SCHEMA: db.execute('PRAGMA user_version = %d' % SCHEMA)
     finally:
         db.close()
 
@@ -141,23 +150,41 @@ def samples_digest(run):
     return h.hexdigest()
 
 
-def motion_series(run):
-    """Velocity at each sample from the start to the finish, flat [vx, vy, vz, ...]: the run's motion
-    whatever its position offset, header or extra samples."""
-    fin = run.end * TICK + 1e-6
-    return array('f', [c for t, o, v in run.samples if -1e-6 <= t <= fin for c in v])
+def motion_series(run, mask=None):
+    """Velocity on the tick grid from the start to the finish, flat [vx, vy, vz, ...], interpolated by
+    time: the run's motion whatever its position offset, header, or samples added, dropped or spaced
+    out. At most 8 ticks a sample (a sparser file HOLDs for its gaps anyway). `mask` (a bytearray)
+    gets 1 for the ticks a sample sits on: only those are compared (interpolation across a ramp hit
+    misses: r_34061 at every 2nd sample, 32 of 523 ticks)."""
+    s, out, j = run.samples, array('f'), 0
+    for n in range(min(run.end, 8 * len(s)) + 1):
+        t = n * TICK
+        while j + 1 < len(s) and s[j + 1][0] <= t + 1e-6:
+            j += 1
+        a = s[j]
+        b = s[j + 1] if j + 1 < len(s) else a
+        w = min(1.0, (t - a[0]) / (b[0] - a[0])) if b[0] > a[0] and a[0] <= t else 0.0
+        out.extend(a[2][c] + (b[2][c] - a[2][c]) * w for c in range(3))
+        if mask is not None:
+            mask.append(1 if abs(a[0] - t) < 1e-4 else 0)
+    return out
 
 
-def same_motion(a, b, shifts=8):
-    """b is a's motion, give or take a few ticks: velocity within 2 u/s + 1% on 95% of the overlap."""
+def same_motion(a, b, shifts=8, stride=1, share=0.95, mask=None):
+    """b is a's motion, give or take a few ticks: velocity within 2 u/s + 1% on `share` of the overlap,
+    every `stride`th tick (8 with share 0.85 is the cheap first pass), on a's sampled ticks (`mask`)."""
     na, nb = len(a) // 3, len(b) // 3
     for sh in range(-shifts, shifts + 1):
         lo, hi = max(0, sh), min(na, nb + sh)
-        n = hi - lo
-        if n < 20 or n < 0.9 * min(na, nb):
+        if hi - lo < 20 or hi - lo < 0.9 * min(na, nb):
             continue
-        allowed, bad = n // 20, 0
-        for i in range(lo, hi):
+        ticks = [i for i in range(lo, hi) if mask is None or mask[i]]
+        if len(ticks) < 10:
+            continue
+        if len(ticks) >= 10 * stride:
+            ticks = ticks[::stride]
+        allowed, bad = int(len(ticks) * (1 - share)), 0
+        for i in ticks:
             j = 3 * (i - sh)
             ax, ay, az = a[3 * i], a[3 * i + 1], a[3 * i + 2]
             dx, dy, dz = ax - b[j], ay - b[j + 1], az - b[j + 2]
@@ -178,6 +205,34 @@ def day_of(t): return time.strftime('%Y-%m-%d', time.gmtime(t))
 def clean_tool(s):
     s = ''.join(ch for ch in (s or '') if ch.isalnum() or ch in TOOL_PUNCT)
     return ' '.join(s.split())[:TOOL_MAX]
+
+
+def copy_of(series, mask, rows):
+    """The first row (id, steamid, state, sig) whose motion `series` is, or None."""
+    for r in rows:
+        other = array('f', zlib.decompress(r['sig']))
+        if same_motion(series, other, stride=8, share=0.85, mask=mask) and same_motion(series, other, mask=mask):
+            return r
+    return None
+
+
+_MAXVEL = re.compile(r'^\s*(?:seta?\s+)?sv_maxvelocity\s+"?([0-9]+(?:\.[0-9]+)?)"?', re.M)
+
+
+def mapcfg_maxvel(dirs, mapname):
+    """sv_maxvelocity from the map's cfg/maps/map_<map>.cfg (the first that exists), or None. Never the
+    upload's header: that is the uploader's."""
+    for d in dirs:
+        try:
+            with open(os.path.join(d, 'map_%s.cfg' % mapname), 'rb') as fh: body = fh.read(65536)
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return None
+        body = '\n'.join(l for l in body.decode('utf-8', 'replace').splitlines() if not l.lstrip().startswith('//'))
+        got = _MAXVEL.findall(body)
+        return float(got[-1]) if got else None
+    return None
 
 
 def zones_for(dirs, mapname):
@@ -224,7 +279,7 @@ def label(r):
     return 'owner approved' if r['state'] == 'shown' and r['verdict'] != 'PASS' else LABEL[r['state']]
 
 
-def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=time.time):
+def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=time.time, map_cfg_dirs=()):
     tp = load_tasplaus()
     app = Flask(__name__)
     app.config['MAX_CONTENT_LENGTH'] = MAX_FORM
@@ -236,6 +291,8 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
     # __Host- (Secure, Path=/, no Domain): this origin is shared with surfd's own pages.
     sess_cookie, state_cookie = ('__Host-ftup', '__Host-ftups') if secure else ('ftup', 'ftups')
     with connect(store) as db:
+        if db.execute('PRAGMA user_version').fetchone()[0] < SCHEMA:
+            raise RuntimeError('%s is older than this release: run `tasupd.py --store ... init`' % store)
         secret = bytes.fromhex(db.execute("SELECT v FROM meta WHERE k = 'secret'").fetchone()['v'])
     heavy = threading.BoundedSemaphore(1)
     steam_slots = threading.BoundedSemaphore(STEAM_ATONCE)
@@ -255,14 +312,16 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
             pass
         return mac('peer', addr)[:24]
 
-    def limited(kind, cap, who=None):
+    def limited(kind, cap, who=None, n=1):
         minute = int(clock() // 60)
         k = (kind, peer() if who is None else who, minute)
         with hits_lock:
-            if len(hits) > 50000:   # drop past minutes; a flood inside one minute is refused, not reset
+            if len(hits) > HITS_MAX:
                 for old in [x for x in hits if x[2] < minute]: del hits[old]
-                if len(hits) > 50000: return True
-            hits[k] = hits.get(k, 0) + 1
+                # Still full: this minute's flood came from that many addresses. A new one goes uncounted
+                # rather than everyone being refused; the shared 'everyone' budgets are always counted.
+                if len(hits) > HITS_MAX and k not in hits and who != 'everyone': return False
+            hits[k] = hits.get(k, 0) + n
             return hits[k] > cap
 
     def session():
@@ -276,6 +335,25 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
     def csrf():
         return mac('csrf', request.cookies.get(sess_cookie, ''))
 
+    def read_surfd(sql, args=()):
+        """Rows from surfd.db (accounts, the board's runs), read-only. P1618 (AGENT_NOTES): once surfd's last close deletes -wal/-shm this
+        sandbox cannot recreate them and a plain read-only open fails; with no -wal the file is whole, so read
+        it immutable (tools/r2gateway.py read_row)."""
+        try:
+            try:
+                with connect(account_db, readonly=True) as adb: return adb.execute(sql, args).fetchall()
+            except sqlite3.OperationalError:
+                if Path(str(account_db) + '-wal').exists(): raise
+            with connect(account_db, readonly=True, immutable=True) as adb: return adb.execute(sql, args).fetchall()
+        except sqlite3.Error as e:
+            raise Unavailable('surfd.db cannot be read (%s)' % type(e).__name__)
+
+    def course_record(mapname, track):
+        """surfd's best whole-course time (ms) on this course in any tier, or None; raises Unavailable."""
+        got = read_surfd('SELECT MIN(millis) FROM runs WHERE map = ? AND track = ? AND leg = 0 AND millis > 0'
+                         ' AND style IN (%s)' % ','.join('?' * len(STYLES_RECORD)), (mapname, track) + STYLES_RECORD)
+        return got[0][0] if got and got[0][0] else None
+
     def accounts_of(steamids):
         """{steamid: (name, banned)} for the ones World of Surf knows; raises Unavailable."""
         want = sorted(set(steamids))
@@ -284,16 +362,11 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
             miss = [s for s in want if s not in names or names[s][1] < now - NAME_TTL]
             out.update({s: names[s][0] for s in want if s not in miss and names[s][0] is not None})
         if miss:
-            try:
-                with connect(account_db, readonly=True) as adb:
-                    rows = {}
-                    for i in range(0, len(miss), 500):
-                        chunk = miss[i:i + 500]
-                        rows.update({r['steamid']: (r['name'] or '', bool(r['banned_at'])) for r in adb.execute(
-                            'SELECT steamid, name, banned_at FROM accounts WHERE steamid IN (%s)'
-                            % ','.join('?' * len(chunk)), chunk)})
-            except sqlite3.Error as e:
-                raise Unavailable('the account list cannot be read (%s)' % type(e).__name__)
+            rows = {}
+            for i in range(0, len(miss), 500):
+                chunk = miss[i:i + 500]
+                rows.update({r['steamid']: (r['name'] or '', bool(r['banned_at'])) for r in read_surfd(
+                    'SELECT steamid, name, banned_at FROM accounts WHERE steamid IN (%s)' % ','.join('?' * len(chunk)), chunk)})
             with names_lock:
                 if len(names) > 20000: names.clear()
                 for s in miss:
@@ -459,6 +532,16 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                     '<p class="lede">Uploaded TAS runs, best per player. Times are the file\'s own clock at 66.67 tick.</p>\n%s'
                     % (html.escape(mapname), course(track), runs_table(rows, accts, ranked=True)))
 
+    @app.get(base + '/api/health')
+    def api_health():
+        try:
+            with connect(store) as db: db.execute('SELECT COUNT(*) FROM runs').fetchone()
+            read_surfd('SELECT steamid, name, banned_at FROM accounts LIMIT 1')
+            read_surfd('SELECT map, track, leg, style, millis FROM runs LIMIT 1')
+        except (sqlite3.Error, Unavailable) as e:
+            return jsonify(ok=0, why=str(e) if isinstance(e, Unavailable) else type(e).__name__), 503
+        return jsonify(ok=1, store=1, accounts=1)
+
     @app.get(base + '/api/board')
     def board_api():
         mapname, track = course_args()
@@ -519,6 +602,9 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         got = visible(rid)
         if got is None: return refuse('no such run', 404)
         r = got[0]
+        # 8 MiB a file on the lobbies' uplink: budgeted in bytes, not requests.
+        if limited('recbytes', REC_PEER_BYTES, n=r['size']) or limited('recbytes', REC_ALL_BYTES, who='everyone', n=r['size']):
+            return refuse('Too many downloads; try again in a minute.', 429)
         try: body = rec_path(store, r['sha']).read_bytes()
         except OSError: return refuse('That file is missing.', 404)
         resp = Response(body, mimetype='text/plain')
@@ -608,6 +694,10 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         db.execute('DELETE FROM spend WHERE day < ?', (day - 2,))
         return None
 
+    def unspend(sid, now):
+        with spend_lock, connect(store) as db, writing(db):
+            db.execute('UPDATE spend SET n = MAX(0, n - 1) WHERE who = ? AND day = ?', (sid, int(now // 86400)))
+
     def kept(db, sid, size, now):
         db.execute('UPDATE spend SET bytes = bytes + ? WHERE who = ? AND day = ?', (size, sid, int(now // 86400)))
 
@@ -633,12 +723,14 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         pre = tp.read(text=text, header_only=True)   # the checker's own header reader: one reading of it
         if not pre.has_body: return refuse('The recording has no header (no begin line).', 400)
         if pre.dups: return refuse('The header gives %s twice.' % ', '.join(sorted(pre.dups)), 400)
-        if pre.odd_breaks: return refuse('The file breaks lines with something other than a newline.', 400)
+        if pre.odd_breaks: return refuse('The file has line breaks or spaces other than newline, space and tab.', 400)
         hdr = pre.hdr
         mapname = (hdr.get('map') or '').strip().lower()
         if not MAPNAME.fullmatch(mapname): return refuse('The header names no usable map.', 400)
         track = tp.hdr_int(hdr, 'track', -1) if 'track' in hdr else 0
         if not 0 <= track <= MAX_TRACK: return refuse('The header names no usable track.', 400)
+        if tp.hdr_int(hdr, 'leg') or tp.hdr_int(hdr, 'startseg'):
+            return refuse('This board takes whole courses: a stage leg (leg %s) cannot be uploaded.' % (hdr.get('leg') or '?'), 400)
         if IMPORT_KEYS.intersection(hdr) or (hdr.get('runid') or '').startswith(('mom-', 'ksf-')):
             return refuse('That is an imported run (KSF or Momentum): it is its player\'s, not an upload.', 400)
         rates = []
@@ -653,51 +745,94 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         with connect(store) as db:
             if db.execute('SELECT 1 FROM runs WHERE sha = ?', (sha,)).fetchone():
                 return refuse('That file has already been uploaded.', 409)
-        if not heavy.acquire(timeout=HEAVY_WAIT): return refuse('The checker is busy; try again in a minute.', 503)
+        if not heavy.acquire(timeout=HEAVY_WAIT):
+            unspend(sid, now)   # not the uploader's attempt
+            return refuse('The checker is busy; try again in a minute.', 503)
         try:
             run = tp.read(text=text)
             if run.end is None or not 0 < run.end <= tp.MAX_TICKS or len(run.samples) < 3:
                 res = tp.check(run, None)   # refuses it, saying why
             else:
                 try:
-                    res = tp.check(run, zones_for(zone_dirs, mapname))
+                    zones = zones_for(zone_dirs, mapname)
+                    caps = [x for x in ((zones or {}).get('maxVelocity'), mapcfg_maxvel(map_cfg_dirs, mapname))
+                            if isinstance(x, (int, float)) and x > 0]
+                    res = tp.check(run, zones, maxvel=max(caps) if caps else None)
                 except Exception as e:   # e.g. a zone file with the wrong types: cannot see, so a person looks
                     app.logger.exception('tasplaus failed on an upload for %s', mapname)
                     res = {'verdict': tp.HOLD, 'stats': {}, 'reasons': [
                         {'level': tp.HOLD, 't': None, 'what': 'the checker could not finish (%s)' % type(e).__name__}]}
-            series = motion_series(run) if res['verdict'] != tp.FAIL else None
+            # Only these leave the slot: the parsed samples go before the next upload's check starts.
+            end = run.end
+            if res['verdict'] != tp.FAIL:
+                mask = bytearray()
+                digest, sig = samples_digest(run), zlib.compress(motion_series(run, mask).tobytes())
+            del run
         finally:
             heavy.release()
-        reasons = res['reasons']
-        if len(reasons) > REASONS_MAX:
-            rest = reasons[REASONS_MAX:]
-            reasons = reasons[:REASONS_MAX] + [{'level': tp.FAIL if any(x['level'] == tp.FAIL for x in rest) else tp.HOLD,
-                                                't': None, 'what': '%d more not listed' % len(rest)}]
+        reasons, unlisted = res['reasons'], res.get('unlisted', 0)
+        more = max(0, len(reasons) - REASONS_MAX) + unlisted
+        if more:
+            reasons = reasons[:REASONS_MAX] + [{'level': tp.FAIL if res['verdict'] == tp.FAIL else tp.HOLD,
+                                                't': None, 'what': '%d more not listed' % more}]
         if res['verdict'] == tp.FAIL:
             return refuse('The physics check refused it.', 422, reasons)
-        digest = samples_digest(run)
-        sig = zlib.compress(series.tobytes())
+        series = array('f', zlib.decompress(sig))
         state = 'shown' if res['verdict'] == tp.PASS else 'held'
+        lo, hi = end - max(30, end // 10), end + max(30, end // 10)
+        course_sql = ('SELECT id, steamid, state, sig FROM runs WHERE map = ? AND track = ? AND ticks BETWEEN ? AND ?'
+                      " AND (steamid != ? OR state = 'removed') AND id > ?")
+
+        def copied(db, after):
+            # Another player's motion (any state), or one the owner removed (anyone's): own runs are the
+            # uploader's to improve or re-export.
+            r = db.execute("SELECT id, steamid FROM runs WHERE samples_sha = ? AND (steamid != ? OR state = 'removed')"
+                           ' AND id > ? LIMIT 1', (digest, sid, after)).fetchone()
+            r = r or copy_of(series, mask, db.execute(course_sql, (mapname, track, lo, hi, sid, after)).fetchall())
+            if r is None: return None
+            whose = ' (another player\'s)' if r['steamid'] != sid else ''
+            return refuse('That is the motion of run %d%s, with small changes.' % (r['id'], whose), 409)
+
+        # Compared before the write lock (P1640 review: a long course could hold it past SQLite's
+        # timeout); inside it only the rows added meanwhile.
+        with connect(store) as db:
+            seen = db.execute('SELECT COALESCE(MAX(id), 0) FROM runs').fetchone()[0]
+            gone = copied(db, 0)
+        if gone is not None: return gone
+        record, record_why = None, None
+        if state == 'shown':
+            try: record = course_record(mapname, track)
+            except Unavailable as e: record_why = str(e)
         path = rec_path(store, sha)
         path.parent.mkdir(mode=0o700, exist_ok=True)
         committed = False
         try:
             with connect(store) as db, writing(db):
-                # Inside the write transaction: concurrent uploads cannot both pass a cap.
+                gone = copied(db, seen)
+                if gone is not None: return gone
+                if state == 'shown':
+                    # Without the map's walls a made-up path can pass the physics: a time no one has beaten
+                    # waits for the owner (surfd's record in any tier, or the best upload shown here).
+                    mine = end * TICK * 1000
+                    shown = db.execute("SELECT MIN(ticks) FROM runs WHERE map = ? AND track = ? AND state = 'shown'",
+                                       (mapname, track)).fetchone()[0]
+                    known = [x for x in (record, shown * TICK * 1000 if shown else None) if x]
+                    why = ('the course record could not be read (%s)' % record_why if record_why else
+                           'no other time on this course to compare with: the first upload waits for the owner' if not known else
+                           'faster than every known time on this course (%s): a new record waits for the owner'
+                           % fmt_time(min(known) / 1000) if mine < min(known) - 0.5 else None)
+                    if why:
+                        state = 'held'
+                        reasons = reasons + [{'level': tp.HOLD, 't': None, 'what': why}]
                 if state == 'held' and db.execute("SELECT COUNT(*) FROM runs WHERE steamid = ? AND state = 'held'",
                                                   (sid,)).fetchone()[0] >= HELD_CAP:
                     return refuse('You have %d runs waiting for review; wait for those first.' % HELD_CAP, 429)
                 if db.execute('SELECT COALESCE(SUM(size), 0) FROM runs').fetchone()[0] + len(body) > STORE_CAP:
-                    return refuse('The upload store is full; the owner has been told.', 507)
-                lo, hi = run.end - max(30, run.end // 33), run.end + max(30, run.end // 33)
-                for other in db.execute('SELECT id, steamid, sig FROM runs WHERE map = ? AND track = ? AND ticks BETWEEN ? AND ?',
-                                        (mapname, track, lo, hi)).fetchall():
-                    if same_motion(series, array('f', zlib.decompress(other['sig']))):
-                        return refuse('That is the motion of run %d%s, with small changes.' % (
-                            other['id'], '' if other['steamid'] == sid else ' (another player\'s)'), 409)
+                    app.logger.warning('tasupd store full (%d bytes): uploads refused until runs are removed', STORE_CAP)
+                    return refuse('The upload store is full; try again later.', 507)
                 cur = db.execute('INSERT INTO runs(sha, samples_sha, steamid, map, track, ticks, verdict, state, reasons,'
                                  ' stats, tool, size, uploaded_at, sig) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                                 (sha, digest, sid, mapname, track, run.end, res['verdict'], state,
+                                 (sha, digest, sid, mapname, track, end, res['verdict'], state,
                                   json.dumps(reasons), json.dumps(res['stats']), tool, len(body), now, sig))
                 rid = cur.lastrowid
                 kept(db, sid, len(body), now)
@@ -709,14 +844,17 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                     if tmp.exists(): tmp.unlink()
             committed = True
         except sqlite3.IntegrityError:
-            return refuse('That run has already been uploaded (the same motion, maybe under another header).', 409)
+            return refuse('That file has already been uploaded.', 409)
+        except OSError:
+            app.logger.exception('tasupd could not store an upload')
+            return refuse('The file could not be stored; try again later.', 503)
         finally:
             if not committed and path.exists():
                 # Content-addressed: keep it if a committed row (a concurrent upload of these bytes) names it.
                 with connect(store) as db:
                     if not db.execute('SELECT 1 FROM runs WHERE sha = ?', (sha,)).fetchone(): path.unlink()
         if wants_json():
-            return jsonify(ok=1, id=rid, state=state, verdict=res['verdict'], reasons=reasons, time=round(run.end * TICK, 3))
+            return jsonify(ok=1, id=rid, state=state, verdict=res['verdict'], reasons=reasons, time=round(end * TICK, 3))
         return redirect('%s/run/%d' % (base, rid), 303)
 
     return app
@@ -734,6 +872,8 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.cmd == 'init':
         initialize(a.store); print('initialized', a.store); return 0
+    if not Path(a.store).is_file():
+        print('no store at', a.store); return 1
     with connect(a.store) as db:
         if a.cmd == 'list':
             q = 'SELECT * FROM runs' + ('' if a.state == 'all' else ' WHERE state = ?') + ' ORDER BY id DESC LIMIT ?'

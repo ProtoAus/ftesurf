@@ -51,7 +51,7 @@ def simulate():
             v[2] = 289.99
             jumped = True
         elif not jumped:
-            nh = min(250.0, h + 18.0)
+            nh = min(250.0, max(0.0, h - max(h, 100.0) * 4.0 * RATE) + 18.0)   # friction, then accel
             v[0], v[1] = nh, 0.0
         else:
             # wishdir with v.w = 2: |v'|^2 = |v|^2 + 900 - 4, just under the cap
@@ -140,7 +140,7 @@ class Synthetic(unittest.TestCase):
         rows = self.rows[:k] + [(round(t - RATE, 6), o, [v[0], v[1], v[2] + 800.0 * RATE]) for t, o, v in self.rows[k + 1:]]
         r = verdict(rows, self.fin - 1)
         self.assertEqual(r["verdict"], "HOLD", self.reasons(r))
-        self.assertIn("free-flight position", self.reasons(r))
+        self.assertRegex(self.reasons(r), "free-flight position|off its velocity")
 
     def test_teleport_off_zone(self):
         rows = [(t, [o[0], o[1] + (200 if i >= self.i0 else 0), o[2]], v) for i, (t, o, v) in enumerate(self.rows)]
@@ -166,10 +166,14 @@ class Synthetic(unittest.TestCase):
         r = verdict(rows, self.fin)
         self.assertEqual(r["verdict"], "HOLD", self.reasons(r))
 
-    def test_past_maxvelocity_fails(self):
+    def test_past_maxvelocity_holds(self):
+        # HOLD: the cap the checker was given may be lower than the map's own (cfg/maps sv_maxvelocity).
         rows = [(t, o, list(v)) for t, o, v in self.rows]
         rows[self.i0][2][0] = 3600.0
-        self.assertEqual(verdict(rows, self.fin)["verdict"], "FAIL")
+        r = verdict(rows, self.fin)
+        self.assertEqual(r["verdict"], "HOLD")
+        self.assertIn("past sv_maxvelocity 3500", self.reasons(r))
+        self.assertNotIn("sv_maxvelocity", self.reasons(tp.check(tp.read(text=text(rows, self.fin)), ZONES, maxvel=10000)))
 
     def test_claims_a_faster_finish(self):
         r = verdict(self.rows, self.fin - 10)
@@ -271,8 +275,8 @@ class Hostile(unittest.TestCase):
             self.assertIn(r["verdict"], ("PASS", "HOLD", "FAIL"))
 
 
-class Review1639(unittest.TestCase):
-    """The bypasses P1639's review demonstrated, each now HOLD or FAIL, beside a control that passes."""
+class Review1640(unittest.TestCase):
+    """The bypasses P1640's review demonstrated, each now HOLD or FAIL, beside a control that passes."""
 
     def setUp(self):
         self.rows, self.fin = simulate()
@@ -322,9 +326,22 @@ class Review1639(unittest.TestCase):
         for i, line in enumerate(lines):
             tok = line.split()
             if tok and tp.is_sample(tok[0]):
-                tok[4:7] = ["%de-6" % round(float(x) * 1e6) for x in tok[4:7]]
+                tok[1:7] = ["%de-6" % round(float(x) * 1e6) for x in tok[1:7]]
                 lines[i] = " ".join(tok)
         self.assertHeld(tp.check(tp.read(text="\n".join(lines)), ZONES), "decimals")
+
+    def test_shortest_form_numbers_pass(self):
+        # Python's repr: "0.0" beside "123.456789" loses nothing; the fewest decimals is not the precision.
+        body = text(self.rows, self.fin)
+        lines = body.split("\n")
+        for i, line in enumerate(lines):
+            tok = line.split()
+            if tok and tp.is_sample(tok[0]):
+                tok[1:7] = [repr(round(float(x), 6)) for x in tok[1:7]]
+                lines[i] = " ".join(tok)
+        self.assertTrue(any(" 0.0 " in x for x in lines))
+        r = tp.check(tp.read(text="\n".join(lines)), ZONES)
+        self.assertEqual(r["verdict"], "PASS", self.why(r))
 
     def test_fast_ground_slide_holds(self):
         i0 = self.at(0.0)
@@ -336,7 +353,7 @@ class Review1639(unittest.TestCase):
             o = [o[0] + (v[0] + nv[0]) * 0.5 * RATE, o[1], o[2]]
             t, v = round(t + RATE, 6), nv
             rows.append((t, list(o), list(v)))
-        self.assertHeld(verdict(rows, self.fin), "accelerating past run speed")
+        self.assertHeld(verdict(rows, self.fin), "friction allows")
 
     def test_mid_air_jump_holds(self):
         # At the top of the arc (vz in [-13, 1]), where a jump from the ground looks the same in vz.
@@ -363,7 +380,19 @@ class Review1639(unittest.TestCase):
             for c in range(2):
                 b[1][c] = a[1][c] + (a[2][c] + b[2][c]) * 0.5 * RATE
         r = verdict(self.rows, self.fin, zones=None)
-        self.assertIn("air control cannot change velocity", self.why(r))
+        self.assertIn("air control cannot, and a wall or ramp would have taken speed", self.why(r))
+
+    def test_reasons_past_the_cap_are_counted(self):
+        for j in range(self.at(0.6), len(self.rows), 2):
+            self.rows[j][1][0] += 10.0            # every other sample 10 u off: a reason or two a tick
+        full = verdict(self.rows, self.fin)
+        self.assertGreater(len(full["reasons"]), 6)
+        keep, tp.REASON_KEEP = tp.REASON_KEEP, 5
+        try: capped = verdict(self.rows, self.fin)
+        finally: tp.REASON_KEEP = keep
+        self.assertEqual(len(capped["reasons"]), 5)
+        self.assertEqual(capped["unlisted"], len(full["reasons"]) - 5)
+        self.assertEqual(capped["verdict"], full["verdict"])
 
     def test_finish_claimed_early_holds(self):
         # 16 u of hull reaches the zone first: at this run's ~330 u/s that is 3 ticks, so 5 is a false claim.
@@ -405,11 +434,177 @@ class Review1639(unittest.TestCase):
         z = json.loads(json.dumps(ZONES))
         z["tracks"]["main"]["zones"]["segments"][0]["limitStartGroundSpeed"] = False
         self.assertEqual(verdict(self.rows, self.fin, zones=z)["verdict"], "PASS")   # opens at rest
-        rows = [(t, o, [v[0] + 900.0, v[1], v[2]]) if j == 0 else (t, o, v) for j, (t, o, v) in enumerate(self.rows)]
+        rows = [(t, o, [v[0] + 1600.0, v[1], v[2]]) if j == 0 else (t, o, v) for j, (t, o, v) in enumerate(self.rows)]
         self.assertHeld(verdict(rows, self.fin, zones=z), "opens already moving")
         i0 = self.at(0.0)
         rows = [(t, o, [v[0], v[1], -500.0]) if j == i0 else (t, o, v) for j, (t, o, v) in enumerate(self.rows)]
         self.assertIn("counting vertical speed", self.why(verdict(rows, self.fin)))
+
+
+class Review1640Round2(unittest.TestCase):
+    """Round 2: each bypass or false hold the second review demonstrated, beside its control."""
+    setUp, why, assertHeld, at = Review1640.setUp, Review1640.why, Review1640.assertHeld, Review1640.at
+
+    def refly_from(self, k):
+        for j in range(k + 1, len(self.rows)):   # positions follow the velocities the mover would use
+            a, b = self.rows[j - 1], self.rows[j]
+            for c in range(3):
+                b[1][c] = a[1][c] + b[2][c] * RATE if c < 2 else a[1][c] + (a[2][c] + b[2][c]) * 0.5 * RATE
+
+    def test_skating_without_friction_holds(self):
+        i0 = self.at(-0.3)
+        rows = self.rows[:i0]
+        t, o, v = rows[-1]
+        o, h = list(o), math.hypot(v[0], v[1])
+        while t < 1.3:
+            h = math.sqrt(h * h + 3000.0)          # inside 2AW - A^2, but never losing 6% to friction
+            o = [o[0] + h * RATE, o[1], o[2]]
+            t = round(t + RATE, 6)
+            rows.append((t, list(o), [h, 0.0, 0.0]))
+        self.assertHeld(verdict(rows, self.fin), "friction allows")
+
+    def test_jump_from_an_arc_top_holds(self):
+        k = next(i for i, r in enumerate(self.rows) if r[0] > 0 and 0 < r[2][2] <= 12.5) + 1
+        self.rows[k][2][2] = 0.0                    # exactly 0 at the top, after a rising sample
+        dz = 289.99
+        for j in range(k + 1, len(self.rows)):
+            self.rows[j][2][2] += dz
+        self.refly_from(k)
+        r = verdict(self.rows, self.fin)
+        self.assertEqual(r["stats"]["jumps"], 1, self.why(r))   # only the real one from the ground
+        self.assertEqual(r["verdict"], "HOLD")
+
+    def test_drifting_positions_hold(self):
+        k = self.at(0.2)
+        for j in range(k, len(self.rows)):
+            self.rows[j][1][0] += 1.0 * (j - k)    # 1 u a tick further along than the velocity says
+        self.assertHeld(verdict(self.rows, self.fin), "drift")
+
+    def test_contact_turn_keeping_speed_holds(self):
+        k = self.at(0.6)
+        for j in range(k, len(self.rows)):
+            t, o, v = self.rows[j]
+            self.rows[j] = (t, o, [-v[1], v[0], v[2] + (0.5 if j == k else 0.0)])   # 90 deg, vz off gravity
+        self.refly_from(k)
+        self.assertHeld(verdict(self.rows, self.fin, zones=None), "a wall or ramp would have taken speed")
+
+    def test_a_wall_touch_passes(self):
+        # A wall stops the sideways part: vy goes to 0, vz stays on gravity, speed drops to |vx|.
+        k = next(i for i, r in enumerate(self.rows) if r[0] > 0.6 and abs(r[2][1]) > 60)
+        for j in range(k, len(self.rows)):
+            self.rows[j][2][1] = 0.0
+        self.refly_from(k)
+        r = verdict(self.rows, self.fin, zones=None)
+        self.assertNotIn("air control cannot", self.why(r))
+        self.assertNotIn("free-flight position", self.why(r))
+
+    def test_starting_high_in_the_start_box_holds(self):
+        z = json.loads(json.dumps(ZONES))
+        reg = z["tracks"]["main"]["zones"]["segments"][0]["checkpoints"][0]["regions"][0]
+        reg["bottom"], reg["height"] = reg["bottom"] - 300.0, reg["height"] + 300.0
+        self.assertHeld(verdict(self.rows, self.fin, zones=z), "above the start zone's floor")
+        self.assertEqual(verdict(self.rows, self.fin)["verdict"], "PASS")
+
+    def test_pre_start_turns_are_not_judged(self):
+        k = self.at(-0.06)                          # in the air before t=0: a 60 deg turn at the same speed
+        ca, sa = math.cos(math.radians(60)), math.sin(math.radians(60))
+        for j in range(k, len(self.rows)):
+            t, o, v = self.rows[j]
+            self.rows[j] = (t, o, [v[0] * ca - v[1] * sa, v[0] * sa + v[1] * ca, v[2]])
+        self.refly_from(k)
+        self.assertNotIn("air control", self.why(verdict(self.rows, self.fin)))
+
+    def air(self, v0, turn, ticks=140, wall_at=None):
+        """Free flight from t=-0.3 as the mover does it: accelerate, then move on the new velocity."""
+        o, v, rows, t = [0.0, 0.0, 2000.0], list(v0), [], -0.3
+        for n in range(ticks):
+            rows.append((round(t, 6), list(o), list(v)))
+            vo = list(v)
+            if wall_at is not None and n == wall_at:
+                v[1] = 0.0                          # a wall takes the sideways part
+            elif turn:
+                h = math.hypot(v[0], v[1]); a = math.atan2(v[1], v[0]) + turn / h
+                v[0], v[1] = h * math.cos(a), h * math.sin(a)
+            v[2] -= tp.GRAVITY * RATE
+            o = [o[0] + v[0] * RATE, o[1] + v[1] * RATE, o[2] + (vo[2] + v[2]) * 0.5 * RATE]
+            t += RATE
+        return rows
+
+    def test_a_long_fast_arc_does_not_drift(self):
+        # 3000 u/s turning 59 u/s a tick: the mean of old and new velocity misses 0.44 u a tick in one
+        # direction, 27 u a second; the mover's own (post-accel) velocity misses nothing.
+        r = verdict(self.air([3000.0, 0.0, 0.0], 59.0), 115, zones=None)   # 1.7 s: whole seconds to sum
+        self.assertNotIn("drift", self.why(r))
+        self.assertNotIn("air control", self.why(r))
+
+    def test_a_wall_hit_early_in_the_tick_passes(self):
+        # vy 450 -> 0 at the wall, the body moving on the new velocity: 3.4 u off the mean velocities.
+        r = verdict(self.air([600.0, 450.0, 0.0], 0.0, wall_at=60), 60, zones=None)
+        self.assertNotIn("free-flight position", self.why(r))
+        self.assertNotIn("air control", self.why(r))
+
+    def ground_run(self, step_at=None, step=5.0):
+        """Prestrafe on the ground past t=0, a step up at step_at, jump at t=0.3, then simulate's strafe."""
+        o, v, rows, t, jumped = [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [], -0.6, False
+        while t < 1.6:
+            rows.append((round(t, 6), list(o), list(v)))
+            vo, h = list(v), math.hypot(v[0], v[1])
+            if not jumped and t >= 0.3:
+                v[2], jumped = 289.99, True
+            elif not jumped:
+                v[0] = min(250.0, max(0.0, h - max(h, 100.0) * 4.0 * RATE) + 18.0)
+            else:
+                v[2] -= tp.GRAVITY * RATE
+            o = [o[c] + (vo[c] + v[c]) * 0.5 * RATE if jumped else o[c] + v[c] * RATE for c in range(3)]
+            if step_at is not None and abs(t - step_at) < RATE / 2:
+                o[2] += step
+            t += RATE
+        return rows
+
+    def test_a_ground_step_after_the_start_passes(self):
+        r = verdict(self.ground_run(step_at=0.12), 90, zones=None)
+        self.assertNotIn("off its velocity", self.why(r))
+
+    def test_duck_shifts_reset_on_the_ground(self):
+        # Three hops, each ducking in the air (+8.5 u) and landing; standing up on the ground shifts nothing.
+        o, vx, rows, t, g = [0.0, 0.0, 0.0], 250.0, [], 0.0, tp.GRAVITY * RATE
+        for hop in range(3):
+            for _ in range(3):                      # on the ground
+                rows.append((round(t, 6), list(o), [vx, 0.0, 0.0])); o[0] += vx * RATE; t += RATE
+            vz = 289.99
+            for n in range(46):
+                rows.append((round(t, 6), list(o), [vx, 0.0, vz]))
+                o[0] += vx * RATE; o[2] += (vz + vz - g) * 0.5 * RATE + (8.5 if n == 10 else 0.0)
+                vz -= g; t += RATE
+            o[2] -= (vz + g + vz) * 0.5 * RATE - (vz + g) * 0.5 * RATE   # the landing tick ends at vz 0
+        r = verdict(rows, round(t / RATE) - 5, zones=None)
+        self.assertEqual(r["stats"]["duck_shifts"], 3, self.why(r))
+        self.assertEqual(r["stats"]["teleports"], 0, self.why(r))
+        self.assertNotIn("duck shifts add up", self.why(r))
+
+    def test_strafing_on_the_jump_tick_passes(self):
+        k = next(i for i, r in enumerate(self.rows) if r[2][2] > 250)
+        for j in range(k, len(self.rows)):
+            self.rows[j][2][0] += 25.0              # air control on the jump tick: up to 30
+        self.refly_from(k)
+        self.assertNotIn("jump tick", self.why(verdict(self.rows, self.fin)))
+
+    def test_the_end_counts_from_the_start(self):
+        z = json.loads(json.dumps(ZONES))
+        x0 = self.rows[0][1][0]
+        z["tracks"]["main"]["zones"]["end"]["regions"][0] = box(x0 - 8, x0 + 8, -500, 500, -2000, 4000)
+        self.assertIn("never reaches end", self.why(verdict(self.rows, self.fin, zones=z)))
+
+    def test_short_sample_lines_are_named(self):
+        body = "\n".join(" ".join(l.split()[:9]) if l and tp.is_sample(l.split()[0]) else l
+                         for l in text(self.rows, self.fin).split("\n"))
+        r = tp.check(tp.read(text=body), ZONES)
+        self.assertEqual(r["verdict"], "FAIL")
+        self.assertIn("fewer than the 14 columns", self.why(r))
+
+    def test_unicode_spaces_fail(self):
+        body = text(self.rows, self.fin).replace("track 0\n", "track\xa00\n")
+        self.assertEqual(tp.check(tp.read(text=body), ZONES)["verdict"], "FAIL")
 
 
 @unittest.skipUnless(os.environ.get("TASPLAUS_CORPUS"), "set TASPLAUS_CORPUS (+ TASPLAUS_ZONES) to real .rec files")
