@@ -147,6 +147,24 @@ def crown(match, note):
     return note + ' %s wins!' % left[0]['name']
 
 
+def launched(match):
+    # Party rooms set menu_started at the host's Start; a server-hosted match launches when its map arrives.
+    return (bool(match.get('menu_started') or match.get('_arrived')) or
+            match['phase'] not in ('lobby', 'draft', 'loading'))
+
+
+def to_lobby(match, note):
+    """Pre-launch roster change: the draft is cleared, remaining accepts stay."""
+    # ruleset_id/_pins stay until the next lock: sv_tournament.qc holds a match whose ruleset changes outside lobby.
+    match.update(phase='lobby', maps=[], schedule=[], reserve='', turn_who='', turn_kind='',
+                 round_index=0, generation=0, round_total=0, current_map='', note=note,
+                 _order=[], _turn=0, _arrived=0, _zonegen=0, _rate=0)
+    for p in match['players']:
+        p.update(ready=0, best_ticks=0, tickrate=0)
+        if 'menu_ready' in p:
+            p['menu_ready'] = 0
+
+
 def require_current_settings(match):
     # Do not invent settings, pins or renewed consent for persisted Alpha state.
     # State/leave/cancel/abort/restoration-gated release stay available.
@@ -200,9 +218,11 @@ def transition(original, op, actor, display, data, pool=()):
                     'spectator roster full')
             m['players'].append(player(actor, display))
     elif op == 'seat':
-        require(phase == 'lobby', 'roster frozen')
+        # Before launch the host may still unseat a competitor; the draft then starts over.
+        require(phase == 'lobby' or (phase in ('draft', 'loading') and not launched(m)), 'roster frozen')
         target = next((p for p in m['players'] if p['who'] == data.get('target')), None)
         require(target is not None, 'target must enter first')
+        require(phase == 'lobby' or target['role'] == 'player', 'roster frozen')
         if target['role'] != 'player':
             require(len(competitors(m)) < m['capacity'], 'seats full')
             target['role'] = 'player'
@@ -210,9 +230,11 @@ def transition(original, op, actor, display, data, pool=()):
             require(sum(p['role'] == 'spectator' for p in m['players']) < 64,
                     'spectator roster full')
             target['role'] = 'spectator'
-        for p in competitors(m):
-            p['accepted'] = 0
+        # Only the moved player's consent is cleared; the others accepted their own seats.
         target['accepted'] = 0
+        if phase != 'lobby':
+            to_lobby(m, '%s was moved to spectators: back to the lobby. The host can start the draft again.'
+                     % target['name'])
     elif op == 'accept':
         require(phase == 'lobby' and me is not None and me['role'] == 'player', 'no open seat')
         me['accepted'] = 1
@@ -369,8 +391,18 @@ def transition(original, op, actor, display, data, pool=()):
             if actor == m['host'] and phase == 'lobby':
                 m.update(phase='cancelled', note='Host left the lobby.')
         elif me['role'] == 'player' and phase not in TERMINAL:
-            m.update(phase='aborted', outcome='no-contest',
-                     note='No contest: competitor withdrawal after lock; alpha withdrawal replay unavailable.')
+            if not launched(m):
+                m['players'].remove(me)
+                if actor == m['host']:
+                    m.update(phase='cancelled', note='Host left the lobby.')
+                else:
+                    to_lobby(m, '%s left: back to the lobby. The host can start the draft again.' % me['name'])
+            elif len(competitors(m)) > 1:
+                # Forfeit, host included: last place among those still in (autostart replaces host Start).
+                me.update(role='eliminated', place=len(competitors(m)))
+                m['note'] = crown(m, '%s left the tournament.' % me['name'])
+                if len(competitors(m)) == 1:
+                    m['phase'] = 'finished'
     elif op == 'cancel':
         require(not m['_started'] and phase not in TERMINAL, 'cannot cancel after first GO')
         m.update(phase='cancelled', note='Host cancelled before first GO.')

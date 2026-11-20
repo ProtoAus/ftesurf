@@ -176,14 +176,71 @@ class Rules(unittest.TestCase):
         self.assertNotIn(loaded['reserve'], loaded['schedule'])
         self.assertEqual(len(set(loaded['schedule'] + [loaded['reserve']])), 3)
 
-    def test_roster_change_invalidates_consent_and_pool_is_exactly_3n(self):
+    def test_seat_p1650_clears_only_the_moved_players_consent_and_pool_is_exactly_3n(self):
         m = self.lobby(2)
         self.assertTrue(all(p['accepted'] for p in R.competitors(m)))
         m = R.transition(m, 'enter', 'new', 'New', {})
         m = R.transition(m, 'seat', 'host', '', dict(target='new'))
-        self.assertTrue(all(not p['accepted'] for p in R.competitors(m)))
+        self.assertEqual({p['who']: p['accepted'] for p in m['players']}, dict(host=1, p1=1, new=0))
+        m = R.transition(m, 'seat', 'host', '', dict(target='p1'))
+        self.assertEqual({p['who']: (p['role'], p['accepted']) for p in m['players']},
+                         dict(host=('player', 1), p1=('spectator', 0), new=('player', 0)))
         drafted = R.transition(self.lobby(2), 'lock', 'host', '', {}, POOL)
         self.assertEqual(len(drafted['maps']), 6)
+
+    def test_leave_p1650_before_launch_returns_to_lobby(self):
+        m = R.transition(self.lobby(3), 'lock', 'host', '', {}, POOL)
+        m = R.transition(m, 'ban', m['turn_who'], '', dict(map=m['maps'][0]['name']))
+        left = R.transition(m, 'leave', 'p1', '', {})
+        self.assertEqual((left['phase'], [p['who'] for p in left['players']]), ('lobby', ['host', 'p2']))
+        self.assertTrue(all(p['accepted'] for p in left['players']))
+        for key, empty in (('maps', []), ('schedule', []), ('reserve', ''), ('turn_who', ''), ('turn_kind', ''),
+                           ('_order', []), ('_turn', 0), ('round_index', 0), ('generation', 0),
+                           ('round_total', 0), ('current_map', '')):
+            self.assertEqual(left[key], empty, key)
+        self.assertEqual(left['note'], 'p1 left: back to the lobby. The host can start the draft again.')
+        # The live server QC holds a match whose ruleset changes outside lobby, so it waits for the next lock.
+        self.assertEqual(left['ruleset_id'], m['ruleset_id'])
+        self.assertEqual(R.transition(left, 'lock', 'host', '', {}, POOL)['phase'], 'draft')
+        # A server-hosted match still loading its first map has not launched either.
+        self.assertEqual(R.transition(self.drafted(3), 'leave', 'p2', '', {})['phase'], 'lobby')
+        self.assertEqual(R.transition(m, 'leave', 'host', '', {})['phase'], 'cancelled')
+
+    def test_leave_p1650_after_launch_forfeits_and_play_continues(self):
+        m = self.drafted(3)
+        m['menu_started'] = 1
+        m = R.transition(m, 'leave', 'p1', '', {})
+        self.assertEqual((m['phase'], self.roles(m)['p1'], m['note']), ('loading', ('eliminated', 3), 'p1 left the tournament.'))
+        # The leaver neither readies nor blocks Start.
+        m = self.play(m)
+        self.assertEqual(m['phase'], 'live')
+        m = R.transition(m, 'leave', 'host', '', {})
+        self.assertEqual((m['phase'], m['outcome']), ('finished', 'winner'))
+        self.assertEqual(self.roles(m), dict(host=('eliminated', 2), p1=('eliminated', 3), p2=('player', 1)))
+        self.assertEqual(m['note'], 'Host left the tournament. p2 wins!')
+        live = R.transition(self.live(3), 'leave', 'p2', '', {})
+        self.assertEqual((live['phase'], self.roles(live)['p2']), ('live', ('eliminated', 3)))
+        # A decided winner leaving the results screen keeps the result.
+        won = self.settle(self.live(2), [('host', 100), ('p1', 200)])
+        self.assertEqual(self.roles(R.transition(won, 'leave', 'host', '', {})), self.roles(won))
+
+    def test_unseat_p1650_in_draft_or_ready_check_returns_to_lobby(self):
+        m = R.transition(R.transition(self.lobby(3), 'enter', 'x', 'X', {}), 'lock', 'host', '', {}, POOL)
+        out = R.transition(m, 'seat', 'host', '', dict(target='p2'))
+        self.assertEqual((out['phase'], out['maps'], self.roles(out)['p2'][0]), ('lobby', [], 'spectator'))
+        self.assertEqual({p['who']: p['accepted'] for p in out['players']}, dict(host=1, p1=1, p2=0, x=0))
+        self.assertEqual(out['note'], 'p2 was moved to spectators: back to the lobby. The host can start the draft again.')
+        for actor, target in (('host', 'x'), ('p1', 'p2')):
+            with self.assertRaisesRegex(R.Refusal, 'roster frozen|host only'):
+                R.transition(m, 'seat', actor, '', dict(target=target))
+        self.assertEqual(R.transition(self.drafted(3), 'seat', 'host', '', dict(target='p1'))['phase'], 'lobby')
+        started = self.drafted(3)
+        started['menu_started'] = 1
+        with self.assertRaisesRegex(R.Refusal, 'roster frozen'):
+            R.transition(started, 'seat', 'host', '', dict(target='p1'))
+        arrived = R.transition(self.drafted(3), 'arrive', '', '', observation(self.drafted(3)))
+        with self.assertRaisesRegex(R.Refusal, 'roster frozen'):
+            R.transition(arrived, 'seat', 'host', '', dict(observation(arrived), target='p1'))
 
     def test_readiness_arrival_generation_and_countdown(self):
         m = self.drafted(2)
@@ -297,7 +354,7 @@ class Rules(unittest.TestCase):
         m.update(round_index=8, generation=8)
         self.assertEqual(R.observe(m, observation(m), latched=False), 1)
 
-    def test_unique_slowest_winner_and_withdrawal(self):
+    def test_unique_slowest_winner(self):
         m = self.live(2)
         m = self.score(m, 'host', 100)
         m = self.score(m, 'p1', 200)
@@ -308,10 +365,6 @@ class Rules(unittest.TestCase):
         with self.assertRaises(R.Refusal):
             R.transition(m, 'release', '', '', {})
         self.assertEqual(R.transition(m, 'release', '', '', dict(restored='1'))['phase'], 'finished')
-        live = self.live()
-        left = R.transition(live, 'leave', 'p1', '', {})
-        self.assertEqual((left['phase'], left['outcome']), ('aborted', 'no-contest'))
-        self.assertTrue(all(p['place'] == 0 for p in left['players']))
 
     def test_configure_host_freeze_capacity_and_consent_invalidation(self):
         m = self.lobby(3)
@@ -576,6 +629,19 @@ class API(unittest.TestCase):
         self.assertEqual(m['phase'], 'finished')
         act('release', restored=1)
         self.assertFalse(T.reserved(self.db, 'n1'))
+
+    def test_leave_p1650_after_arrival_forfeits_through_game_endpoint(self):
+        m = self.create()
+        for op, i, fields in (('enter',1,{}), ('seat',0,dict(target=self.whos[1])), ('accept',0,{}), ('accept',1,{}), ('lock',0,{})):
+            m = self.action(m, op, i, **fields)['match']
+        while m['phase'] == 'draft':
+            m = self.action(m, m['turn_kind'], self.whos.index(m['turn_who']), map=next(c['name'] for c in m['maps'] if c['status']=='pool'))['match']
+        m = self.action(m, 'arrive')['match']
+        out = self.action(m, 'leave', 1)
+        self.assertEqual(out['ok'], 1, out)
+        self.assertEqual((out['match']['phase'], out['match']['outcome']), ('finished', 'winner'))
+        self.assertEqual([(p['role'], p['place']) for p in out['match']['players']], [('player', 1), ('eliminated', 2)])
+        self.assertTrue(T.reserved(self.db, 'n1'))
 
     def test_disable_live_abort_restore_release_and_second_creation(self):
         m = self.create()

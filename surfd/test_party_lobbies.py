@@ -217,6 +217,44 @@ class PartyAPI(unittest.TestCase):
         self.now += P.ONLINE_TTL+1
         self.assertEqual(self.send(self.form('start', 0, m))['ok'], 0)
 
+    def locked(self):
+        m = self.act('create')['party']
+        m = self.act('join', 1, m)['party']
+        m = self.act('join', 2, m)['party']
+        m = self.act('seat', 0, m, target=self.whos[1], value=1)['party']
+        m = self.act('accept', 0, m)['party']
+        m = self.act('accept', 1, m)['party']
+        return self.act('lock', 0, m)['party']
+
+    def test_p1650_leave_in_draft_or_ready_check_returns_room_to_lobby(self):
+        m = self.locked()
+        name = m['players'][1]['name']
+        out = self.act('leave', 1, m)['party']
+        self.assertEqual((out['phase'], out['menu_phase'], out['maps'], out['schedule']), ('lobby', 'waiting', [], []))
+        self.assertEqual([(p['who'], p['accepted']) for p in out['players']], [(self.whos[0], 1), (self.whos[2], 0)])
+        self.assertEqual(out['note'], '%s left: back to the lobby. The host can start the draft again.' % name)
+        self.assertIsNone(self.act('state', 1)['party'])
+        self.act('cancel', 0, out)
+        m = self.ready()
+        out = self.act('leave', 1, m)['party']
+        self.assertEqual((out['phase'], out['menu_phase'], out['round_index']), ('lobby', 'waiting', 0))
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM tournament_matches').fetchone()[0], 0)
+
+    def test_p1650_host_unseats_in_draft_and_ready_check(self):
+        m = self.locked()
+        # A spectator cannot be seated mid-draft.
+        self.assertEqual(self.send(self.form('seat', 0, m, target=self.whos[2], value=1))['ok'], 0)
+        out = self.act('seat', 0, m, target=self.whos[1], value=0)['party']
+        self.assertEqual((out['phase'], out['menu_phase'], out['maps']), ('lobby', 'waiting', []))
+        self.assertEqual([(p['role'], p['accepted']) for p in out['players']], [('player', 1), ('spectator', 0), ('spectator', 0)])
+        self.assertEqual(self.act('state', 1)['party']['id'], m['id'])
+        self.act('cancel', 0, out)
+        m = self.ready()
+        out = self.act('seat', 0, m, target=self.whos[1], value=0)['party']
+        self.assertEqual((out['phase'], out['menu_phase']), ('lobby', 'waiting'))
+        self.assertTrue(all(p.get('menu_ready', 0) == 0 for p in out['players']))
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM tournament_matches').fetchone()[0], 0)
+
     def test_host_kick_removes_and_bars_rejoin(self):
         m = self.act('create')['party']
         m = self.act('join', 1, m)['party']

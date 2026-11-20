@@ -305,7 +305,9 @@ def register(app, d):
                             db.execute('INSERT INTO tournament_reservations VALUES(?,?)', (m['node'], m['id']))
                         elif op == 'seat':
                             target = next((p for p in m['players'] if p['who'] == data['target']), None)
-                            rules.require(target is not None and who == m['host'] and m['phase'] == 'lobby', 'host seat in waiting room only')
+                            # Unseating also works in the draft and ready check (rules.transition returns to the lobby).
+                            rules.require(target is not None and who == m['host'] and m['phase'] in ('lobby', 'draft', 'loading'),
+                                          'host seat in waiting room only')
                             if (target['role'] == 'player') != (data['value'] == '1'):
                                 m = rules.transition(m, 'seat', who, name, data)
                             else:
