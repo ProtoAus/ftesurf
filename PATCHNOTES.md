@@ -21,6 +21,9 @@
 
 ## next
 
+### P1662 Breathing room for console suggestions
+- The console's suggestion list sits a little below the line you type in, with its text inset from the box edges and lined up with what you typed. con_completion_padding sets the room; 0 is the old list.
+
 ### P1653 Faster Story and Event screens
 - The Story and Event screens draw about four times faster, and screens that look up maps by name (Story, lobbies, tournaments) no longer search the whole map list each time.
 
