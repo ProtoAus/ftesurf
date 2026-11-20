@@ -824,20 +824,60 @@ void() Sty_Esc =
 	menu_screen = SCREEN_MAIN;
 };
 
-// Counts are lobby occupants on maps in this ladder, not medal holders.
+/*
+  P1653: which lobbies are on this ladder's maps, worked out once per lobby list and ladder.
+
+  Sty_LivePlayers used to find that out on every call by comparing each lobby's map with
+  every level -- 12 lobbies x 120 levels, three builtins a pair -- and it is called for
+  the header, the side panel and every visible row, every frame: about 50,000 builtin
+  calls a frame, ~5 ms of the Story and Event screens' 6.5-8 (rows off: 1.7). The answer
+  changes only when a new lobby list or a new ladder arrives, so it is kept per lobby
+  and rebuilt then.
+*/
+float sty_lvc_valid, sty_lvc_L, sty_lvc_recv, sty_lvc_lad, sty_lvc_n, sty_lvc_nlv;
+float sty_lvc_in[LB_MAX];
+void(float L) Sty_LiveIndex =
+{
+	local float i, k, n;
+	n = min(Lob_Count(), LB_MAX);
+	if (sty_lvc_valid && sty_lvc_L == L && sty_lvc_recv == lb_received && sty_lvc_lad == sty_lrecv &&
+	    sty_lvc_n == n && sty_lvc_nlv == sty_nlv[L])
+		return;
+	sty_lvc_valid = TRUE;
+	sty_lvc_L = L;
+	sty_lvc_recv = lb_received;
+	sty_lvc_lad = sty_lrecv;
+	sty_lvc_n = n;
+	sty_lvc_nlv = sty_nlv[L];
+	for (i = 0; i < n; i = i + 1)
+	{
+		sty_lvc_in[i] = FALSE;
+		for (k = 0; k < sty_nlv[L]; k = k + 1)
+			if (!strcasecmp(Lob_Map(i), bufstr_get(sty_lvmap[L], k)))
+			{
+				sty_lvc_in[i] = TRUE;
+				break;
+			}
+	}
+};
+
+// Counts are lobby occupants on maps in this ladder, not medal holders. `map`, when set,
+// is one of the ladder's own levels (every caller passes one), so its lobbies are the
+// ladder lobbies on that map.
 float(float L, string map) Sty_LivePlayers =
 {
-	local float i, k, found, total;
+	local float i, n, total;
 	if (!Sty_Online() || !Lob_Fresh()) return -1;
+	Sty_LiveIndex(L);
+	n = min(Lob_Count(), LB_MAX);
 	total = 0;
-	for (i = 0; i < Lob_Count(); i = i + 1)
+	for (i = 0; i < n; i = i + 1)
 	{
+		if (!sty_lvc_in[i]) continue;
+		if (map != "")
+			if (strcasecmp(map, Lob_Map(i))) continue;
 		if (!Lob_Live(i)) continue;
-		found = FALSE;
-		for (k = 0; k < sty_nlv[L]; k = k + 1)
-			if (!strcasecmp(Lob_Map(i), bufstr_get(sty_lvmap[L], k))) found = TRUE;
-		if (map != "" && strcasecmp(map, Lob_Map(i))) found = FALSE;
-		if (found) total = total + max(0, Lob_Players(i));
+		total = total + max(0, Lob_Players(i));
 	}
 	return total;
 };
