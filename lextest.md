@@ -1,5 +1,11 @@
 # lextest.md — things waiting on a human
 
+## P1668 -- run graphs on Linux for players (worldofsurf-75, 21 Nov)
+- A Linux player on 0.1.52 or older: start the launcher (it updates to 0.1.53), play once (the game replaces the
+  launcher with 0.1.7: console "update: launcher updated WOS-Launcher"), quit, start the launcher again: it fetches
+  fteplug_ui_imgui_amd64.so; the run graphs then draw with the plotting plugin as on Windows.
+- A fresh Linux download of 0.1.53 has the plugin and launcher 0.1.7 straight away. Windows: unchanged.
+
 ## 0.1.52 release -- PUBLISHED 21 Nov 13:52Z (record: tools/release-0.1.52.md); owner check PENDING
 - P1666 + P1667 only. Your friend: update through the launcher (or the archive) and start normally; the Wayland crash is
   gone (until then: `env -u WAYLAND_DISPLAY ./ftesurf.sh`). Production check passed: the 0.1.52 game replaced a stale

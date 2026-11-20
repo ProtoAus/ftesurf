@@ -21,6 +21,9 @@
 
 ## next
 
+### P1668 Run graphs on Linux
+- Linux: the run graphs now come with the game. The game fetches an updated launcher by itself, and that launcher installs the graph plugin; nothing to download by hand.
+
 ## 0.1.52 2026-11-21
 
 ### P1667 Linux: the game starts on newer Wayland desktops
