@@ -564,6 +564,8 @@ float  run_t_rearmhop;
   is no more than a clean walk-out start's.  0 is Patch 445's rule (`!r` only).
 */
 float  run_t_rearmspeed;
+// P1643: run_startrest, cached per map.  1 = the rest rule and the placement latch; 0 = before 1643.
+float  run_t_startrest;
 
 /*
   Bhop starts on the initial jump, not at the edge of the start box.
@@ -1647,6 +1649,18 @@ float() SV_RecEnabled =
 // Patch 885: this attempt stood in the box for the dwell while ARMED, so its speed is a
 // standing start's; only then is a hop outside the box left alone.  Cleared by SV_TimerArm.
 .float  run_t_boxrest;
+// P1643: this arm has seen the body at rest -- the server or a map teleport put it there,
+// or it was on the ground under run_rearmspeed.  A full or bonus run that leaves the box
+// without it is practice (SV_StartUnrested).  Cleared by SV_TimerArm.
+.float  run_t_rested;
+// P1643: noclip or setpos since the last restart placement or rest in a start box.
+// SV_TimerArm keeps the attempt dirty while it stands; an arm alone no longer clears it.
+.float  run_t_placed;
+// P1643: the body was at rest before this packet moved it: PlayerPreThink saw it slow on the ground, or the
+// server placed it (a spawn, a restart) since the last timer frame.  A hold runs no timer frame, so a body
+// placed and then held (the tournament countdown) still has it on the packet that lets it go.
+.float  run_t_prerest;
+.float  run_t_restnow;          // run_t_prerest as SV_TimerFrame found it, for this packet's arm
 /*
   Jumps since the arm.  DIAGNOSTIC ONLY -- the rule is the dwell, not the count -- but
   "how many jumps did it think I took" is the first question anyone asks of a rule that
@@ -12667,6 +12681,53 @@ float(entity e) SV_TimerRearmRest =
 	return TRUE;
 };
 
+// P1643: on the ground, not rising, its own horizontal speed under run_rearmspeed (289 is the
+// prestrafe ceiling).  The carrier is left out: a start pad under a standing body is the map's.
+float(entity e) SV_TimerSlowGround =
+{
+	local vector hv;
+	local float cap;
+
+	if (e.run_pmhold || e.rec_sl_hold || e.rec_gh_on || e.movetype != MOVETYPE_WALK)
+		return FALSE;
+	if (!(e.flags & FL_ONGROUND) || e.velocity_z > 0)
+		return FALSE;
+	hv = e.velocity;
+	hv_z = 0;
+	cap = run_t_rearmspeed;
+	if (cap <= 0)
+		cap = 290;
+	return vlen(hv) < cap;
+};
+
+// P1643: would leaving the box now be an unrested start?  Full and bonus runs only: a bhop-mode
+// map starts on a grounded jump, and a stage box keeps Lex's 21 Sep rule (run_stagecap 0).
+float(entity e) SV_StartUnrested =
+{
+	if (!run_t_startrest || run_t_bhopjump)
+		return FALSE;
+	if (e.run_t_armzone < 0 || e.run_t_armzone >= zone_count)
+		return FALSE;
+	if (zone_type[e.run_t_armzone] != ZONE_START)
+		return FALSE;
+	return !e.run_t_rested;
+};
+
+// P1643: an arm of a body that was at rest when this packet began keeps that only if the packet did not
+// make it fast -- a jump's rise is fine, a walk off a ledge into a long fall is not.
+float(entity e) SV_TimerArriveSlow =
+{
+	local vector hv;
+	local float cap;
+
+	cap = run_t_rearmspeed;
+	if (cap <= 0)
+		cap = 290;
+	hv = e.velocity;
+	hv_z = 0;
+	return (vlen(hv) < cap) && (e.velocity_z > -cap);
+};
+
 float(entity e) SV_TimerJumpWatch =
 {
 	local float ong, vz, jumped, dwell, want, settleok, launchz, bhopz;
@@ -12694,6 +12755,11 @@ float(entity e) SV_TimerJumpWatch =
 	if (e.run_t_state == TS_ARMED)
 	if (dwell >= want)
 		e.run_t_boxrest = TRUE;
+	// P1643: no dwell -- a body this slow on the ground holds no more than a walk-out start.
+	if (e.run_t_state == TS_ARMED)
+	if (!e.run_t_rested)
+	if (SV_TimerSlowGround(e))
+		e.run_t_rested = TRUE;
 
 	/*
 	  BHOP LAUNCH / RE-LAUNCH.
@@ -13131,8 +13197,10 @@ float(entity e) SV_TimerJumpWatch =
 			if (e.run_t_dirty)
 			{
 				SV_BankNewAttempt(e); // this rest, unlike an occupancy scan, admits anew
+				e.run_t_placed = FALSE;     // P1643: the rest a placement's taint waits for
 				SV_TimerArm(e, e.run_t_armzone);
 				e.run_t_boxrest = TRUE;     // what the dwell above found; SV_TimerArm cleared it
+				e.run_t_rested = TRUE;
 				if (SV_DevOn())
 					dprint(sprintf("arm: %s re-armed clean at rest in the box\n", e.netname));
 				if (!e.run_t_hopped)
@@ -13342,6 +13410,74 @@ float(entity e) SV_TimerMarkZone =
 	return z;
 };
 
+// P1643 review 4: was the body's spot not reached by moving, as a save taken now records it?  The latch, and what
+// it has not caught yet: a noclip body (SV_NoclipWatch runs once a packet, a save op once a command), sv_cheats or an
+// ent_fire-edited map (fly and the like raise nothing else: review 6) and an engine spectator (a match's
+// non-competitor runs no PlayerPreThink or PostThink).  Not slow practice or TAS (review 5): they still move the body.
+float(entity e) SV_TimerPlacedNow =
+{
+	if (e.run_t_placed || e.movetype == MOVETYPE_NOCLIP || SV_CheatsOn())
+		return TRUE;
+	return stof(infokey(e, "*spectator")) ? TRUE : FALSE;
+};
+
+// P1643 review 5: on the ground, walking and unheld, but not slow (SV_TimerSlowGround) -- PlayerPreThink lets a
+// tick like this end what an earlier slow tick of the packet showed, so run_t_restnow speaks for the last ground
+// tick (a launch's own jump tick), not for one before a landing at the speed a short flight built.
+float(entity e) SV_TimerFastGround =
+{
+	if (e.run_pmhold || e.rec_sl_hold || e.rec_gh_on || e.movetype != MOVETYPE_WALK)
+		return FALSE;
+	if (!(e.flags & FL_ONGROUND))
+		return FALSE;
+	return !SV_TimerSlowGround(e);
+};
+
+// P1643 review 5: is FEET height h above where `!r` puts a body in zone z, as the rest re-arm's ledge test asks?
+// For a save older than the `placed` key: only a perch above the start's floor could be unearned.  Read-only
+// (SV_ZoneDestRead: the picker runs every packet for the warp-op publisher); both sides in the feet frame (review 6:
+// a centred hull's origin is SV_FeetToOrigin above its feet).
+float(entity e, float z, float h) SV_TimerAboveRestart =
+{
+	local float yaw, haveyaw, fb, rz;
+
+	if (z < 0 || z >= zone_count)
+		return TRUE;
+	rz = SV_ZoneDestRead(e, z, yaw, haveyaw, fb) * '0 0 1';
+	rz = rz - SV_FeetToOrigin(e) * '0 0 1';
+	return (h > rz + 2) ? TRUE : FALSE;
+};
+
+// P1643: was this spot reached clean?  A mark set after a noclip or a setpos, or at a cheat level, is
+// remembered as such (run_mark_dirty) and `!r` at it arms dirty; setting one is never refused.
+float(entity e) SV_TimerMarkClean =
+{
+	if (!run_t_startrest)
+		return TRUE;
+	return !(SV_TimerPlacedNow(e) || SV_CheatLevel(e));
+};
+
+// P1643: a mark is set on the ground -- under the rule only (sv_zones.qc compiles first and cannot read it).
+float(entity e) SV_TimerMarkGround =
+{
+	if (!run_t_startrest)
+		return TRUE;
+	return (e.flags & FL_ONGROUND) ? TRUE : FALSE;
+};
+
+// P1643: a restart placement that does not end the latch (a mark set while it stood, a re-placement where the
+// body already was): raise it again over the arm SV_TimerPlaceArm just made.
+void(entity e, string say) SV_TimerPlaceTaint =
+{
+	if (!run_t_startrest)
+		return;
+	e.run_t_placed = TRUE;
+	e.run_t_dirty  = TRUE;
+	e.run_st_dirty = TRUE;
+	if (say != "")
+		sprint(e, PRINT_HIGH, say);
+};
+
 // A normal fail teleport keeps its map destination. Carry an attempt only
 // when it actually lands back in this run's opening box; Arm consumes it.
 void(entity e, vector before) SV_TimerFailResetAttempt =
@@ -13426,7 +13562,10 @@ float(entity e, string word, float n) SV_TimerChatLeg =
 // until you leave THAT zone -- see the start check in SV_TimerFrame.
 void(entity e, float z) SV_TimerArm =
 {
-	local float attempts;
+	local float attempts, rested;
+	// P1643: the scan re-arms the box SV_ZoneMoveAt just armed (and a step back in from the
+	// hull band); the same armed attempt keeps what it has already shown.
+	rested = ((e.run_t_state == TS_ARMED) && (e.run_t_armzone == z) && e.run_t_rested);
 	// Same-box occupancy reconciliation is not a new admission.
 	if (e.bank_attempt == 0i || e.run_t_state != TS_ARMED || e.run_t_armzone != z)
 		SV_BankNewAttempt(e);
@@ -13588,6 +13727,7 @@ void(entity e, float z) SV_TimerArm =
 	*/
 	e.run_t_startok  = FALSE;
 	e.run_t_boxrest  = FALSE;
+	e.run_t_rested   = rested;      // P1643: a caller that placed the body at rest sets it after
 	e.run_t_jumps    = 0;
 
 	/*
@@ -13631,6 +13771,10 @@ void(entity e, float z) SV_TimerArm =
 	  is what makes a legitimate retry a legitimate retry.
 	*/
 	e.run_t_dirty  = (e.movetype == MOVETYPE_NOCLIP);
+	// P1643: ...or noclip let go of, or a setpos, before this arm: where and how fast the body
+	// arrives is still that placement's.  The rest in SV_TimerJumpWatch or `!r` clears it.
+	if (run_t_startrest && e.run_t_placed)
+		e.run_t_dirty = TRUE;
 	e.run_st_dirty = e.run_t_dirty;
 	e.run_st_nocliponly = (e.movetype == MOVETYPE_NOCLIP && !SV_CheatsOn());
 
@@ -14832,9 +14976,24 @@ void(entity e) SV_TimerStart =
 	if (e.run_t_freeze)
 		e.run_t_dirty = TRUE;
 
+	// P1643: say why, once, where the class word alone would not.
+	if (run_t_startrest && !e.run_t_cheat)
+	{
+		if (e.run_t_dirty && e.run_t_placed)
+			sprint(e, PRINT_HIGH, "^3not a clean start^7 -- a noclip, a teleport or a loaded spot since the last "
+			       "restart: ^2!r^7 for a clean start\n");
+		else if (!e.run_t_dirty && !e.run_t_hopped && SV_StartUnrested(e))
+			sprint(e, PRINT_HIGH, "^3unrested start^7 -- stop on the ground in the start, "
+			       "or ^2!r^7, before leaving it\n");
+	}
+
+	if (SV_DevOn())     // P1643: the start's own verdict, for arms and the lobby log
+		dprint(sprintf("timer: %s starts: rested %g placed %g dirty %g hopped %g cheat %g unrested %g\n", e.netname,
+		               e.run_t_rested ? 1 : 0, e.run_t_placed ? 1 : 0, e.run_t_dirty ? 1 : 0,
+		               e.run_t_hopped ? 1 : 0, e.run_t_cheat ? 1 : 0, SV_StartUnrested(e) ? 1 : 0));
 	if (e.run_t_cheat)
 		SV_TimerCheat(e);
-	else if (e.run_t_dirty || e.run_t_hopped)
+	else if (e.run_t_dirty || e.run_t_hopped || SV_StartUnrested(e))
 		SV_TimerPractice(e);
 
 	// Patch 454: a forgiveness a finish armed, that the player never came to rest to
@@ -14975,6 +15134,17 @@ void(entity e, float z) SV_TimerHandArm =
 		SV_TimerStitched(e);
 };
 
+// P1643: the arm of a restart placement (SV_ZoneMoveAt: `!r`/`!m`/`!s`/`!b`/zone_goto), which has
+// zeroed the velocity.  The one arm that ends a noclip or setpos placement's taint without a rest;
+// a noclip still on is read by SV_TimerArm and raises the latch again next tick (SV_NoclipWatch).
+void(entity e, float z) SV_TimerPlaceArm =
+{
+	e.run_t_placed = FALSE;
+	SV_TimerArm(e, z);
+	e.run_t_rested = TRUE;
+	e.run_t_prerest = TRUE;         // the next scan may arm an equal-rank box at the same spot instead
+};
+
 /*
   Patch 775: faster than a walk across the ground (the velocity and the latched
   carrier, which becomes velocity within a command).  Not the vertical: a fail
@@ -15067,6 +15237,8 @@ void(entity e, float z) SV_TimerTryArm =
 	    || !SV_ZoneSameBox(z, e.run_t_armzone))
 	{
 		e.run_t_dirty = (e.movetype == MOVETYPE_NOCLIP);
+		if (run_t_startrest && e.run_t_placed)      // P1643, as SV_TimerArm
+			e.run_t_dirty = TRUE;
 		// Build 44: and the class latch on the same boundary, from the same kind
 		// of level read.  Leaving it standing would make a bhop map's deferred arm
 		// the one route by which `cheated` outlives the attempt that earned it.
@@ -15164,6 +15336,16 @@ void(entity e, float z) SV_TimerTryArm =
 	was = e.run_t_state;
 	wasstage = e.run_t_stagerun;
 	SV_TimerArm(e, z);
+	// P1643: a map teleport is the map's own placement, judged on Patch 775's horizontal test
+	// (its fall is the map's).  A body that came in by its own motion has to be seen slow on
+	// the ground before it leaves (SV_TimerJumpWatch).
+	if (e.run_t_tpnow)
+		e.run_t_rested = !SV_TimerFast(e);
+	else if (e.run_t_restnow)
+	{
+		if (SV_TimerArriveSlow(e))      // a spawn, a hold let go, a walk in: at rest as this packet began
+			e.run_t_rested = TRUE;
+	}
 	if (stops)
 	{
 		SV_TimerStopAt(e, stop);
@@ -16007,6 +16189,8 @@ void(entity e) SV_TimerFrame =
 	local vector p, lastp;
 	local vector mn, mx;            // build 47: the hull the ruleset tests with
 
+	e.run_t_restnow = e.run_t_prerest;      // P1643: before the first return; a held body never gets here
+	e.run_t_prerest = FALSE;
 	SV_BankWatch(e);
 	if (e.rec_cp_q >= 1)            // Patch 375: a save's copy, a chunk a packet
 		SV_RecCopyStep(e, FS_RECCOPY_CHUNK);
@@ -16688,7 +16872,7 @@ void(entity e) SV_ArmStateStat =
 		e.run_armstate = AS_CHEATS;
 	else if (!(e.run_t_dirty || e.run_t_cheat || e.run_t_hopped || e.run_t_freeze
 	           || e.movetype == MOVETYPE_NOCLIP))
-		e.run_armstate = AS_ARMED;
+		e.run_armstate = SV_StartUnrested(e) ? AS_HOPPED : AS_ARMED;    // P1643: "stand below"
 	else if (e.run_t_startok || e.run_t_freeze || e.run_t_carried || run_t_rearmspeed <= 0
 	         || (e.run_t_cheat && !e.run_t_dirty))
 		e.run_armstate = AS_STUCK;  // standing will not clear it (SV_TimerJumpWatch)
@@ -16953,6 +17137,7 @@ void() SV_TimerMapInit =
 	// an operator knob and as cfg/test/b21a.cfg's control arm.
 	registercvar("run_rearmhop", "0");           // build 21, and see the trap above
 	registercvar("run_rearmspeed", "290");       // P1008: re-arm at rest in the box below this
+	registercvar("run_startrest", "1");          // P1643: rest before a clean start; 0 = before 1643
 	registercvar("rec_runs_keep", "25");         // build 23, and see the trap above
 	registercvar("rec_watch_pvs", "1");          // build 43, and see the trap above
 	registercvar("sv_tp_pvs", "1");              // P1190: the teleport destination's PVS eye
@@ -17032,6 +17217,7 @@ void() SV_TimerMapInit =
 	run_t_rearmhop    = cvar("run_rearmhop");
 	run_t_rearmspeed  = cvar("run_rearmspeed");
 	localcmd(sprintf("serverinfo run_rearmspeed %g\n", run_t_rearmspeed));   // P1008: the HUD's hint
+	run_t_startrest   = cvar("run_startrest");      // P1643
 	run_t_stagefail   = cvar("run_stagefail");
 	run_t_stagearm    = cvar("run_stagearm");
 	run_t_stageclean  = cvar("run_stageclean");
@@ -17515,6 +17701,10 @@ void(entity e) SV_TimerReport =
 	sprint(e, PRINT_HIGH, sprintf("        start: ok %g dwell %.2f settle %.2f strict %g hopped %g rearmhop %g\n",
 	       e.run_t_startok ? 1 : 0, run_t_dwell, run_t_settle, run_t_startstrict,
 	       e.run_t_hopped ? 1 : 0, run_t_rearmhop));
+	// P1643: its own line -- the one above is at the varargs cap.
+	sprint(e, PRINT_HIGH, sprintf("        rest: rule %g rested %g placed %g unrested %g prerest %g\n",
+	       run_t_startrest, e.run_t_rested ? 1 : 0, e.run_t_placed ? 1 : 0,
+	       (e.run_t_state == TS_ARMED && SV_StartUnrested(e)) ? 1 : 0, e.run_t_restnow ? 1 : 0));
 	sprint(e, PRINT_HIGH, sprintf("        phase: ground %.2f  air %.2f  jumps %g  ramp %g\n",
 	       e.run_t_groundsec ? (SV_ClockSec(e) - e.run_t_groundsec) : 0,
 	       e.run_t_airsec    ? (SV_ClockSec(e) - e.run_t_airsec)    : 0,

@@ -1,5 +1,47 @@
 # BACKLOG.md
 
+## P1643 start rest -- what it leaves (20 Nov, worldofsurf-4b)
+- Scope by decision: bhop-mode maps (run_starthop 0) and stage boxes (run_stagecap 0, Lex 21 Sep) are not judged for
+  arrival speed; on a bhop-mode map an idle body may still cross its START in flight. Owner question, not a defect.
+  Site: sv_timer.qc SV_StartUnrested. Falsifier: tools/p1643-arms.md's arm U on a bhop-mode map.
+- A map teleport into a START is judged on horizontal speed only (Patch 775 round 3: surf_polygon b4), so a fall it
+  keeps arrives rested. Site: SV_TimerTryArm's run_t_tpnow branch. Falsifier: a velocity-keeping teleport whose START
+  can be left in the air, read `starts: ... unrested`.
+- A save file without the `placed` key (older than P1643, or written under run_startrest 0): off the clock or FINISHED
+  it is judged by height -- on the start's floor (no higher than SV_ZoneDestRead + 2, feet frame) it stays a `!r` spot
+  and loads clean; above it, it is not a spot and its load raises the latch. A position-only one raises on load. A
+  keyless running timed row reads walked to unless its `cheat` key is set (a pre-1643 one saved mid-run after a noclip
+  had ended is the residual). The +2 margin refuses old saves on sloped or displacement start floors; when the newest
+  candidate is refused, `!r` does not fall back to an older floor row. Site: sv_saveloc.qc SV_SaveReadLight,
+  SV_SaveApplyStateRows, SV_SaveLocPickInZoneRead.
+- P1643 review 7, left: a demoted older (keyless) row reads placed, so its load raises the latch (it is never a `!r`
+  spot); sv_cheats does not raise run_t_placed, so a spot reached with fly and saved after the operator turns cheats
+  off reads walked to (operator-only); on GoldSrc hulls the load's feet height uses the hull from before the load
+  (duck state), and `!r` to a save puts a centred hull's origin at the floor point, ~36 u low (older than P1643).
+- In-box prespeed hidden from the per-packet hop tag (review 5, needs a modified client): a jump's rise falls below
+  140 within ~0.2 s, so packets of 0.2-0.35 s never show a surf START's in-box hop chain, and a rest already latched
+  leaves it clean (~+60 u/s per hop, box-bounded). Fix with the finish item "start latched per tick": drive the tag
+  from PlayerPreThink's per-command jump edge, or judge surf leaves on own speed with a cap for one jump out.
+- Ahop maps (mode_ahop.cfg: run_starthop 0; not run_t_bhopjump) are not judged by P1657: after one rest, hops in the
+  START build ~40 u/s each, clean. OWNER QUESTION (does "no prespeed on bhop" cover ahop?); an ahop cap needs
+  measuring from ahop run-ups (sprint 320).
+- Carriers count as rest: SV_TimerSlowGround reads own speed before the carrier cash-out and run_startcap is 0, so a
+  push or conveyor in a START gives clean speed (decided before P1643; map-dependent).
+- A map teleport into a START does not end the latch (only `!r`, a spawn or the rest does): a candidate if players
+  report "practice" after a load and a fail teleport. Retry drops `run_t_rested` (an airborne armed retry comes back
+  unrested). After `zone_goto` to an END, `!r` returns to the END and raises the latch again (console only).
+- A start mark is ground-tested when set, not when used: a mark on a brush the map later moves becomes a rested
+  start in the air. Map-dependent; not seen.
+- The rest rule tests speed, and height only in the dirty rest re-arm: a high spot in the start box reached by an
+  earlier clean flight is a clean start. Owner question, not a defect of P1643.
+- Not measured, read only: the per-command noclip line (two commands in one packet need a scripted client) and the
+  spectator refusal (needs a live match).
+- The start is latched per packet (SV_TimerFrame runs from PlayerPostThink), not per tick. Site: sv_timer.qc
+  SV_TimerStart `run_t_starttick`. Falsifier: a start packet of several ticks against one of one tick, same inputs.
+- tools/tournament_playtest.py --smoke --round-end: round_end_hold_voids_run read False on main a0846022 and on
+  P1643 alike (20 Nov, this PC); the host's run had been re-armed by the map's fail teleport when the round ended.
+- Pre-existing, seen while testing: tools/qcframes.py over main's csprogs.dat prints FRAME lines for Line_Alloc
+  (ln_nath, ln_nat); qwprogs is clean. Not P1643's (csprogs is byte-identical with and without it).
 ## P1654-P1660 GoldSrc maps and Linux ImGui -- open items (20 Nov, worldofsurf-4a)
 - Records: artifacts and reports in FTESurf-worktrees/agmaps-20261120-4a/artifacts/ (rel/, ents/, menu/ REPORT.md;
   review-*.md). Packages: tools/gsrcpack.py; R2 objects/goldsrc/<sha>.xz + goldsrc/catalog.txt via the Pi root
@@ -2648,11 +2690,6 @@ From the two independent reviews of 28 Oct. Every case stays TAS-flagged; none r
   self-test quits or launches a local map after ~180 frames (no signature, no Friends).
 - **Pre-existing, found in review:** surfd's rate_ok counts per process and flushes under
   pressure, so the social limits are softer than their numbers.
-- **Pre-existing, found in review round 3:** `startmark set` (SV_TimerMarkZone) accepts a dirty
-  armed attempt at any standable point in the box, and `!r` then arms clean there at zero speed --
-  noclip to a ledge high in a start, noclip off, startmark set, !r is a clean start from the ledge.
-  P1008's height rule does not add to it; refuse a mark while dirty (or on a spot above the
-  ground-snapped restart).
 - **P1008:** regions without a destination restart at zone_bottom + 2 unsnapped, so where that
   bottom is under the floor the rest never re-arms a dirty attempt; the HUD offers !r.
 
@@ -7140,15 +7177,6 @@ below is the collection side and the rules that still only note.
   save tree, over its own saves at those ids -- and a remote non-lobby server's
   ids land on the client's offline tree the same way. Save events should be
   ignored unless the stats are this client's own. Patch 477 round 8 review.
-- **`setpos` can arm a start box clean, at rest, in mid-air** (predates 477;
-  Patch 477 round-8 integrity review, traced, not driven). It has no cheat gate and
-  no ground snap; the next packet's occupancy edge arms the attempt, and
-  SV_TimerArm re-derives `run_t_cheat`/`run_t_dirty` from the live state, so the
-  cheat latch does not survive the arm it caused. Worth speed only where a fall
-  can leave the box. Fix: ground-snap a setpos that lands in a start or stage
-  zone, as SV_SaveLocPickInZone does, or keep its cheat latch across that arm.
-  P797's `tp_player` (SV_SetPosSelf) reaches it from the player list, behind a
-  target that is airborne in a box (P797 review, code-read).
 - **A HOST-SIDE INABILITY TO VERIFY IS RECORDED PERMANENTLY AGAINST THE PLAYER'S
   RUN.** `pm_verify` answers PASS / HOLD / REFUSE, and REFUSE is documented as
   "cannot say, never a judgement on the run" -- but `surfd/sweep.py:236-238` sets
@@ -7274,18 +7302,6 @@ below is the collection side and the rules that still only note.
   which destroys the player's parked Multi-Session run**, and `!rtv`/`!extend`, which
   cast the local player's vote. That is data loss on a server the victim operates.
   Round 6 lens B; extended in round 7.
-- **THE CHEAPEST PRESPEED ROUTE IS UNTOUCHED BY THE HOPPED-START RULE, and the entry
-  below over-claimed what Patch 445 narrowed.** The taint block is gated on
-  `!run_t_startok`, and `run_t_startok` latches ~1 s after leaving the box or on the
-  first ramp contact while RUNNING. After that no hop is judged at all, and a hop taken
-  while RUNNING goes to `SV_TimerPractice`, whose three writes are ALL cleared by
-  `SV_TimerArm`. So: leave the box cleanly, touch a ramp, bhop to any speed **outside**
-  the box, re-enter the box (on a surf map `run_t_bhopjump` is FALSE so the arm is
-  immediate and has no velocity gate), leave. `run_t_hopped` is never set, the arm
-  launders the rest, and the run is clean, ranked and at full prespeed. Patch 445 raises
-  the price of the in-box jump route to "`!r` and lose all your speed", which makes this
-  one comparatively cheaper. Round 6, lens B; CONFIRMED in code, not measured. **Test:**
-  drive it and read `cmd timer`'s `hopped 0` + `class: clean` after the second start.
 - **Scope, stated because it bounds every entry in this family: the whole hopped-start
   rule is INERT on bhop-mode maps.** `cfg/lobby/mode_bhop.cfg` sets `run_starthop 0` —
   hopping out of the start is the sport there — and `SV_TimerMapInit` applies it from the

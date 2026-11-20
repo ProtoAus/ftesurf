@@ -511,7 +511,7 @@ float(entity e, string word, float n, moveprep_t *out) SV_MovePrepReset =
 		// The existing quiet gate is read-only; reuse it without scan/allocation.
 		if (SV_SaveLocAllowed(e, TRUE))
 		{
-			if (!rec_sl_org || !rec_sl_pit || !rec_sl_yaw || !rec_sl_id || !rec_sl_seq || !rec_sl_tick)
+			if (!rec_sl_org || !rec_sl_pit || !rec_sl_yaw || !rec_sl_id || !rec_sl_seq || !rec_sl_tick || !rec_sl_placed)
 				return MP_STALE;
 			if (!(rec_sl_nb[blk] >= 0 && rec_sl_nb[blk] <= SL_Cap(blk)
 				&& rec_sl_nb[blk] == floor(rec_sl_nb[blk]))) return MP_STALE;

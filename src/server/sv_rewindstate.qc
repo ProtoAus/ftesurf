@@ -68,6 +68,7 @@ void(entity e, float b) SV_RewindStateSample =
 	m[b+RW_MCBASE+7] = e.rec_mc_read_y;
 	m[b+RW_MCBASE+8] = e.rec_mc_read_z;
 	m[b+RW_MCCAP] = 1;
+	m[b+RW_PLACED] = SV_TimerPlacedNow(e) ? 1 : 0;  // P1643
 	m[b+RW_NATIVEBASE] = m[b+RW_NATIVEBASE+1] = 0;
 	if (e.run_tas_mode && e.run_tas_rwcap)
 	if (b < RW_CAP * RW_STRIDE)
@@ -290,6 +291,8 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 	}
 	fputs(f, sprintf("flags %d\npb %d\ndirty %d\ncheat %d\nhopped %d\nfromsave %d\nhandcarry %d\n",
 	                 flags, m[b+19], m[b+20], m[b+21], m[b+22], m[b+23], m[b+50]));
+	if (run_t_startrest)
+		fputs(f, sprintf("placed %d\n", m[b+RW_PLACED] ? 1 : 0));     // P1643: the latch as the sample saw it
 	// P1603: the ring keeps no mark: a kept attempt's own (SV_RecFailKeep; a resume or a sent save can
 	// have given it one no client here reported), else the live run's; either raised by this client's.
 	plat = fa ? max(SV_ProfilePlat(e), e.rec_fa_plat) : SV_RunPlat(e);

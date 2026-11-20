@@ -318,6 +318,8 @@ void() PutClientInServer =
 	// Claim the timer's ring/split row, clear any run, and drop the recorder.
 	// A respawn is a teleport as far as a timed run is concerned.
 	SV_TimerSpawn(self);
+	self.run_t_prerest = TRUE;      // P1643: the server's placement, at rest
+	self.run_t_placed = FALSE;
 
 	/*
 	  LAST, and after SV_TimerSpawn on purpose.
@@ -599,7 +601,13 @@ void() PlayerPreThink =
 {
 	local float speedmod, speedcap;
 
+	if (self.movetype == MOVETYPE_NOCLIP)   // P1643 review 4: per command, before a save op below can run
+		self.run_t_placed = TRUE;
 	if (Tour_PreThink(self)) return;
+	if (SV_TimerSlowGround(self))       // P1643: at rest before this command moves the body
+		self.run_t_prerest = TRUE;
+	else if (SV_TimerFastGround(self))  // review 5: a later fast ground tick ends what that showed
+		self.run_t_prerest = FALSE;
 	SV_PeCmd(self);                     // P1238: the last command's row, this one's context
 	SV_HeldCheck(self);
 	SV_VsVelPost(self);                 // P1205: the previous command's VScript velocity write
@@ -893,6 +901,7 @@ void(entity e) SV_NoclipWatch =
 	{
 		if (!e.run_st_dirty) e.run_st_nocliponly = TRUE;
 		e.run_st_dirty = TRUE;
+		e.run_t_placed = TRUE;      // P1643: outlives the noclip, until a rest or `!r`
 	}
 	if (sc)
 	{
@@ -1155,6 +1164,7 @@ void(vector org, float haveang, vector ang) SV_SetPosSelf =
 	*/
 	SV_TimerCheat(self);
 	self.run_t_handcarry = self.run_t_handcarry | TF_CHEAT;     // Patch 478 r11
+	self.run_t_placed = TRUE;                                   // P1643: across the next arm too
 	// Patch 478 review round 7 (older than 478): and a finished stage run's
 	// handover, as a load drops it (Patch 436) -- the handover's arm re-read
 	// the class from the live state and started the next stage clean
@@ -1954,6 +1964,13 @@ void(string cmd) SV_ParseClientCommand =
 			// spawn, whose clear then dropped a stream sl_load had opened.
 			if (!self.run_inserver)
 				return;
+			// P1643 review 4: an engine spectator (a match's non-competitor) runs no PlayerPreThink or
+			// PostThink, so nothing would taint a save or a load it made.
+			if (stof(infokey(self, "*spectator")))
+			{
+				sprint(self, PRINT_HIGH, "^3save:^7 not while spectating a match\n");
+				return;
+			}
 			if (c != "sl_hold")
 			if (!SV_SaveLocRate(self))
 				return;

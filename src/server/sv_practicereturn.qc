@@ -94,7 +94,8 @@ void(float request, float seed, float frame) CSEv_tsreturnready_fff =
 // Preparation does NOT clear the latch; only a later client-ready boundary can.
 float(float z, vector at, vector aim, float wantstage1, float clean) SV_TimeScaleReturnPlace =
 {
-	local float slot;
+	local float slot, placed;
+	placed = self.run_t_placed;     // P1643: read before the respawn below ends it
 	SV_TimerVoid(self, "normal-speed clean restart");
 	if (!sourcepractice_reset(self))
 	{
@@ -114,7 +115,9 @@ float(float z, vector at, vector aim, float wantstage1, float clean) SV_TimeScal
 		sv_ts_taint_uid[slot] = 0;
 	}
 	self.run_t_wantstage1 = wantstage1;
-	SV_ZoneMoveAt(z, at, aim_y, aim_x, TRUE, TRUE);
+	SV_ZoneMoveAt(z, at, aim_y, aim_x, TRUE, TRUE);   // P1643: where it stands, so the latch does not end here
+	if (placed)
+		SV_TimerPlaceTaint(self, "");
 	if (self.bank_attempt <= 0i || self.origin != at || SV_TimerMarkZone(self) != z || !SV_TimeScaleReturnSupport(self))
 	{
 		self.run_ts_used = TRUE;
@@ -207,5 +210,9 @@ void() SV_TimeScaleReturnCommand =
 	self.run_ts_return = -request;
 	self.run_ts_return_frame = self.run_ts_return_until = 0;
 	self.run_ts_return_block = FALSE;
-	sprint(self, PRINT_HIGH, "host_timescale: normal speed, clean new attempt armed here\n");
+	if (run_t_startrest && self.run_t_placed)       // P1643: SV_TimeScaleReturnPlace kept the latch
+		sprint(self, PRINT_HIGH, "host_timescale: normal speed -- not a clean start (a noclip, a teleport or a loaded "
+		       "spot since the last restart): ^2!r^7\n");
+	else
+		sprint(self, PRINT_HIGH, "host_timescale: normal speed, clean new attempt armed here\n");
 };

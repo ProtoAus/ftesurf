@@ -386,7 +386,7 @@ float(entity e) SV_WarpOpResetMayFlip =
 		return TRUE;
 	blk = SL_Blk(e);
 	if (SV_SaveLocAllowed(e, TRUE))
-	if (rec_sl_org) if (rec_sl_pit) if (rec_sl_yaw) if (rec_sl_id) if (rec_sl_seq) if (rec_sl_tick)
+	if (rec_sl_org) if (rec_sl_pit) if (rec_sl_yaw) if (rec_sl_id) if (rec_sl_seq) if (rec_sl_tick) if (rec_sl_placed)
 	if (rec_sl_nb[blk] >= 0) if (rec_sl_nb[blk] <= SL_Cap(blk)) if (rec_sl_nb[blk] == floor(rec_sl_nb[blk]))
 	if (SL_Fresh(e, blk))
 	if (SV_SaveLocPickInZoneRead(e, z, org, yaw, pit, row))

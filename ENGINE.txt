@@ -1,4 +1,12 @@
 # The engine build this QuakeC requires.
+# P1643 (QC server only; Lex's anti-cheat finish list, worldofsurf-4b): a full or bonus run on a start-on-leave map
+# starts clean only from rest in its start box -- placed there by a restart, a spawn or a map teleport, or seen on the
+# ground under run_rearmspeed; a body the server placed and then held (the tournament countdown) keeps that to the packet
+# that lets it go. A noclip, setpos or zone_goto to an END keeps the next arm dirty until that rest or `!r`, and the
+# latch is written to saves (`placed`): a save made while it stands or in noclip (a start mark: or at a cheat level) is not
+# a clean restart spot, and a load of one, of a point a client supplied, or of an older save above the start's floor
+# raises it (a load never ends it). A match's spectators cannot save. run_startrest 0 is the rule before 1643.
+# No engine, recorder or csprogs change. Record: engine ENGINE_PATCHES.md P1643; tools/p1643-arms.md.
 # P1654-P1660 (engine fs.c cl_parse.c pr_menu.c wad.c sv_phys.c sv_init.c savegame.c cl_demo.c pr_bgcmd.c pm_ag_world.c
 # pmovetst.c, plugins/Makefile; QC sv_goldsrc.qc sv_gsdefs.qc cl_triggers.qc m_goldsrc.qc m_maprows.qc; tools gsrcpack.py
 # wadcolours.py r2mirror.py; Lex's request, worldofsurf-4a): GoldSrc / AG maps. 923 Half-Life maps as one verified

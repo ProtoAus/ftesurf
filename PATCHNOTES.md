@@ -80,6 +80,11 @@
 - The console's typing line has Ctrl+Z to undo and Ctrl+Y (or Ctrl+Shift+Z) to redo, a word at a time.
 - The ] in front of the typing line is gone; commands you type show in blue in the console log.
 
+### P1643 Runs start from rest
+- A run has to begin from rest in the start zone. Arrive in the air or sliding fast and the HUD says not armed until you stop on the ground or use !r. Normal starts are unchanged.
+- After noclip, setpos or a teleport to a player, stand still in the start or use !r before your next run counts.
+- A save or start mark made straight after one of those no longer gives a clean restart spot, and a start mark has to be set standing on the ground.
+
 ### P1642 A normal text box for the console
 - The console's typing line has a blinking | cursor between letters and works like any text box: Shift with the arrows, Home or End selects, Ctrl+A selects the line, and you can click to place the cursor, drag to select or double-click a word.
 - Typing or pasting replaces the selection, Ctrl+C and Ctrl+X copy and cut it, and Ctrl+Backspace and Ctrl+Delete delete a word. Home and End move the cursor (Ctrl+Home and Ctrl+End still jump to the top and bottom of the log).

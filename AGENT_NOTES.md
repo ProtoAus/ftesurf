@@ -1,5 +1,39 @@
 # AGENT_NOTES.md
 
+## P1643 start rest: what it does to test arms (20 Nov 2026)
+
+- A full or bonus run on a start-on-leave map is practice unless its arm saw the body at rest: a restart placement
+  (`!r`/zone_goto), a spawn or a map teleport put it there, or it was on the ground under run_rearmspeed. An arm that
+  flies or falls a body through a START and expects `practice 0` now reads 1 ("unrested start"). Stage boxes and
+  bhop-mode maps are unchanged. A body placed and then held (tournament countdown) keeps the credit through the hold.
+- `cmd noclip` and `cmd setpos` (tp_player too) leave the NEXT arm dirty as well, until the body rests in the box for
+  run_prestrafe_time at the `!r` height, or `cmd zone_reset`. An arm that setpos'es into a start to get a clean armed
+  attempt must zone_reset instead. The rest's dwell counts from the last LANDING, not from the `!r`.
+- Saves carry the latch (`placed` in state.txt, `rec_sl_placed[]` in the list): a save taken off the clock while it
+  stands is not where `!r` restarts, and loading it raises the latch again. A load only ever RAISES it. What a save
+  records is SV_TimerPlacedNow: the latch, a noclip body, sv_cheats (or an ent_fire-edited map) or an engine
+  spectator (not slow practice or TAS: they still move the body; a start mark counts every cheat level). A
+  position-only row whose point came from the client (sl_saveview, savesync add) is placed; a rewind row carries the
+  ring's RW_PLACED column. A file without the key (older, or written under run_startrest 0, which writes none): a
+  position-only one is placed (1); an off-the-clock or FINISHED one is rec_sl_placed 2, judged by height in the feet
+  frame (not a `!r` spot, and its load raises the latch, only above SV_ZoneDestRead + 2 in the START the body is in
+  now); a cheated timed one is placed; another timed one reads walked to. `zone_goto` to a zone that arms nothing (an END) raises
+  it too, and `!r` then returns THERE (the leg zone is latched): use `zone_restart`. `startmark set` needs the
+  ground, and a mark set while the latch stands (or at a cheat level) restarts dirty until `startmark clear`.
+- PlayerPreThink raises the latch for a noclip body per command (SV_NoclipWatch is per packet; a save op is per
+  command). A match's non-competitor (`*spectator` set by the tournament) has every `sl_` command refused.
+- run_t_prerest: set by a tick that begins slow on the ground, CLEARED by a later tick that begins on the ground but
+  not slow (SV_TimerFastGround), so run_t_restnow speaks for the packet's last ground tick.
+- An arm that reads `placed` after a load under a long run_prestrafe_time must restart the ground clock first (jump):
+  the rest counts from the last landing, a load does not restart it, and "start re-armed" forgives the latch at once.
+- `cmd timer` prints `rest: rule R rested N placed N unrested N prerest N`; a developer server logs each start as
+  `timer: <name> starts: rested N placed N dirty N hopped N cheat N unrested N`. `set run_startrest 0` is the control.
+- Arms: a run that leaves a START falling may meet the map's fail teleport within a few tenths of a second, so poll
+  `cmd timer` through the fall. surf_ace has several spawn points: a fixture round "the" spawn must cover the room.
+- `wtype` presses game keys in the nested labwc rig only as ONE invocation given every key and sleep up front (a
+  keyboard made per call is gone before the client binds it; `wtype -` types nothing until stdin closes). It numbers
+  its keys from evdev 1 in order of first use: the first is Escape, then the engine's "1", "2", "3".
+
 ## P1623 Linux PowerShell/deployment support (19 Nov 2026)
 
 - Lex's host has official checksum-verified PowerShell7.7 at ~/.local/share/powershell/7.7.0, launcher on PATH.

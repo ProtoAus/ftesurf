@@ -106,6 +106,7 @@ float  *rec_sl_seq;                    // creation order; the sort key
 float  *rec_sl_tick;                   // the run clock stored in the slot
 float  *rec_sl_seg;                    // segment, for the console list
 float  *rec_sl_cps;                    // checkpoints crossed, for the same
+float  *rec_sl_placed;                 // P1643: 1 the spot was not walked to, 2 older than the key (SV_SaveReadLight)
 
 float  rec_sl_nb[FS_SLCLIENTS + 1];        // rows in use per block
 float  rec_sl_ns[FS_SLCLIENTS + 1];        // next seq per block
@@ -143,6 +144,7 @@ void() SV_SaveLocAlloc =
 	rec_sl_tick = memalloc(sizeof(float) * FS_SLROWS);
 	rec_sl_seg  = memalloc(sizeof(float) * FS_SLROWS);
 	rec_sl_cps  = memalloc(sizeof(float) * FS_SLROWS);
+	rec_sl_placed = memalloc(sizeof(float) * FS_SLROWS);
 };
 
 // Build 25.  A delete-all drives SV_SaveLocDelete once per row and must not
@@ -1474,6 +1476,8 @@ float(entity e, float id, float seq) SV_SaveWriteState =
 	*/
 	fputs(f, sprintf("cheat %d\n", e.run_t_cheat));
 	fputs(f, sprintf("handcarry %d\n", e.run_t_handcarry));     // Patch 478 r11: retry and Multi-Session
+	if (run_t_startrest)            // P1643: the spot was not walked to; no key under rule 0 (read as older)
+		fputs(f, sprintf("placed %d\n", SV_TimerPlacedNow(e) ? 1 : 0));
 	/*
 	  PATCH 445: the hopped-start taint, and it is here because its ABSENCE was a
 	  laundering channel rather than an omission.
@@ -1621,7 +1625,7 @@ float(float id, float row) SV_SaveReadLight =
 {
 	local filestream f;
 	local string k;
-	local float n, seq, dem, rwd;
+	local float n, seq, dem, rwd, plc, plcseen, cht, fin;
 	local vector v, rwv;
 
 	f = fopen(SL_StatePath(id), FILE_READ);
@@ -1630,6 +1634,7 @@ float(float id, float row) SV_SaveReadLight =
 
 	seq = -1;
 	dem = FALSE;
+	plc = plcseen = cht = fin = FALSE;  // P1643
 	rwd = FALSE;                    // Patch 477: a rewind row keeps its speed in `rwvel`
 	rwv = '0 0 0';
 
@@ -1640,6 +1645,7 @@ float(float id, float row) SV_SaveReadLight =
 	rec_sl_duck[row] = 0;
 	rec_sl_id  [row] = id;
 	rec_sl_tick[row] = 0;
+	rec_sl_placed[row] = 0;
 	rec_sl_seg [row] = 0;
 	rec_sl_cps [row] = 0;
 
@@ -1656,10 +1662,13 @@ float(float id, float row) SV_SaveReadLight =
 		// assigned straight in.
 		if (k == "seq")      { seq = stof(argv(1)); continue; }
 		if (k == "ticks")    { rec_sl_tick[row] = stof(argv(1)); continue; }
+		if (!strcmp(k, "cheat")) { if (stof(argv(1))) cht = TRUE; continue; }        // P1643: a keyless row only
+		if (!strcmp(k, "state")) { fin = (stof(argv(1)) == TS_FINISHED); continue; }
 		if (k == "seg")      { rec_sl_seg [row] = stof(argv(1)); continue; }
 		if (k == "reccp")    { rec_sl_cps [row] = stof(argv(1)); continue; }
 		if (k == "duck")     { rec_sl_duck[row] = stof(argv(1)); continue; }
 		if (k == "demoted")  { dem = TRUE; continue; }     // Patch 428
+		if (!strcmp(k, "placed")) { plc = stof(argv(1)) ? TRUE : FALSE; plcseen = TRUE; continue; }   // P1643
 		if (k == "rewound")  { rwd = stof(argv(1)); continue; }
 		if (k == "rwvel")    { if (n >= 4) rwv = [stof(argv(1)), stof(argv(2)), stof(argv(3))]; continue; }
 
@@ -1695,6 +1704,23 @@ float(float id, float row) SV_SaveReadLight =
 	fclose(f);
 	if (dem)
 		rec_sl_tick[row] = SL_DEMOTED;
+	// P1643: was the spot walked to?  The key says.  A file without it is older than the key (or from rule 0)
+	// and cannot vouch (review 4, as Patch 450 for mapcrc): a position-only row may hold a point its client typed
+	// (1, review 6; never a `!r` candidate); an off-the-clock or FINISHED row is 2, judged by its height where it is
+	// used (review 5: older restart spots on a start's floor stay usable); a cheated timed row is 1; another timed
+	// row reads as walked to.  As the full restore reads it.  Its own column: the tick is what SV_SaveRowIs holds
+	// the file to.
+	if (!plcseen)
+	{
+		plc = 0;
+		if (cht)
+			plc = 1;
+		if (rec_sl_tick[row] == 0 || fin)
+			plc = 2;
+		if (dem)
+			plc = 1;
+	}
+	rec_sl_placed[row] = plc;
 	if (rwd)
 		rec_sl_vel[row] = rwv;
 
@@ -1767,7 +1793,7 @@ void(entity e, float hop, float rwd) SV_SaveLoadTag =
 		SV_TimerForgiveHop(e, "a load at rest");
 	if (rwd)
 	{
-		if (e.run_t_hopped)
+		if (e.run_t_hopped || (run_t_startrest && e.run_t_placed))   // P1643: placed, the next arm is practice too
 			sprint(e, PRINT_HIGH, "^3rewind:^7 resumed -- practice from here, ^2!r^7 for a timed run\n");
 		else
 			sprint(e, PRINT_HIGH, "^7rewind: resumed -- no faster than a walk or a jump, so a start from here counts\n");
@@ -1958,6 +1984,7 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	local float tasnative, tasnseen; // absent/ambiguous TAS origin stays native
 	local float cht;                // build 44, the cheat latch
 	local float hcy;                // Patch 478 r11, run_t_handcarry
+	local float plc, plcseen, dmt;  // P1643, run_t_placed
 	local float hop;                // Patch 445, the hopped-start taint
 	local float fgv, fgvseen;        // Patch 972, exact retry's pending grant
 	local float ckwt, ckn, ckncr, ckcr, ckd, cktr, ckpk, ckup, cku, ckcb;   // Patch 840, `slowclk`
@@ -1990,6 +2017,7 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	plt = PLAT_VERIFIED;
 	cht = 0;                        // a pre-44 save file knows nothing about it
 	hcy = 0;
+	plc = plcseen = dmt = 0;        // P1643: a file without the key is read below the loop
 	// Patch 445.  A pre-445 file reads 0, which is the pre-445 BEHAVIOUR rather
 	// than merely a safe value: before this key existed a retry always came back
 	// unhopped.  Explicit because fteqcc does not zero locals.
@@ -2088,6 +2116,8 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 		if (k == "dirty")      { dty = stof(argv(1)); continue; }
 		if (k == "cheat")      { cht = stof(argv(1)); continue; }
 		if (k == "handcarry")  { hcy = stof(argv(1)); continue; }
+		if (!strcmp(k, "placed"))  { plc = stof(argv(1)) ? 1 : 0; plcseen = TRUE; continue; }    // P1643
+		if (!strcmp(k, "demoted")) { dmt = TRUE; continue; }
 		if (k == "hopped")     { hop = stof(argv(1)); continue; }
 		if (k == "slowclk")    { if (n >= 11) { ckwt = stof(argv(1)); ckn = stof(argv(2));
 		                         ckncr = stof(argv(3)); ckcr = stof(argv(4)); ckd = stof(argv(5));
@@ -2167,6 +2197,17 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	{
 		fgv = 0;
 		tasnative = -1;
+	}
+	// P1643: a file without `placed`, as SV_SaveReadLight reads one (2: judged by height below).
+	if (!plcseen)
+	{
+		plc = 0;
+		if (cht)
+			plc = 1;
+		if (ticks == 0 || st == TS_FINISHED)
+			plc = 2;
+		if (dmt)
+			plc = 1;
 	}
 	// Patch 735: finish old exit cleanup, then replace its abandoned progress.
 	// Legacy saves have no marker: retain their old behavior, never guess one.
@@ -2280,6 +2321,8 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	e.run_t_state    = st;
 	e.run_t_track    = tr;
 	e.run_t_startseg = ss;
+	e.run_t_rested   = FALSE;       // P1643: whatever the last attempt showed is not this body's
+	e.run_t_prerest  = FALSE;
 	/*
 	  BUILD 57: the leg, from the file where it says, and from startseg where it
 	  does not -- a pre-57 save cannot hold a stage-1 run, so startseg > 0 is
@@ -2565,6 +2608,8 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 		e.run_t_cheat  = cht;
 		e.run_st_cheat = cht;
 		e.run_t_handcarry = hcy;        // Patch 478 r11: a load's own is set in SV_SaveLoadTag
+		if (plc == 1)                   // P1643: a retry keeps the latch (its spawn ended the live one);
+			e.run_t_placed = TRUE;      // a resume, like a load, can only raise it
 
 		/*
 		  PATCH 445: AND THE HOPPED-START TAINT, which is the whole reason the key
@@ -2935,7 +2980,32 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	}
 
 	if (!retry)
+	{
+		// P1643: a load puts the body where the row says, and a spot that was not walked to raises the
+		// latch.  It never ends one (review 3: a row cannot vouch for the body that loads it).  Before the
+		// tag, which words the next start.
+		// An older row (2) only where it puts the body in a START above where `!r` would (review 5), from a
+		// scan of where the body is now (review 6: the file's azone can be absent or from an older zone file).
+		if (plc == 2)
+		{
+			plc = 0;
+			SV_ZoneScan(e.origin, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e), e.run_t_track);
+			if (zs_az >= 0)
+			if (zs_az < zone_count)
+			if (zone_type[zs_az] == ZONE_START)
+			if (SV_TimerAboveRestart(e, zs_az, e.origin_z - SV_FeetToOrigin(e) * '0 0 1'))
+				plc = 1;
+		}
+		if (run_t_startrest)
+		if (plc)
+		{
+			if (!e.run_t_placed)
+				sprint(e, PRINT_HIGH, "^3save:^7 not a clean start spot (not reached by moving, or an older save that "
+				       "cannot show it was) -- ^2!r^7 before a timed run\n");
+			e.run_t_placed = TRUE;
+		}
 		SV_SaveLoadTag(e, hop, rwd);    // Patch 477: on the state the load ended in
+	}
 	// Retry/void/clean-save branches may replace latches, not retained TAS ancestry.
 	if (e.run_tas_used)
 		SV_TASMark(e);
@@ -2991,7 +3061,7 @@ void(float base, float cnt) SV_SaveSort =
 {
 	local float i, j, gap;
 	local vector vo, vv;
-	local float a, b, c, d, g, h, k, m;
+	local float a, b, c, d, g, h, k, m, pz;
 
 	gap = 1;
 	while (gap * 3 + 1 < cnt)
@@ -3005,6 +3075,7 @@ void(float base, float cnt) SV_SaveSort =
 		c  = rec_sl_duck[i];  d  = rec_sl_id  [i];
 		g  = rec_sl_seq [i];  h  = rec_sl_tick[i];
 		k  = rec_sl_seg [i];  m  = rec_sl_cps [i];
+		pz = rec_sl_placed[i];
 
 		j = i;
 		while (j >= base + gap)
@@ -3021,6 +3092,7 @@ void(float base, float cnt) SV_SaveSort =
 			rec_sl_tick[j] = rec_sl_tick[j - gap];
 			rec_sl_seg [j] = rec_sl_seg [j - gap];
 			rec_sl_cps [j] = rec_sl_cps [j - gap];
+			rec_sl_placed[j] = rec_sl_placed[j - gap];
 			j = j - gap;
 		}
 
@@ -3029,6 +3101,7 @@ void(float base, float cnt) SV_SaveSort =
 		rec_sl_duck[j] = c;   rec_sl_id  [j] = d;
 		rec_sl_seq [j] = g;   rec_sl_tick[j] = h;
 		rec_sl_seg [j] = k;   rec_sl_cps [j] = m;
+		rec_sl_placed[j] = pz;
 	}
 };
 
@@ -3636,6 +3709,9 @@ void(float row) SV_SaveDemote =
 	fputs(f, "velocity 0 0 0\n");
 	fputs(f, sprintf("angles %.4f %.4f\n", rec_sl_pit[row], rec_sl_yaw[row]));
 	fputs(f, sprintf("duck %d\n", rec_sl_duck[row] ? 1 : 0));
+	if (run_t_startrest)            // P1643: the row's own, or `demoted` would read as placed;
+	if (rec_sl_placed[row] != 2)    // an older row stays keyless (demoted, the readers then call it placed)
+		fputs(f, sprintf("placed %d\n", rec_sl_placed[row] ? 1 : 0));
 	// Preserve the original marker, not the demoting player's current progress.
 	if (sl_fhasname)
 	{
@@ -3800,6 +3876,15 @@ void(entity e) SV_SaveLocCreate =
 	                              (e.run_t_state == TS_RUNNING)
 	                                ? SV_TimerString(SV_TimerTicks(e))
 	                                : "no run"));
+	// P1643: where `!r` would have picked this row (SV_SaveLocPickInZone) and now will not, say so.
+	if (run_t_startrest)
+	if (rec_sl_placed[base + cnt] == 1)
+	if (rec_sl_tick[base + cnt] == 0)
+	if (e.run_t_azone >= 0)
+	if (e.run_t_azone < zone_count)
+	if (zone_type[e.run_t_azone] == ZONE_START)
+		sprint(e, PRINT_HIGH, "^3save:^7 not reached by moving (a noclip or a teleport since the last restart) -- "
+		       "^2!r^7 will not restart here\n");
 };
 
 /*
@@ -3830,7 +3915,8 @@ void(entity e) SV_SaveLocCreate =
 #define RW_STATEBASE 10
 #define RW_MCBASE    69         // selected REC14 recorder/mouse-command ledger, not live head
 #define RW_MCCAP     (RW_MCBASE + 9)
-#define RW_STATECOLS (RW_MCCAP + 1 - RW_STATEBASE)
+#define RW_PLACED    (RW_MCCAP + 1) // P1643: run_t_placed at the sample
+#define RW_STATECOLS (RW_PLACED + 1 - RW_STATEBASE)
 #define RW_NATIVEBASE (RW_STATEBASE + RW_STATECOLS) // P1061: token, native dense slot
 #define RW_SPLITBASE (RW_NATIVEBASE + 2)
 #define RW_CPBASE    (RW_SPLITBASE + FS_MAXSPLITS)
@@ -4178,11 +4264,22 @@ float(entity e, float t) SV_RewindFindTick =
 float(entity e, float id, float seq, float go) SV_SaveWriteAt =
 {
 	local filestream f;
+	local float plc;
+	local float *m;
 
 	if (strlen(serverkey("*movementprofile"))) return FALSE;
 	if (rw_statebase >= 0)
 	if (SV_RewindWriteState(e, id, seq, go))
 		return TRUE;
+	// P1643: a point with no ring sample is the client's own (sl_saveview, savesync add); a sample carries
+	// the latch as it stood (RW_PLACED, as SV_RewindWriteState writes it).
+	plc = TRUE;
+	if (rw_statebase >= 0)
+	{
+		m = rw_slot[num_for_edict(e)];
+		if (m)
+			plc = m[rw_statebase + RW_PLACED] ? TRUE : FALSE;
+	}
 	f = fopen(SL_StatePath(id), FILE_WRITE);
 	if (f < 0)
 		return FALSE;
@@ -4211,6 +4308,8 @@ float(entity e, float id, float seq, float go) SV_SaveWriteAt =
 		fputs(f, sprintf("flags %d\n", SV_TASFlags(e)));
 		fputs(f, sprintf("tasnative %d\n", e.run_tas_used ? 1 : 0));
 	}
+	if (run_t_startrest)
+		fputs(f, sprintf("placed %d\n", plc));
 	fputs(f, "demoted 1\n");
 	fputs(f, "rewound 1\n");
 	if (go)
@@ -6383,6 +6482,7 @@ void(entity e, float n) SV_SaveLocDeleteRow =
 		rec_sl_tick[i - 1] = rec_sl_tick[i];
 		rec_sl_seg [i - 1] = rec_sl_seg [i];
 		rec_sl_cps [i - 1] = rec_sl_cps [i];
+		rec_sl_placed[i - 1] = rec_sl_placed[i];
 	}
 
 	rec_sl_nb[blk] = cnt - 1;
@@ -6690,6 +6790,9 @@ float(entity e, float z, __out vector org, __out float yaw, __out float pit, __o
 	{
 		if (rec_sl_tick[base + i] != 0)
 			continue;
+		if (run_t_startrest)
+		if (rec_sl_placed[base + i] == 1)   // P1643: not reached by moving (2: judged by height below)
+			continue;
 		if (rec_sl_seq[base + i] <= bestseq)
 			continue;
 
@@ -6772,6 +6875,11 @@ float(entity e, float z, __out vector org, __out float yaw, __out float pit, __o
 	  standing still on their save.
 	*/
 	org = SV_SaveZonePoint(z, org);
+	// P1643 review 5: a row older than the `placed` key is a restart spot only on the start's floor.
+	if (run_t_startrest)
+	if (rec_sl_placed[row] == 2)
+	if (SV_TimerAboveRestart(e, z, org_z))
+		return FALSE;
 	return SV_ZoneOcc(z, org, mn, mx);
 };
 

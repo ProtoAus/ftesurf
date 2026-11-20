@@ -163,11 +163,17 @@ void(entity e) SV_TimerWarped;
 void(entity e) SV_TASCancel; // P1055: explicit placement cannot retain live grants
 float(entity e, float z) SV_TimerAtRunOrigin;
 float(entity e) SV_TimerMarkZone;
+void(entity e, float z) SV_TimerPlaceArm;   // P1643
+float(entity e) SV_TimerMarkClean;          // P1643
+float(entity e) SV_TimerMarkGround;
+void(entity e, string say) SV_TimerPlaceTaint;  // P1643
+#define STARTMARK_TAINT "^3this start mark was set after a noclip, a teleport or under a cheat setting^7 -- it is not a clean start spot (^2startmark clear^7, then ^2!r^7)\n"
 float(float a, float b) SV_ZoneSameBox;
 .entity run_startmarks;
 .entity run_mark_next;
 .float run_mark_zone;
 .vector run_mark_angles;
+.float run_mark_dirty;      // P1643: set after a noclip or setpos, or at a cheat level (SV_TimerMarkClean)
 
 void(entity e) SV_WarpOpResetChanged;
 
@@ -247,6 +253,12 @@ void(string action) SV_StartMarkCommand =
 		sprint(self, PRINT_HIGH, "startmark: need standing room here\n");
 		return;
 	}
+	// P1643: `!r` at a mark is at rest wherever it is, so a mark in the air would be height for nothing.
+	if (!SV_TimerMarkGround(self))
+	{
+		sprint(self, PRINT_HIGH, "startmark: stand on the ground to set a mark\n");
+		return;
+	}
 	mark = SV_StartMarkFind(self, z);
 	if (!mark)
 	{
@@ -258,8 +270,10 @@ void(string action) SV_StartMarkCommand =
 	}
 	mark.origin = self.origin;
 	mark.run_mark_angles = self.v_angle;
+	mark.run_mark_dirty = !SV_TimerMarkClean(self);     // P1643: `!r` here arms as the spot was reached
 	SV_WarpOpResetChanged(self);
-	sprint(self, PRINT_HIGH, sprintf("startmark: set zone %g at %v\n", z, mark.origin));
+	sprint(self, PRINT_HIGH, sprintf("startmark: set zone %g at %v%s\n", z, mark.origin,
+	       mark.run_mark_dirty ? " (after a noclip, a teleport or under a cheat setting: not a clean start spot)" : ""));
 };
 
 // P1181: the zone editor's automatic spawn (the zone's xy centre, ZoneEdit_DestCentre)
@@ -1327,10 +1341,14 @@ void(float n, vector at, float atyaw, float atpit, float haveat, float havepit)
 	  chat command before this move, does.  Nothing here reads it.
 	*/
 	if (!samestage)
-	if (zone_type[n] == ZONE_START || zone_type[n] == ZONE_STAGE)
 	{
-		SV_BankNewAttempt(self); // explicit placement, even into the same armed box
-		SV_TimerArm(self, n);
+		if (zone_type[n] == ZONE_START || zone_type[n] == ZONE_STAGE)
+		{
+			SV_BankNewAttempt(self); // explicit placement, even into the same armed box
+			SV_TimerPlaceArm(self, n);      // P1643: SV_TimerArm, placed at rest
+		}
+		else
+			SV_TimerPlaceTaint(self, "");   // P1643 review 3: a zone that arms nothing (an END, a checkpoint) is a teleport
 	}
 };
 
@@ -1346,6 +1364,8 @@ float(entity p) SV_StartMarkFail =
 	os = self;
 	self = p;
 	SV_ZoneMoveAt(z, mark.origin, mark.run_mark_angles_y, mark.run_mark_angles_x, TRUE, TRUE);
+	if (mark.run_mark_dirty)
+		SV_TimerPlaceTaint(self, STARTMARK_TAINT);      // P1643
 	self = os;
 	return TRUE;
 };
@@ -1776,6 +1796,8 @@ void(string word, float n) SV_ZoneChatCommand =
 				{
 					SV_ZoneMoveAt(self.run_leg_zone, mark.origin, mark.run_mark_angles_y,
 						mark.run_mark_angles_x, TRUE, TRUE);
+					if (mark.run_mark_dirty)
+						SV_TimerPlaceTaint(self, STARTMARK_TAINT);      // P1643
 					SV_ZoneSayWhere(word, what, self.run_leg_zone, "your startmark");
 					return;
 				}
