@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1693 -- Jargon finds a run to follow (root FTESurf-worktrees/jargondl-20261121-a03)
+1. surf_sandtrap2, `!b 4`, open the TAS menu: Course reads Bonus 4. Click "Download the top runs of Bonus 4": within a
+   few seconds Guide run shows agentflwrs 7.83s and the whole panel appears (route, Arm Bonus 4).
+2. Click the Course dropdown: the list opens (Main, Bonus 1-4); a pick stays picked.
+3. On a map you have finished yourself (e.g. surf_ace), the Guide run list includes "my run ...". Finish a run on
+   Main, then `!b 4` and open the panel: it reads Bonus 4 (not Main).
+
 ## P1692 -- a retry adds its time away (worldofsurf-6f) -- after the next lobby deploy / on your dev install
 1. In a local game (or alone on a lobby), start a run, wait a few seconds, then retry. When the run comes back the
    chat says "N s away added to the clock" (usually 1-3 s), and the clock carries on from the higher time.

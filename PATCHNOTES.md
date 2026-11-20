@@ -21,6 +21,10 @@
 
 ## next
 
+### P1693 Jargon finds a run to follow
+- Jargon (the TAS menu) opens on the course you are standing in, a bonus or a stage, instead of always Main, and its Course list opens again when no run is loaded.
+- With no run to follow, one click downloads the course's fastest leaderboard runs (KSF first) to follow; your own clean recorded runs are listed too.
+
 ### P1692 A retry is not a free pause
 - Retrying in the middle of a run (the map restarts and your run comes back) now adds the time the restart took to your clock, and the chat says how much. The run stays a normal ranked run.
 
