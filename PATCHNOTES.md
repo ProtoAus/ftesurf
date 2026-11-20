@@ -21,6 +21,8 @@
 
 ## next
 
+### P1652 Slow motion allowance tightened
+- A run is unranked when its game clock falls more than 1 second behind real time (was 5). Normal play, lag spikes included, has never come near that on the lobbies.
 ### P1663 Console suggestions closer to the typing line
 - Under the console window, the suggestion list now hangs straight from the window's bottom edge, a little closer to what you type.
 

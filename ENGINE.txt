@@ -1,4 +1,7 @@
 # The engine build this QuakeC requires.
+# P1652 (lobby config only; Lex's anti-cheat finish list, worldofsurf-4b): cfg/lobby/lobby.cfg sets run_slowclock 1
+# (was the QC default 5): the fleet's own `clk` records put the honest maximum at 0.24 s over 1,292 runs.
+# Record: engine ENGINE_PATCHES.md P1652.
 # P1645 (QC client only; Lex's anti-cheat finish list, worldofsurf-4b): the ranked input report decides "Windows"
 # from the engine's read-only in_guard_live as well as from sys_platform, which a player can set; a Windows game
 # (engine 1576+) whose sys_platform was changed still reports its raw-input and guard settings. No Linux change.
