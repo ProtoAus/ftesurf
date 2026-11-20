@@ -21,6 +21,9 @@
 
 ## next
 
+### P1653 Faster Story and Event screens
+- The Story and Event screens draw about four times faster, so the menu stays smooth on slower PCs.
+
 ### P1651 A friendlier Tournament tab
 - Leaving a tournament room takes a second click, and the warning says what leaving does.
 - If you drop out of a running tournament, a Rejoin button takes you back to its server. Started rooms have a Watch button.
@@ -39,6 +42,10 @@
 ### P1648 Tournaments that run themselves
 - A round starts by itself once everyone is on the server, and the host can start it early. Someone who doesn't arrive is left out after a grace period instead of everyone waiting.
 - Lobby servers restart themselves while empty, before many map changes can make them unstable.
+
+### P1647 Roomier console window
+- The console window has room round the text, a thin line above the typing line, a quieter grey title, a small x to close, a slimmer scroll bar and a more solid background.
+- con_window_padding, con_window_alpha and con_window_clean set the padding, the background and the new look; 0 for padding and clean brings back the old window.
 
 ### P1644 Undo in the console
 - The console's typing line has Ctrl+Z to undo and Ctrl+Y (or Ctrl+Shift+Z) to redo, a word at a time.

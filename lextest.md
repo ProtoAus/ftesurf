@@ -7,6 +7,14 @@
   joins and accepts, draft, Launch. Both should land on the same lobby; F6 shows standings, clock and maps. Try a bhop
   room too (100 tick). Anything wrong: say what you saw, the room and the time.
 
+## P1647 + P1653 -- roomier console window, faster Story/Event (worldofsurf-bb)
+
+- P1647: open the console. Is there room round the text and above the typing line, a grey title, a small x (red on
+  hover), a thin border and a slim scrollbar? Too much or too little: `con_window_padding 8` (or 16), `con_window_alpha
+  0.85`; `con_window_clean 0; con_window_padding 0` is the old window. Drag-select in the log and click in the line:
+  the highlight and the cursor should land on the letters under the mouse.
+- P1653: Story and Event tabs should feel as smooth as the rest of the menu.
+
 ## P1644 -- console undo, no ] prompt (worldofsurf-bb)
 
 - Type a few words in the console, Ctrl+Z (word by word), Ctrl+Y / Ctrl+Shift+Z to redo. No ] before the line; press
