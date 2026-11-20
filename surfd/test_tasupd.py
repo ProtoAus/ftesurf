@@ -920,6 +920,65 @@ class Service(unittest.TestCase):
         c, _ = self.sign_in(ALICE)
         r = self.upload(c, rec().replace(b'map synth', b'beginning 1\nmap synth', 1))
         self.assertEqual((r.status_code, r.get_json().get('state')), (200, 'shown'), r.get_json())
+    # review 6
+    def test_the_author_the_owner_approved_keeps_their_motion(self):
+        rows, fin = fx.simulate()
+        thief, _ = self.sign_in(BOB)
+        stolen = self.upload(thief, rec(rows, fin)).get_json()                # uploaded first, by someone else
+        alice, _ = self.sign_in(ALICE)
+        mine = self.upload(alice, rec(rows, fin, extra='comment 3'))
+        self.assertCopyHeld(mine, stolen['id'])
+        self.cli('remove', str(stolen['id'])); self.cli('approve', str(mine.get_json()['id']))
+        again = self.upload(alice, rec(rows, fin) + b'\n')
+        self.assertEqual((again.status_code, again.get_json().get('state')), (200, 'shown'), again.get_json())
+
+    def test_an_earlier_run_of_other_motion_does_not_unlock_removed_motion(self):
+        rows, fin = fx.simulate()
+        b, _ = self.sign_in(BOB)
+        self.assertEqual(self.upload(b, rec(*variant(14.0))).get_json()['state'], 'shown')   # Bob's own, different
+        c, _ = self.sign_in(ALICE)
+        m = self.upload(c, rec(rows, fin)).get_json()
+        self.cli('remove', str(m['id']))
+        r = self.upload(b, rec(rows, fin, extra='comment 4'))
+        self.assertEqual(r.status_code, 409, r.get_json())
+
+    def test_rejected_motion_with_a_sample_past_the_finish_is_held(self):
+        rows, fin = fx.simulate()
+        c, _ = self.sign_in(ALICE)
+        j = self.upload(c, rec(rows, fin)).get_json()
+        self.cli('reject', str(j['id']))
+        t, o, v = rows[-1]
+        back = self.upload(c, rec(rows + [(round(t + 1.0, 4), list(o), list(v))], fin)).get_json()
+        self.assertEqual(back['state'], 'held', back)
+        self.assertIn('which the owner rejected', json.dumps(back['reasons']))
+
+    def test_unblock_lets_the_real_author_upload_for_review(self):
+        rows, fin = fx.simulate()
+        b, _ = self.sign_in(BOB)
+        stolen = self.upload(b, rec(rows, fin)).get_json()
+        self.cli('remove', str(stolen['id']))
+        c, _ = self.sign_in(ALICE)
+        self.assertEqual(self.upload(c, rec(rows, fin, extra='comment 5')).status_code, 409)   # never uploaded it
+        self.assertEqual(self.cli('unblock', str(stolen['id']))[0], 0)
+        self.assertCopyHeld(self.upload(c, rec(rows, fin, extra='comment 6')), stolen['id'])
+        code, out = self.cli('approve', str(stolen['id']))
+        self.assertEqual(code, 1); self.assertIn('has no file', out)
+
+    def test_two_uploads_at_once_at_most(self):
+        saved = svc.UPLOADS_AT_ONCE
+        svc.UPLOADS_AT_ONCE = 0   # the semaphore is made with the app
+        try:
+            self.app = svc.create_app(self.store, self.accounts, self.zdirs, BASE, http=self.fake_http, clock=self.clock)
+        finally: svc.UPLOADS_AT_ONCE = saved
+        c, _ = self.sign_in(ALICE)
+        r = self.upload(c, rec())
+        self.assertEqual(r.status_code, 503, r.get_json())
+        self.assertEqual(self.app.test_client().get('/tasup/api/recent').status_code, 200)
+
+    def test_a_track_in_other_digits_is_refused(self):
+        c, _ = self.sign_in(ALICE)
+        r = self.upload(c, rec().replace(b'track 0', 'track ٤'.encode()))
+        self.assertEqual(r.status_code, 400); self.assertIn('no usable track', r.get_json()['error'])
 
 if __name__ == '__main__':
     unittest.main()

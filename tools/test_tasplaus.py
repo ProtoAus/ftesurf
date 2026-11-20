@@ -251,14 +251,18 @@ class Hostile(unittest.TestCase):
         rows[len(rows) // 2][1][0] = 3.0e38
         self.assertEqual(verdict(rows, self.fin)["verdict"], "FAIL")
 
-    def test_non_finite_sample_is_dropped(self):
-        body = text(self.rows, self.fin)
-        lines = body.split("\n")
-        k = next(i for i, x in enumerate(lines) if x.startswith("0.3000"))
-        lines[k] = lines[k].replace(lines[k].split()[4], "nan", 1)
-        r = tp.check(tp.read(text="\n".join(lines)), ZONES)
-        self.assertEqual(len(tp.read(text="\n".join(lines)).samples), len(self.rows) - 1)
-        self.assertIn(r["verdict"], ("PASS", "HOLD"))   # one dropped sample is a 2-tick step
+    def test_a_number_that_is_not_plain_decimal_fails(self):
+        # Review 6: float() reads `nan`, `3_4_8.4` and Unicode digits; other readers do not, and an underscore
+        # hid a number's precision. Such a sample is not dropped (a hidden gap) but refuses the file.
+        for bad in ("nan", "3_4_8.4", "1e", "\u0664"):
+            lines = text(self.rows, self.fin).split("\n")
+            k = next(i for i, x in enumerate(lines) if x.startswith("0.3000"))
+            lines[k] = lines[k].replace(lines[k].split()[4], bad, 1)
+            r = tp.check(tp.read(text="\n".join(lines)), ZONES)
+            self.assertEqual(r["verdict"], "FAIL", bad)
+            self.assertIn("not plain decimal", r["reasons"][0]["what"])
+        self.assertEqual(tp.hdr_int({"track": "\u0664"}, "track", -1), -1)
+        self.assertEqual(tp.hdr_int({"track": "9" * 5000}, "track", -1), -1)
 
     def test_fuzz_never_raises(self):
         import random
@@ -816,6 +820,28 @@ class Review1640Round5(unittest.TestCase):
         rows, fin = simulate_jump_at(15)
         j = next(i for i, r in enumerate(rows) if r[2][2] > 250)
         self.assertNotIn("on the jump tick", self.why(verdict(rows[:j - 1] + rows[j:], fin, zones=zones_for(rows))))
+
+class Review1640Round6(unittest.TestCase):
+    setUp, why, assertHeld, at = Review1640.setUp, Review1640.why, Review1640.assertHeld, Review1640.at
+    refly_from = Review1640Round2.refly_from
+
+    def test_one_coarse_sample_widens_only_its_own_pairs(self):
+        # Review 6: the precision of the window's coarsest number applied to every pair.
+        k = self.at(0.2)
+        for j in range(k, len(self.rows)):
+            self.rows[j][2][0] *= 1.02; self.rows[j][2][1] *= 1.02
+        self.refly_from(k)
+        body = text(self.rows, self.fin)
+        held = tp.check(tp.read(text=body), ZONES)
+        lines = body.split("\n")
+        m = next(i for i, x in enumerate(lines) if x.startswith("0.6000"))
+        f = lines[m].split()
+        f[1] = "%.1f" % (float(f[1]) + 100000.0); f[4] = "1234.5"   # 6 significant digits: a %g printer's 0.05
+        lines[m] = " ".join(f)
+        r = tp.check(tp.read(text="\n".join(lines)), ZONES)
+        energy = lambda x: sum("energy" in y["what"] for y in x["reasons"])   # noqa: E731
+        self.assertEqual(r["verdict"], "HOLD")
+        self.assertGreaterEqual(energy(r), energy(held) - 2, self.why(r))
 
 @unittest.skipUnless(os.environ.get("TASPLAUS_CORPUS"), "set TASPLAUS_CORPUS (+ TASPLAUS_ZONES) to real .rec files")
 class Corpus(unittest.TestCase):

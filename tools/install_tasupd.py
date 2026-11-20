@@ -57,7 +57,7 @@ NGINX = '''location = /tasup { return 301 /tasup/; }
 location = /tasup/upload {
     limit_except POST { deny all; }
     client_max_body_size 8300k;   # tasupd.MAX_FORM
-    client_body_timeout 10s;      # between reads: a trickled body lets its slot go
+    client_body_timeout 10s;      # between reads only: a stalled body lets its slot go (a trickle can keep it)
     proxy_pass http://127.0.0.1:%d;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $remote_addr;

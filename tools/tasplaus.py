@@ -72,6 +72,7 @@ A 1% speedhack at 1000 u/s is d(v^2) ~ 20000 a tick; a skipped tick is ~15 u.
 """
 
 import argparse
+import array
 import io
 import json
 import math
@@ -86,9 +87,16 @@ def is_sample(tok):
     return bool(tok) and (tok[0].isdigit() or (tok[0] == "-" and len(tok) > 1 and tok[1].isdigit()))
 
 
+NUMBER = re.compile(r"[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?")
+
+
 def file_float(tok):
     """reccheck.file_float without its float32 rounding detail. Inlined so the upload
-    service (surfd/tasupd.py) ships this file alone; reccheck imports heldmeta."""
+    service (surfd/tasupd.py) ships this file alone; reccheck imports heldmeta. Plain decimal
+    or exponent forms only: Python's float() also takes `3_4_8.4`, `inf`, Unicode digits, which
+    other readers do not, and an underscore hid a number's precision (review 6)."""
+    if not NUMBER.fullmatch(tok):
+        raise ValueError("not a plain number")
     x = float(tok)
     if not math.isfinite(x) or abs(x) > F32_MAX:
         raise ValueError("non-finite or out-of-range number")
@@ -149,8 +157,11 @@ class Run:
         # Rounding of a 6-significant-digit printer (%g): z at -15123.4 is 0.05 coarse beside x, y at
         # 0.01. Per group, the coarsest such number (6+ significant digits, fewer decimals).
         self.sig_q = [0.0, 0.0]
-        self.prec = []       # per sample: (pos decimals, vel decimals, pos sig_q, vel sig_q); check() reads its window's
+        # per sample, as bytes (review 6: tuples cost ~80 B a sample): pos/vel decimals, pos/vel sig_q as 0 or d + 1
+        # for 0.5e-d; check() reads its window's
+        self.prec = (array.array("B"), array.array("B"), array.array("B"), array.array("B"))
         self.short = 0       # sample lines with fewer than 14 columns (dropped)
+        self.badnum = 0      # sample lines with a number that is not a plain decimal (FAIL)
         self.records = set()
         self.yaw = []        # view yaw per sample (runcompare reads it)
 
@@ -208,6 +219,7 @@ def read(path=None, text=None, header_only=False):
         try:
             nums = [file_float(x) for x in tok[:7]]
         except ValueError:
+            run.badnum += 1
             continue
         # The most a group shows, not the fewest: a shortest-form printer writes 0.0 beside 123.456789.
         # The coarser group sets the precision: positions at 0.1 under velocities' 0.01 would read as
@@ -221,7 +233,9 @@ def read(path=None, text=None, header_only=False):
                 pd[g] = min(6, max(pd[g], d))
             if d < 6 and "e" not in x and "E" not in x and _sig_digits(x) >= 6:
                 pq[g] = max(pq[g], 0.5 * 10.0 ** -d)
-        run.prec.append((pd[0], pd[1], pq[0], pq[1]))
+        for g in (0, 1):
+            run.prec[g].append(pd[g])
+            run.prec[2 + g].append(round(-math.log10(2 * pq[g])) + 1 if pq[g] else 0)
         for g in (0, 1):
             run._dec[g] = max(run._dec[g], pd[g])
             run.sig_q[g] = max(run.sig_q[g], pq[g])
@@ -299,10 +313,10 @@ def _seg_dist(x, y, a, b):
 
 def hdr_int(hdr, key, default=0):
     """The header's first word as an int, or `default` (absent, empty or not a number)."""
-    try:
-        return int(hdr.get(key, "").split()[0])
-    except (ValueError, IndexError):
-        return default
+    w = (hdr.get(key, "").split() or [""])[0]
+    # ASCII digits only: int() also reads Unicode digits, which the checker's ASCII copy of the header does
+    # not (review 6: the service filed `track` U+0664 as bonus 4, the checker judged main)
+    return int(w) if re.fullmatch(r"[+-]?[0-9]{1,18}", w) else default
 
 
 def _bbox(regions, pad):
@@ -345,6 +359,9 @@ def check(run, zones=None, maxvel=None):
         note(FAIL, None, "header repeats " + ", ".join(sorted(run.dups)) if run.dups
              else "line breaks or spaces other than newline, space and tab: readers would disagree about the header")
         return out
+    if run.badnum:
+        note(FAIL, None, f"{run.badnum} sample lines have a number that is not plain decimal (digits, '.', '-', an exponent)")
+        return out
     if not s or len(s) < 3:
         note(FAIL, None, f"no samples ({run.short} sample lines have fewer than the 14 columns the format needs)"
              if run.short else "no samples")
@@ -381,7 +398,7 @@ def check(run, zones=None, maxvel=None):
     native = sorted(run.records.intersection(NATIVE_STATE))
     if native:
         note(HOLD, None, "has " + ", ".join(native) + " records (saves/loads/warps): needs the exact verifier")
-    if s[-1][0] < fin - 2 * rate:
+    if s[-1][0] < fin - 2 * rate - 1e-6:   # a tail of exactly 2 ticks printed in decimals (review 6)
         note(FAIL, s[-1][0], f"samples stop at {s[-1][0]:.3f}s before the {fin:.3f}s finish")
         return out
     if s[0][0] > 0:
@@ -407,17 +424,20 @@ def check(run, zones=None, maxvel=None):
     # The precision of the samples checked, not of the file: one sample past the finish (never checked) printed
     # coarse would widen every bound below (review 5). The samples are in time order, so win is s[i0:i0 + len(win)].
     dec, sq = [0, 0], [0.0, 0.0]
-    for p in run.prec[i0:i0 + len(win)]:
-        for g in (0, 1):
-            dec[g] = max(dec[g], p[g])
-            sq[g] = max(sq[g], p[2 + g])
+    for g in (0, 1):
+        dec[g] = max(run.prec[g][i0:i0 + len(win)], default=0)
+        code = min((c for c in run.prec[2 + g][i0:i0 + len(win)] if c), default=0)   # the coarsest: fewest decimals
+        sq[g] = 0.5 * 10.0 ** -(code - 1) if code else 0.0
     run.decimals = min(dec)
     if run.decimals < MIN_DECIMALS:
         note(HOLD, None, f"{'positions' if dec[0] <= dec[1] else 'velocities'} printed with at most"
              f" {run.decimals} decimals: the bounds need {MIN_DECIMALS} or more")
-    # Velocity rules use q; the energy test's height term uses q_pos (a %g printer rounds deep z coarser).
-    q = max(0.5 * 10.0 ** (-max(dec[1], MIN_DECIMALS)), min(sq[1], 0.05))
-    q_pos = max(0.5 * 10.0 ** (-max(dec[0], MIN_DECIMALS)), min(sq[0], 0.05))
+    # Velocity rules use q; the energy test's height term uses q_pos (a %g printer rounds deep z coarser). Each
+    # pair's from its own two samples (review 6: one coarse number anywhere in the window widened every pair).
+    def qof(g, pa, pb):
+        d = max(run.prec[g][pa], run.prec[g][pb], MIN_DECIMALS)
+        code = min((c for c in (run.prec[2 + g][pa], run.prec[2 + g][pb]) if c), default=0)
+        return max(0.5 * 10.0 ** -d, min(0.5 * 10.0 ** -(code - 1) if code else 0.0, 0.05))
     worst_air = worst_ground = worst_turn = worst_drift = 0.0
     nchk = njump = ntele = nduck = offtick = gaps = 0
     duck_net = 0.0
@@ -456,6 +476,7 @@ def check(run, zones=None, maxvel=None):
                 break
     for i, (a, b) in enumerate(zip(win, win[1:])):
         t = a[0]
+        q, q_pos = qof(1, i0 + i, i0 + i + 1), qof(0, i0 + i, i0 + i + 1)
         k = (b[0] - a[0]) / rate
         aligned = abs(k - round(k)) < 0.02
         kk = max(1, math.ceil(k - 0.02))   # mover steps: the air cap and the tolerances are per step
@@ -523,8 +544,10 @@ def check(run, zones=None, maxvel=None):
             # that cannot explain counts toward the second too, standing for k ticks of it.
             gaps += 1
             dvk = math.sqrt(sum((vb[c] - va[c]) ** 2 for c in range(3))) * (b[0] - a[0])
-            if d > dvk / 2 + FREE_TOL:
-                note(HOLD, t, f"moves {d:.1f} u off its velocities in {round(k)} ticks, more than their change explains:"
+            # on the ground a step or a slope moves z by up to STEP with no vertical speed, as on contact ticks
+            dk = math.sqrt(r[0] ** 2 + r[1] ** 2 + (max(0.0, abs(r[2]) - STEP) if ground else r[2] - shift) ** 2)
+            if dk > dvk / 2 + FREE_TOL:
+                note(HOLD, t, f"moves {dk:.1f} u off its velocities in {round(k)} ticks, more than their change explains:"
                      " skipped or edited ticks")
             rh = math.hypot(r[0], r[1])
             room = math.sqrt(sum((vb[c] - va[c]) ** 2 for c in range(3))) * (b[0] - a[0])
@@ -595,8 +618,13 @@ def check(run, zones=None, maxvel=None):
             njump += 1
             # The jump tick moves in the air (jump comes before friction): air control's |v'|^2 <= |v|^2
             # + 900, so +30 from rest but ~0 at speed (a flat +30 let fabricated hops pump speed). In a lost
-            # packet the ticks before the jump may be ground ticks (review 5: a jump from rest held).
-            if hb * hb - ha * ha > AIR_DV2 + GROUND_DV2 * (kk - 1) + 4 * math.sqrt(2) * hb * q + 1.0:
+            # packet the ticks before the jump may be ground ticks (review 5: a jump from rest held), with their
+            # friction (review 6: 900 + 10000 a tick let 350 -> 514 pass), or air ticks after it.
+            reach = ha
+            for _ in range(kk - 1):
+                reach = max(0.0, reach - max(reach, STOPSPEED) * FRICTION * rate)
+                reach = math.sqrt(reach * reach + GROUND_DV2)
+            if hb * hb > max(reach * reach + AIR_DV2, ha * ha + AIR_DV2 * kk) + 4 * math.sqrt(2) * hb * q + 1.0:
                 note(HOLD, t, f"speed {ha:.0f} -> {hb:.0f} u/s on the jump tick: air control adds |v|^2 + 900 at most")
             continue
         ea = va[0] ** 2 + va[1] ** 2 + va[2] ** 2 + 2 * GRAVITY * a[1][2]
@@ -687,10 +715,11 @@ def check(run, zones=None, maxvel=None):
         for lab, regs in seq[1:]:
             hit = None
             for jj in range(j, len(win)):
-                # The hull's half-width; and a tick of travel for the file's last sample when the samples stop before
-                # the finish, as our recorder's do (review 5: every clean native whole-course run read "never
-                # reaches end"). A file that goes on past its claimed finish gets no extra tick to claim early.
-                p = (EDGE_PAD + (travel(win[jj]) if win[jj] is s[-1] and s[-1][0] < fin - 1e-6 else 0.0)) if lab == "end" else pad(win[jj])
+                # The hull's half-width; and for the file's last sample, when the samples stop before the finish as
+                # our recorder's do, the travel of the ticks left (up to the 2 allowed; review 5/6: clean native
+                # runs read "never reaches end"). A file that goes on past its claimed finish gets none.
+                tail = min(2.0, (fin - s[-1][0]) / rate) if win[jj] is s[-1] and s[-1][0] < fin - 1e-6 else 0.0
+                p = EDGE_PAD + travel(win[jj]) * tail if lab == "end" else pad(win[jj])
                 if any(_inside(win[jj][1], r, p) for r in regs):
                     hit = jj
                     break
