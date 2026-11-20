@@ -366,6 +366,40 @@ class Rules(unittest.TestCase):
             R.transition(m, 'release', '', '', {})
         self.assertEqual(R.transition(m, 'release', '', '', dict(restored='1'))['phase'], 'finished')
 
+    def test_abort_p1650_reasons_read_plainly(self):
+        m = self.live()
+        for reason, text in (
+                ('alpha_lobby_timeout', 'the tournament timed out waiting in the lobby or draft'),
+                ('loading_timeout', 'players did not get ready in time'),
+                ('host_gone', 'the host left the server'),
+                ('map_change_failed', 'the server could not load the map'),
+                ('unqualified_loaded_table', "the map's zones or rules changed"),
+                ('loaded_ruleset_changed', "the map's zones or rules changed"),
+                ('interrupted_live_round', 'the server lost contact with the tournament service'),
+                ('service_interrupted', 'the server lost contact with the tournament service'),
+                ('reservation_race', 'someone else joined the server first'),
+                ('competitor_lost_during_countdown', 'the server stopped the match'),
+                (None, 'the server stopped the match')):
+            out = R.transition(m, 'abort', '', '', {} if reason is None else dict(reason=reason))
+            self.assertEqual((out['phase'], out['outcome'], out['note']), ('aborted', 'no-contest', 'No contest: %s.' % text))
+
+    def test_autostart_p1650_server_starts_once_everyone_is_ready(self):
+        m = self.drafted(2)
+        data = observation(m)
+        with self.assertRaisesRegex(R.Refusal, 'arrived'):
+            R.transition(m, 'autostart', '', '', data)
+        m = R.transition(m, 'arrive', '', '', data)
+        m = R.transition(m, 'ready', 'host', '', data)
+        with self.assertRaisesRegex(R.Refusal, 'every'):
+            R.transition(m, 'autostart', '', '', data)
+        m = R.transition(m, 'ready', 'p1', '', data)
+        with self.assertRaisesRegex(R.Refusal, 'zone generation'):
+            R.transition(m, 'autostart', '', '', dict(data, zonegen=2))
+        self.assertEqual(R.transition(m, 'autostart', '', '', data)['phase'], 'countdown')
+        self.assertEqual(R.transition(m, 'start', 'host', '', data)['phase'], 'countdown')
+        with self.assertRaisesRegex(R.Refusal, 'host only'):
+            R.transition(m, 'start', 'p1', '', data)
+
     def test_configure_host_freeze_capacity_and_consent_invalidation(self):
         m = self.lobby(3)
         data = dict(kind='surf', tiers='7', profile='default', pool='-', capacity=8, round_seconds=60)
@@ -642,6 +676,37 @@ class API(unittest.TestCase):
         self.assertEqual((out['match']['phase'], out['match']['outcome']), ('finished', 'winner'))
         self.assertEqual([(p['role'], p['place']) for p in out['match']['players']], [('player', 1), ('eliminated', 2)])
         self.assertTrue(T.reserved(self.db, 'n1'))
+
+    def arrived_ready(self):
+        m = self.create()
+        for op, i, fields in (('enter',1,{}), ('seat',0,dict(target=self.whos[1])), ('accept',0,{}), ('accept',1,{}), ('lock',0,{})):
+            m = self.action(m, op, i, **fields)['match']
+        while m['phase'] == 'draft':
+            m = self.action(m, m['turn_kind'], self.whos.index(m['turn_who']), map=next(c['name'] for c in m['maps'] if c['status']=='pool'))['match']
+        m = self.action(m, 'arrive')['match']
+        for i in (0, 1):
+            m = self.action(m, 'ready', i)['match']
+        return m
+
+    def test_autostart_p1650_is_a_keyed_server_op_with_journal(self):
+        m = self.arrived_ready()
+        fields = dict(observation(m), id=m['id'], revision=m['revision'], epoch=m['epoch'], request='a5a5')
+        self.assertEqual(self.post('autostart', **dict(fields, epoch='b'*32))['ok'], 0)
+        with patch.dict(os.environ, SURFD_TOURNAMENT_ACCESS='paid'):
+            self.assertEqual(self.post('autostart', **fields)['ok'], 0)
+        first = self.post('autostart', **fields)
+        self.assertEqual((first['ok'], first['match']['phase']), (1, 'countdown'), first)
+        self.assertEqual(self.post('autostart', **fields), first)
+        self.assertEqual(self.post('autostart', **dict(fields, revision=first['match']['revision'], request='a5a6'))['ok'], 0)
+
+    def test_abort_p1650_reason_from_game_server_and_drift_note(self):
+        m = self.arrived_ready()
+        out = self.action(m, 'abort', reason='host_gone')
+        self.assertEqual((out['ok'], out['match']['note']), (1, 'No contest: the host left the server.'))
+        self.action(out['match'], 'release', restored=1)
+        m = self.arrived_ready()
+        bad = self.post('state', **dict(observation(m), zonegen=2))['match']
+        self.assertEqual((bad['phase'], bad['note']), ('aborted', "No contest: the map's zones or rules changed."))
 
     def test_disable_live_abort_restore_release_and_second_creation(self):
         m = self.create()

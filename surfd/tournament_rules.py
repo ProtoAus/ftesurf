@@ -6,9 +6,21 @@ import math
 import random
 import re
 
-SERVER_OPS = frozenset(('arrive', 'go', 'score', 'settle', 'advance', 'abort', 'release'))
+SERVER_OPS = frozenset(('arrive', 'go', 'score', 'settle', 'advance', 'abort', 'release', 'autostart'))
 TERMINAL = frozenset(('finished', 'cancelled', 'aborted'))
 RUNID = re.compile(r'[0-9a-f]{16,64}\Z')
+# sv_tournament.qc abort reasons, as players read them.
+ABORT_REASONS = {
+    'alpha_lobby_timeout': 'the tournament timed out waiting in the lobby or draft',
+    'loading_timeout': 'players did not get ready in time',
+    'host_gone': 'the host left the server',
+    'map_change_failed': 'the server could not load the map',
+    'unqualified_loaded_table': "the map's zones or rules changed",
+    'loaded_ruleset_changed': "the map's zones or rules changed",
+    'interrupted_live_round': 'the server lost contact with the tournament service',
+    'service_interrupted': 'the server lost contact with the tournament service',
+    'reservation_race': 'someone else joined the server first',
+}
 
 TIER_MASK = 1023 | 1 << 20
 MAP_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z')
@@ -196,7 +208,7 @@ def transition(original, op, actor, display, data, pool=()):
         require(bool(actor), 'linked account required')
     if op in ('configure', 'seat', 'lock', 'start', 'next', 'cancel'):
         require(actor == m['host'], 'host only')
-    if op in ('configure', 'lock', 'start'):
+    if op in ('configure', 'lock', 'start', 'autostart'):
         require_current_settings(m)
     if m.get('_arrived') and phase in ('loading', 'countdown', 'live') and op not in ('abort', 'release', 'cancel', 'leave'):
         observe(m, data)
@@ -308,7 +320,8 @@ def transition(original, op, actor, display, data, pool=()):
         else:
             require(m['_arrived'] and me is not None and me['role'] == 'player', 'map has not arrived or no seat')
             me['ready'] = 1
-    elif op == 'start':
+    elif op in ('start', 'autostart'):
+        # autostart: the game server starts once everyone is ready, without waiting for the host.
         require(phase == 'loading' and m['_arrived'], 'map has not arrived')
         require(all(p['ready'] for p in competitors(m)), 'every surviving competitor must ready')
         m['phase'] = 'countdown'
@@ -408,7 +421,8 @@ def transition(original, op, actor, display, data, pool=()):
         m.update(phase='cancelled', note='Host cancelled before first GO.')
     elif op == 'abort':
         require(phase not in TERMINAL, 'match is closed')
-        m.update(phase='aborted', outcome='no-contest', note='No contest: server aborted match.')
+        reason = ABORT_REASONS.get(data.get('reason'), 'the server stopped the match')
+        m.update(phase='aborted', outcome='no-contest', note='No contest: %s.' % reason)
     elif op == 'release':
         require(phase in TERMINAL, 'finish, cancel or abort before release')
         require(data.get('restored') == '1', 'public-mode restoration ACK required')

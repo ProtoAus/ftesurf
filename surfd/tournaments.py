@@ -68,8 +68,7 @@ def drift(match, data):
         try:
             rules.observe(match, data)
         except rules.Refusal:
-            match = rules.transition(match, 'abort', '', '', {})
-            match['note'] = 'No contest: loaded map or effective rules changed; restoration required.'
+            match = rules.transition(match, 'abort', '', '', dict(reason='loaded_ruleset_changed'))
     return match
 
 
@@ -174,7 +173,7 @@ def register(app, d):
                     return response(reply(True, 'ok' if enabled() else 'disabled', m))
                 # Abort/release remain available when the feature is disabled.
                 rules.require(enabled() or op in ('abort', 'release', 'leave', 'cancel'), 'tournaments disabled')
-                if op in ('create', 'configure', 'start'):
+                if op in ('create', 'configure', 'start', 'autostart'):
                     require_hosting(d)
                 actor, sid, display = '', '', ''
                 if op not in rules.SERVER_OPS:
@@ -231,11 +230,11 @@ def register(app, d):
                                       'ambiguous public account handle')
                         rules.require(actor in m['_accounts'] or len(m['_accounts']) < 256,
                                       'alpha account history full')
-                    if op in ('configure', 'lock', 'start'):
+                    if op in ('configure', 'lock', 'start', 'autostart'):
                         rules.require_current_settings(m)
                     if op == 'configure':
                         map_pool(db, d, rules.settings(data))
-                    if op == 'start':
+                    if op in ('start', 'autostart'):
                         tournament_pool.revalidate(db, d, m)
                     m = rules.transition(m, op, actor, display, data,
                                          map_pool(db, d, m['settings']) if op == 'lock' else ())
