@@ -1219,7 +1219,9 @@ void(vector p, float w, float h, string key, string label, float state, float ls
 	cap = h - 3 * sc;
 	_sui_round_draw([p_x + 4 * sc, p_y + sc, 0], [cap, cap, 0], 2 * sc, capfill, 1);
 	kw = stringwidth(key, TRUE, [lsz, lsz]);
-	HUD_Text([p_x + 4 * sc + (cap - kw) * 0.5, p_y + sc + (cap - lsz) * 0.5 + lsz * FONT_CAPDROP], key, lsz,
+	// P1678: the key sat low in its cap past hud_scale 2: ink gaps 7/6 px at 2.5 and 9/7 at 3 (5/5 at 2), so the drop
+	// gives back (lsz - 16) / 8 px, which measured centred (artifacts in uilist-20261121-9b).
+	HUD_Text([p_x + 4 * sc + (cap - kw) * 0.5, p_y + sc + (cap - lsz) * 0.5 + lsz * FONT_CAPDROP - max(0, lsz - 16) / 8], key, lsz,
 	         (state == KM_HOT || state == KM_DANGER) ? SUI_THEME_WELL : SUI_THEME_DIM, 1);
 	HUD_Text([p_x + 8 * sc + cap, p_y + (h - sc - lsz) * 0.5 + lsz * FONT_CAPDROP], label, lsz, fg, 1);
 };
