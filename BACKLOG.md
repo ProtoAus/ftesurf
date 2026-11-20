@@ -713,8 +713,8 @@
   rule stays on branch p1613-cseq. A real local pair was not obtained (a headless client writes no .view; a
   windowed one did not take scripted input without focus) -- the lobbies' own uploads are the check.
   With P1613 live, P1609's choice (the 72 one-frame FAULTs) can be revisited with the command rule as the judge.
-  21 Nov (worldofsurf-6f): steps (1) and (3) done on real runs -- the owner's two local pairs and the four lobby
-  evidence pairs since the 20 Nov deploy (three players): every pair judged, 405-9538 moves joined per run (95-100%),
+  21 Nov (worldofsurf-6f): steps (1) and (3) done on real runs -- the owner's three local pairs and the four lobby
+  evidence pairs since the 20 Nov deploy (5 runs, three players): every pair judged, 405-9538 moves joined per run (95-100%),
   0.00% on no drawn path, worst 0.00 deg (tools/p1613-fleet.md). The reader is MERGED to main (tools only); step (4),
   its pin in a surfd generation, is queued in tools/backend-pending.md. The P1609 revisit can follow it.
 - The 9 one-frame FAULTs where the frames name offset 0 itself (8 on the owner's key, 21 Sep - 1 Nov): the sent

@@ -1,7 +1,7 @@
 # P1613 command rule on real runs (21 Nov 2026, worldofsurf-6f)
 
 The reader on branch p1613-cseq (541165ed, now merged to main), run read-only over every real pair of a `cseq`
-recording and its client's .view: the owner's local install (two runs with a .rec kept beside the .view) and the
+recording and its client's .view: the owner's local install (three runs with a .rec kept beside the .view) and the
 Pi's evidence uploads since the 20 Nov 10:18Z lobby deploy that carried the recorder (each .view paired with its
 run's .rec by the header runid). The driver is kept in the private task root.
 

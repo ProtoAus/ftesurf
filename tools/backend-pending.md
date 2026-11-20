@@ -67,8 +67,8 @@ Rides with P1604's reader pin (reccheck.py 059246f0..., below); P1613's reader i
 
 ## P1613 reader -- READY for the NEXT generation (merged to main 21 Nov, worldofsurf-6f)
 Main's tools/reccheck.py now carries the command rule (branch p1613-cseq's reader, three review rounds on 19 Nov;
-its recorder has been on the lobbies since 20 Nov). Real-data condition met 21 Nov: 6 pairs (2 local, 4 lobby
-evidence, three players), all judged, 0.00% on no drawn path, worst 0.00 deg (tools/p1613-fleet.md). A sidecar
+its recorder has been on the lobbies since 20 Nov). Real-data condition met 21 Nov: 5 runs, three players (3 local
+pairs, 4 lobby evidence pairs, two runs in both), all judged, 0.00% on no drawn path, worst 0.00 deg (tools/p1613-fleet.md). A sidecar
 with more than 1% of at least 100 joined moves on no drawn path FAULTs ("the sidecar does not show what this
 recording sent"). Pin tools/reccheck.py (+ tools/rcptcheck.py) at game main with the next generation. Check after:
 a recent evidence pair (e.g. surf_happyhands 20261120-140615-0-p27590) reads `angle_cmd ... 0.00% on no drawn

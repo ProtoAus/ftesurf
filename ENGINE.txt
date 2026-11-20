@@ -1,7 +1,7 @@
 # The engine build this QuakeC requires.
 # P1613 reader (game tools/reccheck.py, rcptcheck.py; Lex's anti-cheat finish list item 6, worldofsurf-6f): the
 # command rule -- each numbered move held against the .view frames of its own usercmd -- merged from p1613-cseq after
-# real runs confirmed it (6 pairs, 0.00% off path). Reaches surfd with a guarded generation. No engine change.
+# real runs confirmed it (5 runs, 3 players, 0.00% off path). Reaches surfd with a guarded generation. No engine change.
 # P1693 (QC cl_jargon.qc cl_tasoptui.qc cl_main.qc; Lex's surf_sandtrap2 b4 screenshot, 21 Nov): Jargon opens on the course
 # you are on, its Course list draws with no guide run, "Download the top runs" (`tas jargon download`) fetches up to three
 # KSF/ranked/Momentum board replays into data/online, and your clean data/runs recordings are guide runs. No engine change.
