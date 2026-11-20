@@ -502,9 +502,37 @@ void() GS_DoorTouch =
 		self.touch = SUB_Null;      // until the cycle is done
 };
 
+// P1690: CBaseDoor::Blocked's TakeDamage(dmg) knockback (CBaseMonster::TakeDamage, DamageForce), AG modes only (Lex);
+// CS 1.6 and Source modes push nothing. DamageForce caps only a positive force, so a "healer" (dmg -10000) throws the
+// player toward the door at sv_maxvelocity -- the Half-Life ports' booster. Recorded like trigger_setspeed.
+void(entity pl) GS_DamageKnock =
+{
+	local float dmg, vol;
+	local vector dir, v;
+
+	if (!self.gs_dmg || pl.classname != "player" || pl.movetype != MOVETYPE_WALK)
+		return;
+	if (substring(serverkey("*movementprofile"), 0, 3) != "ag-" || SV_MapMoveHeld(pl))
+		return;
+	dmg = (self.gs_dmg < 0) ? ceil(self.gs_dmg) : floor(self.gs_dmg);    // CBasePlayer::TakeDamage's (int)
+	vol = pl.size_x * pl.size_y * pl.size_z;
+	dmg = dmg * 5 * ((vol > 0) ? (32 * 32 * 72) / vol : 1);
+	if (dmg > 1000)
+		dmg = 1000;
+	dir = normalize((self.absmin + self.absmax) * 0.5 - '0 0 10' - (pl.absmin + pl.absmax) * 0.5);
+	v = pl.velocity - dir * dmg;
+	if (cvar("developer"))
+		dprint(sprintf("goldsrc: %s knocks %s %v -> %v\n", self.targetname, pl.netname, pl.velocity, v));
+	if (v_z > PM_NONJUMP_VEL && v_z > pl.velocity_z)
+		pl.run_pushed = TRUE;
+	pl.velocity = v;
+	SV_RecWarp(pl, "speed");
+};
+
 // CBaseDoor::Blocked: a door that comes back by itself reverses; one that never does keeps pushing.
 void() GS_DoorBlocked =
 {
+	GS_DamageKnock(other);
 	if (self.gs_wait < 0)
 		return;
 	if (self.gs_state == TS_GOING_DOWN)
