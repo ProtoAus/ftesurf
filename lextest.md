@@ -5,7 +5,12 @@
 - Nothing else should look different until tournaments are switched on. Then follow the P1634/P1635/P1639 checks below
   (two accounts).
 
-## P1641-P1642 -- server values + text-box console (worldofsurf-bb)
+## P1644 -- console undo, no ] prompt (worldofsurf-bb)
+
+- Type a few words in the console, Ctrl+Z (word by word), Ctrl+Y / Ctrl+Shift+Z to redo. No ] before the line; press
+  Enter on a command and it should show in blue in the log.
+
+## P1641-P1642 -- server values + text-box console (worldofsurf-bb) -- CONFIRMED by Lex 20 Nov ("it works and I like it!")
 
 - P1641: join a lobby, open the console, type `sv_airaccelerate`: it should say the value "on the server" (1000 on bhop,
   150 on surf) and, if yours differs, "Your own copy is ...". `hud_debug 1`: the bottom rows (tick, aacc, accel, fric,
