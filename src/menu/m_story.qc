@@ -831,18 +831,28 @@ void() Sty_Esc =
   every level -- 12 lobbies x 120 levels, three builtins a pair -- and it is called for
   the header, the side panel and every visible row, every frame: about 50,000 builtin
   calls a frame, ~5 ms of the Story and Event screens' 6.5-8 (rows off: 1.7). The answer
-  changes only when a new lobby list or a new ladder arrives, so it is kept per lobby
-  and rebuilt then.
+  changes only when a new lobby list or a new ladder arrives, so it is kept per lobby and
+  rebuilt then, through a table of the ladder's maps (lowercase name -> first level; a hit
+  is checked with strcasecmp, which the old compare used).
 */
-float sty_lvc_valid, sty_lvc_L, sty_lvc_recv, sty_lvc_lad, sty_lvc_n, sty_lvc_nlv;
+float sty_lvc_valid, sty_lvc_L, sty_lvc_recv, sty_lvc_lad, sty_lvc_n, sty_lvc_nlv, sty_lvc_tab;
 float sty_lvc_in[LB_MAX];
 void(float L) Sty_LiveIndex =
 {
 	local float i, k, n;
+	local string m;
 	n = min(Lob_Count(), LB_MAX);
 	if (sty_lvc_valid && sty_lvc_L == L && sty_lvc_recv == lb_received && sty_lvc_lad == sty_lrecv &&
 	    sty_lvc_n == n && sty_lvc_nlv == sty_nlv[L])
 		return;
+	if (!sty_lvc_valid || sty_lvc_L != L || sty_lvc_lad != sty_lrecv || sty_lvc_nlv != sty_nlv[L])
+	{
+		if (sty_lvc_tab)
+			hash_destroytab(sty_lvc_tab);
+		sty_lvc_tab = hash_createtab(256, EV_FLOAT);
+		for (k = sty_nlv[L] - 1; k >= 0; k = k - 1)
+			hash_add(sty_lvc_tab, strtolower(bufstr_get(sty_lvmap[L], k)), k, HASH_REPLACE | EV_FLOAT);
+	}
 	sty_lvc_valid = TRUE;
 	sty_lvc_L = L;
 	sty_lvc_recv = lb_received;
@@ -852,8 +862,17 @@ void(float L) Sty_LiveIndex =
 	for (i = 0; i < n; i = i + 1)
 	{
 		sty_lvc_in[i] = FALSE;
-		for (k = 0; k < sty_nlv[L]; k = k + 1)
-			if (!strcasecmp(Lob_Map(i), bufstr_get(sty_lvmap[L], k)))
+		m = Lob_Map(i);
+		k = hash_get(sty_lvc_tab, strtolower(m), -1, EV_FLOAT);
+		if (k < 0)
+			continue;               // strcasecmp-equal names lower to the same key
+		if (!strcasecmp(m, bufstr_get(sty_lvmap[L], k)))
+		{
+			sty_lvc_in[i] = TRUE;
+			continue;
+		}
+		for (k = 0; k < sty_nlv[L]; k = k + 1)     // a non-ASCII case pair: the old compare decides
+			if (!strcasecmp(m, bufstr_get(sty_lvmap[L], k)))
 			{
 				sty_lvc_in[i] = TRUE;
 				break;

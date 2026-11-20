@@ -360,6 +360,7 @@ strbuf ms_new;
 strbuf ms_dlkb;
 strbuf ms_view;
 float  ms_count;                // entries in ms_name
+float  ms_ixok, ms_ixtab, ms_ixcount;  // P1653: ui_map_index's name table, dropped by ui_load_maps
 float  ms_viewcount;            // entries in ms_view
 float  ms_dlcount;              // rows appended by ui_dl_load, for the report
 float  ms_dlstale;              // installed rows whose BUILD differs from the Pi's (ms_have "2")
@@ -2896,6 +2897,7 @@ void() ui_load_maps =
 	ms_new   = buf_create();
 	ms_dlkb  = buf_create();
 	ms_count = 0;
+	ms_ixok = FALSE;            // P1653: same count, other rows is possible after a reload
 	ms_dlcount = 0;
 	ms_dlstale = 0;
 
@@ -4436,10 +4438,35 @@ float(string a) ui_host_allowed =
   same as the == it replaces.  Lowercasing every name instead would have meant
   2200 tempstrings per lookup, five times a poll, to answer one question.
 */
+// P1653: one lowercase name -> first row table, built on the first lookup after a reload or a count
+// change, instead of a scan of every row (two builtins a row, ~1650 rows) per lookup -- Story's first
+// visit spent ~11 ms (profiled) here. strcasecmp-equal names have equal strtolower, so a miss is a miss;
+// a hit is checked against ms_name and an unexpected one falls back to the scan.
+void() ui_map_ixbuild =
+{
+	local float i;
+	if (ms_ixtab)
+		hash_destroytab(ms_ixtab);
+	ms_ixtab = hash_createtab(4096, EV_FLOAT);
+	for (i = ms_count - 1; i >= 0; i = i - 1)      // backwards: the first row of a name wins
+		hash_add(ms_ixtab, strtolower(bufstr_get(ms_name, i)), i, HASH_REPLACE | EV_FLOAT);
+	ms_ixcount = ms_count;
+	ms_ixok = TRUE;
+};
+
 float(string nm) ui_map_index =
 {
 	local float i;
 
+	if (!ms_ixok || ms_ixcount != ms_count)
+		ui_map_ixbuild();
+	i = hash_get(ms_ixtab, strtolower(nm), -1, EV_FLOAT);
+	if (i < 0)
+		return -1;
+	if (i < ms_count)
+		if (!strcasecmp(bufstr_get(ms_name, i), nm))
+			return i;
+	ms_ixok = FALSE;            // a writer that did not drop the table: rebuilt next time
 	for (i = 0; i < ms_count; i = i + 1)
 		if (!strcasecmp(bufstr_get(ms_name, i), nm))
 			return i;
