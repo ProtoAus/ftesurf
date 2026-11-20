@@ -5,10 +5,19 @@ set -euo pipefail
 export LC_ALL=C
 fail() { echo "linux-bootstrap: $*" >&2; exit 1; }
 if [[ ${1-} != --inside ]]; then
-    [[ $EUID == 0 ]] || fail 'requires WSL root and private mount namespaces'
+    if [[ $EUID != 0 ]]; then
+        # Linux host without WSL root: become root of an own user + pid namespace (the user's
+        # /etc/subuid range maps the chroot's other owners); the mounts below stay private to it.
+        command -v unshare >/dev/null || fail 'requires root or unshare for private namespaces'
+        exec unshare --map-auto --map-root-user --mount --pid --fork --propagation private -- bash "$0" --inside "$@"
+    fi
     exec unshare --mount --propagation private -- bash "$0" --inside "$@"
 fi
 shift
+# A user namespace may not bind /dev without its submounts (devpts, shm): recursive there only.
+devbind=--bind
+read -r ns_inside ns_outside ns_count < /proc/self/uid_map
+[[ $ns_inside == 0 && $ns_outside == 0 && $ns_count == 4294967295 ]] || devbind=--rbind
 [[ $# == 3 ]] || fail 'usage: <source> <target-dir> <bullseye-chroot>'
 source=$(realpath -e -- "$1")
 mkdir -p -- "$2"
@@ -41,7 +50,7 @@ mount -o remount,bind,ro "$ch/mnt/rust"
 mount --bind "$registry" "$ch/mnt/registry"
 mount -o remount,bind,ro "$ch/mnt/registry"
 mount -t proc -o ro proc "$ch/proc"
-mount --bind /dev "$ch/dev"
+mount $devbind /dev "$ch/dev"
 mount -o remount,bind,ro "$ch/dev"
 chroot "$ch" /usr/bin/env -i PATH=/mnt/rust/bin:/usr/bin:/bin HOME=/mnt/target \
     LC_ALL=C CARGO_HOME=/mnt/target/cargo-home CARGO_TARGET_DIR=/mnt/target \

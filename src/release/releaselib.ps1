@@ -221,6 +221,19 @@ function Invoke-WslRaw ([string]$Distro, [string[]]$Argv) {
     [pscustomobject]@{ Rc = $rc; Lines = [string[]]@($out | ForEach-Object { "$_" }) }
 }
 
+# --- Linux host ------------------------------------------------------------------------
+# On a Linux host the WSL half (linux-pack.sh, the Bullseye bootstrap build) is an ordinary
+# child process. Same {Rc, Lines} shape as Invoke-WslRaw, so callers grade both alike.
+function Test-WindowsHost { $env:OS -eq 'Windows_NT' }
+
+function Invoke-NativeRaw ([string[]]$Argv) {
+    if (-not $Argv.Count) { throw 'Invoke-NativeRaw needs a command' }
+    $rest = if ($Argv.Count -gt 1) { $Argv[1..($Argv.Count - 1)] } else { @() }
+    $out = & $Argv[0] @rest 2>&1
+    $rc = $LASTEXITCODE
+    [pscustomobject]@{ Rc = $rc; Lines = [string[]]@($out | ForEach-Object { "$_" }) }
+}
+
 function ConvertTo-WslPath ([string]$Distro, [string]$WinPath) {
     $r = Invoke-WslRaw $Distro @('wslpath', '-a', '-u', $WinPath.TrimEnd('\'))
     if ($r.Rc -ne 0 -or $r.Lines.Count -ne 1 -or -not $r.Lines[0].StartsWith('/')) { throw "wslpath failed for $WinPath`: $($r.Lines -join ' ')" }

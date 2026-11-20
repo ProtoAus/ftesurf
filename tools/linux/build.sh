@@ -2,15 +2,22 @@
 # Portable Linux x86_64 build of the FTESurf engine fork at one commit, inside the bullseye chroot
 # made by chroot-setup.sh.  Run as root in Ubuntu-22.04 WSL (build-linux.ps1 wraps this):
 #   bash tools/linux/build.sh <engine commit> [--expect-sonames]
+# On a Linux host it also runs unprivileged: it re-executes itself as root of its own user, mount and
+# pid namespaces (unshare --map-auto needs the user's /etc/subuid range), so chroot and the proc mount
+# need no sudo.  FTESURF_LINUX_CHROOT / _MIRROR / _CACHE then name an owned rootfs, mirror and cache.
 # Output (Windows-visible): C:\FTESurf\dist\linux-build\ (or $FTESURF_LINUX_OUT) -- fteqw64, fteplug_hl2_amd64.so,
 # fteqw-sv64, BUILDINFO.txt, db/ (unstripped, for crash symbolising), logs/.
 set -eu
+if [ "$(id -u)" != 0 ]; then
+	command -v unshare >/dev/null || { echo "build.sh: not root and no unshare" >&2; exit 1; }
+	exec unshare --map-auto --map-root-user --mount --pid --fork --propagation private /bin/bash "$0" "$@"
+fi
 COMMIT=${1:?usage: build.sh <engine commit> [--expect-sonames]}
 EXPECT=${2:-}
 HERE=$(cd "$(dirname "$0")" && pwd)
-CH=/srv/ftebuild-bullseye
-MIRROR=/srv/fteqw-mirror.git
-CACHE=/srv/ftebuild-cache
+CH=${FTESURF_LINUX_CHROOT:-/srv/ftebuild-bullseye}
+MIRROR=${FTESURF_LINUX_MIRROR:-/srv/fteqw-mirror.git}
+CACHE=${FTESURF_LINUX_CACHE:-/srv/ftebuild-cache}
 SRC=${FTESURF_ENGINE_SOURCE:-/mnt/c/msys64/home/Lex/fteqw}
 GIT_SOURCE=${FTESURF_ENGINE_GIT_DIR:-$SRC}
 SOURCE_REF=${FTESURF_ENGINE_REF:-}
