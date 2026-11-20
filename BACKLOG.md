@@ -1,5 +1,16 @@
 # BACKLOG.md
 
+## Lex's 21 Nov UI list -- what P1676-P1685 left (worldofsurf-9b; root FTESurf-worktrees/uilist-20261121-9b)
+- snd_vis desktop audio (P1682) falls back to the game mix only when capture is unsupported or not connected: a
+  desktop that is connected but silent while the game plays to another output (s_device on a non-default sink, a
+  non-default WASAPI endpoint) shows silence. Falsifier: s_device on a second sink, menu music playing, snd_vis_status
+  says feeding desktop with rms 0. Fix idea: prefer the tap while its rms is up and the loopback's is ~0 for 2 s.
+- P1682 on Windows is unbuilt here: the new default turns WASAPI loopback on for every Windows player (VISLB_Open's
+  synchronous COM calls once per open; failures back off to 60 s). Check a Windows build's first menu frame time.
+- The migration (ui_vis_source_rev) also moves players who had picked "game mix" on purpose (cfg cannot tell); a
+  desktop capture may light a "microphone in use" indicator on some desktops while the visuals run.
+- Home tournament tiles (P1684) stop refreshing while you are in a room (MT_Directory is skipped when mt_id is set).
+- P1678's correction is measured for ui_font_ui at rungs 16/20/24 only; another face or rung may need its own.
 ## P1675 start lag -- what it leaves (21 Nov, worldofsurf-6f)
 - Up to 0.06 s per start still passes untimed and clean (two dropped-packet ticks at 0.015); `startlag` is recorded
   but nothing surfaces it yet. The top-10 review page (finish item 7) should flag any `startlag` of 3 ticks or more (2

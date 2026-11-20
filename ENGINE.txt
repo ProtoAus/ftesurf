@@ -1,4 +1,10 @@
 # The engine build this QuakeC requires.
+# P1676-P1685 (engine snd_vis.c snd_vis_loopback.h gl_warp.c; QC m_chat m_main m_friends m_home m_milk m_settings
+# cl_chat cl_saveloc; tools/story_groups.py + surfd/story.txt; Lex's 21 Nov UI list, worldofsurf-9b): chat box at the
+# panel bottom with its note under it; ahop/kz chips keep their room; key-cap digits centred past hud_scale 2; Friends
+# reads Main on a linear map; text fields scroll in their box; Story silver G6 / gold G4; Linux desktop audio (Pulse/
+# PipeWire monitor) for the visualiser and desktop audio by default (game mix stands in); the sky switch without a
+# shader reload; tournament rooms first on Lobbies; chat names/pictures open profiles. Record: ENGINE_PATCHES P1676-P1685.
 # P1675 (QC server only; Lex's anti-cheat finish list, worldofsurf-6f): the start is latched once a packet, so the
 # ticks a start packet ran after the leave (or a bhop launch) are untimed; PlayerPreThink notes the first tick outside
 # the start box and the first jump-like rise per packet, and a start carrying more than run_startlag (0.06 s) is
@@ -619,7 +625,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   4cc0de918
+commit   723eb5b46
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -631,7 +637,7 @@ commit   4cc0de918
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
-tag      patch-1687
+tag      patch-1683
 patch    1688
 # Patch 1440 (engine client gl_alias.c, gl_model.h, com_mesh.h, plugin.c; hl2 plugin mod_hl2.c, mod_vbsp.c; QC sv_entities.qc, sv_gameui.qc): Source MDL bodyparts draw the model the entity's body picks -- fteplug_hl2 tags a multi-model bodypart (first 32) as a geomset and writes its base/count into two arrays appended to model_t, GL_ChooseSkin draws (body / base) % count, Source's m_nBody; the exe answers "FTESurfModelTail/1440" and the plugin writes the tail only then (an older exe keeps every alternative drawn, no write past model_t). QC sets the networked .body from the SetBodyGroup key and input; SetAnimation also plays on a non-solid prop_dynamic. bhop_crash_egypt's crates draw whole and shatter frame by frame. Collision unchanged (lobby server and client must agree). Native: tag patch-1440 = ae448df27 (engine main, on P1442); both installs run exe edf50724 / fteqwsv64 0388bbe7 / fteplug_hl2 8d47ecb8 (git-8573-patch-1440-0-gae448df27). Rides the next release. tools/p1440-bodygroups.md.
 # Patch 1442 (engine client gl_shader.c, sys_win.c, sys.h; QC cl_hudedit.qc): the activation warm-up keeps the window responsive -- Sys_KeepAlive peeks the queue (PM_NOREMOVE) every 0.25 s inside GLSLWarm_MapActive/MapReady_Drain, so r_mapready_budget defaults to 6 (was 2) without Windows ghosting the window past 5 s; HE_MigrateDefaults moves a saved 2 to 6 only when the engine's description names Patch 1442 (r_mapready_rev 1442). Stress list at budget 10, IsHungAppWindow every 0.1 s: patch-1413 hung 5.4 s in the warm-up, P1442 0. Native: tag patch-1442 = df1444c99 (engine main a48d1d2ba); both installs run client exe 7e7564ae (git-8569-patch-1442-0-gdf1444c99), fteqwsv64 and hl2 plugin unchanged. Rides the next release. tools/p1442-warmbudget.md.

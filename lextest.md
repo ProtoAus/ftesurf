@@ -1,5 +1,22 @@
 # lextest.md — things waiting on a human
 
+## P1676-P1685 -- your 21 Nov UI list (worldofsurf-9b, 21 Nov)
+Your list item by item (P1670, map downloads during a local game, is worldofsurf-75's and arrives separately; the
+tournament-open chat line is worldofsurf-e3's P1674):
+1. P1676 Lobbies home: the chat box sits at the bottom of its panel; "Chat service unavailable" appears small under it.
+2. P1677 MAPS: flip Surf/Bhop -- the + ahop / + kz/climb chips stay (greyed under Surf) and nothing else moves.
+3. P1678 In a map, open Save Lock: the digits sit in the middle of their boxes (try hud_scale 2.5 / 3 too).
+4. P1679 Friends: a friend on a one-stage map reads "Main" (a staged map still reads Stage N).
+5. P1680 Type a long chat message or map search: it scrolls inside the box; Home/End/arrows keep the caret visible.
+6. P1681 STORY: silver = group 6 time, gold = group 4 time (were 4 and 2); your counts should go up by themselves.
+7. P1682 Settings > In-game sky > Audio source reads "game mix | desktop audio" and is on desktop audio: play music in
+   any app and the menu visuals / visualizer sky react (Linux: PulseAudio or PipeWire). `snd_vis_status` says
+   "feeding desktop".
+8. P1683 Settings > In-game sky: flip map's own / visualizer a few times, with and without a map: no hitch.
+9. P1684 When a tournament room is open it is the first tile(s) on Lobbies, in gold; clicking one joins/watches it.
+10. P1685 In a lobby, open chat (Y/T): every line starts with the player's picture; hover a name (underlined) and click
+   it: their profile card opens. In the main-menu chat each message has the sender's picture; click it or the name.
+
 ## P1686-P1688 -- your 21 Nov mechanics list (worldofsurf-41; root FTESurf-worktrees/mechanics-20261121-41)
 1. Crouch smoothing (P1686), cl_maxfps 300 on a surf or bhop map: hold crouch and let go. The view should glide down and
    up with no visible stair-steps (measured before: the eye held for 3 frames then jumped, every tick).

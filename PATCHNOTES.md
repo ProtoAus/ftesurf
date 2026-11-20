@@ -35,6 +35,38 @@
 ### P1686 Smoother crouching
 - Crouching and standing up now lower and raise your view a little every frame at high frame rates, instead of in small steps at the server's tick rate.
 
+### P1685 Click a name in chat to see their profile
+- In-game chat: with the chat open, click a player's picture or name to open their profile. Every player's line now starts with their picture (their initial until it loads).
+- Main menu chat: each message shows the sender's picture before their name; click either to open their stats.
+
+### P1684 Tournaments first in the lobby list
+- Open tournament rooms are listed first on the Lobbies page, in gold. Click one to join it, or to watch once it has started.
+
+### P1683 Smooth in-game sky switch
+- Switching Settings > In-game sky between the map's own sky and the visualizer no longer stutters, with or without a map loaded.
+
+### P1682 Desktop audio for the visualizer on Linux
+- Linux: the menu visuals and the visualizer sky can listen to your desktop audio (PulseAudio or PipeWire), as on Windows.
+- Desktop audio is now the default source, so the visualizer sky reacts to whatever you are playing; the game's own sound stands in when desktop audio is unavailable.
+
+### P1681 Easier Story trophies
+- Story mode silver now needs a group 6 time and gold a group 4 time (they were group 4 and group 2). Your existing runs count straight away.
+
+### P1680 Long text stays inside its box
+- Typing a long chat message or map search in the main menu scrolls inside the box instead of running past it.
+
+### P1679 Linear maps read Main in Friends
+- The friends list shows Main instead of Stage 1 for a friend playing a map with only one stage.
+
+### P1678 Save Lock key numbers centred
+- The numbers in the Save Lock menu's key boxes (and the other number menus) sit in the middle of their boxes at larger HUD scales.
+
+### P1677 Map filters no longer jump
+- The + ahop and + kz/climb chips keep their place (greyed out under Surf), so switching Surf and Bhop no longer shifts the rest of the filters.
+
+### P1676 Lobby chat box lower
+- The main menu's chat box sits at the bottom of its panel; messages such as Chat service unavailable appear just under it.
+
 ### P1674 One build per map in tournaments, and tournament standings
 - A tournament's map pool and draws now hold one build of each map: the Momentum Mod one when it qualifies, otherwise its CSS, KSF or fix build. No more two copies of the same map in a draft.
 - The server now keeps tournament standings: wins, shared wins, tournaments played and a rating (Elo from final places; everyone starts at 1000).
