@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P1643 / P1645 / P1652 / P1657 -- anti-cheat start rules, LIVE on the lobbies 20 Nov 10:18Z (worldofsurf-4b)
+
+- Surf (P1643): stand in the start and go -- counts as always. Fall or fly into a start without landing and leave it:
+  practice, the chat says "unrested start", the HUD says not armed. After noclip or setpos the next start is practice
+  until `!r` (chat: "not a clean start -- a noclip, a teleport or a loaded spot..."). A save made after noclip says
+  `!r` will not restart there. Your old "your save" spots on a start's floor should still work -- tell me if one stopped.
+- Bhop and ahop (P1657): run out of the start, or run and jump -- counts. Hop or fly out faster than a run-up (about
+  300 on bhop, 504 on ahop) after a restart: practice, "unrested start -- start from a run-up". Tell me if an honest
+  start ever reads unrested (map and what you did).
+- Slow motion (P1652): nothing should change in normal play; a run whose clock falls 1 s behind real time is unranked.
+- Windows (P1645), one check: in the console `set sys_platform Linux`, join a lobby, `cmd timer` -- the `inguard`
+  line should still show `have` with the raw-input bit (the game is still read as Windows).
+
 ## 0.1.49 release -- PUBLISHED 20 Nov 05:12Z; owner check PENDING (record: tools/release-0.1.49.md)
 - Update through the launcher (Windows and Linux); the menu should say 0.1.49.
 - Tournaments are ON since 20 Nov 06:11Z (tools/p1639-delivery.md): a TOURNAMENT tab in the main menu; Open Lobby
