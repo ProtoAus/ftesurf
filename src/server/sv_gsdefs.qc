@@ -9,6 +9,7 @@ float() GS_Spawn;                               // CheckSpawn: TRUE when it took
 float(string key, string value) GS_UnknownKey;  // ED_ParseUnknownEpair: TRUE when the key was kept
 void() GS_MapStart;                             // SV_EntityIOBuild: the lump is built
 void(entity pl) GS_PlayerUse;                   // SV_UseFrame: the +use edge
+void(entity t, entity att, float dmg) GS_Damage;    // SV_EntityDamageInner: the shot hit t
 
 // Keys GoldSrc maps write that no QC field is named after (so Source parsing stays as it was).
 .string gs_master;          // "master": a multisource that gates this entity

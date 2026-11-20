@@ -13449,6 +13449,11 @@ void(entity t, entity att, float dmg) SV_EntityDamageInner =
 {
 	local float code;
 
+	if (GS_Map())                   // P1655: GoldSrc buttons and breakables take the shot in sv_goldsrc.qc
+	{
+		GS_Damage(t, att, dmg);
+		return;
+	}
 	if (t.vbsp_mv_kind == MVK_BUTTON)
 	{
 		if (!(t.spawnflags & SF_BUTTON_DAMAGE) && !t.health)

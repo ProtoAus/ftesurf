@@ -1286,6 +1286,46 @@ void(entity t, entity act, entity caller, float ut, float val) GS_Use =
 		SV_IOEnable(t, SV_Key2(t.StartDisabled, t.startdisabled));     // CBaseTrigger::ToggleUse
 };
 
+// The game's shot (SV_ShootFrame) as damage: CBaseButton, CButtonTarget and CBreakable::TakeDamage.
+void(entity t, entity att, float dmg) GS_Damage =
+{
+	local entity o;
+
+	if (t.gs_dead)
+		return;
+	if (t.gs_kind == GS_K_BTARGET)
+	{
+		GS_ButtonTargetUse(t, att, GS_TOGGLE);
+		return;
+	}
+	if (t.gs_kind == GS_K_BREAKABLE)
+	{
+		if (t.spawnflags & GS_SF_BREAK_TRIGGERONLY)
+			return;
+		t.health = t.health - dmg;
+		if (t.health <= 0)
+			GS_Break(t, att);
+		return;
+	}
+	// a button with health is shot, not used; it answers as a touch button would
+	if (t.gs_kind != GS_K_BUTTON || t.health <= 0)
+		return;
+	if (t.gs_state == TS_GOING_UP || t.gs_state == TS_GOING_DOWN)
+		return;
+	if (t.gs_state == TS_AT_TOP)
+	if (t.gs_wait == -1 || !(t.spawnflags & GS_SF_BUTTON_TOGGLE))
+		return;
+	t.touch = SUB_Null;
+	t.gs_act = att;
+	o = self;
+	self = t;
+	if (t.gs_state == TS_AT_TOP)
+		GS_ButtonReturn();
+	else
+		GS_ButtonActivate();
+	self = o;
+};
+
 /*
   CBasePlayer::PlayerUse: the usable entity within 64 units that sits deepest in the view cone
   (dot over 0.7 against the nearest point of its box).  No line of sight is asked for.
@@ -1384,6 +1424,7 @@ float() GS_Spawn =
 	{
 		gs_n_ladder = gs_n_liquid = gs_n_door = gs_n_button = gs_n_train = gs_n_trig = gs_n_logic = 0;
 		gs_depth = 0;
+		self.gs_raw = "";
 		return FALSE;
 	}
 	if (self.spawnflags & GS_SF_NOTINDM)
@@ -1500,6 +1541,8 @@ float() GS_Spawn =
 		self.movedir = GS_DirAngles(self.angles);
 		func_conveyor();
 	}
+	else if (cn == "func_friction" || cn == "func_monsterclip")
+		remove(self);               // a friction trigger and a monsters-only clip: nothing a player meets
 	else
 	{
 		// the shared spawn or catch-all; a solid brush's skin is not contents in this game
@@ -1677,7 +1720,7 @@ void() GS_TestDoors =
 {
 	local entity d;
 	local vector p;
-	local float n, stood, went;
+	local float n, stood, went, i;
 
 	n = stood = went = 0;
 	for (d = find(world, classname, "func_door"); d; d = find(d, classname, "func_door"))
@@ -1694,14 +1737,72 @@ void() GS_TestDoors =
 		tracebox(p, gs_bot.mins, gs_bot.maxs, p, MOVE_NORMAL, gs_bot);
 		if (trace_startsolid)
 			continue;
-		stood = stood + 1;
 		GS_TestPlace(p, 0, 0);
 		gs_bot.movement = '0 0 0';
-		GS_TestPhys(4, 16);
+		for (i = 0; i < 30 && d.gs_state == TS_AT_BOTTOM; i = i + 1)
+		{
+			GS_TestPhys(1, 16);
+			if (gs_bot.flags & FL_ONGROUND)
+				break;
+		}
+		// a shaped door's box centre can be air: only a body that came to rest on this door counts
+		if (d.gs_state == TS_AT_BOTTOM)
+		if (!(gs_bot.flags & FL_ONGROUND) || gs_bot.groundentity != d)
+			continue;
+		stood = stood + 1;
 		if (d.gs_state == TS_GOING_UP || d.gs_state == TS_AT_TOP)
 			went = went + 1;
+		else if (stood - went <= 5)
+			print(sprintf("GSTEST door-nostart %s size %v body %v on %s %s (ground %g)\n", d.model, d.size,
+			              gs_bot.origin - p, gs_bot.groundentity.classname, gs_bot.groundentity.model,
+			              (gs_bot.flags & FL_ONGROUND) != 0));
 	}
 	print(sprintf("GSTEST doors: %g touch doors, stood on %g, %g started\n", n, stood, went));
+};
+
+// Every func_breakable that breaks when run into (spawnflag 2): drop the body onto it from 100 units up,
+// which lands at about 400 u/s -- 4 as damage -- so the ones with health over 4 must survive.
+void() GS_TestBreaks =
+{
+	local entity b, nx;
+	local vector p;
+	local float n, hit, broke, held, i, hp;
+
+	n = hit = broke = held = 0;
+	b = find(world, classname, "func_breakable");
+	while (b)
+	{
+		nx = find(b, classname, "func_breakable");
+		if (b.gs_kind == GS_K_BREAKABLE && !b.gs_dead)
+		if ((b.spawnflags & GS_SF_BREAK_TOUCH) && !(b.spawnflags & GS_SF_BREAK_TRIGGERONLY))
+		{
+			n = n + 1;
+			hp = b.health;
+			p = (b.absmin + b.absmax) * 0.5;
+			p_z = b.absmax_z - 1 + 36 + 100;
+			tracebox(p, gs_bot.mins, gs_bot.maxs, p - '0 0 99', MOVE_NORMAL, gs_bot);
+			if (!trace_startsolid && trace_fraction == 1)
+			{
+				GS_TestPlace(p, 0, 0);
+				gs_bot.movement = '0 0 0';
+				for (i = 0; i < 40 && !b.gs_dead; i = i + 1)
+				{
+					GS_TestPhys(1, 16);
+					if (gs_bot.flags & FL_ONGROUND)
+						break;
+				}
+				if (b.gs_dead || gs_bot.groundentity == b)
+				{
+					hit = hit + 1;
+					if (b.gs_dead) broke = broke + 1;
+					else if (hp > 4 || b.gs_mat == GS_MAT_UNBREAKABLE || !vbsp_mapedit_ok) held = held + 1;
+					else print(sprintf("GSTEST break-miss %s health %g mat %g\n", b.model, hp, b.gs_mat));
+				}
+			}
+		}
+		b = nx;
+	}
+	print(sprintf("GSTEST breaks: %g touch breakables, landed on %g, %g broke, %g rightly held\n", n, hit, broke, held));
 };
 
 // Fire every targetname once: no gameplay meaning, it runs each entity's use path for the error log.
@@ -1810,12 +1911,19 @@ void(string c, string a1, string a2, string a3, string a4, string a5) GS_TestCmd
 		return;
 	}
 	if (c == "at")          GS_TestPlace([stof(a1), stof(a2), stof(a3)], stof(a4), stof(a5));
+	else if (c == "shoot")                          // the shot's damage at every entity of a targetname or model
+	{
+		for (e = nextent(world); e; e = nextent(e))
+			if (!strcmp(e.targetname, a1) || !strcmp(e.model, a1))
+				SV_EntityDamage(e, gs_bot, stof(a2));
+	}
 	else if (c == "move")   { gs_bot.movement = [stof(a1), stof(a2), stof(a3)]; gs_bot.button2 = stof(a4); }
 	else if (c == "phys")   GS_TestPhys(stof(a1), stof(a2));
 	else if (c == "use")    GS_PlayerUse(gs_bot);
 	else if (c == "ladders") GS_TestLadders(stof(a1));
 	else if (c == "waters") GS_TestWaters();
 	else if (c == "doors")  GS_TestDoors();
+	else if (c == "breaks") GS_TestBreaks();
 	else if (c == "fireall") GS_TestFireAll();
 	else if (c == "pos")
 		print(sprintf("GSTEST pos %s t %.3f org %v vel %v ground %g water %g/%g\n", a1, time, gs_bot.origin,
