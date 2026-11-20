@@ -149,6 +149,7 @@ class Run:
         # Rounding of a 6-significant-digit printer (%g): z at -15123.4 is 0.05 coarse beside x, y at
         # 0.01. Per group, the coarsest such number (6+ significant digits, fewer decimals).
         self.sig_q = [0.0, 0.0]
+        self.prec = []       # per sample: (pos decimals, vel decimals, pos sig_q, vel sig_q); check() reads its window's
         self.short = 0       # sample lines with fewer than 14 columns (dropped)
         self.records = set()
         self.yaw = []        # view yaw per sample (runcompare reads it)
@@ -165,7 +166,8 @@ def _lines(text):
 
 
 def _sig_digits(x):
-    m = x.lstrip("+-").split("e")[0].split("E")[0].replace(".", "").lstrip("0")
+    # Trailing zeros too: a shortest-form printer's 10000.0 is exact, not a 6-digit %g rounding (review 5).
+    m = x.lstrip("+-").split("e")[0].split("E")[0].replace(".", "").strip("0")
     return len(m)
 
 
@@ -210,14 +212,19 @@ def read(path=None, text=None, header_only=False):
         # The most a group shows, not the fewest: a shortest-form printer writes 0.0 beside 123.456789.
         # The coarser group sets the precision: positions at 0.1 under velocities' 0.01 would read as
         # energy jumps rather than as the precision HOLD.
+        pd, pq = [0, 0], [0.0, 0.0]
         for col, x in enumerate(tok[1:7]):
             dot = x.find(".")
             d = len(x) - dot - 1 if dot >= 0 and x[dot + 1:].isdigit() else 0
             g = col // 3
             if d:
-                run._dec[g] = min(6, max(run._dec[g], d))
+                pd[g] = min(6, max(pd[g], d))
             if d < 6 and "e" not in x and "E" not in x and _sig_digits(x) >= 6:
-                run.sig_q[g] = max(run.sig_q[g], 0.5 * 10.0 ** -d)
+                pq[g] = max(pq[g], 0.5 * 10.0 ** -d)
+        run.prec.append((pd[0], pd[1], pq[0], pq[1]))
+        for g in (0, 1):
+            run._dec[g] = max(run._dec[g], pd[g])
+            run.sig_q[g] = max(run.sig_q[g], pq[g])
         run.decimals = min(run._dec)
         run.samples.append((nums[0], tuple(nums[1:4]), tuple(nums[4:7])))
         try:
@@ -361,12 +368,6 @@ def check(run, zones=None, maxvel=None):
     if maxvel is None:
         maxvel = float((zones or {}).get("maxVelocity") or DEFAULT_MAXVEL)
 
-    if run.decimals < MIN_DECIMALS:
-        note(HOLD, None, f"{'positions' if run._dec[0] <= run._dec[1] else 'velocities'} printed with at most"
-             f" {run.decimals} decimals: the bounds need {MIN_DECIMALS} or more")
-    # Velocity rules use q; the energy test's height term uses q_pos (a %g printer rounds deep z coarser).
-    q = max(0.5 * 10.0 ** (-max(run._dec[1], MIN_DECIMALS)), min(run.sig_q[1], 0.05))
-    q_pos = max(0.5 * 10.0 ** (-max(run._dec[0], MIN_DECIMALS)), min(run.sig_q[0], 0.05))
     # Teleport destinations: stage starts, numbered (the main start is stage 1 and a teleport into it
     # is a reset, into the end a skip). Back to the stage being ridden is a fall; on to the next one
     # is the map's stage-end teleporter, which the checker cannot see, so a person looks.
@@ -403,6 +404,20 @@ def check(run, zones=None, maxvel=None):
         if disc(s[i - 1], s[i]) > POS_TOL * max(1, k):
             i0 = i
     win = [x for x in s[i0:] if x[0] <= fin + rate + 1e-6]
+    # The precision of the samples checked, not of the file: one sample past the finish (never checked) printed
+    # coarse would widen every bound below (review 5). The samples are in time order, so win is s[i0:i0 + len(win)].
+    dec, sq = [0, 0], [0.0, 0.0]
+    for p in run.prec[i0:i0 + len(win)]:
+        for g in (0, 1):
+            dec[g] = max(dec[g], p[g])
+            sq[g] = max(sq[g], p[2 + g])
+    run.decimals = min(dec)
+    if run.decimals < MIN_DECIMALS:
+        note(HOLD, None, f"{'positions' if dec[0] <= dec[1] else 'velocities'} printed with at most"
+             f" {run.decimals} decimals: the bounds need {MIN_DECIMALS} or more")
+    # Velocity rules use q; the energy test's height term uses q_pos (a %g printer rounds deep z coarser).
+    q = max(0.5 * 10.0 ** (-max(dec[1], MIN_DECIMALS)), min(sq[1], 0.05))
+    q_pos = max(0.5 * 10.0 ** (-max(dec[0], MIN_DECIMALS)), min(sq[0], 0.05))
     worst_air = worst_ground = worst_turn = worst_drift = 0.0
     nchk = njump = ntele = nduck = offtick = gaps = 0
     duck_net = 0.0
@@ -579,8 +594,9 @@ def check(run, zones=None, maxvel=None):
         if jump:
             njump += 1
             # The jump tick moves in the air (jump comes before friction): air control's |v'|^2 <= |v|^2
-            # + 900, so +30 from rest but ~0 at speed (a flat +30 let fabricated hops pump speed).
-            if hb * hb - ha * ha > AIR_DV2 * kk + 4 * math.sqrt(2) * hb * q + 1.0:
+            # + 900, so +30 from rest but ~0 at speed (a flat +30 let fabricated hops pump speed). In a lost
+            # packet the ticks before the jump may be ground ticks (review 5: a jump from rest held).
+            if hb * hb - ha * ha > AIR_DV2 + GROUND_DV2 * (kk - 1) + 4 * math.sqrt(2) * hb * q + 1.0:
                 note(HOLD, t, f"speed {ha:.0f} -> {hb:.0f} u/s on the jump tick: air control adds |v|^2 + 900 at most")
             continue
         ea = va[0] ** 2 + va[1] ** 2 + va[2] ** 2 + 2 * GRAVITY * a[1][2]
@@ -634,7 +650,8 @@ def check(run, zones=None, maxvel=None):
     elif not CLOCK_RATIO[0] <= clock <= CLOCK_RATIO[1]:
         note(HOLD, None, f"the body moves {clock:.4f}x what its speed and clock allow: clock edited?")
     if gaps > 1:
-        note(HOLD, None, f"{gaps} sample steps skip ticks after the start: one sample a tick, please")
+        note(HOLD, None, f"{gaps} lost packets after the start (each could hide a tick or two): the owner reviews it;"
+             " a recording with a sample every tick is checked by itself")
     # The allowance counts samples from t=0: padding the pre-start must not buy skipped ticks (review 4).
     if offtick > 2 + sum(1 for x in win if x[0] >= 0) // 500:   # packet timing: 1-2 in 3 of 164 of ours
         note(HOLD, None, f"{offtick} sample steps are not one whole tick: the per-tick bounds cannot be applied"
@@ -670,7 +687,10 @@ def check(run, zones=None, maxvel=None):
         for lab, regs in seq[1:]:
             hit = None
             for jj in range(j, len(win)):
-                p = EDGE_PAD if lab == "end" else pad(win[jj])   # the hull's half-width: all 117 real finishes
+                # The hull's half-width; and a tick of travel for the file's last sample when the samples stop before
+                # the finish, as our recorder's do (review 5: every clean native whole-course run read "never
+                # reaches end"). A file that goes on past its claimed finish gets no extra tick to claim early.
+                p = (EDGE_PAD + (travel(win[jj]) if win[jj] is s[-1] and s[-1][0] < fin - 1e-6 else 0.0)) if lab == "end" else pad(win[jj])
                 if any(_inside(win[jj][1], r, p) for r in regs):
                     hit = jj
                     break

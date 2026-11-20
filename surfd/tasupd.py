@@ -69,6 +69,7 @@ LIST = 'id, steamid, map, track, ticks, verdict, state, tool, uploaded_at, note'
 COPY_CANDIDATES, COPY_PER_PLAYER = 60, 3   # course candidates compared per upload; per other account
 COPY_TICKS, COPY_FULL = 3000, 5     # ticks compared per pass; full passes per upload before a person looks
 HEADER_MAX = 65536                  # the header (up to `begin`) is read from this prefix
+BEGIN_LINE = re.compile(rb'\n[ \t]*begin(?=[ \t\r\n])')   # review 5: find(b'\nbegin') also cut at `begintick`
 PEER_STEAM = 3                      # Steam confirmations a minute per address
 HITS_MAX = 50000                    # rate-limit keys a minute; past it new addresses go uncounted
 # The course record a PASS must not reach: trusted tiers' clean runs only. Community rows are demoted,
@@ -815,7 +816,8 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         if b'\x00' in body or not body.startswith(b'FTESURF-REC '): return refuse('That is not a FTESURF-REC recording.', 400)
         # The header from a bounded prefix, the samples plain ASCII: one wide character would otherwise
         # make the whole 8 MB text 4 bytes a character (review 4: four at once past MemoryMax).
-        cut = body.find(b'\nbegin', 0, HEADER_MAX)
+        m = BEGIN_LINE.search(body, 0, HEADER_MAX)   # a line whose first word is begin, as tasplaus reads it
+        cut = m.start() if m else -1
         if cut < 0: return refuse('The recording has no header (no begin line in its first %d KB).' % (HEADER_MAX // 1024), 400)
         try: head = body[:cut + 1].decode('utf-8')
         except UnicodeDecodeError: return refuse('That is not a text .rec file.', 400)
@@ -897,11 +899,22 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
             """A refusal (motion the owner removed), a reason to hold it (another player's motion, or too
             close to too many runs to tell), or None. Own runs are the uploader's to improve or re-export.
             A match is held, not refused: two bots on one course may converge, and the owner decides."""
+            rej = db.execute("SELECT id FROM runs WHERE samples_sha = ? AND steamid = ? AND state = 'rejected' AND id > ?",
+                             (digest, sid, after)).fetchone()
+            if rej is not None:     # review 5: a rejected run re-uploaded with one more header line came back shown
+                return 'the same motion as your run %d, which the owner rejected' % rej['id']
             r = db.execute("SELECT id, steamid, state FROM runs WHERE samples_sha = ? AND (steamid != ? OR state = 'removed')"
                            " AND id > ? ORDER BY state = 'removed' DESC LIMIT 1", (digest, sid, after)).fetchone()
             why = None
             if r is None:
                 r, why = copy_of(series, trail, mask, db.execute(course_sql, (end, mapname, track, lo, hi, sid, after, end)))
+            if r is not None and r['state'] == 'removed' and r['steamid'] != sid and db.execute(
+                    "SELECT 1 FROM runs WHERE steamid = ? AND map = ? AND track = ? AND state != 'removed' AND id < ?",
+                    (sid, mapname, track, r['id'])).fetchone():
+                # Another account's removed copy of what the uploader had already uploaded (review 5: removing a
+                # copier locked the author out of their own motion): compare with the runs still standing.
+                r, why = copy_of(series, trail, mask, [x for x in db.execute(course_sql, (end, mapname, track, lo, hi, sid, after, end))
+                                                       if x['state'] != 'removed'])
             if r is not None and r['state'] == 'removed':
                 return refuse('That is the motion of run %d, which the owner removed.' % r['id'], 409)
             if r is not None:
@@ -943,9 +956,12 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                                    (mapname, track)).fetchone()[0]
                 known = [x for x in (record, shown * TICK * 1000 if shown else None) if x]
                 best = min(known) if known else None
-                if db.execute("SELECT 1 FROM runs WHERE steamid = ? AND samples_sha = ? AND state = 'shown'",
-                              (sid, digest)).fetchone():
-                    record_why, best = None, mine - 1   # the uploader's own shown run again: not a new time
+                # The uploader's own shown motion again is not a new time -- unless it claims a faster finish
+                # than that run showed: the same samples may end anywhere the end-zone slack allows (review 5).
+                again_ticks = db.execute("SELECT MIN(ticks) FROM runs WHERE steamid = ? AND samples_sha = ? AND state = 'shown'"
+                                         " AND map = ? AND track = ?", (sid, digest, mapname, track)).fetchone()[0]
+                if again_ticks is not None and end >= again_ticks:
+                    record_why, best = None, mine - 1
                 why = ('the course record could not be read (%s)' % record_why if record_why else
                        'no other time on this course to compare with: the first upload waits for the owner' if best is None else
                        '%s the best known time on this course (%s): a new record waits for the owner'
@@ -1028,7 +1044,7 @@ def main(argv=None):
             print('  stats', r['stats'])
             return 0
         to = {'approve': 'shown', 'reject': 'rejected', 'remove': 'removed'}[a.cmd]
-        allowed = {'approve': ('held',), 'reject': ('held', 'shown'), 'remove': STATES}[a.cmd]
+        allowed = {'approve': ('held', 'rejected'), 'reject': ('held', 'shown'), 'remove': STATES}[a.cmd]   # approve undoes a reject
         if r['state'] not in allowed: print('run %d is %s; %s needs %s' % (a.id, r['state'], a.cmd, '/'.join(allowed))); return 1
         with writing(db):
             changed = db.execute('UPDATE runs SET state = ?, reviewed_at = ?, note = ? WHERE id = ? AND state = ?',
@@ -1046,7 +1062,8 @@ def main(argv=None):
             # Remove is for good (the file is gone; reject keeps it). Other uploads of the same motion stay.
             same = [x[0] for x in db.execute("SELECT id FROM runs WHERE samples_sha = ? AND id != ? AND state != 'removed'",
                                              (r['samples_sha'], a.id))]
-            if same: print('the same motion is also run(s) %s: remove those too if they should go' % ', '.join(map(str, same)))
+            if same: print('the same motion is also run(s) %s: the earliest is likely the original; remove the others only if they'
+                           ' are copies too' % ', '.join(map(str, same)))
         return 0
 
 

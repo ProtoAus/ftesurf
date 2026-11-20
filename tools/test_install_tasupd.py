@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import subprocess
 import sqlite3
 import stat
 import sys
@@ -288,6 +289,7 @@ class Fresh(unittest.TestCase):
         self.calls, self.probes, self.held, self.cwds = [], [], [], {}
         self.loadstate, self.public_fails, self.serving = 'not-found', False, None
         self.nginx_tests, self.nginx_t_fails_at = 0, None
+        self.conf_d = b''
         self.euid = os.geteuid; os.geteuid = lambda: 0
         self.sleep = t.time.sleep; t.time.sleep = lambda s: None   # the time module itself: put back below
 
@@ -309,10 +311,11 @@ class Fresh(unittest.TestCase):
         elif args[:2] == ('/usr/bin/systemctl', 'show'): out = (self.loadstate + '\n').encode()
         elif args[:2] == ('/usr/sbin/nginx', '-t'):
             self.nginx_tests += 1
-            if self.nginx_tests == self.nginx_t_fails_at: raise OSError('nginx -t failed')
+            if self.nginx_tests == self.nginx_t_fails_at:
+                raise subprocess.CalledProcessError(1, args, stderr=b'nginx: [emerg] test failure')
         elif args[:2] == ('/usr/bin/systemctl', 'enable'): self.serving = NEW
         elif args[:2] == ('/usr/sbin/nginx', '-T'):
-            out = t.SITE.read_bytes() + (t.SNIPPET.read_bytes() if b'ftesurf-tasupd.conf' in t.SITE.read_bytes() else b'')
+            out = t.SITE.read_bytes() + (t.SNIPPET.read_bytes() if b'ftesurf-tasupd.conf' in t.SITE.read_bytes() else b'') + self.conf_d
         elif len(args) > 1 and str(args[1]).endswith('tasupd.py') and 'init' in args:
             t.STATE.joinpath('tasup.sqlite3').write_bytes(b'db')
         elif args[:2] == ('/usr/bin/python3', '-I'):
@@ -408,10 +411,30 @@ class Fresh(unittest.TestCase):
         self.assertEqual(self.cwds.get('flask'), '/')
 
     def test_a_rollback_whose_nginx_test_fails_still_disables_the_unit(self):
-        self.public_fails = True; self.nginx_t_fails_at = 3   # preflight, after the include, the rollback's
-        with self.assertRaisesRegex(RuntimeError, 'rollback: nginx put back but not reloaded'): self.main('--apply')
+        self.public_fails = True; self.nginx_t_fails_at = 4   # preflight, the zones, after the include, the rollback's
+        with self.assertRaisesRegex(RuntimeError, 'rollback: nginx put back but not reloaded .*test failure'): self.main('--apply')
         self.assertEqual(t.SITE.read_bytes(), SITE)
         self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service'), self.calls)
+
+    def test_zones_nginx_refuses_are_removed_at_once(self):
+        # Review 5: conf.d is always loaded, so a zones file nginx refuses must not stay for the next reload.
+        self.nginx_t_fails_at = 2   # preflight, then the zones
+        with self.assertRaisesRegex(RuntimeError, 'refuses the zones file .*test failure'): self.main('--apply')
+        self.assertFalse(t.ZONES.exists())
+        self.assertEqual(t.SITE.read_bytes(), SITE)
+        self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service'), self.calls)
+
+    def test_a_failed_install_takes_its_zones_and_snippet_back(self):
+        self.public_fails = True
+        with self.assertRaises(RuntimeError): self.main('--apply')
+        self.assertEqual(t.SITE.read_bytes(), SITE)
+        self.assertFalse(t.ZONES.exists()); self.assertFalse(t.SNIPPET.exists())
+        self.assertGreaterEqual(self.nginx_tests, 4)   # the rollback tested what it put back
+
+    def test_an_existing_tasupd_zone_is_refused(self):
+        self.conf_d = b'limit_conn_zone $binary_remote_addr zone=tasupd_addr:1m;\n'
+        with self.assertRaisesRegex(RuntimeError, 'already defines a tasupd_ zone'): self.main('--apply')
+        self.assertFalse(t.ZONES.exists()); self.assertFalse(t.UNIT.exists())
 
     def test_a_site_someone_else_changed_is_not_put_back(self):
         real = self.fake_probe

@@ -54,21 +54,33 @@ ZONE_DIRS = ['/srv/nvme/ftesurf-server/game/%s/maps/zones/%s' % d for d in (
     ('ftesurf', 'online'), ('momentum', 'online'))]
 MAPCFG_DIRS = ['/srv/nvme/ftesurf-server/game/ftesurf/cfg/maps']   # map_<map>.cfg: sv_maxvelocity
 NGINX = '''location = /tasup { return 301 /tasup/; }
-location ^~ /tasup/ {
-    limit_except GET POST { deny all; }
+location = /tasup/upload {
+    limit_except POST { deny all; }
     client_max_body_size 8300k;   # tasupd.MAX_FORM
+    client_body_timeout 10s;      # between reads: a trickled body lets its slot go
     proxy_pass http://127.0.0.1:%d;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $remote_addr;
     proxy_connect_timeout 2s;
     proxy_read_timeout 90s;       # one checker slot: an upload can wait 30 s for it, then check
     proxy_send_timeout 60s;
-    limit_rate 1m;                # maps.nginx's; the app budgets .rec bytes a minute (tasupd.REC_*_BYTES)
     limit_conn tasupd_addr 4;     # nginx spools an 8.3 MB body before the app sees the session (surfd: P774)
-    limit_conn tasupd_all 16;
+    limit_conn tasupd_all 16;     # uploads only (review 5: 16 slow uploads shut every /tasup/ page)
     access_log off;
 }
-''' % PORT
+location ^~ /tasup/ {
+    limit_except GET POST { deny all; }
+    client_max_body_size 16k;     # pages and sign-out; uploads are the location above
+    proxy_pass http://127.0.0.1:%d;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout 30s;
+    proxy_send_timeout 60s;
+    limit_rate 1m;                # maps.nginx's; the app budgets .rec bytes a minute (tasupd.REC_*_BYTES)
+    access_log off;
+}
+''' % (PORT, PORT)
 NGINX_ZONES = '''# ftesurf-tasupd (tools/install_tasupd.py): the snippet's connection limits.
 limit_conn_zone $binary_remote_addr zone=tasupd_addr:2m;
 limit_conn_zone $server_name zone=tasupd_all:64k;
@@ -78,6 +90,10 @@ FILES = {'surfd/tasupd.py': 'tasupd.py', 'surfd/tasupd_wsgi.py': 'tasupd_wsgi.py
 
 
 def sha(body): return hashlib.sha256(body).hexdigest()
+def why(e):
+    # A CalledProcessError's repr leaves out what the command said (review 5: `nginx -t` failed without saying why).
+    err = getattr(e, 'stderr', None)
+    return '%r%s' % (e, (': ' + err.decode(errors='replace').strip()[-400:]) if isinstance(err, bytes) and err.strip() else '')
 def run(*args, timeout=30, **kw): return subprocess.run(args, check=True, capture_output=True, timeout=timeout, **kw)
 def as_user(name, *args):
     # P1119: as root, a command over a proto-owned tree runs as its owner (repo config, release code).
@@ -385,6 +401,8 @@ def main():
     run(*as_user('proto', '/usr/bin/python3', '-I', '-c', 'import flask,gunicorn'), cwd='/')   # as the service will
     if os.geteuid() == 0:
         run('/usr/sbin/nginx', '-t')   # a config that fails already would also fail the rollback's test
+        if b'zone=tasupd_' in run('/usr/sbin/nginx', '-T').stdout:
+            raise RuntimeError('nginx already defines a tasupd_ zone; owner inspection')
     else:
         print('(not root: nginx -t is left to the --apply run; it reads root-only keys and logs)')
     pending_reloads()
@@ -412,6 +430,11 @@ def main():
         unit_written = True
         with ZONES.open('xb') as f: f.write(NGINX_ZONES.encode())
         zones_written = True
+        # conf.d is always loaded: test the zones before anything else can reload them (review 5)
+        try: run('/usr/sbin/nginx', '-t')
+        except Exception as e:
+            ZONES.unlink(); zones_written = False
+            raise RuntimeError('nginx refuses the zones file (removed again): %s' % why(e)) from e
         with SNIPPET.open('xb') as f: f.write(NGINX.encode())
         run('/usr/bin/systemctl', 'daemon-reload')
         run('/usr/bin/systemctl', 'enable', '--now', 'ftesurf-tasupd.service')
@@ -435,20 +458,34 @@ def main():
     except BaseException as first:
         # Each step on its own: a failing nginx test must not leave the unit enabled, nor hide the cause.
         failed = []
+        site_back = not written
         if written:
             try:
                 if wanted.startswith(SITE.read_bytes()):
-                    write_site(before); run('/usr/sbin/nginx', '-t'); run('/usr/bin/systemctl', 'reload', 'nginx')
+                    write_site(before); site_back = True
                 elif SITE.read_bytes() != before:
                     failed.append('the site changed meanwhile: not put back')
-            except BaseException as e: failed.append('nginx put back but not reloaded (%r)' % e)
+                else: site_back = True
+            except BaseException as e: failed.append('site not put back (%s)' % why(e))
+        # conf.d loads the zones whatever the site says: with the include gone they go too, if still ours
+        # (review 5: a zones file nginx refused stayed, and the next restart would have failed).
+        if zones_written and site_back:
+            for f, body in ((SNIPPET, NGINX), (ZONES, NGINX_ZONES)):
+                try:
+                    if f.read_bytes() == body.encode(): f.unlink()
+                except FileNotFoundError: pass
+                except BaseException as e: failed.append('%s not removed (%s)' % (f, why(e)))
+        if written and site_back:
+            try: run('/usr/sbin/nginx', '-t'); run('/usr/bin/systemctl', 'reload', 'nginx')
+            except BaseException as e: failed.append('nginx put back but not reloaded (%s)' % why(e))
         if unit_written:
             try:
                 if UNIT.read_text() != unit: failed.append('the unit changed meanwhile: not stopped')
                 else: run('/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service')
-            except BaseException as e: failed.append('unit not disabled (%r)' % e)
-        if failed: raise RuntimeError('install failed (%r); rollback: %s' % (first, '; '.join(failed))) from first
-        raise   # source, state, unit, snippet and backup stay for inspection
+            except BaseException as e: failed.append('unit not disabled (%s)' % why(e))
+        if failed: raise RuntimeError('install failed (%s); rollback: %s' % (why(first), '; '.join(failed))) from first
+        if isinstance(first, subprocess.CalledProcessError): raise RuntimeError('install failed: %s' % why(first)) from first
+        raise   # source, state, unit and backup stay for inspection (the snippet and zones go once the site is back)
     finally:
         for n, h in held.items(): signal.signal(n, h)
     print('Installed the TAS upload service at %s/' % PUBLIC_URL)

@@ -668,7 +668,7 @@ class Review1640Round2(unittest.TestCase):
         one = self.rows[:k] + self.rows[k + 1:]
         self.assertNotIn("skip ticks", self.why(verdict(one, self.fin)))
         two = [r for i, r in enumerate(self.rows) if i not in (k, k + 20)]
-        self.assertIn("2 sample steps skip ticks", self.why(verdict(two, self.fin)))
+        self.assertIn("2 lost packets after the start", self.why(verdict(two, self.fin)))
 
     def test_pre_start_padding_buys_no_allowance(self):
         # Three samples after t=0 moved off the tick (six off-tick steps): over the allowance of 2 from
@@ -751,6 +751,71 @@ class Review1640Round2(unittest.TestCase):
         body = text(self.rows, self.fin).replace("track 0\n", "track\xa00\n")
         self.assertEqual(tp.check(tp.read(text=body), ZONES)["verdict"], "FAIL")
 
+
+def simulate_jump_at(jtick):
+    """simulate() with the jump after `jtick` ground ticks from rest, and the finish 1.2 s after it."""
+    o, v, rows, t, tick, jumped, finish = [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [], -0.6, 0, False, None
+    tj = None
+    while finish is None or t < finish * RATE + 0.4:
+        rows.append((t, list(o), list(v)))
+        if finish is None and tj is not None and t >= tj + 1.2:
+            finish = round(t / RATE)
+        vo, h = list(v), math.hypot(v[0], v[1])
+        if not jumped and tick >= jtick:
+            v[2], jumped, tj = 289.99, True, t
+        elif not jumped:
+            v[0], v[1] = min(250.0, max(0.0, h - max(h, 100.0) * 4.0 * RATE) + 18.0), 0.0
+        else:
+            side = 1 if tick % 40 < 20 else -1
+            ang = math.atan2(v[1], v[0]) + side * math.acos(2.0 / max(h, 2.0))
+            wx, wy = math.cos(ang), math.sin(ang)
+            add = 30.0 - (v[0] * wx + v[1] * wy)
+            v[0] += add * wx; v[1] += add * wy; v[2] -= 800.0 * RATE
+        for i in range(3):
+            o[i] += (vo[i] + v[i]) * 0.5 * RATE if jumped else v[i] * RATE
+        t = round(t + RATE, 6); tick += 1
+    return rows, finish
+
+
+class Review1640Round5(unittest.TestCase):
+    """Round 5: each bypass or false hold the fifth review demonstrated, beside its control."""
+    setUp, why, assertHeld, at = Review1640.setUp, Review1640.why, Review1640.assertHeld, Review1640.at
+    refly_from = Review1640Round2.refly_from
+
+    def test_a_sample_past_the_finish_sets_no_precision(self):
+        # One coarse sample after the finish (never checked) widened every bound: q 0.05 let a speed-up pass.
+        k = self.at(0.2)
+        for j in range(k, len(self.rows)):
+            self.rows[j][2][0] *= 1.02; self.rows[j][2][1] *= 1.02
+        self.refly_from(k)
+        body = text(self.rows, self.fin)
+        held = tp.check(tp.read(text=body), ZONES)
+        junk = body.replace("\nend ", "\n%.4f -12345.6 0.000000 0.000000 10000.0 0.000000 0.000000 0 0 0 0 0 0 0 0 0 0\nend "
+                            % (self.rows[-1][0] + 1.0), 1)
+        self.assertEqual(held["verdict"], "HOLD", self.why(held))
+        self.assertEqual(self.why(tp.check(tp.read(text=junk), ZONES)), self.why(held))
+
+    def test_trailing_zeros_are_not_significant(self):
+        self.assertEqual((tp._sig_digits("10000.0"), tp._sig_digits("-12345.6"), tp._sig_digits("0.012300")), (1, 6, 3))
+
+    def test_a_recording_that_stops_the_tick_before_its_finish_reaches_the_end(self):
+        # Our recorder's last sample is the tick before the finish: the end box is one tick of travel away
+        # beyond the hull. A file that goes on past an earlier claim gets no such tick.
+        xf = next(o for t, o, v in self.rows if round(t / RATE) == self.fin)[0]
+        z = json.loads(json.dumps(ZONES))
+        pts = z["tracks"]["main"]["zones"]["end"]["regions"][0]["points"]
+        dx = xf + 15.9 - min(p[0] for p in pts)
+        for p in pts: p[0] += dx
+        native = [r for r in self.rows if round(r[0] / RATE) <= self.fin - 1]
+        r = verdict(native, self.fin, zones=z)
+        self.assertEqual(r["verdict"], "PASS", self.why(r))
+        self.assertHeld(verdict(self.rows, self.fin - 2, zones=z), "never reaches end")
+
+    def test_a_jump_inside_a_lost_packet_passes(self):
+        # The last ground sample lost: one 2-tick step holds a ground tick and the jump tick.
+        rows, fin = simulate_jump_at(15)
+        j = next(i for i, r in enumerate(rows) if r[2][2] > 250)
+        self.assertNotIn("on the jump tick", self.why(verdict(rows[:j - 1] + rows[j:], fin, zones=zones_for(rows))))
 
 @unittest.skipUnless(os.environ.get("TASPLAUS_CORPUS"), "set TASPLAUS_CORPUS (+ TASPLAUS_ZONES) to real .rec files")
 class Corpus(unittest.TestCase):

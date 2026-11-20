@@ -875,5 +875,51 @@ class Service(unittest.TestCase):
         self.assertEqual(set(codes[:-1]), {200})
 
 
+    # review 5
+    def test_a_shown_decoy_does_not_make_a_record(self):
+        # The same samples may end anywhere the end-zone slack allows: shown as a slower time, they must not
+        # come back as a record through the own-run exemption.
+        rows, fin = fx.simulate()
+        self.surfd('UPDATE runs SET millis = ?', (fin + 5) * 15)
+        c, _ = self.sign_in(ALICE)
+        decoy = self.upload(c, rec(rows, fin + 12)).get_json()
+        self.assertEqual(decoy['state'], 'shown', decoy)
+        j = self.upload(c, rec(rows, fin)).get_json()
+        self.assertEqual(j['state'], 'held', j)
+        self.assertIn('faster than the best known time', j['reasons'][-1]['what'])
+        again = self.upload(c, rec(rows, fin + 12) + b'\n').get_json()   # the same time again stays exempt
+        self.assertEqual(again['state'], 'shown', again)
+
+    def test_a_rejected_run_stays_rejected_for_its_uploader(self):
+        c, _ = self.sign_in(ALICE)
+        rows, fin = fx.simulate()
+        j = self.upload(c, rec(rows, fin)).get_json()
+        self.assertEqual(self.cli('reject', str(j['id']))[0], 0)
+        back = self.upload(c, rec(rows, fin, extra='comment 1')).get_json()
+        self.assertEqual(back['state'], 'held', back)
+        self.assertIn('which the owner rejected', json.dumps(back['reasons']))
+        self.assertEqual(self.cli('approve', str(j['id']))[0], 0)          # a reject can be undone
+
+    def test_a_removed_copy_does_not_lock_out_its_author(self):
+        c, _ = self.sign_in(ALICE)
+        rows, fin = fx.simulate()
+        a = self.upload(c, rec(rows, fin)).get_json()
+        b, _ = self.sign_in(BOB)
+        copy = self.upload(b, rec(rows, fin, extra='comment 2'))
+        self.assertCopyHeld(copy, a['id'])
+        code, out = self.cli('remove', str(copy.get_json()['id']))
+        self.assertIn('the earliest is likely the original', out)
+        again = self.upload(c, rec(rows, fin) + b'\n')
+        self.assertEqual((again.status_code, again.get_json().get('state')), (200, 'shown'), again.get_json())
+        noisy = self.upload(c, rec([(t, [x + 0.3 for x in o], [x + 0.4 for x in v]) for t, o, v in rows], fin))
+        self.assertNotEqual(noisy.status_code, 409, noisy.get_json())
+        stolen = self.upload(b, rec(rows, fin) + b'\n\n')                 # the copier still cannot have it
+        self.assertEqual(stolen.status_code, 409, stolen.get_json())
+
+    def test_begin_is_a_whole_word(self):
+        c, _ = self.sign_in(ALICE)
+        r = self.upload(c, rec().replace(b'map synth', b'beginning 1\nmap synth', 1))
+        self.assertEqual((r.status_code, r.get_json().get('state')), (200, 'shown'), r.get_json())
+
 if __name__ == '__main__':
     unittest.main()
