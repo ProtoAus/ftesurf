@@ -28,7 +28,8 @@
 - On a Half-Life map the pre-strafe assist no longer lets go of W when you jump from standing, so a crouch jump onto a ledge with W held works.
 
 ### P1657 Bhop and ahop runs start from a run-up
-- On bhop and ahop maps a run counts only if it starts from the ground at running speed: stand or run in the start, then jump or walk out. Hopping or flying out of the start faster than a run, or jumping while still fast from a landing, makes it a practice run.
+- On bhop and ahop maps a run counts only if it starts from the ground at running speed: stand or run in the start, then jump or walk out.
+- Hopping or flying out of the start faster than a run, or jumping while still fast from a landing, makes it a practice run.
 
 ### P1652 Slow motion allowance tightened
 - A run is unranked when its game clock falls more than 1 second behind real time (was 5). Normal play, lag spikes included, has never come near that on the lobbies.
