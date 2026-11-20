@@ -1,4 +1,8 @@
 # The engine build this QuakeC requires.
+# P1640 (game surfd/tasupd.py tasupd_wsgi.py, tools/tasplaus.py install_tasupd.py + tests; Lex's 20 Nov TAS-upload ruling):
+# TAS .rec uploads at play.proto.bar/tasup/ from Steam-linked accounts, judged by tasplaus (PASS shown, HOLD for the owner,
+# FAIL refused), records and copies held; root installer, dry run by default. Nine review rounds. No engine or QC change.
+# Record: engine ENGINE_PATCHES.md P1640; tools/tas-uploads.md.
 # P1613 reader (game tools/reccheck.py, rcptcheck.py; Lex's anti-cheat finish list item 6, worldofsurf-6f): the
 # command rule -- each numbered move held against the .view frames of its own usercmd -- merged from p1613-cseq after
 # real runs confirmed it (5 runs, 3 players, 0.00% off path). Reaches surfd with a guarded generation. No engine change.
