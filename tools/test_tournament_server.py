@@ -36,7 +36,7 @@ void() TQ_TestFrame =
     TQ_Test(Tour_Occupants() == 0, "native empty slot occupancy");
     TQ_Test(Tour_Slots() >= 2, "native slot scan");
     TQ_Test(!Lobby_MapNameOK("x;quit") && Lobby_MapNameOK("surf_TQ+1"), "map command validation");
-    envelope = "{\"v\":1,\"ok\":1,\"status\":\"ok\",\"match\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"revision\":1,\"phase\":\"loading\",\"host\":\"bbbbbbbbbbbb\",\"round_index\":1,\"round_total\":2,\"round_seconds\":60,\"current_map\":\"surf_tourney_fixture\",\"reserve\":\"surf_reserve\",\"players\":[{\"who\":\"bbbbbbbbbbbb\",\"name\":\"Fixture One\",\"role\":\"player\",\"ready\":0,\"accepted\":1,\"best_ticks\":0,\"tickrate\":0,\"place\":0}],\"maps\":[{\"name\":\"surf_tourney_fixture\",\"status\":\"picked\",\"by\":\"bbbbbbbbbbbb\"}]}}";
+    envelope = "{\"v\":1,\"ok\":1,\"status\":\"ok\",\"match\":{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"revision\":1,\"phase\":\"loading\",\"host\":\"bbbbbbbbbbbb\",\"round_index\":1,\"round_total\":2,\"round_seconds\":60,\"settings\":{\"kind\":\"surf\",\"profile\":\"default\",\"tick_us\":15000},\"ruleset_id\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"current_map\":\"surf_tourney_fixture\",\"reserve\":\"surf_reserve\",\"players\":[{\"who\":\"bbbbbbbbbbbb\",\"name\":\"Fixture One\",\"role\":\"player\",\"ready\":0,\"accepted\":1,\"best_ticks\":0,\"tickrate\":0,\"place\":0}],\"maps\":[{\"name\":\"surf_tourney_fixture\",\"status\":\"picked\",\"by\":\"bbbbbbbbbbbb\"}]}}";
     root = json_parse(envelope);
     Tour_Adopt(json_find_object_child(root, "match"), envelope);
     json_free(root);
@@ -66,6 +66,9 @@ void() TQ_TestFrame =
     e.run_t_finleg = 1; e.run_t_finflags = 0; e.run_t_finticks = 50;
     e.run_movetickrate = run_t_tick;
     Tour_Finished(e);
+    TQ_Test(tq_qwrite == 0, "finish before arrival on a qualified course is not scored");
+    tq_test_stub_observe = TRUE; tq_arrived = TRUE;
+    Tour_Finished(e);
     TQ_Test(tq_qwrite == 1, "eligible in-window main finish enqueued");
     text = bufstr_get(tq_queue, 1);
     TQ_Test(strstrofs(text, "who=bbbbbbbbbbbb", 0) >= 0 && strstrofs(text, "start_elapsed_ms=", 0) >= 0,
@@ -79,11 +82,25 @@ void() TQ_TestFrame =
     TQ_Test(tq_qwrite == queued, "non-main-course completion ignored");
     e.run_t_finleg = 1; e.run_t_finflags = TF_PRACTICE; Tour_Finished(e);
     TQ_Test(tq_qwrite == queued, "ineligible completion ignored");
+    e.run_t_finflags = TF_MULTISESSION; Tour_Finished(e);
+    TQ_Test(tq_qwrite == queued, "resumed (multi-session) run ignored");
+    e.run_t_finflags = TF_SPEC; Tour_Finished(e);
+    TQ_Test(tq_qwrite == queued, "run with a spectate pause ignored");
+    e.run_t_finflags = TF_SLOWCLOCK; Tour_Finished(e);
+    TQ_Test(tq_qwrite == queued, "uncertified (slow clock) run ignored");
     e.run_t_finflags = 0; tq_goat = time - 61; Tour_Finished(e);
     TQ_Test(tq_qwrite == queued, "late finish ignored");
     tq_goat = time - 2; e.tq_runround = 0; Tour_Finished(e);
     TQ_Test(tq_qwrite == queued, "stale or warmup start ignored");
+    e.tq_runround = 1; e.run_t_finflags = TF_NOJOURNAL; Tour_Finished(e);
+    TQ_Test(tq_qwrite == queued + 1, "an improving finish with only a journal opt-out still scores");
+    tq_test_stub_observe = FALSE; tq_arrived = FALSE;
+    e.run_t_state = TS_RUNNING; e.run_t_ticks = 321;
     Tour_Hold(e); TQ_Test(e.run_pmhold && e.tq_hold, "countdown owns native movement hold");
+    TQ_Test(e.run_t_state == TS_IDLE && e.run_t_stopat == 321, "hold ends a running ordinary run");
+    e.run_t_state = TS_RUNNING; Tour_Hold(e);
+    TQ_Test(e.run_t_state == TS_RUNNING, "only the hold edge voids, not each held frame");
+    e.run_t_state = TS_IDLE;
     Tour_Unhold(e); TQ_Test(!e.run_pmhold && !e.tq_hold, "GO releases owned movement hold");
     Tour_Disconnected(e); remove(e);
     Tour_Clear();
@@ -129,7 +146,7 @@ def fixture_bsp(path):
 
 
 def run_fixture(args, helper=HELPER, extra_maps=(), extra_args=(),
-                result_marker='TQ_TEST_RESULT PASS', timeout=30):
+                result_marker='TQ_TEST_RESULT PASS', timeout=30, stub_observe=False):
     for binary in (args.compiler, args.server):
         if not binary.is_file():
             raise ValueError('missing executable: ' + str(binary))
@@ -167,13 +184,26 @@ def run_fixture(args, helper=HELPER, extra_maps=(), extra_args=(),
             continue
         if filename == 'server/sv_main.qc':
             lines += [str(rig / 'fixture.qc'), str(rig / 'main.qc')]
-        elif filename == 'server/sv_tournament.qc' and args.mutant_no_score:
+        elif filename == 'server/sv_tournament.qc' and (args.mutant_no_score or stub_observe or
+                                                         getattr(args, 'mutant_no_hold_void', False)):
             text = (ROOT / 'src' / filename).read_text()
-            hook = 'void(entity e) Tour_Finished =\n{'
-            if text.count(hook) != 1:
-                raise RuntimeError('finish consumer marker must be unique')
-            (rig / 'mutant.qc').write_text(text.replace(hook, hook + '\n\treturn;'))
-            lines.append(str(rig / 'mutant.qc'))
+            edits = []
+            if stub_observe:
+                # A zone-less fixture map can never qualify a course: the helper switches this stub on
+                # around the finish checks, which then reach the real eligibility predicates.
+                hook = 'void() Tour_Observe =\n{'
+                edits.append((hook, 'float tq_test_stub_observe;\n' + hook +
+                              '\n\tif (tq_test_stub_observe) { tq_observed_valid = TRUE; return; }'))
+            if args.mutant_no_score:
+                edits.append(('void(entity e) Tour_Finished =\n{', 'void(entity e) Tour_Finished =\n{\n\treturn;'))
+            elif getattr(args, 'mutant_no_hold_void', False):
+                edits.append(('\t\tSV_TimerVoid(e, "tournament hold");\n', ''))
+            for hook, cut in edits:
+                if text.count(hook) != 1:
+                    raise RuntimeError('fixture source marker must be unique: ' + hook.strip())
+                text = text.replace(hook, cut)
+            (rig / 'tournament.qc').write_text(text)
+            lines.append(str(rig / 'tournament.qc'))
         else:
             lines.append(str(ROOT / 'src' / filename))
     (rig / 'fixture.src').write_text('\n'.join(lines) + '\n')
@@ -206,7 +236,7 @@ def run_fixture(args, helper=HELPER, extra_maps=(), extra_args=(),
     (rig / 'runtime.log').write_bytes(log)
     text = log.decode(errors='replace')
     passed = result_marker in text and 'TQ_TEST_FAIL ' not in text
-    report = dict(ok=passed, mutant=args.mutant_no_score, rig=str(rig),
+    report = dict(ok=passed, mutant=args.mutant_no_score or getattr(args, 'mutant_no_hold_void', False), rig=str(rig),
                   compiler_sha256=hashlib.sha256(args.compiler.read_bytes()).hexdigest(),
                   server_sha256=hashlib.sha256(args.server.read_bytes()).hexdigest(),
                   checks=text.count('TQ_TEST_PASS '), native_returncode=result.returncode,
@@ -223,8 +253,9 @@ def main():
     parser.add_argument('--work-root', type=Path, required=True)
     parser.add_argument('--compiler', type=Path, required=True)
     parser.add_argument('--server', type=Path, required=True)
-    parser.add_argument('--mutant-no-score', action='store_true', help='negative control: bypass consumer')
-    return run_fixture(parser.parse_args())
+    parser.add_argument('--mutant-no-score', action='store_true', help='negative control: bypass consumer (MUST fail)')
+    parser.add_argument('--mutant-no-hold-void', action='store_true', help='negative control: the hold keeps a running run (MUST fail)')
+    return run_fixture(parser.parse_args(), stub_observe=True)
 
 
 if __name__ == '__main__':

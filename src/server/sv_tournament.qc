@@ -95,6 +95,9 @@ void(entity e) Tour_Hold =
 	if (!e.tq_hold)
 	{
 		SV_SpecRelease(e, "tournament");
+		// The hold freezes the body mid-run and Tour_Unhold has no rollback, so a held run
+		// must end here or it could continue after the hold and post to the ordinary board.
+		SV_TimerVoid(e, "tournament hold");
 		e.tq_hold = TRUE;
 	}
 	e.run_pmhold = TRUE;
@@ -749,6 +752,13 @@ void(entity e) Tour_Finished =
 	if (e.tq_runround != tq_round || time > tq_goat + tq_seconds || time < tq_goat) return;
 	Tour_Observe(); if (tq_broken || !tq_arrived) return;
 	if (e.run_t_finleg != 1 || FS_RunClass(e.run_t_finflags) != RC_CLEAN) return;
+	// Clean is not enough: resumed from a park, paused to spectate, or uncertified (slow clock, no ruleset...) runs
+	// do not score. A journal opt-out (TF_NOJOURNAL) is the player's privacy choice and still scores (BACKLOG).
+	if (e.run_t_finflags & (TF_MULTISESSION | TF_SPEC | (TF_UNCERT - TF_NOJOURNAL)))
+	{
+		Tour_Tell(e, "this run cannot score: it was resumed, paused to spectate, or not certified");
+		return;
+	}
 	if (!(e.run_t_finticks > 0 && e.run_t_finticks < 16000000) || e.run_movetickrate <= 0) return;
 	if (e.tq_best > 0 && e.run_t_finticks >= e.tq_best) return;
 	rate = 1 / e.run_movetickrate;

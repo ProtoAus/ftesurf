@@ -31,6 +31,8 @@ import time
 import urllib.request
 
 ROOT = Path(__file__).resolve().parent.parent
+RUN_DIRS = ('forward', 'back', 'moveleft', 'moveright')
+ROUND_END_CHECKS = ('live_panel_closed', 'round_end_run_started', 'round_end_hold_voids_run', 'round_end_timer_idle')
 MAPS = ('surf_prelude', 'surf_liopleurodon2', 'surf_aircontrol',
         'surf_forbidden_ways', 'surf_lux', 'surf_lo_tek')
 ORIGINS = ('https://play.proto.bar', 'https://dl.proto.bar', 'https://proto.bar')
@@ -420,6 +422,10 @@ def command_base(rig, name, executable):
             '+set', 'cl_maxfps', '100']
 
 
+def console_text(rig, client):
+    return re.sub(r'\x1b\[[0-9;]*m', '', (rig/(client.name+'-console.log')).read_text(errors='replace'))
+
+
 def click(client, name):
     client.send('hud_edit ui hover '+name+'\nwaitms 100\nhud_edit ui down mouse1\nwaitms 100\nhud_edit ui up mouse1')
 
@@ -520,6 +526,7 @@ def run(args, rig, manifest):
     setup_steps = 0
     tour = getattr(args, 'tour', False)
     tour_step = 0
+    run_step, run_dir, run_at, status_mark, live_at = 0, 0, 0.0, 0, 0.0
     shots = set()
 
     def shot(client, name):
@@ -586,7 +593,7 @@ def run(args, rig, manifest):
         partner_replied = False
         while player.process.poll() is None:
             now = time.monotonic()
-            if args.smoke and (now-started > (360 if tour else 200) or now-stage_at > (100 if tour else 45)):
+            if args.smoke and (now-started > (360 if tour else 200) + (150 if args.round_end else 0) or now-stage_at > (100 if tour or args.round_end else 45)):
                 raise RuntimeError('Bounded main-menu smoke timed out at '+stage)
             native_failures(rig)
             if server.process.poll() is not None:
@@ -676,6 +683,8 @@ def run(args, rig, manifest):
                             checks['create_from_mainmenu'] = True
                         if party['capacity'] != seats:
                             menu_tab_click(player, rig, 'mt_capacity' if party['capacity'] < seats else 'mt_capacity_down')
+                        elif args.round_end and party.get('round_seconds', 60) > 60:
+                            menu_tab_click(player, rig, 'mt_seconds_down')
                         elif peer and peer['role']!='player':
                             shot(player, 'mt-lobby-waiting.png')
                             menu_tab_click(player, rig, 'mt_seat'+str(party['players'].index(peer)))
@@ -764,14 +773,62 @@ def run(args, rig, manifest):
                         click(player, 'tour_start')
                 if m['phase']=='live':
                     checks['server_live'] = True
-                    if args.smoke:
+                    if args.smoke and not args.round_end:
                         player.send('screenshot tournament-live.png')
                         break
+                    if args.round_end and run_step == 0:
+                        player.send('screenshot tournament-live.png')
+                        status_mark = len(console_text(rig, player))
+                        player.send('tournament status')
+                        live_at = time.monotonic()
+                        run_step, run_dir, run_at = 1, 0, time.monotonic() + 1.2
+                    elif args.round_end and run_step == 1 and time.monotonic() > run_at:
+                        # Walk out of the start zone and keep walking until the round ends (a released key
+                        # can slide back into the start, which cancels the run). Try each direction.
+                        if not run_dir:
+                            # The host clicked Start in F6; the countdown must have closed it (P1635).
+                            checks.setdefault('live_panel_closed', 'tournament: open 0 ' in console_text(rig, player)[status_mark:])
+                        mark = len(console_text(rig, player))
+                        player.send('cmd timer')
+                        time.sleep(1.2)
+                        state = re.search(r'timer: (\w+) on', console_text(rig, player)[mark:])
+                        if state and state[1] == 'running':
+                            checks['round_end_run_started'] = True
+                            run_step, run_at = 3, time.monotonic() + 3
+                        elif run_dir >= len(RUN_DIRS):
+                            raise RuntimeError('round-end check: the host run did not start (cmd timer: %s)'
+                                               % (state[1] if state else 'no reply'))
+                        else:
+                            if run_dir:
+                                player.send('-'+RUN_DIRS[run_dir-1])
+                            player.send('+'+RUN_DIRS[run_dir])
+                            run_dir += 1
+                            run_at = time.monotonic() + 3
+                    elif args.round_end and run_step == 3 and time.monotonic() > run_at:
+                        mark = len(console_text(rig, player))
+                        player.send('cmd timer')
+                        time.sleep(1.2)
+                        state = re.search(r'timer: (\w+) on', console_text(rig, player)[mark:])
+                        run_at = time.monotonic() + 3
+                        if not (state and state[1] == 'running') and time.monotonic() - live_at < 48:
+                            player.send('-'+RUN_DIRS[run_dir-1])
+                            run_step, run_dir = 1, 0
+                if args.round_end and run_step == 3 and m['phase'] in ('results', 'finished', 'aborted'):
+                    player.send('-'+RUN_DIRS[run_dir-1])
+                    time.sleep(2)
+                    text = console_text(rig, player)
+                    checks['round_end_hold_voids_run'] = 'run cancelled (tournament hold)' in text
+                    player.send('cmd timer')
+                    time.sleep(1.5)
+                    checks['round_end_timer_idle'] = 'timer: idle on' in console_text(rig, player)[len(text):]
+                    player.send('screenshot tournament-results.png')
+                    break
             time.sleep(.15)
         if args.smoke and not all(checks.get(k, False) for k in (
                 'create_from_mainmenu', 'native_seat_accept_both', 'native_draft_complete', 'room_chat_both',
                 'mainmenu_ready_both', 'prestart_zero_game_state', 'menu_started_real_match',
-                'native_handoff_both', 'native_occupants_two', 'native_bound_identities_two', 'server_live')):
+                'native_handoff_both', 'native_occupants_two', 'native_bound_identities_two', 'server_live',
+                *(ROUND_END_CHECKS if args.round_end else ()))):
             raise RuntimeError('Native smoke did not complete all main-menu/game gates')
         return 0
     except BaseException as exc:
@@ -780,7 +837,8 @@ def run(args, rig, manifest):
     finally:
         expected = ('create_from_mainmenu', 'native_seat_accept_both', 'native_draft_complete',
                     *(('room_chat_both',) if args.smoke else ()), 'mainmenu_ready_both', 'prestart_zero_game_state', 'menu_started_real_match',
-                    'native_handoff_both', 'native_occupants_two', 'native_bound_identities_two', 'server_live')
+                    'native_handoff_both', 'native_occupants_two', 'native_bound_identities_two', 'server_live',
+                    *(ROUND_END_CHECKS if args.round_end else ()))
         result = dict(ok=not failure and all(checks.get(k, False) for k in expected),
                       checks=checks, failure=failure, stage=stage, prestart_samples=samples,
                       menu_events=S.playtest_events, rig=str(rig),
@@ -817,6 +875,7 @@ def main():
     ap.add_argument('--width', type=int, default=1280, help='native client width, including bounded layout checks')
     ap.add_argument('--height', type=int, default=800, help='native client height')
     ap.add_argument('--tour', action='store_true', help='smoke also opens the pool/tier dialogs, makes one live settings edit and screenshots each stage')
+    ap.add_argument('--round-end', action='store_true', help='smoke: 60 s round; the host starts a run and the round ends with it running (P1635)')
     ap.add_argument('--smoke-seats', type=int, choices=range(2,9), default=2, help='configured capacity; smoke still seats two real native actors')
     args = ap.parse_args()
     if args.width < 640 or args.height < 480:

@@ -211,6 +211,8 @@ float(float argc, string line) Tour_Command =
 		tokenize(tour_header);
 		keepclock = (!strcmp(tour_id, argv(1)) && !strcmp(tour_phase, argv(3)) && tour_round == stof(argv(6)));
 		if (strcmp(tour_id, argv(1))) tour_entered = 0;
+		// The countdown hands the controls back: an open panel sends empty moves (F6 reopens it).
+		if (tour_open && argv(3) == "countdown" && tour_phase != "countdown") Tour_Close();
 		tour_id = argv(1); tour_revision = tour_stage_revision;
 		tour_phase = argv(3); tour_host = argv(4); tour_me = argv(5);
 		tour_round = stof(argv(6)); tour_rounds = stof(argv(7)); tour_seconds = stof(argv(8));

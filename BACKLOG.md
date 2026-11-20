@@ -1,10 +1,19 @@
 # BACKLOG.md
 
 ## P1634 tournaments -- settle before enabling them anywhere (20 Nov, worldofsurf-ed)
-- Evidence (opt-in tournament servers only): Tour_Roles holds a player mid-run when the round ends, the match ends or
-  tq_broken is set (sv_tournament.qc ~257) by zeroing velocity before PlayerPostThink's normal hold branch, and
-  Tour_Unhold clears run_pmhold without SV_SpecRelease's rebase/rollback; the run then continues from a standstill
-  with its timer running and could submit to the ordinary board. Needs a test run and an evidence review.
+- Evidence: FIXED in P1635 (the hold's first edge voids a running run; tournament_playtest.py --round-end, control
+  without the fix keeps the timer running while held). The native fixtures (test_tournament_server/transport.py)
+  predate the frozen-ruleset settings work: the server fixture is repaired (24 checks, --mutant-no-hold-void fails),
+  but its finish-scoring path and the transport fixture's round flow need a zoned, rule-locked synthetic course
+  (Tour_Observe aborts a zone-less map); surfd/README.md's "29 passing" is stale (35 now, Tour_Observe stubbed
+  around the finish checks; both mutants fail). Transport fixture: still needs a zoned, rule-locked course.
+- Lex's call (P1635): a tournament finish with TF_NOJOURNAL (the player opted out of the input journal) still scores,
+  although the ranked board treats it as uncertified; every other TF_UNCERT bit, TF_SPEC and TF_MULTISESSION refuse.
+  To require journals in tournaments, drop the `- TF_NOJOURNAL` in Tour_Finished (the fixture's last check flips).
+- P1635 review leads (P3, not fixed): Tour_Hold voids without first releasing a save-lock hold / replay pin as the
+  other void callers do (run_t_freeze stays until the key is released; no harm found); bodies with tq_role != 1 skip
+  PlayerPreThink (Tour_PreThink returns TRUE) but still run PlayerPostThink's SV_TimerFrame -- unverified whether a
+  tournament spectator can start/finish/post an ordinary run without PreThink's recorder rows.
 - surfd: /api/tournament-lobbies/challenge and op=state still answer with SURFD_TOURNAMENTS=0 (kept so a member can
   leave/cancel; it takes the write lock and writes a proof row). rate_ok's 4096-key flush resets the party buckets
   too. The reserved node's address is not secret: a non-member can take one of its slots (README: unauthenticated

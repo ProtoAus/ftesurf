@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1635 -- tournament pre-enable fixes (worldofsurf-ed)
+
+Rides the tournament rollout (lobbies first; nothing changes on a server with tournament_enable 0).
+- In a tournament round, click Start in F6: the panel closes by itself when the countdown starts and you can move at GO.
+- Be mid-run when the round clock hits zero: "run cancelled (tournament hold)", the timer is idle afterwards, and that
+  attempt never appears on the normal board.
+
 ## P1634 -- tournament lobbies (off by default; worldofsurf-ed)
 
 Local only until the backend enables tournaments. Launch the Desktop "World of Surf - Tournament Playtest (Local)"
