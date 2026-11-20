@@ -6812,7 +6812,8 @@ float  dl_t0;           // when it started (time), for the status strip
 // the game is gone. Engines before P1670 refuse every download while hosting; P1670 ones only the map being hosted (3).
 float  dl_afterlocal;
 float  dl_reload;       // P1670: a download landed with no menu open; the list reloads when one does (2: a GoldSrc row)
-float  dl_moved;        // P1670: when dl_done last grew
+float  dl_moved;        // P1670: when dl_done last grew, or the engine's current file changed
+string dl_cur;          // the engine's current file (dlstate argv 3), zoned
 #define DL_HOLD_STALL 62    // the engine's 60 s (CL_MapDownloadHolds) and a margin: never let go before it does
 
 /*
@@ -7087,8 +7088,13 @@ void() Dl_Tick =
 
 	dl_pct   = stof(argv(5));
 	dl_rate  = stof(argv(6));
-	if (stof(argv(7)) != dl_done)
-		dl_moved = time;
+	if (stof(argv(7)) != dl_done || argv(3) != dl_cur)
+		dl_moved = time;            // P1670 review 5: a new transfer starts its own clock, as the engine's does
+	if (argv(3) != dl_cur)
+	{
+		if (dl_cur != "") strunzone(dl_cur);
+		dl_cur = strzone(argv(3));
+	}
 	dl_done  = stof(argv(7));
 	dl_total = stof(argv(8));
 };
