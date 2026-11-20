@@ -329,3 +329,77 @@ location = /api/join {
 # location = /api/heartbeat {
 #     return 404;
 # }
+
+# ---------------------------------------------------------------------------
+# P1634 tournament lobbies: the 0.1.49+ menu's TOURNAMENT tab (src/menu/m_tournament.qc MT_SITE) -- browse,
+# challenge, action, map pool. Exact locations only: the lobbies' keyed POST /api/tournaments/game stays OFF the
+# internet (they post to 127.0.0.1:8084, as with /api/heartbeat). surfd caps each route at 240/min per client,
+# keyed on X-Real-IP as /api/board explains; the menu polls every 3-10 s, so the board zone is the outer bound.
+location = /api/tournament-lobbies {
+    limit_req zone=surfdboard burst=30 nodelay;
+    limit_req_status 429;
+    limit_except GET { deny all; }
+    proxy_pass http://127.0.0.1:8084;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout 5s;
+    proxy_no_cache 1;
+    proxy_cache_bypass 1;
+    add_header Cache-Control "no-store" always;
+}
+
+location = /api/tournament-lobbies/challenge {
+    limit_req zone=surfdboard burst=30 nodelay;
+    limit_req_status 429;
+    limit_except GET { deny all; }
+    proxy_pass http://127.0.0.1:8084;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout 5s;
+    proxy_no_cache 1;
+    proxy_cache_bypass 1;
+    add_header Cache-Control "no-store" always;
+}
+
+location = /api/tournament-lobbies/action {
+    limit_req zone=surfdboard burst=30 nodelay;
+    limit_req_status 429;
+    client_max_body_size 8k;
+    limit_except POST { deny all; }
+    proxy_pass http://127.0.0.1:8084;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout 5s;
+    proxy_no_cache 1;
+    proxy_cache_bypass 1;
+    add_header Cache-Control "no-store" always;
+}
+
+location = /api/tournament-map-pool {
+    limit_req zone=surfdboard burst=30 nodelay;
+    limit_req_status 429;
+    limit_except GET { deny all; }
+    proxy_pass http://127.0.0.1:8084;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout 5s;
+    proxy_no_cache 1;
+    proxy_cache_bypass 1;
+    add_header Cache-Control "no-store" always;
+}
