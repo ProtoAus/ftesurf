@@ -1038,18 +1038,71 @@ void(vector pos, vector size, float focus) ui_field_box =
 	sui_style_box(pos, size, 7, SUI_THEME_WELL, focus ? COL_ACCENT : SUI_THEME_EDGE, 1);
 };
 
+// P1680: text longer than the box scrolls inside it (it drew past the right edge, over the button beside it).
+// The focused field keeps its offset, moved only as far as keeps the caret in view; any other shows its start.
+string ui_fld_id;
+float ui_fld_off, ui_fc_had;
+vector ui_fc_min, ui_fc_max;
+float(string id, string text, float cursor, float inner) ui_field_scroll =
+{
+	local float tw, cx, off;
+	tw = stringwidth(text, TRUE, SZ_LABEL);
+	// sui_text_input's own focus rule: sui_begin clears sui_text_has_focus until the field's input call
+	if (tw <= inner) return 0;
+	if (!(sui_is_last_clicked(id) || sui_is_held(id) || (_sui_field_focus != "" && strcmp(_sui_field_focus, id) == 0))) return 0;
+	if (strcmp(id, ui_fld_id))
+	{
+		if (ui_fld_id) strunzone(ui_fld_id);
+		ui_fld_id = strzone(id);
+		ui_fld_off = 0;
+	}
+	cx = Font_PenX(text, cursor, 1, SZ_LABEL);
+	off = ui_fld_off;
+	if (cx - off > inner - 2) off = cx - inner + 2;
+	if (cx < off) off = cx;
+	ui_fld_off = bound(0, off, tw - inner + 2);
+	return ui_fld_off;
+};
+
+// Scissor to the field's text area, inside a clip already set (a scroll view's); ui_field_unclip puts it back.
+void(vector pos, vector size) ui_field_clip =
+{
+	local vector a, b;
+	ui_fc_had = sui_is_clipping();
+	ui_fc_min = _sui_clip_area_mins; ui_fc_max = _sui_clip_area_maxs;
+	sui_push_frame(pos, size);
+	a = sui_current_frame_pos(); b = a + sui_current_frame_size();
+	sui_pop_frame();
+	if (ui_fc_had)
+	{
+		a_x = max(a_x, ui_fc_min_x); a_y = max(a_y, ui_fc_min_y);
+		b_x = min(b_x, ui_fc_max_x); b_y = min(b_y, ui_fc_max_y);
+	}
+	drawsetcliparea(a_x, a_y, max(0, b_x - a_x), max(0, b_y - a_y));
+};
+
+void() ui_field_unclip =
+{
+	if (ui_fc_had)
+		drawsetcliparea(ui_fc_min_x, ui_fc_min_y, ui_fc_max_x - ui_fc_min_x, ui_fc_max_y - ui_fc_min_y);
+	else
+		drawresetcliparea();
+};
+
 // Single-line text field.  sui_text_input owns the caret and the keystrokes;
 // all this adds is the box, the placeholder and a blinking caret.
 void(string id, vector pos, vector size, __inout string text,
      __inout float cursor, string placeholder) ui_field =
 {
-	sui_text_metrics(6, SZ_LABEL);  // Patch 655: the caret goes where the click was, and a drag selects
+	float off = ui_field_scroll(id, text, cursor, size_x - 12);
+	sui_text_metrics(6 - off, SZ_LABEL);  // Patch 655: the caret goes where the click was, and a drag selects
 	sui_text_input(id, pos, size, text, cursor);
 
 	float focus = sui_text_has_focus(id);
 	ui_field_box(pos, size, focus);
 
-	vector tp = [pos_x + 6, pos_y + (size_y - SZ_LABEL_H) * 0.5];
+	vector tp = [pos_x + 6 - off, pos_y + (size_y - SZ_LABEL_H) * 0.5];
+	ui_field_clip(pos + '4 0 0', size - '8 0 0');
 	if (focus)
 		sui_text_selection(id, tp, SZ_LABEL, text, cursor, SUI_THEME_SELECTED, 1);
 	if (text == "" && !focus)
@@ -1065,6 +1118,7 @@ void(string id, vector pos, vector size, __inout string text,
 		float cx = Font_PenX(text, cursor, 1, SZ_LABEL);   // Patch 1236: kerned
 		sui_fill([tp_x + cx, tp_y], [1, SZ_LABEL_H], COL_ACCENT, 1, 0);
 	}
+	ui_field_unclip();
 };
 
 /*
@@ -1083,19 +1137,21 @@ void(string id, vector pos, vector size, __inout string text,
 void(string id, vector pos, vector size, __inout string text,
      __inout float cursor, string placeholder, string sel) ui_field_sel =
 {
-	sui_text_metrics(6, SZ_LABEL);
+	float off = ui_field_scroll(id, text, cursor, size_x - 12);
+	sui_text_metrics(6 - off, SZ_LABEL);
 	sui_text_input(id, pos, size, text, cursor);
 
 	float focus = sui_text_has_focus(id);
 	ui_field_box(pos, size, focus);
 
 	vector tp = [pos_x + 6, pos_y + (size_y - SZ_LABEL_H) * 0.5];
-	if (focus)
-		sui_text_selection(id, tp, SZ_LABEL, text, cursor, SUI_THEME_SELECTED, 1);
-
+	ui_field_clip(pos + '4 0 0', size - '8 0 0');
 	if (sel != "")
 		sui_text([pos_x + size_x - 6 - stringwidth(sel, TRUE, SZ_LABEL), tp_y],
 		         SZ_LABEL, sel, COL_ACCENT, 1, 0);
+	tp_x = tp_x - off;
+	if (focus)
+		sui_text_selection(id, tp, SZ_LABEL, text, cursor, SUI_THEME_SELECTED, 1);
 
 	if (text == "" && !focus)
 		sui_text(tp, SZ_LABEL, placeholder, COL_DIM, 1, 0);
@@ -1107,6 +1163,7 @@ void(string id, vector pos, vector size, __inout string text,
 		float cx = Font_PenX(text, cursor, 1, SZ_LABEL);   // Patch 1236: kerned
 		sui_fill([tp_x + cx, tp_y], [1, SZ_LABEL_H], COL_ACCENT, 1, 0);
 	}
+	ui_field_unclip();
 };
 
 // ---------------------------------------------------------------------------
