@@ -160,8 +160,9 @@ def crown(match, note):
 
 
 def launched(match):
-    # Party rooms set menu_started at the host's Start; a server-hosted match launches when its map arrives.
-    return (bool(match.get('menu_started') or match.get('_arrived')) or
+    # Sticky: party Start (menu_started), first arrival (_launched) or GO; loading() clears _arrived every round.
+    return (bool(match.get('menu_started') or match.get('_launched') or match.get('_arrived') or
+                 match.get('_started')) or match.get('round_index', 0) > 1 or
             match['phase'] not in ('lobby', 'draft', 'loading'))
 
 
@@ -316,29 +317,34 @@ def transition(original, op, actor, display, data, pool=()):
             if not m['_arrived']:
                 for p in competitors(m):
                     p['ready'] = 0
-                m['_arrived'] = 1
+                m['_arrived'] = m['_launched'] = 1
         else:
             require(m['_arrived'] and me is not None and me['role'] == 'player', 'map has not arrived or no seat')
             me['ready'] = 1
     elif op in ('start', 'autostart'):
-        # autostart: the game server starts without the host, first forfeiting the unready
-        # competitors it names in `absent` (it names only those missing 90 s after arrival).
         require(phase == 'loading' and m['_arrived'], 'map has not arrived')
-        roster = competitors(m)
-        raw = data.get('absent') or '' if op == 'autostart' else ''
-        require(isinstance(raw, str), 'absent list invalid')
-        absent = raw.split(',') if raw else []
-        unready = {p['who']: p for p in roster if not p['ready']}
-        require(len(set(absent)) == len(absent) and all(who in unready for who in absent), 'absent list invalid')
-        if absent:
-            gone = [unready[who] for who in absent]
-            for p in gone:
-                p.update(role='eliminated', place=len(roster) - len(gone) + 1)
-            m['note'] = crown(m, "%s didn't arrive and %s out." % (listed(gone), 'is' if len(gone) == 1 else 'are'))
-            if len(competitors(m)) == 1:
-                m['phase'] = 'finished'
-            elif not competitors(m):
+        if op == 'autostart':
+            # The game server vouches for every survivor it does not name in `absent`
+            # (named: still missing 90 s after arrival); those are forfeited first.
+            roster = competitors(m)
+            raw = data.get('absent') or ''
+            require(isinstance(raw, str), 'absent list invalid')
+            absent = raw.split(',') if raw else []
+            unready = {p['who']: p for p in roster if not p['ready']}
+            require(len(set(absent)) == len(absent) and all(who in unready for who in absent), 'absent list invalid')
+            if absent and len(absent) == len(roster):
                 m.update(phase='aborted', outcome='no-contest', note='No contest: nobody arrived.')
+            else:
+                gone = [unready[who] for who in absent]
+                for p in roster:
+                    if p['who'] in absent:
+                        p.update(role='eliminated', place=len(roster) - len(gone) + 1)
+                    else:
+                        p['ready'] = 1
+                if gone:
+                    m['note'] = crown(m, "%s didn't arrive and %s out." % (listed(gone), 'is' if len(gone) == 1 else 'are'))
+                    if len(competitors(m)) == 1:
+                        m['phase'] = 'finished'
         if m['phase'] == 'loading':
             require(all(p['ready'] for p in competitors(m)), 'every surviving competitor must ready')
             m['phase'] = 'countdown'
@@ -347,7 +353,7 @@ def transition(original, op, actor, display, data, pool=()):
         integer(data, 'elapsed_ms', 5000, 3600000)
         tickrate = rate(data)
         require(abs(tickrate - 1000000 / m['settings']['tick_us']) <= 1e-4, 'wrong effective tickrate')
-        m.update(phase='live', _started=1, _rate=tickrate)
+        m.update(phase='live', _started=1, _launched=1, _rate=tickrate)
     elif op == 'score':
         require(phase == 'live', 'round is not live')
         require(data.get('current_map') == m['current_map'], 'wrong map')

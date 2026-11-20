@@ -1523,8 +1523,9 @@ not just HTTP status. Successful mutations return `status=ok` (release returns
   ban/pick requires the actual account's draft turn, **not host proxy voting**.
   Seating toggles player/spectator in lobby and clears only that player's
   acceptance. Before launch (draft, or loading before the party Start or the
-  map's arrival) the host may still unseat a competitor: the match returns to
-  lobby with the draft cleared and the other acceptances kept.
+  first arrival) the host may still unseat a competitor: the match returns to
+  lobby with the draft cleared and the other acceptances kept. Launch is sticky
+  (`_launched` at first arrival/GO, `_started`, round 2+).
   Every competitor must accept to lock; entrants and rules then freeze. New
   arrivals can only enter as spectators (max64 spectators, max8 competitor/eliminated
   rows, max72 total; 256 distinct proven accounts per match lifetime to bound history).
@@ -1537,11 +1538,12 @@ not just HTTP status. Successful mutations return `status=ok` (release returns
   Only in loading; the first arrival establishes the round, repeats never reset
   readiness. `ready` sends the same two fields and requires a surviving seat.
   Host `start` requires everyone ready and moves to countdown, not live.
-  Server `autostart` does exactly the same (same checks), so play never waits
-  on the host once every surviving competitor is ready. Its optional
-  `absent=<who,...>` (unready survivors only, else `absent list invalid`) forfeits
-  them first, sharing last place: one survivor left wins (finished), none left is
-  `No contest: nobody arrived.`, otherwise the rest must be ready for countdown.
+  Server `autostart` needs the arrival but not the readies: the game server
+  vouches for every survivor it does not name in `absent=<who,...>` (unready
+  survivors only, else `absent list invalid`), and those are marked ready. Named
+  ones are forfeited first, sharing last place; one survivor left wins
+  (finished), otherwise countdown. All named: `No contest: nobody arrived.`
+  with roles and places untouched.
 - `go`: `elapsed_ms=5000..3600000,tickrate=1..1000` after common 5-second countdown.
   Locks the round tickrate. The game server owns actual live/deadline clocks after
   this ACK. Neither state polling nor repeated snapshots restart those clocks.

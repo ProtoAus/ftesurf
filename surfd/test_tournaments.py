@@ -383,19 +383,23 @@ class Rules(unittest.TestCase):
             out = R.transition(m, 'abort', '', '', {} if reason is None else dict(reason=reason))
             self.assertEqual((out['phase'], out['outcome'], out['note']), ('aborted', 'no-contest', 'No contest: %s.' % text))
 
-    def test_autostart_p1650_server_starts_once_everyone_is_ready(self):
+    def test_autostart_p1650_vouches_for_present_competitors_host_start_unchanged(self):
         m = self.drafted(2)
         data = observation(m)
         with self.assertRaisesRegex(R.Refusal, 'arrived'):
             R.transition(m, 'autostart', '', '', data)
         m = R.transition(m, 'arrive', '', '', data)
         m = R.transition(m, 'ready', 'host', '', data)
+        # Host start still needs every survivor's own ready.
         with self.assertRaisesRegex(R.Refusal, 'every'):
-            R.transition(m, 'autostart', '', '', data)
-        m = R.transition(m, 'ready', 'p1', '', data)
+            R.transition(m, 'start', 'host', '', data)
         with self.assertRaisesRegex(R.Refusal, 'zone generation'):
             R.transition(m, 'autostart', '', '', dict(data, zonegen=2))
-        self.assertEqual(R.transition(m, 'autostart', '', '', data)['phase'], 'countdown')
+        # S11: autostart marks every survivor it does not name in `absent` ready.
+        for extra in ({}, dict(absent='')):
+            out = R.transition(m, 'autostart', '', '', dict(data, **extra))
+            self.assertEqual((out['phase'], [p['ready'] for p in out['players']]), ('countdown', [1, 1]))
+        m = R.transition(m, 'ready', 'p1', '', data)
         self.assertEqual(R.transition(m, 'start', 'host', '', data)['phase'], 'countdown')
         with self.assertRaisesRegex(R.Refusal, 'host only'):
             R.transition(m, 'start', 'p1', '', data)
@@ -407,27 +411,40 @@ class Rules(unittest.TestCase):
         for absent in ('host', 'stranger', 'p1,p1', 'p1,', ',p1'):
             with self.assertRaisesRegex(R.Refusal, 'absent list invalid', msg=absent):
                 R.transition(m, 'autostart', '', '', dict(data, absent=absent))
-        # Remaining survivors must still all be ready; a refusal forfeits nobody.
-        with self.assertRaisesRegex(R.Refusal, 'every'):
-            R.transition(m, 'autostart', '', '', dict(data, absent='p1'))
-        ready = R.transition(m, 'ready', 'p2', '', data)
-        out = R.transition(ready, 'autostart', '', '', dict(data, absent='p1'))
+        # p2 is vouched for (not named), p1 is forfeited.
+        out = R.transition(m, 'autostart', '', '', dict(data, absent='p1'))
         self.assertEqual((out['phase'], self.roles(out)['p1'], out['note']), ('countdown', ('eliminated', 3), "p1 didn't arrive and is out."))
+        self.assertEqual([p['ready'] for p in R.competitors(out)], [1, 1])
         out = R.transition(m, 'autostart', '', '', dict(data, absent='p1,p2'))
         self.assertEqual((out['phase'], out['outcome']), ('finished', 'winner'))
         self.assertEqual(self.roles(out), dict(host=('player', 1), p1=('eliminated', 2), p2=('eliminated', 2)))
         self.assertEqual(out['note'], "p1 and p2 didn't arrive and are out. Host wins!")
-        nobody = R.transition(R.transition(self.drafted(3), 'arrive', '', '', data), 'autostart', '', '', dict(data, absent='p2,host,p1'))
+        # Everyone absent: no contest, and nobody is forfeited or placed.
+        arrived = R.transition(self.drafted(3), 'arrive', '', '', data)
+        nobody = R.transition(arrived, 'autostart', '', '', dict(data, absent='p2,host,p1'))
         self.assertEqual((nobody['phase'], nobody['outcome'], nobody['note']), ('aborted', 'no-contest', 'No contest: nobody arrived.'))
-        # Empty or missing `absent` is plain autostart; an eliminated player cannot be listed again.
-        for extra in ({}, dict(absent='')):
-            with self.assertRaisesRegex(R.Refusal, 'every'):
-                R.transition(m, 'autostart', '', '', dict(data, **extra))
-            everyone = R.transition(ready, 'ready', 'p1', '', data)
-            self.assertEqual(R.transition(everyone, 'autostart', '', '', dict(data, **extra))['phase'], 'countdown')
-        forfeited = R.transition(ready, 'leave', 'p1', '', {})
+        self.assertEqual(nobody['players'], arrived['players'])
+        forfeited = R.transition(m, 'leave', 'p1', '', {})
         with self.assertRaisesRegex(R.Refusal, 'absent list invalid'):
             R.transition(forfeited, 'autostart', '', '', dict(data, absent='p1'))
+
+    def test_launched_p1650_is_sticky_in_later_rounds_of_a_server_match(self):
+        m = R.transition(self.settle(self.live(3)), 'advance', '', '', {})
+        self.assertEqual((m['phase'], m['round_index'], m['_arrived'], m.get('menu_started')), ('loading', 2, 0, None))
+        left = R.transition(m, 'leave', 'p1', '', {})
+        self.assertEqual((left['phase'], self.roles(left)['p1']), ('loading', ('eliminated', 3)))
+        host = R.transition(m, 'leave', 'host', '', {})
+        self.assertEqual((host['phase'], self.roles(host)['host']), ('loading', ('eliminated', 3)))
+        with self.assertRaisesRegex(R.Refusal, 'roster frozen'):
+            R.transition(m, 'seat', 'host', '', dict(target='p2'))
+        # Each latch alone keeps the match launched.
+        for latch in (dict(_launched=1), dict(_started=1), dict(round_index=2)):
+            bare = dict(self.drafted(3), _launched=0, _started=0)
+            bare.update(latch)
+            self.assertTrue(R.launched(bare), latch)
+            self.assertEqual(R.transition(bare, 'leave', 'p1', '', {})['phase'], 'loading', latch)
+        self.assertFalse(R.launched(dict(self.drafted(3))))
+        self.assertEqual(R.transition(self.drafted(3), 'arrive', '', '', observation(self.drafted(3)))['_launched'], 1)
 
     def test_configure_host_freeze_capacity_and_consent_invalidation(self):
         m = self.lobby(3)
