@@ -39,6 +39,15 @@
 
 ## next
 
+### P1638 New Settings page
+- Settings is now a full page beside Lobbies and Maps, with the friends list and chat on the right: sections for Controls, Audio, Menu scene, Performance, In-game sky and Online & privacy, each setting with a slider or buttons and its current value. The old Visuals & display screen is folded in.
+
+### P1637 Ahop in the zone editor
+- The zone editor's map properties now offer Ahop beside Surf and Bhop, so an ahop map's zone file can say it plays Momentum's ahop rules. ahop_coast now plays as ahop.
+
+### P1636 Warning for an old Steam library
+- If steam_libraries.txt points at a Steam library that is missing (a drive not mounted), or one that supplies a game while Steam's own library has another copy, the console says so and the missing-content warning names it. `fs_steamlibs remove <path>` takes the line out.
+
 ### P1633 Taskbar icon on Linux
 - On Linux the game window now has the World of Surf icon and name in the taskbar (KDE, GNOME and wlroots desktops); the launcher keeps a menu entry and icons up to date.
 - Files a server offers for download, other than maps, now go into the downloads folder instead of the game folder.

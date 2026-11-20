@@ -1,5 +1,18 @@
 # lextest.md — things waiting on a human
 
+## P1636-P1638 -- Lex's follow-ups (worldofsurf-bb)
+
+- surf_affliction: your zone file and map settings now say 10000 (backups *.bak-20261120-bb beside them). In zone_edit
+  on surf_affliction, Save zones then Publish saved to put 10000 on the lobbies (they still have your 5000).
+- ahop_coast: zone file and map settings now say Ahop (air accel 10; your 1000 is in the backup). Load it: the console
+  says "ahop_coast is ahop", 66 tick. Then Publish saved from zone_edit for the lobbies. Does it play right?
+- colin_blaster_69000 draws Momentum's cape-hill sky from your Momentum folder (it was black only because of the old
+  Windows library).
+- P1636: nothing to do unless steam_libraries.txt comes back; `fs_steamlibs` in the console shows what it found.
+- P1638 Settings: click SETTINGS. Walk the six sections with a real mouse (the test rig had no pointer, so clicks went
+  through the menu's own commands): drag the sensitivity slider, flip a few options, MAPS then SETTINGS keeps the
+  section, Esc goes to Lobbies. "Muffle game in menu" came back from the retired Music screen -- keep it or drop it?
+
 ## P1635 -- tournament pre-enable fixes (worldofsurf-ed)
 
 Rides the tournament rollout (lobbies first; nothing changes on a server with tournament_enable 0).

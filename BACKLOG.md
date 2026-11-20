@@ -30,6 +30,9 @@
   and the 237 changed cfg/maps files (P1631), and data/mapmeta.txt (candidate with the 7 changed rows:
   task root scratch/mapdata/mapmeta.candidate.txt, sha1 c81971f0) need the qualified fleet caller (p1623-linux-deploy.md).
   A mover-13 lobby needs its engine rebuilt; until then clients predict at the lobby's 12, which is correct.
+- P1638 (read, not tested -- the rig has no pointer): with milk_panels 1 ("in the world"), MM_PanelScreen still counts
+  SCREEN_MAIN, so a real mouse on Lobbies is remapped onto an empty slab. Drop SCREEN_MAIN there or retire the option.
+  Settings' "Privacy & online terms" opens the terms screen without the F2 flag: Esc does nothing there (as before).
 - mod_unresolved lists a model's FIRST failure only: a model that failed on an earlier map is not retried, so the
   banner omits it on the next map (gl_model.c Mod_ModelLoaded; falsifier: two maps sharing a missing prop).
 - assetgames.txt labels by directory: materials/de_dust reads "CS:S/CS:GO" though only CS:S has rockwall01.
@@ -39,8 +42,9 @@
   AG recording can replay differently where it touched one. pm_dettest's trace hashes now run in the render winding
   (its "srctrace stays the triangles every older pin replays on" comment, sv_ccmds.c ~4500, is stale) and its mover
   passes stop at 12. The hl2 plugin and exe must ship together (an old plugin on a mover-13 exe collides like 12).
-- ahop_coast: its published zone and Lex's local editor say gamemode 2, so it plays bhop at 100 Hz, not mode_ahop;
-  zone_edit accepts only 1/2. Momentum ranks it in bhop and ahop: Lex's choice.
+- ahop_coast (P1637): Lex's local zone and map settings now say Ahop (9); the published zone still says bhop until Lex
+  publishes it from zone_edit (an admin click). Lobby engines older than P1637 ignore a zone's 9 and use the map index,
+  so the lobby mapmeta must carry ahop_coast 9 (the candidate does). surf_affliction: local zone 10000, publish pending.
 - mode_ahop has no ABH jump boost (only the hl2-* engine profiles do); wiring mode ahop to that profile would drop the
   pm_walkspeed sprint line. Momentum's bhop maxvelocity is 100000; mode_bhop.cfg keeps 3500.
 - surf_not_so_prosurf's cap goes 5000 -> 3500 (KSF's explicit value beats the entity lump); surf_ispy's shipped zone
