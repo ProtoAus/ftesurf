@@ -21,6 +21,9 @@
 
 ## next
 
+### P1663 Console suggestions closer to the typing line
+- Under the console window, the suggestion list now hangs straight from the window's bottom edge, a little closer to what you type.
+
 ### P1662 Breathing room for console suggestions
 - The console's suggestion list sits a little below the line you type in, with its text inset from the box edges and lined up with what you typed. con_completion_padding sets the room; 0 is the old list.
 
