@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## 0.1.51 release -- PUBLISHED 20 Nov 11:24Z; owner check PENDING (record: tools/release-0.1.51.md)
+- Update through the launcher (Windows or Linux); the menu corner should say World of Surf 0.1.51.
+- It carries everything that was under "next": the GoldSrc/Half-Life maps (P1654-P1660), P1664/P1665 below, the
+  console work (P1641-P1647, P1662-P1663), Settings page (P1638), anti-cheat start rules (P1643/P1652/P1657), Story/Event.
+- Linux: the run graphs' ImGui plugin is still not in the Linux download or update (installed launchers would refuse
+  the update); your own Linux install has it from wos-build.sh.
+
 ## P1664 / P1665 -- your bkz_goldbhop_gs report: crouch jump and eye height (worldofsurf-75, 20 Nov)
 Cause of the failed jump: the pre-strafe assist (run_prestrafe, on by default) lets go of W for the whole jump when you
 jump after standing still, so you went straight up. It is now off on every Half-Life map. The eye was Half-Life's

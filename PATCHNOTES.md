@@ -21,6 +21,8 @@
 
 ## next
 
+## 0.1.51 2026-11-20
+
 ### P1665 Counter-Strike eye height on CS 1.6 maps
 - Half-Life maps made for Counter-Strike 1.6 (most kz and bhop ones, bkz_goldbhop among them) put your eyes at Counter-Strike's height, not Half-Life's, so ledges look the way the mapper built them. Movement is unchanged.
 
