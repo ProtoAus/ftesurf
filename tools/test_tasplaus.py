@@ -879,6 +879,25 @@ class Review1640Round7(unittest.TestCase):
         r = tp.check(tp.read(text="\n".join(out) + "\n"), zones)
         self.assertNotIn("energy", self.why(r))
 
+class Review1640Round8(unittest.TestCase):
+    setUp, why = Review1640.setUp, Review1640.why
+
+    def test_a_clock_compressed_on_a_minority_of_ticks_holds(self):
+        # Review 8: one real tick dropped every 9 (the clock closed up) left the median at 1.0006.
+        k0 = next(i for i, r in enumerate(self.rows) if r[0] >= 0.0)
+        rows, cut = [], 0
+        for i, (t, o, v) in enumerate(self.rows):
+            if i > k0 and (i - k0) % 9 == 0 and t < self.fin * RATE:
+                cut += 1
+                continue
+            rows.append((round(t - cut * RATE, 6), o, v))
+        r = verdict(rows, self.fin - cut)
+        self.assertIn("steps cover more than", self.why(r))
+
+    def test_one_wall_hit_in_the_air_passes_the_clock(self):
+        r = verdict(self.rows, self.fin)
+        self.assertNotIn("clock", self.why(r))
+
 @unittest.skipUnless(os.environ.get("TASPLAUS_CORPUS"), "set TASPLAUS_CORPUS (+ TASPLAUS_ZONES) to real .rec files")
 class Corpus(unittest.TestCase):
     def test_honest_runs_pass(self):

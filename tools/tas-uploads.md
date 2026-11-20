@@ -106,6 +106,10 @@ generation change, 127.0.0.1:8091).
   ticks of t=0 (or 8 u at its speed; honest max 1.73 ticks) -- a clock relabelled to start early holds; a file
   that shows %g output gets each number's %g rounding (z -14942 is 0.05 coarse); the energy test's height term
   reads z's precision alone; the per-second drift limit is 6 u (honest PASS max 0.33); at most 100000 samples.
+  Review 8: beside the median, the clock's trimmed mean (largest 2 + 1% dropped) must stay <= 1.002 and at most
+  2 + 1% of moving steps may cover over 1.15x their speed x time (a clock compressed on a minority of ticks);
+  in free flight a ratio over 1 is first discounted by |vb|/|mean| (slow perfect strafing); an air wall hit gets
+  the contact allowance in the drift test.
 - **Board**: `/tasup/board?map=&track=` best per player; `/tasup/run/<id>` reasons and numbers;
   `/tasup/run/<id>.rec` the file (shown runs only); JSON under `/tasup/api/`.
 - **Caps**: 30 uploads per account a day (refusals count), 1000 uploads / 1 GiB of kept runs for
@@ -126,6 +130,8 @@ generation change, 127.0.0.1:8091).
   (its file is gone). `reject`/`unblock` without `--note` keep the note; `approve` clears a reject's note.
   Review 7: only a SHOWN run of the motion counts as owning it (a held copy does not); another account's
   rejected run no longer holds the owner of that motion; an identical file is refused with how to re-upload.
+  Review 8: a held run of yours counts against copies made after it (the author's first, held upload is not
+  refused once a later copier is removed); your own duplicate names your run; 10 candidates per other account.
 - **Known gap**: a human's public replay with its import markers stripped is real motion and
   passes; tasupd does not yet compare uploads with surfd's public replays (BACKLOG). Remove it by id.
 - **Known gap** (review 6): another player's run re-timed as a whole by ~0.1% (times / f, velocities x f)

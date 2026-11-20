@@ -45,7 +45,7 @@ from contextlib import contextmanager
 from flask import Flask, Response, jsonify, redirect, request
 import steam
 
-MAX_REC = 8 * 1024 ** 2             # an hour of samples at 66.67 Hz is ~2.5 MB
+MAX_REC = 8 * 1024 ** 2             # ~10 minutes of a native .rec (~200 B a sample); a KSF/sparse export runs longer
 MAX_FORM = MAX_REC + 64 * 1024
 TICK = 0.015                        # the board is the game's 66.67 Hz; another rate is another board
 MAX_TRACK = 99
@@ -69,7 +69,7 @@ REASONS_MAX = 40                    # kept and shown per run; a bad file can giv
 ROW = ('id, sha, steamid, map, track, ticks, verdict, state, reasons, stats, tool, size, uploaded_at,'
        ' reviewed_at, note')
 LIST = 'id, steamid, map, track, ticks, verdict, state, tool, uploaded_at, note'
-COPY_CANDIDATES, COPY_PER_PLAYER = 60, 3   # course candidates compared per upload; per other account
+COPY_CANDIDATES, COPY_PER_PLAYER = 60, 10   # per upload; per other account (review 8: 3 of a victim's own nearer runs hid the copied one)
 COPY_BUDGET = 20.0                  # s of comparisons per upload, then a person looks (review 7: ~60-100 s on the Pi worst case)
 COPY_TICKS, COPY_FULL = 3000, 5     # ticks compared per pass; full passes per upload before a person looks
 COPY_SHIFTS = 16                    # ticks either way: past the start-zone leave the checker allows (review 7: +9 hid a copy)
@@ -145,7 +145,7 @@ def initialize(path):
     path = Path(path)
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     (path.parent / 'recs').mkdir(mode=0o700, exist_ok=True)
-    db = sqlite3.connect(path)
+    db = sqlite3.connect(path, timeout=15)   # as the service's own connections (an upgrade's init beside the live store)
     try:
         db.execute('PRAGMA journal_mode=WAL')
         with db: db.executescript(SQL)
@@ -869,8 +869,9 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
             return refuse('This board is 66.67 tick: the header must say tickrate %s.' % TICK, 400)
         sha = hashlib.sha256(body).hexdigest()
         with connect(store) as db:
-            if db.execute('SELECT 1 FROM runs WHERE sha = ?', (sha,)).fetchone():
-                return refuse(DUPLICATE, 409)
+            dup = db.execute('SELECT id, steamid FROM runs WHERE sha = ?', (sha,)).fetchone()
+            if dup:   # review 8: the usual duplicate is the uploader's own double submit or retry
+                return refuse('You uploaded this file already: run %d.' % dup['id'] if dup['steamid'] == sid else DUPLICATE, 409)
         if not heavy.acquire(timeout=HEAVY_WAIT):
             unspend(sid, now)   # not the uploader's attempt
             return refuse('The checker is busy; try again in a minute.', 503)
@@ -931,14 +932,20 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                                             (sid, mapname, track, lo, hi) + states + (after, end, COPY_PER_PLAYER)))
 
         def owns_motion(db):
-            """The uploader has a shown run of this motion (the same samples, or a copy match among their nearest runs
-            on the course), whatever the upload order: another account's removed copy of it does not refuse them
-            (review 6: an id-order test locked out the author the owner approved). Shown only: a held run is not
-            yet anyone's (review 7: a held offset copy unlocked the exact samples of the removed run)."""
-            if db.execute("SELECT 1 FROM runs WHERE samples_sha = ? AND steamid = ? AND state = 'shown'",
-                          (digest, sid)).fetchone():
-                return True
-            return copy_of(series, trail, mask, own_rows(db, ('shown',)))[0] is not None
+            """(shown, held id): whether the uploader has a SHOWN run of this motion (the same samples, or a copy match
+            among their nearest runs on the course), and the earliest held one. Another account's removed or rejected
+            copy does not refuse an owner of the motion, whatever the order (review 6); a held run counts only against
+            copies made after it (review 7: a held offset copy unlocked the removed samples; review 8: the author's own
+            first upload, held as the course's first, was refused once a copier's later run was removed)."""
+            if db.execute("SELECT 1 FROM runs WHERE samples_sha = ? AND steamid = ? AND state = 'shown'", (digest, sid)).fetchone():
+                return True, None
+            if copy_of(series, trail, mask, own_rows(db, ('shown',)))[0] is not None:
+                return True, None
+            h = db.execute("SELECT MIN(id) FROM runs WHERE samples_sha = ? AND steamid = ? AND state = 'held'", (digest, sid)).fetchone()[0]
+            if h is None:
+                m = copy_of(series, trail, mask, own_rows(db, ('held',)))[0]
+                h = m['id'] if m is not None else None
+            return False, h
 
         def copied(db, after, owns):
             """A refusal (motion the owner removed), a reason to hold it (another player's motion, the uploader's own
@@ -952,14 +959,17 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                 return 'the same motion as your run %d, which the owner rejected' % rej['id']
             # another account's removed or rejected run of motion the uploader owns is no claim on it (review 7: after an
             # unblock the copier's rejected row held every later upload of the approved author)
-            theirs_removed = lambda x: x['state'] in ('removed', 'rejected') and x['steamid'] != sid   # noqa: E731
+            shown_own, held_id = owns
+            def theirs_removed(x):   # (id, steamid, state) rows of another account the uploader's motion came first
+                return (x[2] in ('removed', 'rejected') and x[1] != sid
+                        and (shown_own or (held_id is not None and held_id < x[0])))
             r = next((x for x in db.execute("SELECT id, steamid, state FROM runs WHERE samples_sha = ? AND (steamid != ? OR"
                                             " state = 'removed') AND id > ? ORDER BY state = 'removed' DESC", (digest, sid, after))
-                      if not (owns and theirs_removed(x))), None)
+                      if not theirs_removed(x)), None)
             why = None
             if r is None:
                 cand = [tuple(x) for x in db.execute(course_sql, (end, mapname, track, lo, hi, sid, after, end))]
-                if owns: cand = [x for x in cand if not (x[2] in ('removed', 'rejected') and x[1] != sid)]
+                cand = [x for x in cand if not theirs_removed(x)]
                 r, why = copy_of(series, trail, mask, with_sigs(db, cand))
             if r is not None and r['state'] == 'removed':
                 return refuse('That is the motion of run %d, which the owner removed: if it is your own run, ask the owner.'
@@ -1120,8 +1130,8 @@ def main(argv=None):
             # Remove is for good (the file is gone; reject keeps it). Other uploads of the same motion stay.
             same = [x[0] for x in db.execute("SELECT id FROM runs WHERE samples_sha = ? AND id != ? AND state != 'removed'",
                                              (r['samples_sha'], a.id))]
-            if same: print('the same motion is also run(s) %s: the earliest is likely the original; remove the others only if they'
-                           ' are copies too' % ', '.join(map(str, same)))
+            if same: print('the same motion is also run(s) %s: check which is the original (a copier can upload first) before'
+                           ' removing any of them' % ', '.join(map(str, same)))
         return 0
 
 

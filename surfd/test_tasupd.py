@@ -299,7 +299,7 @@ class Service(unittest.TestCase):
         self.assertEqual(self.upload(c, body).status_code, 200)
         r = self.upload(c, body)
         self.assertEqual(r.status_code, 409)
-        self.assertIn('That exact file has been uploaded before', r.get_json()['error'])   # refused before the checker runs
+        self.assertIn('You uploaded this file already', r.get_json()['error'])   # refused before the checker runs
         c2, _ = self.sign_in(BOB)   # the same motion under another header, by somebody else
         self.assertCopyHeld(self.upload(c2, body.replace(b'track 0\n', b'track 0\nowner bob\n')), 1)
 
@@ -767,12 +767,13 @@ class Service(unittest.TestCase):
         carol, _ = self.sign_in('76561198000000009')
         for vw in (12.0, 14.0, 17.0, 20.0):
             self.assertEqual(self.upload(carol, rec(variant(vw)[0], fin + 6)).status_code, 200)
-        saved, svc.COPY_CANDIDATES = svc.COPY_CANDIDATES, 4
+        saved = svc.COPY_CANDIDATES, svc.COPY_PER_PLAYER
+        svc.COPY_CANDIDATES, svc.COPY_PER_PLAYER = 4, 3
         try:
             b, _ = self.sign_in(BOB)
             self.assertCopyHeld(self.upload(b, rec([(t, [o[0], o[1] + 2.0, o[2]], v) for t, o, v in rows], fin + 6)), 1)
         finally:
-            svc.COPY_CANDIDATES = saved
+            svc.COPY_CANDIDATES, svc.COPY_PER_PLAYER = saved
 
     def test_too_many_near_misses_hold_for_a_person(self):
         a = svc.array('f', [float(i % 7) * 40.0 for i in range(3 * 400)])
@@ -908,7 +909,7 @@ class Service(unittest.TestCase):
         copy = self.upload(b, rec(rows, fin, extra='comment 2'))
         self.assertCopyHeld(copy, a['id'])
         code, out = self.cli('remove', str(copy.get_json()['id']))
-        self.assertIn('the earliest is likely the original', out)
+        self.assertIn('check which is the original', out)
         again = self.upload(c, rec(rows, fin) + b'\n')
         self.assertEqual((again.status_code, again.get_json().get('state')), (200, 'shown'), again.get_json())
         noisy = self.upload(c, rec([(t, [x + 0.3 for x in o], [x + 0.4 for x in v]) for t, o, v in rows], fin))
@@ -1025,6 +1026,23 @@ class Service(unittest.TestCase):
         self.assertIn((late.status_code, late.get_json().get('state')), ((409, None), (200, 'held')), late.get_json())
         r = self.upload(b, rec(rows, fin, extra='comment 7'))
         self.assertEqual(r.status_code, 409, r.get_json())
+
+    # review 8
+    def test_a_victims_own_nearer_runs_do_not_hide_the_copied_one(self):
+        rows, fin = variant(9.0)
+        c, _ = self.sign_in(ALICE)
+        self.surfd('UPDATE runs SET millis = 500')
+        orig = self.upload(c, rec(rows, fin)).get_json()
+        for vw in (12.0, 14.0, 17.0, 20.0):     # four more of Alice's own, nearer the copy's claimed finish
+            self.upload(c, rec(variant(vw)[0], fin + 4))
+        b, _ = self.sign_in(BOB)
+        self.assertCopyHeld(self.upload(b, rec(rows, fin + 4)), orig['id'])
+
+    def test_an_own_duplicate_names_the_run(self):
+        c, _ = self.sign_in(ALICE)
+        j = self.upload(c, rec()).get_json()
+        r = self.upload(c, rec())
+        self.assertEqual(r.status_code, 409); self.assertIn('You uploaded this file already: run %d' % j['id'], r.get_json()['error'])
 
 if __name__ == '__main__':
     unittest.main()

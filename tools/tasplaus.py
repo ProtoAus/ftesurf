@@ -135,6 +135,10 @@ MAX_TICKS = 100000000    # surfd.MAX_TICKS
 AIR_CAP = 30.0           # sv_air_max_wishspeed (CS:S, Momentum)
 TURN_TOL = 30.0          # u^2/s^2 over v'.(v'-v) - 30|v'-v|; see the turn test in check()
 CLOCK_RATIO = (0.9985, 1.002)
+# Moving pairs whose ground covered exceeds speed x time by this (honest PASS: 0 of 121 files have one; max 1.146), and
+# how many are allowed (plus 1% of the pairs). With the mean (honest PASS max 1.00099, bound CLOCK_RATIO[1]) they catch a clock compressed on a
+# minority of ticks, which the median does not (review 8: one tick dropped every ~9 pairs, 2-4% shown).
+CLOCK_PAIR, CLOCK_PAIRS = 1.15, 2
 # Native records that move the body or the clock outside the movement code.
 NATIVE_STATE = ("resume", "session", "pause", "hold", "warp", "restart", "takeover")
 PASS, HOLD, FAIL = "PASS", "HOLD", "FAIL"
@@ -253,6 +257,8 @@ def read(path=None, text=None, header_only=False):
             run.sig_q[g] = max(run.sig_q[g], pq[g])
         run.decimals = min(run._dec)
         run.samples.append((nums[0], tuple(nums[1:4]), tuple(nums[4:7])))
+        if len(run.samples) > MAX_SAMPLES:
+            break               # check() fails it; the rest is not parsed (review 8: 241k lines cost 2.3 s first)
         try:
             run.yaw.append(file_float(tok[8]))
         except ValueError:
@@ -438,11 +444,7 @@ def check(run, zones=None, maxvel=None):
     win = [x for x in s[i0:] if x[0] <= fin + rate + 1e-6]
     # The precision of the samples checked, not of the file: one sample past the finish (never checked) printed
     # coarse would widen every bound below (review 5). The samples are in time order, so win is s[i0:i0 + len(win)].
-    dec, sq = [0, 0], [0.0, 0.0]
-    for g in (0, 1):
-        dec[g] = max(run.prec[g][i0:i0 + len(win)], default=0)
-        code = min((c for c in run.prec[2 + g][i0:i0 + len(win)] if c), default=0)   # the coarsest: fewest decimals
-        sq[g] = 0.5 * 10.0 ** -(code - 1) if code else 0.0
+    dec = [max(run.prec[g][i0:i0 + len(win)], default=0) for g in (0, 1)]
     run.decimals = min(dec)
     if run.decimals < MIN_DECIMALS:
         note(HOLD, None, f"{'positions' if dec[0] <= dec[1] else 'velocities'} printed with at most"
@@ -590,7 +592,11 @@ def check(run, zones=None, maxvel=None):
             # In the air the mover accelerates, then moves the whole tick on the new velocity: against that
             # the window sum is <= 0.3 u on all 117 corpus runs (against the mean of the two, 8 u; summing
             # those put 84 of 301 honest files past 24 u). On contact only what the change cannot explain.
-            if free:
+            # a wall or ramp met in free flight is a contact tick here too (review 8: honest air wall hits read as
+            # 7-16 u of drift at the 6 u limit); a fabricated clip buys room but the clock tests below see it
+            dvh0 = math.hypot(vb[0] - va[0], vb[1] - va[1])
+            wall0 = free and dvh0 > AIR_CAP * kk + 1.0 and clip_ok(va, vb, 2, AIR_CAP * kk + 4 * q)
+            if free and not wall0:
                 rd = [b[1][c] - a[1][c] - vb[c] * (b[0] - a[0]) for c in range(2)]
             else:
                 rh = math.hypot(r[0], r[1])
@@ -691,18 +697,33 @@ def check(run, zones=None, maxvel=None):
                 note(HOLD, t, f"{ha:.0f} -> {hb:.0f} u/s turning {turn_deg(va, vb, n):.1f} deg in one tick: air control"
                      " cannot, and a wall or ramp would have taken speed")
 
-    # The clock against the motion: distance over speed x claimed time, median of moving samples.
+    # The clock against the motion: distance over speed x claimed time, median of moving samples. In free flight the
+    # engine moves the whole tick on the new velocity, so a ratio over 1 is first discounted by |vb| / |mean| (review 8:
+    # perfect strafing read sqrt(h^2+900)/sqrt(h^2+225), past 1.002 below ~410 u/s); a compressed tick stays ~1.25.
     ratios = []
     for a, b in zip(win, win[1:]):
         dt = b[0] - a[0]
         vh = math.hypot((a[2][0] + b[2][0]) * 0.5, (a[2][1] + b[2][1]) * 0.5)
         if a[0] >= 0 and vh >= 200 and dt / rate <= MAX_GAP:
-            ratios.append(math.hypot(b[1][0] - a[1][0], b[1][1] - a[1][1]) / (vh * dt))
+            dh = math.hypot(b[1][0] - a[1][0], b[1][1] - a[1][1])
+            if dh - vh * dt <= POS_TOL * max(1, round(dt / rate)):   # a teleport (the position test's) is no clock
+                x = dh / (vh * dt)
+                if x > 1.0 and abs(b[2][2] - a[2][2] + GRAVITY * dt) < 0.05:
+                    x = max(1.0, x / max(1.0, math.hypot(b[2][0], b[2][1]) / vh))
+                ratios.append(x)
     clock = sorted(ratios)[len(ratios) // 2] if len(ratios) >= 20 else None
     if clock is None:
         note(HOLD, None, "too little movement to check the clock")
     elif not CLOCK_RATIO[0] <= clock <= CLOCK_RATIO[1]:
         note(HOLD, None, f"the body moves {clock:.4f}x what its speed and clock allow: clock edited?")
+    else:
+        # the mean less the largest few: one honest wall hit is a single large pair (review 8 round 2: it read 1.0044)
+        kept = sorted(ratios)[:len(ratios) - CLOCK_PAIRS - len(ratios) // 100]
+        mean, fast = sum(kept) / len(kept), sum(1 for x in ratios if x > CLOCK_PAIR)
+        if mean > CLOCK_RATIO[1]:
+            note(HOLD, None, f"the body moves {mean:.4f}x what its speed and clock allow on average: clock edited?")
+        if fast > CLOCK_PAIRS + len(ratios) // 100:   # long honest runs meet a few walls (tensor2's 3:19 WR: 3 of ~13k)
+            note(HOLD, None, f"{fast} steps cover more than {CLOCK_PAIR}x the ground their speed allows: ticks dropped?")
     if gaps > 1:
         note(HOLD, None, f"{gaps} lost packets after the start (each could hide a tick or two): the owner reviews it;"
              " a recording with a sample every tick is checked by itself")

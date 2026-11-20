@@ -26,6 +26,7 @@ import os
 from pathlib import Path
 import pwd
 import re
+import shutil
 import signal
 import socket
 import sqlite3
@@ -62,7 +63,7 @@ location = /tasup/upload {
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $remote_addr;
     proxy_connect_timeout 2s;
-    proxy_read_timeout 90s;       # one checker slot: an upload can wait 30 s for it, then check
+    proxy_read_timeout 150s;      # one checker slot, waited for twice (2 x HEAVY_WAIT 30 s), the check, the copy check
     proxy_send_timeout 60s;
     limit_conn tasupd_addr 4;     # nginx spools an 8.3 MB body before the app sees the session (surfd: P774)
     limit_conn tasupd_all 16;     # uploads only (review 5: 16 slow uploads shut every /tasup/ page)
@@ -319,7 +320,10 @@ def upgrade(a, blobs):
     RELEASES.mkdir(mode=0o755, exist_ok=True); RELEASES.chmod(0o755)
     check_chain(RELEASES)
     write_release(new, a.commit, blobs)
-    init_store(new)   # additive schema steps; the old release keeps serving the store meanwhile
+    try: init_store(new)   # additive schema steps; the old release keeps serving the store meanwhile
+    except Exception as e:
+        shutil.rmtree(new)     # root's own release directory, just written: a retry must not find it (review 8)
+        raise RuntimeError('the store could not be prepared (%s); nothing switched, the new release removed' % why(e)) from e
     newunit = unit_text(new, service_env(new, a.account_db, a.commit)).encode()
     if UNIT.read_bytes() != oldunit: raise RuntimeError('The unit changed during the upgrade; nothing switched (the new release directory stays)')
     # The switch and its proof are one step: Ctrl-C or a dropped session must not leave the unit ahead of systemd.
@@ -403,7 +407,8 @@ def main():
     check_chain(RELEASES if RELEASES.exists() or RELEASES.is_symlink() else RELEASES.parent)
     backup = BACKUPS / (SITE.name + '.pre-tasupd-' + a.commit[:12])
     if backup.exists(): raise RuntimeError('nginx backup collision; nothing overwritten')
-    run(*as_user('proto', '/usr/bin/python3', '-I', '-c', 'import flask,gunicorn'), cwd='/')   # as the service will
+    try: run(*as_user('proto', '/usr/bin/python3', '-I', '-c', 'import flask,gunicorn'), cwd='/')   # as the service will
+    except subprocess.CalledProcessError as e: raise RuntimeError('flask/gunicorn do not import as proto: %s' % why(e)) from e
     if os.geteuid() == 0:
         run('/usr/sbin/nginx', '-t')   # a config that fails already would also fail the rollback's test
         if b'zone=tasupd_' in run('/usr/sbin/nginx', '-T').stdout:
@@ -423,7 +428,10 @@ def main():
     release = RELEASES / a.commit   # root's alone, as upgrades are (not under proto's /srv/nvme/ftesurf-ops)
     write_release(release, a.commit, blobs)
     make_state()
-    init_store(release)
+    try: init_store(release)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError('the store could not be prepared (%s); %s and %s stay: remove them before a retry'
+                           % (why(e), release, STATE)) from e
     unit = unit_text(release, service_env(release, a.account_db, a.commit))
     wanted = before.replace(anchor, anchor + b'\n    include snippets/ftesurf-tasupd.conf;')
     backup.write_bytes(before); backup.chmod(0o600)
@@ -486,7 +494,7 @@ def main():
         if unit_written:
             try:
                 if UNIT.read_text() != unit: failed.append('the unit changed meanwhile: not stopped')
-                else: run('/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service', timeout=120)   # gunicorn: up to 30 s
+                else: run('/usr/bin/systemctl', 'disable', '--now', '--no-reload', 'ftesurf-tasupd.service', timeout=120)   # gunicorn: up to 30 s
             except BaseException as e: failed.append('unit not disabled (%s)' % why(e))
         if failed: raise RuntimeError('install failed (%s); rollback: %s' % (why(first), '; '.join(failed))) from first
         if isinstance(first, subprocess.CalledProcessError): raise RuntimeError('install failed: %s' % why(first)) from first

@@ -89,6 +89,10 @@
   would not; measure honest quantiles first); the drift sum covers aligned single ticks only. A copy re-timed by
   ~0.1% (already above) can also launder a removed run's motion once shown. The new `recs/xx` directory name is
   not fsynced in `recs/` (ext4-safe). Only SIGINT/SIGHUP are held by the installer.
+- Round 8 (21 Nov) left: full-precision printers (repr, %.14g, float32 shortest form) can switch on the %g rounding
+  mode for velocities or far positions (no hold; no slack past %g's own); an own removed run that is unblocked reads
+  "the owner rejected"; a cp1252 header is refused as not text; the 429 "other upload" message does not say where
+  its result appears.
 - tools/install_tasrevd.py FILES lacks surfd/fetchq.py, which ksfprofile.py imports since P1448 (f959eaac),
   so its next `--upgrade-from` refuses at check_imports (test_install_tasrevd CurrentClosure fails with
   "No module named 'fetchq'"). Refuses safely; the live release is unaffected. Fix: add it to FILES.

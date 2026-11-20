@@ -378,13 +378,13 @@ class Fresh(unittest.TestCase):
         self.public_fails = True
         with self.assertRaisesRegex(RuntimeError, 'public route'): self.main('--apply')
         self.assertEqual(t.SITE.read_bytes(), SITE)
-        self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service'), self.calls)
+        self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', '--no-reload', 'ftesurf-tasupd.service'), self.calls)
 
     def test_an_interrupt_after_the_include_puts_nginx_back(self):
         self.public_fails = KeyboardInterrupt()
         with self.assertRaises(KeyboardInterrupt): self.main('--apply')
         self.assertEqual(t.SITE.read_bytes(), SITE)
-        self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service'), self.calls)
+        self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', '--no-reload', 'ftesurf-tasupd.service'), self.calls)
 
     def test_a_failed_site_write_leaves_the_site_whole(self):
         real = t.os.replace
@@ -398,7 +398,7 @@ class Fresh(unittest.TestCase):
             t.os.replace = real
         self.assertEqual(t.SITE.read_bytes(), SITE)
         self.assertEqual(sorted(x.name for x in t.BACKUPS.iterdir() if x.name.startswith('.tasupd-site')), [])
-        self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service'), self.calls)
+        self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', '--no-reload', 'ftesurf-tasupd.service'), self.calls)
 
     def test_the_site_keeps_its_mode(self):
         t.SITE.chmod(0o640)
@@ -414,7 +414,7 @@ class Fresh(unittest.TestCase):
         self.public_fails = True; self.nginx_t_fails_at = 4   # preflight, the zones, after the include, the rollback's
         with self.assertRaisesRegex(RuntimeError, 'rollback: nginx put back but not reloaded .*test failure'): self.main('--apply')
         self.assertEqual(t.SITE.read_bytes(), SITE)
-        self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service'), self.calls)
+        self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', '--no-reload', 'ftesurf-tasupd.service'), self.calls)
 
     def test_zones_nginx_refuses_are_removed_at_once(self):
         # Review 5: conf.d is always loaded, so a zones file nginx refuses must not stay for the next reload.
@@ -422,7 +422,7 @@ class Fresh(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'refuses the zones file .*test failure'): self.main('--apply')
         self.assertFalse(t.ZONES.exists())
         self.assertEqual(t.SITE.read_bytes(), SITE)
-        self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service'), self.calls)
+        self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', '--no-reload', 'ftesurf-tasupd.service'), self.calls)
 
     def test_a_failed_install_takes_its_zones_and_snippet_back(self):
         self.public_fails = True
@@ -444,7 +444,7 @@ class Fresh(unittest.TestCase):
         self.fake_probe = probe; t.probe_app = probe
         with self.assertRaisesRegex(RuntimeError, 'the site changed meanwhile: not put back'): self.main('--apply')
         self.assertEqual(t.SITE.read_bytes(), SITE + b'# a peer\n')
-        self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', 'ftesurf-tasupd.service'), self.calls)
+        self.assertIn((None, '/usr/bin/systemctl', 'disable', '--now', '--no-reload', 'ftesurf-tasupd.service'), self.calls)
 
     def test_pending_unit_edits_are_refused(self):
         self.pending = 'Id=surfd.service\nNeedDaemonReload=yes\n\nId=nginx.service\nNeedDaemonReload=no'
