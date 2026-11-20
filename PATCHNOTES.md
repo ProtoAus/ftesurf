@@ -21,6 +21,9 @@
 
 ## next
 
+### P1675 Starts are timed from the moment you leave
+- If your connection or a frame hitch holds back the moment you leave the start (or jump, on bhop) by more than 0.06 seconds, the run is a practice run and the chat says so. Normal play is never affected.
+
 ### P1688 Hide the other players
 - Type !hide or !show in chat to hide or show the other players (their bodies, names and trails), for you only. Every new map starts with everyone shown again.
 

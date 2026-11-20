@@ -1,4 +1,8 @@
 # The engine build this QuakeC requires.
+# P1675 (QC server only; Lex's anti-cheat finish list, worldofsurf-6f): the start is latched once a packet, so the
+# ticks a start packet ran after the leave (or a bhop launch) are untimed; PlayerPreThink notes the first tick outside
+# the start box and the first jump-like rise per packet, and a start carrying more than run_startlag (0.06 s) is
+# practice; `startlag` goes into the recording. No engine change. Record: ENGINE_PATCHES P1675; tools/p1675-arms.md.
 # P1686-P1688 (engine cl_pred.c sv_phys.c pm_ag_world.c tools/test_pm_ag_world.c; QC cl_body.qc cl_keys.qc cl_main.qc
 # cl_playerlabels.qc cl_ptrail.qc sv_player.qc; Lex's 21 Nov mechanics list, worldofsurf-41): the Source duck's eye lerps
 # between ticks like the feet; GoldSrc eye follows the profile (cs16 17, ag-* 28; sv_goldsrcview hl|cs still override),

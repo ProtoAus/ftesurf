@@ -1,5 +1,22 @@
 # BACKLOG.md
 
+## P1675 start lag -- what it leaves (21 Nov, worldofsurf-6f)
+- Up to 0.06 s per start still passes untimed and clean (two dropped-packet ticks at 0.015); `startlag` is recorded
+  but nothing surfaces it yet. The top-10 review page (finish item 7) should flag any `startlag` of 3 ticks or more (2
+  is a dropped packet).
+- A stage handover's start (run_t_pendarm) is not measured: its box test is SV_ZoneInBox at up to 2000 u/s, and a
+  hull-based note would misjudge honest stage runs; a note would have to use SV_ZoneInBox. Stage splits from a held
+  stage box (SV_StageStart at 3b, run_stagearm 1) are latched per packet too (predicate SV_ZoneOcc on run_st_zone).
+  The finish is latched per packet as well (batching there loses time).
+- AG/GoldSrc profiles: one part is a whole command of up to PMAg_TickBudget ticks (no tick parts), so a leave inside
+  an earlier command misses its remaining ticks (up to 7 at 0.01). Unranked today; if they rank, charge that worst
+  case.
+- Review 2's size call: 0.06 s chosen over 0.1 (a frame hitch of 80 ms or more on the start packet now reads practice,
+  about 1 start in 1,000); tune with run_startlag in lobby.cfg. surfd should flag ranked runs with `startlag` >= 3
+  ticks.
+- Not measured: the record inside a kept `.rec` (headless arms never finish), AG/GoldSrc profiles (one multi-tick
+  command per packet reads 0), a real batched client.
+
 ## Lex's 21 Nov mechanics list -- what P1686-P1688 left (worldofsurf-41; root FTESurf-worktrees/mechanics-20261121-41)
 - ahop_coast ladder: P1630 (mover 13) climbs to the top on any current build (rig, dedicated server: 4971 -> 5413 looking
   up and level), but the lobbies run the 17 Nov engine (patch-1604, mover 12), whose re-wound rock pushes a climber off.

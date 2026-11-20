@@ -1,5 +1,15 @@
 # AGENT_NOTES.md
 
+## P1675 start lag: what it does to test arms (21 Nov 2026)
+
+- A start whose packet ran more than run_startlag SECONDS (0.06) after the part that left the box (or, for a launch,
+  the first jump-like rise) is practice ("start packet too long"); the developer line is `timer: <name> startlag
+  <ticks> (<s> s, max <limit>)` on the server's stdout. `set run_startlag 0` turns it off.
+- A stock client cannot make big packets: the ruleset locks cl_netfps, and cl_maxfps does not change the input rate
+  (input runs at cl_netfps). `cl_c2spps 1` (drops up to a third of packets) gives start lags of 1-2 ticks; with
+  sv_cheats 1, `net_fakeloss 0.5` does too. Lower run_startlag (0.01, 0.005) to see the consequence.
+- A run keeps a `.rec` only when it posts, so an arm that never finishes cannot read the `startlag` record.
+
 ## P1645 the input report's platform (20 Nov 2026)
 
 - cl_replay.qc Rec_IsWin: Windows if sys_platform says so OR in_guard_live is read-only. sys_platform is a plain

@@ -742,6 +742,7 @@ void() PlayerPreThink =
 	    SV_ZoneIn(self.run_t_armzone, self.origin,
 	              SV_RunHullMins(self), SV_RunHullMaxs(self)))
 		SV_StartCapClamp(self);
+	SV_TimerLagNote(self);              // P1675: the leave's and the launch's first tick in this packet
 
 	SV_BaseVelocityFrame(self);
 
@@ -986,6 +987,7 @@ void() PlayerPostThink =
 		self.run_bhop_launch_zone = self.run_bhop_launch_denied = 0;
 		self.run_t_tpin = FALSE;         // Patch 775: no frame reads it
 		self.run_pushed = self.run_jumpcmd = FALSE;
+		self.run_t_lagoutok = self.run_t_lagriseok = FALSE;     // P1675: packet-scoped
 		SV_MonolithB4Reset(self);
 		if (self.run_t_state == TS_RUNNING)
 			lobby_cyc_runseen = time;
@@ -1032,6 +1034,7 @@ void() PlayerPostThink =
 	// Packet-scoped latches, including every early return inside the timer.
 	self.run_bhop_launch_zone = self.run_bhop_launch_denied = 0;
 	self.run_pushed = self.run_jumpcmd = FALSE;
+	self.run_t_lagoutok = self.run_t_lagriseok = FALSE;             // P1675
 
 	/*
 	  BUILD 43: pack the stage state for the wire.  HERE and not at the bottom of

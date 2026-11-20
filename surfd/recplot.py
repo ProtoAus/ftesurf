@@ -52,7 +52,8 @@ HEAD_KEYS = frozenset((
     "plat").split())
 TICK_RECS = frozenset(("cp", "stage", "stagestart", "restart", "resume", "ghost"))  # <n> <ticks>
 COUNTED = ("in", "pe", "pm", "seed", "zseed", "board", "inend", "ride", "portal",
-           "spec")     # spec: windows, parsed before the counted fallback
+           "spec",     # spec: windows, parsed before the counted fallback
+           "startlag") # P1675: the start packet's untimed ticks, not an unknown record
 
 _VERSION = re.compile(r"FTESURF-REC\s+(\d{1,4})$")
 _NUMBER = re.compile(r"[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$")

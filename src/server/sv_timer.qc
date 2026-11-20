@@ -569,6 +569,12 @@ float  run_t_startrest;
 // P1657: run_bhoprest, cached per map.  1 = the rest rule on bhop-mode maps too; 0 = before 1657.
 float  run_t_bhoprest;
 float  run_t_bhoprestspeed;     // P1657: run_bhoprestspeed, an override of the run-up bound (0 = computed)
+// P1675: the start is latched once a packet, so a packet that ran on after the leave starts the clock late.
+float  run_t_startlagmax;       // run_startlag, cached per map: the most such SECONDS a clean start may carry; 0 = off
+.float run_t_lagout, run_t_lagoutok;    // this packet: first tick PlayerPreThink saw the body outside its start box
+.float run_t_lagrise, run_t_lagriseok;  // this packet: first tick it saw a jump-like rise (a launch, a lift)
+.float run_t_lagvz;             // velocity_z at the last PlayerPreThink
+.float run_t_startlag;          // ticks the start packet ran after the leave or the launch; -1 not measured
 float  run_t_ahop;              // P1657: gamemode ahop (start on leave, run_starthop 0 too)
 float  run_t_movprof;           // P1657: a *movementprofile is set (its runs do not rank; SV_TimerRunupCeiling
                                 // does not model hl2-* sprint or the AG mover: review 6)
@@ -3601,6 +3607,16 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             P1547 sl_save (WOP_SAVE 200) -- before this
                             command's rows, and those write their own
                             `warp`/load records (a save writes none).
+    startlag <k> <s> <max>  P1675, at a fresh start, after the start's `seed` and
+                            padding: the mover ticks <k> (seconds <s>) the start
+                            packet ran after the part that left the box, or for a
+                            launch after the rise if that came first -- the clock
+                            starts at the packet's end, so they are untimed and not
+                            in the input trace. <max>: run_startlag in force (s);
+                            above it the run is practice. Written at every measured
+                            start, 0 included. Absent: not measured (a stage
+                            handover), held metadata on, or older than P1675.
+                            Evidence for review; no reader's equation uses it.
     cseq <n>                P1613 (`cmdseq 1`): the usercmd number of the NEXT
                             `in`/`fzin` row -- cl.movesequence, the counter the
                             .view prints as its second column, as the server
@@ -12689,6 +12705,52 @@ float(entity e) SV_TimerRearmRest =
 	return TRUE;
 };
 
+// P1675, per one-tick part from PlayerPreThink (before the part moves): note the first tick of this packet at which
+// the body is outside the box its start would be latched from, and the first jump-like rise.  The event happened in
+// the part before, so the ticks after it are run_movetick (at the packet's end) minus the note.  PlayerPostThink
+// clears both every packet, so a note is never stale and a lag never exceeds the packet (review 1).
+void(entity e) SV_TimerLagNote =
+{
+	local float z;
+
+	z = -1;                                     // a stage handover (run_t_pendarm) is not measured: BACKLOG
+	if (e.run_t_state == TS_ARMED)
+		z = e.run_t_armzone;
+	else if (run_t_bhopjump)
+	if (e.run_t_state == TS_RUNNING || e.run_t_state == TS_FINISHED)
+		z = e.run_t_azone;                      // a bhop re-launch jumps from the START it stands in
+	if (!e.run_t_lagoutok)
+	if (z >= 0)
+	if (z < zone_count)
+	if (!SV_ZoneIn(z, e.origin, SV_RunHullMins(e), SV_RunHullMaxs(e)))
+	{
+		e.run_t_lagout = e.run_movetick;
+		e.run_t_lagoutok = TRUE;
+	}
+	if (!e.run_t_lagriseok)
+	if (e.velocity_z > PM_NONJUMP_VEL)
+	if (e.run_t_lagvz <= PM_NONJUMP_VEL)
+	{
+		e.run_t_lagrise = e.run_movetick;
+		e.run_t_lagriseok = TRUE;
+	}
+	e.run_t_lagvz = e.velocity_z;
+};
+
+// P1675: ticks this packet ran after the leave (and, for a launch, after the rise too, whichever came first).
+float(entity e, float launch) SV_TimerPacketLag =
+{
+	local float lag;
+
+	lag = 0;
+	if (e.run_t_lagoutok)
+		lag = e.run_movetick - e.run_t_lagout;
+	if (launch)
+	if (e.run_t_lagriseok)
+		lag = max(lag, e.run_movetick - e.run_t_lagrise);
+	return max(0, lag);
+};
+
 // P1657: the start is judged on how it left -- a bhop map's, and an ahop map's (Lex, 20 Nov: "pre-speed on bhop is
 // not allowed, you have to start from a run, jump"; on ahop "no pre-speed please besides the run up").  Both modes
 // set run_starthop 0, so the hopped rule does not judge in-box hops there.
@@ -14964,7 +15026,7 @@ float(entity t, entity p) SV_MomTrackOK =
 void(entity e, float track, float leg) PlayStats_Attempt;
 void(entity e) SV_TimerStart =
 {
-	local float pr, ln;
+	local float pr, ln, lag, lagsec, rate;
 
 	Tour_RunStart(e);             // capture the actual attempt start, including warmup exclusion
 	PlayStats_Attempt(e, e.run_t_track, FS_LegOf(e.run_t_startseg, e.run_t_stagerun));
@@ -15076,6 +15138,26 @@ void(entity e) SV_TimerStart =
 		}
 	}
 
+	// P1675: the ticks this start packet ran after the leave (or the launch) were never timed; past run_startlag
+	// SECONDS (0.06: honest packets carry one tick, two with a dropped packet) the run is practice.  -1: not measured.
+	lag = e.run_t_startlag;
+	e.run_t_startlag = -1;
+	rate = e.run_movetickrate;
+	if (rate <= 0)
+		rate = run_t_tick;
+	lagsec = (lag > 0) ? lag * rate : 0;
+	if (run_t_startlagmax > 0)
+	if (lagsec > run_t_startlagmax + 0.0001)
+	if (!e.run_t_cheat)
+	{
+		if (!e.run_t_dirty && !e.run_t_hopped && !SV_StartUnrested(e))
+			sprint(e, PRINT_HIGH, sprintf("^3start packet too long^7 -- %.3f s ran after you left the start or jumped "
+			       "before the clock started (a frame hitch or a held-back connection): practice; walk back in or ^2!r^7\n",
+			       lagsec));
+		e.run_t_dirty = TRUE;
+	}
+	if (SV_DevOn())
+		dprint(sprintf("timer: %s startlag %g (%.3f s, max %g)\n", e.netname, lag, lagsec, run_t_startlagmax));
 	if (SV_DevOn())     // P1643: the start's own verdict, for arms and the lobby log
 		dprint(sprintf("timer: %s starts: rested %g placed %g dirty %g hopped %g cheat %g unrested %g\n", e.netname,
 		               e.run_t_rested ? 1 : 0, e.run_t_placed ? 1 : 0, e.run_t_dirty ? 1 : 0,
@@ -15143,6 +15225,9 @@ void(entity e) SV_TimerStart =
 	else SV_RunStartJitter(e);
 
 	SV_RecOpen(e);
+	if (lag >= 0)       // P1675: see the grammar's `startlag`; off under held metadata, as `cseq` (its strict reader)
+	if (!e.rec_rec_nocs)
+		SV_RecPut(e, sprintf("startlag %g %.4f %g", lag, lagsec, run_t_startlagmax));
 
 	/*
 	  BUILD 24: the run's first segment is also a stage, and it opens here.
@@ -16563,6 +16648,7 @@ void(entity e) SV_TimerFrame =
 				if (run_t_startstrict)
 					e.run_t_startok = TRUE;
 
+				e.run_t_startlag = -1;      // P1675: a handover is not measured (no `startlag` record; BACKLOG)
 				SV_TimerStart(e);
 			}
 		}
@@ -16600,6 +16686,7 @@ void(entity e) SV_TimerFrame =
 							e.run_t_rested = FALSE;
 					}
 				}
+				e.run_t_startlag = SV_TimerPacketLag(e, bhopz >= 0);     // P1675
 				SV_TimerStart(e);
 			}
 			// Patch 403 review: the in-box clamp used to live HERE, and here it
@@ -16903,6 +16990,7 @@ void(entity e) SV_TimerFrame =
 				if (SV_BhopRestOn())                // P1657: the ground the jump left, not a rest seen earlier
 					e.run_t_rested = e.run_t_restnow ? TRUE : FALSE;
 				e.run_t_startok = TRUE;
+				e.run_t_startlag = SV_TimerPacketLag(e, TRUE);           // P1675
 				SV_TimerStart(e);
 			}
 			else
@@ -16923,6 +17011,7 @@ void(entity e) SV_TimerFrame =
 				e.run_st_cheat = TRUE;
 			}
 			e.run_t_startok = TRUE;
+			e.run_t_startlag = SV_TimerPacketLag(e, TRUE);               // P1675
 			SV_TimerStart(e);
 		}
 		if (e.run_t_state == TS_RUNNING)
@@ -17254,6 +17343,7 @@ void() SV_TimerMapInit =
 	registercvar("run_rearmspeed", "290");       // P1008: re-arm at rest in the box below this
 	registercvar("run_startrest", "1");          // P1643: rest before a clean start; 0 = before 1643
 	registercvar("run_bhoprest", "1");           // P1657: and on bhop-mode maps; 0 = before 1657
+	registercvar("run_startlag", "0.06");        // P1675: most untimed SECONDS a clean start packet may carry; 0 = off
 	registercvar("run_bhoprestspeed", "0");      // P1657: override of the run-up bound; 0 = the mode's ceiling + 10
 	registercvar("rec_runs_keep", "25");         // build 23, and see the trap above
 	registercvar("rec_watch_pvs", "1");          // build 43, and see the trap above
@@ -17336,6 +17426,7 @@ void() SV_TimerMapInit =
 	localcmd(sprintf("serverinfo run_rearmspeed %g\n", run_t_rearmspeed));   // P1008: the HUD's hint
 	run_t_startrest   = cvar("run_startrest");      // P1643
 	run_t_bhoprest    = cvar("run_bhoprest");       // P1657
+	run_t_startlagmax = cvar("run_startlag");       // P1675
 	run_t_bhoprestspeed = cvar("run_bhoprestspeed");
 	run_t_stagefail   = cvar("run_stagefail");
 	run_t_stagearm    = cvar("run_stagearm");
