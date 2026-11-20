@@ -19,7 +19,10 @@
   re-download or even a chmod of a BSP invalidates that map until tools/tournament_qualify_live.py runs again
   (incremental; Pi root /srv/nvme/agent-work/tq1635-ed). A match drafted on a stale map aborts at arrival
   ("wrong zonepin"). Wants a cron after mapwatch/zone publishes. Rebuild the observer VM whenever lobby QC changes
-  zone or pin code (P1637's zone changes need it at the next lobby deploy).
+  zone or pin code (P1637's zone changes need it at the next lobby deploy). A dedicated server keeps every model, so
+  one process dies of MAX_MOD_KNOWN after ~17-36 maps: the first surf run (20 Nov) marked 30 maps invalid for it. The
+  tool now starts a new server every 12 loads (--recycle) and retries a reused server's death once on a fresh one.
+  Open: a live lobby that changes maps for hours should hit the same limit (no restart seen yet; not measured).
 - Lex's call (P1635): a tournament finish with TF_NOJOURNAL (the player opted out of the input journal) still scores,
   although the ranked board treats it as uncertified; every other TF_UNCERT bit, TF_SPEC and TF_MULTISESSION refuse.
   To require journals in tournaments, drop the `- TF_NOJOURNAL` in Tour_Finished (the fixture's last check flips).

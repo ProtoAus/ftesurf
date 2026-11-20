@@ -163,6 +163,74 @@ class RegistryAcceptance(unittest.TestCase):
                 self.assertEqual((sorted(surf), unq), (['surf_A'], 1))
 
 
+FAKE_SERVER = '''#!%s
+import sys
+LIMIT, loads = %d, 0
+def load(name):
+    global loads
+    loads += 1
+    if loads > LIMIT:   # the real one: SV_Error ... couldn't load, then MAX_MOD_KNOWN, SIGABRT
+        print("SV_Error: Mod_NumForName: maps/%%s.bsp not found or couldn't load" %% name, flush=True)
+        sys.exit(1)
+    print('TQQUAL|%%s|ad801abe|%%s|default|15000|15000|surf|8|1' %% (name, 'b' * 64), flush=True)
+load(sys.argv[sys.argv.index('+map') + 1])
+for line in sys.stdin:
+    cmd = line.split()
+    if cmd[:1] == ['map']:
+        load(cmd[1])
+    elif cmd[:1] == ['quit']:
+        sys.exit(0)
+'''
+
+
+class ServerLifetime(unittest.TestCase):
+    """A dedicated server keeps every model: the tool must not blame a map for a full model table."""
+
+    def run_fake(self, limit, recycle, n=5):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(__import__('shutil').rmtree, root)
+        live, work = root / 'live', root / 'work'
+        (live / 'momentum/maps').mkdir(parents=True)
+        (live / 'zones').mkdir()
+        (live / 'default.fmf').write_text('FTEMANIFEST 1\n')
+        work.mkdir(mode=0o700)
+        names = ['surf_t%d' % i for i in range(1, n + 1)]
+        for name in names:
+            (live / 'momentum/maps' / (name + '.bsp')).write_bytes(b'VBSP' + name.encode())
+        fake = root / 'fake-server'
+        fake.write_text(FAKE_SERVER % (sys.executable, limit))
+        fake.chmod(0o700)
+        (root / 'observer.dat').write_bytes(b'progs')
+        (root / 'cands.json').write_text(json.dumps([dict(name=m, mode='surf', tier=1) for m in names]))
+        rc = Q.main(['run', '--work', str(work), '--live', str(live), '--binary', str(fake),
+                     '--zone-dir', str(live / 'zones'), '--observer', str(root / 'observer.dat'),
+                     '--candidates', str(root / 'cands.json'), '--timeout', '20', '--recycle', str(recycle)])
+        self.assertEqual(rc, 0)
+        run = next(work.glob('run-*'))
+        maps = json.loads((run / 'receipt.json').read_text())['maps']
+        return ({m['name']: m['result'] for m in maps}, [m['name'] for m in maps if m.get('server_started')],
+                [m['name'] for m in maps if m.get('retried')], set(P.registry(str(run / 'qualifications.json'))))
+
+    def test_recycles_before_the_table_fills(self):
+        results, started, retried, reg = self.run_fake(limit=5, recycle=2)
+        self.assertEqual(set(results.values()), {'valid'})
+        self.assertEqual((started, retried), (['surf_t1', 'surf_t3', 'surf_t5'], []))
+        self.assertEqual(len(reg), 5)
+
+    def test_reused_server_death_retries_the_map_once_on_a_fresh_server(self):
+        # limit 2 < recycle 3: each server dies on its third load, which is retried, not marked invalid.
+        results, started, retried, reg = self.run_fake(limit=2, recycle=3)
+        self.assertEqual(set(results.values()), {'valid'})
+        self.assertEqual(retried, ['surf_t3', 'surf_t5'])
+        self.assertEqual(started, ['surf_t1', 'surf_t3', 'surf_t5'])
+        self.assertEqual(len(reg), 5)
+
+    def test_a_map_that_kills_a_fresh_server_stays_invalid(self):
+        results, started, retried, reg = self.run_fake(limit=0, recycle=3, n=2)
+        self.assertEqual(set(results.values()), {'invalid'})
+        self.assertEqual((retried, len(reg)), ([], 0))
+
+
 @unittest.skipUnless(os.environ.get('TQLIVE_LIVE'), 'native arm: set TQLIVE_LIVE/BINARY/OBSERVER/CANDIDATES')
 class Native(unittest.TestCase):
     def test_run_against_fake_live(self):

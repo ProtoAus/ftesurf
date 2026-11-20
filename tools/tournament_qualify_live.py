@@ -283,9 +283,42 @@ def run(args):
                    scope='Observed on the live content with the lobby QC + observer; approval = valid observation')
     registry = {k: dict(v) for k, v in prev_registry.items()} if args.keep_previous else {}
     state = dict(prev_state) if args.keep_previous else {}
-    server = None
+    server, loads = None, 0
     marker = run_dir / 'started.marker'
     marker.write_text('')
+
+    def load(held, fresh):
+        """`map` on the running server, or a new server; -> (TQQUAL line or None, last TQDIAG, started)."""
+        nonlocal server, loads
+        # A dedicated server keeps every model it loaded: one process died at map 17-36 on MAX_MOD_KNOWN.
+        started = fresh or server is None or server.process.poll() is not None or loads >= args.recycle
+        if started:
+            if server is not None:
+                server.stop()
+            server = Server(run_dir, server_command(args, base, home, free_udp_port(), held), env)
+            offset, loads = 0, 1
+            receipt['maps'][-1]['server_started'] = True
+        else:
+            offset = server.size()
+            server.send('map ' + held)
+            loads += 1
+        deadline, diag, obs = time.monotonic() + args.timeout, '', None
+        while time.monotonic() < deadline:
+            text = server.text_from(offset)
+            for line in text.splitlines():
+                i = line.find('TQQUAL|')
+                if i >= 0 and line[i:].split('|')[1].lower() == held.lower():
+                    obs = line[i:]
+                j = line.find('TQDIAG|')
+                if j >= 0:
+                    diag = line[j:]
+            bad = [m for m in FAIL_MARKERS if m in text]
+            if obs or bad or server.process.poll() is not None:
+                if bad:
+                    raise ValueError('native failure: ' + bad[0])
+                break
+            time.sleep(0.25)
+        return obs, diag, started
 
     def stop(*_):
         raise KeyboardInterrupt
@@ -316,32 +349,11 @@ def run(args):
                 sha = sha256_file(path)
                 if stamp(path) != before:
                     raise ValueError('BSP changed while hashing')
-                if server is None or server.process.poll() is not None:
-                    if server is not None:
-                        server.stop()
-                    port = free_udp_port()
-                    row['server_started'] = True
-                    server = Server(run_dir, server_command(args, base, home, port, held), env)
-                    offset = 0
-                else:
-                    offset = server.size()
-                    server.send('map ' + held)
-                deadline, diag, obs = time.monotonic() + args.timeout, '', None
-                while time.monotonic() < deadline:
-                    text = server.text_from(offset)
-                    for line in text.splitlines():
-                        i = line.find('TQQUAL|')
-                        if i >= 0 and line[i:].split('|')[1].lower() == held.lower():
-                            obs = line[i:]
-                        j = line.find('TQDIAG|')
-                        if j >= 0:
-                            diag = line[j:]
-                    bad = [m for m in FAIL_MARKERS if m in text]
-                    if obs or bad or server.process.poll() is not None:
-                        if bad:
-                            raise ValueError('native failure: ' + bad[0])
-                        break
-                    time.sleep(0.25)
+                obs, diag, started = load(held, False)
+                if not obs and not started and server.process.poll() is not None:
+                    # A reused server can die of its own model table, not of this map: one try on a fresh one.
+                    row['retried'] = 'reused server exited (rc %s)' % server.process.returncode
+                    obs, diag, started = load(held, True)
                 if not obs:
                     if server.process.poll() is not None:
                         raise ValueError('server exited (rc %s)' % server.process.returncode)
@@ -434,6 +446,7 @@ def main(argv=None):
     r.add_argument('--only', help='comma-separated names')
     r.add_argument('--limit', type=int)
     r.add_argument('--timeout', type=int, default=120, help='seconds per map')
+    r.add_argument('--recycle', type=int, default=12, help='map loads per server process (default 12)')
     r.add_argument('--previous', help='previous registry (reuse unchanged maps)')
     r.add_argument('--previous-state', help="previous run's state.json")
     r.add_argument('--keep-previous', action='store_true', help='start from the previous registry instead of empty')
