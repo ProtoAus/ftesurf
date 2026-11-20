@@ -1,4 +1,13 @@
 # The engine build this QuakeC requires.
+# P1654-P1660 (engine fs.c cl_parse.c pr_menu.c wad.c sv_phys.c sv_init.c savegame.c cl_demo.c pr_bgcmd.c pm_ag_world.c
+# pmovetst.c, plugins/Makefile; QC sv_goldsrc.qc sv_gsdefs.qc cl_triggers.qc m_goldsrc.qc m_maprows.qc; tools gsrcpack.py
+# wadcolours.py r2mirror.py; Lex's request, worldofsurf-4a): GoldSrc / AG maps. 923 Half-Life maps as one verified
+# package each in downloads/goldsrc (mounted with Steam's Half-Life folders only while that map is loaded), offered in
+# the finder's new goldsrc library (P1658, with a Cards | List switch for every library); BSP-30 maps run AG 250
+# (sv_goldsrcprofile) and their ladders, liquids, doors, buttons and map logic work (P1655, gated on halflifebsp); a
+# missing Half-Life texture draws in its colour (P1660, scripts/wadcolours.txt); the ui_imgui plugin builds on Linux
+# (P1654; releases ship it later). Three independent review rounds. Record: engine ENGINE_PATCHES.md P1654-P1660;
+# tools/p1654..p1660-claim.md; lextest; BACKLOG; work root FTESurf-worktrees/agmaps-20261120-4a/artifacts.
 # P1663 (engine console.c; Lex's request, worldofsurf-bb): under a clean console window the completion list hangs from
 # the window's bottom edge (was 3 px / the padding below it), closer to the typing line. Record: engine ENGINE_PATCHES.md
 # P1663; tools/p1663-claim.md.
@@ -561,7 +570,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   52147a5fa
+commit   f828b9e0d
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary
@@ -573,7 +582,7 @@ commit   52147a5fa
 #   are not the same clock.  See AGENTS.md's release section before "fixing" this
 #   by rebuilding: the rebuilt exe is a DIFFERENT binary and nothing records it.
 # P1161 preserves published P1158 native and P1160 QC/backend work.
-tag      patch-1663
+tag      patch-1660
 patch    1663
 # Patch 1440 (engine client gl_alias.c, gl_model.h, com_mesh.h, plugin.c; hl2 plugin mod_hl2.c, mod_vbsp.c; QC sv_entities.qc, sv_gameui.qc): Source MDL bodyparts draw the model the entity's body picks -- fteplug_hl2 tags a multi-model bodypart (first 32) as a geomset and writes its base/count into two arrays appended to model_t, GL_ChooseSkin draws (body / base) % count, Source's m_nBody; the exe answers "FTESurfModelTail/1440" and the plugin writes the tail only then (an older exe keeps every alternative drawn, no write past model_t). QC sets the networked .body from the SetBodyGroup key and input; SetAnimation also plays on a non-solid prop_dynamic. bhop_crash_egypt's crates draw whole and shatter frame by frame. Collision unchanged (lobby server and client must agree). Native: tag patch-1440 = ae448df27 (engine main, on P1442); both installs run exe edf50724 / fteqwsv64 0388bbe7 / fteplug_hl2 8d47ecb8 (git-8573-patch-1440-0-gae448df27). Rides the next release. tools/p1440-bodygroups.md.
 # Patch 1442 (engine client gl_shader.c, sys_win.c, sys.h; QC cl_hudedit.qc): the activation warm-up keeps the window responsive -- Sys_KeepAlive peeks the queue (PM_NOREMOVE) every 0.25 s inside GLSLWarm_MapActive/MapReady_Drain, so r_mapready_budget defaults to 6 (was 2) without Windows ghosting the window past 5 s; HE_MigrateDefaults moves a saved 2 to 6 only when the engine's description names Patch 1442 (r_mapready_rev 1442). Stress list at budget 10, IsHungAppWindow every 0.1 s: patch-1413 hung 5.4 s in the warm-up, P1442 0. Native: tag patch-1442 = df1444c99 (engine main a48d1d2ba); both installs run client exe 7e7564ae (git-8569-patch-1442-0-gdf1444c99), fteqwsv64 and hl2 plugin unchanged. Rides the next release. tools/p1442-warmbudget.md.

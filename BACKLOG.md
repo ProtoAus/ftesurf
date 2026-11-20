@@ -30,6 +30,13 @@
 - Pre-existing: a dedicated server that quits while a `map <missing>` download is in flight segfaults in
   SV_Map_Downloaded -> SV_Error during SV_Shutdown (HTTP_CL_Terminate -> DL_Close); same on engine patch-1644.
   Falsifier: `map nosuchmap_gs` then `quit` at once; the log ends in "SV_Error: Couldn't download map" + SIGSEGV.
+- Pre-existing: with steam:Half-Life/valve listed in fs_addons.txt a Source map does not load (surf_mom_training:
+  "Mod_NumForName ... not found or couldn't load"), on engine patch-1644 too. P1656 mounts Half-Life per GoldSrc map
+  instead; do not list it. Falsifier: add the line, `map surf_mom_training` on a dedicated server.
+- Still open from P1656's third review (low): nothing drops GoldSrc mounts at disconnect or after a failed load (the
+  next committed load does); a Source demo after a GoldSrc map runs the full automount; SV_LoadLevelCache repeats the
+  mount after SV_Map_f; mount bookkeeping still records a failed pk3 mount; an old package is removed before the
+  rename of a forced re-download; any download path with a `goldsrc` segment is refused (also a server's sound/goldsrc/).
 - P1655 minor: PM_LadderEntPlane takes the first ladder brush the box touches (server and client may list them in a
   different order: standing in two at once could mispredict); multi_manager treats delay/master/killtarget/dmg keys
   as settings (Half-Life's treats every key but wait as a target).
