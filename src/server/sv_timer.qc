@@ -1954,6 +1954,15 @@ float() SV_RecEnabled =
 // where run_t_pwhy is. Saves carry it as `plat` (raise-only on load), so a resume or a load
 // cannot shed a mark the prefix earned. The header states the start's, the finish's record the run's.
 .float  run_t_plat;
+// P1694: the run used a controller (Lex, 20 Nov: allowed, tagged light fire red): the engine's controller count
+// (in_pad_frames) moved in one of the run's usercmds (SV_PadCmd). Display only, like run_t_plat: reset where it is,
+// carried by saves as `pad` (raise-only), stated as the finish's `pad 1`. run_st_pad is the open stage's (its post).
+// rec_padlast is the last command's count + 1; 0 when a client command carried none (an engine before 1694) or after
+// a load: the next one re-seeds. Engine-made commands (kind 0: fills, TAS steps, NQ moves) are skipped.
+.float  run_t_pad;
+.float  run_st_pad;
+.float  rec_padlast;
+.float  rec_padok;                      // review 3: a command of this connection carried a count (the gate reads this)
 
 /*
   PATCH 493: THE MOVE-COLUMN RANGE MARKER'S COUNTERS.
@@ -2346,10 +2355,12 @@ void(entity e) SV_TimerMapTeleport =
 .int    rec_fa_bytes;            // 0: the file did not survive (a failed rename)
 .float  rec_fa_pbad, rec_fa_rbreach;    // the attempt's start latches (SV_TimerArm resets them)
 .float  rec_fa_plat;             // P1603: its run_t_plat (SV_TimerArm resets that too)
+.float  rec_fa_pad;              // P1694: its run_t_pad, likewise
 .string rec_fa_path, rec_fa_branch, rec_fa_rid;    // zoned
 // Patch 376: the client's mouse counts, in-band (engine cl_input.c CL_SendCounts),
 // read for the command being run.  See the `mc` record.
 vector  input_cursor_trace_start, input_cursor_trace_endpos;
+vector  input_cursor_screen;            // P1694: the controller count, beside them (SV_PadCmd)
 .vector rec_mc_ring, rec_mc_read;    // the last `mc` written
 .float  rec_mc_n, rec_mc_bad, rec_mc_badrow;
 .float  rec_mc_sup;                 // Patch 405: commands that sent cursor data
@@ -4115,6 +4126,13 @@ string(float ticks) SV_TimerString = { return Time_TickString(ticks, run_t_tick)
                             /api/run).  Never below the header's: the mark only
                             rises in a run and saves carry it, but a later
                             session's client (a resume, a load) can raise it.
+    pad 1                   P1694, after `plat`, only when set: the engine's
+                            controller count (in_pad_frames, carried in every
+                            usercmd's cursor block) moved in a usercmd of the run
+                            (a controller moved the player or ran a bind; engine
+                            1694+; an older one never sets it).  Posted as `pad=1`.
+                            Display only (a light fire-red tag).  Saves carry it;
+                            not written under held metadata (`cmdseq` absent).
     clk <bound> <hyst> <allow> <wall> <stalls> <credited> <debt> <behind>
                             the game clock against server time over the run, saves
                             included (SV_ClockFrame): wall seconds measured, packet
@@ -5621,6 +5639,7 @@ void(entity e) SV_RecFailDrop =
 	e.rec_fa_gen = 0;
 	e.rec_fa_bytes = 0i;
 	e.rec_fa_plat = PLAT_VERIFIED;
+	e.rec_fa_pad = 0;
 };
 
 // Patch 817: before SV_TimerArm's discard of a run that was on the clock.  What
@@ -5645,6 +5664,7 @@ void(entity e) SV_RecFailKeep =
 	e.rec_fa_pbad = e.run_t_pbad;
 	e.rec_fa_rbreach = e.run_t_rbreach;
 	e.rec_fa_plat = e.run_t_plat;       // P1603: a mark a file gave it is in no live client
+	e.rec_fa_pad = e.run_t_pad;         // P1694
 	e.rec_fa_genbuf = e.rec_rec_genbuf;
 	e.rec_rec_genbuf = 0;               // SV_RecGenReset would delete it
 	if (e.rec_rec_branch != "")
@@ -9783,6 +9803,7 @@ void(entity e, float seg, float ticks) SV_StageOpen =
 	if (e.run_st_cheat)
 		e.run_st_dirty = TRUE;
 	e.run_st_ghost  = e.rec_gh_on ? TRUE : FALSE;
+	e.run_st_pad    = 0;                // P1694
 };
 
 /*
@@ -10128,6 +10149,7 @@ void(entity e, float ticks) SV_StageStart =
 	SV_RecPut(e, sprintf("stagestart %d %d", e.run_st_seg, ticks));
 
 	e.run_st_tick  = ticks;
+	e.run_st_pad   = 0;                 // P1694 review 2: a posted stage times from its box exit, so does its mark
 	e.run_st_line  = e.rec_rec_lines;
 	SV_StageByteMark(e);
 	e.run_st_ms    = FALSE;              // a box exit after a resume is a clean start
@@ -12225,6 +12247,12 @@ float(entity e) SV_ProfileWhy =
 	if (!(e.run_t_ghave & IPG_SCRIPT))
 	if (cvar("sv_rank_scriptguard"))
 		return PW_SCRIPTGUARD;
+	// P1694 review 2: an engine before 1694 sends no controller count, so its controller runs would rank
+	// untagged; 1 once a release with it is out. Every platform (a 1694 Linux engine sends a count of 0).
+	// Review 3: per connection, not per command -- a load's or resume's latch runs before any command re-seeds.
+	if (!e.rec_padok)
+	if (cvar("sv_rank_padcount"))
+		return PW_PADCOUNT;
 	// P1083: the attempt's largest move axis, read by SV_MoveBoundFrame from the
 	// usercmds themselves -- nothing the client reports. 0 until the run starts.
 	if (e.run_t_movebig > RUN_MOVE_STD)
@@ -12890,6 +12918,34 @@ float(entity e) SV_TimerRearmRest =
 			return FALSE;
 	}
 	return TRUE;
+};
+
+// P1694: each usercmd's controller count (engine CL_SendCounts: cursor_screen x = the count mod 32767 as an exact
+// short, y = 1 when sent; Patch 376's counts marker on cursor start z). A change in a command of the run marks it
+// and the open stage. Called per part, first thing in PlayerPreThink; a split command's parts carry the same count.
+// nomark: the body is not being driven (spectate, replay/rewind watch, save-lock hold, frozen, ghost camera): the count
+// is kept, unmarked.
+void(entity e, float nomark) SV_PadCmd =
+{
+	local float n;
+	if (input_cmd_kind != 1 && input_cmd_kind != 2)
+		return;                         // review 3: a command the engine made (stall step, msec 0) carries no count
+	if (input_cursor_trace_start_z != 1 || input_cursor_screen_y < 0.5)
+	{
+		e.rec_padlast = 0;
+		return;
+	}
+	e.rec_padok = TRUE;
+	n = rint(input_cursor_screen_x * 32767) + 1;
+	if (e.rec_padlast && n != e.rec_padlast)
+	if (e.run_t_state == TS_RUNNING)
+	if (!nomark)
+	{
+		e.run_t_pad = 1;
+		if (e.run_st_seg >= 0)
+			e.run_st_pad = 1;
+	}
+	e.rec_padlast = n;
 };
 
 // P1675, per one-tick part from PlayerPreThink (before the part moves): note the first tick of this packet at which
@@ -13971,6 +14027,7 @@ void(entity e, float z) SV_TimerArm =
 	e.run_t_pbad        = -1;
 	e.run_t_pwhy        = PW_OK;
 	e.run_t_plat        = PLAT_VERIFIED;   // P1603
+	e.run_t_pad         = 0;               // P1694
 	// Build 74: -1 for the third time, and the reason is the sharpest of the
 	// three -- run_movetick is reset PER MAP, so 0 is not merely a legitimate
 	// value, it is the value every counter holds for the first seconds of every
@@ -14659,6 +14716,8 @@ void(entity e, float ticks) SV_TimerFinish =
 		// P1603: the run's mark as posted; a later session's client can raise the header's.
 		if (e.run_t_plat)
 			SV_RecPut(e, sprintf("plat %d", e.run_t_plat));
+		if (e.run_t_pad && !e.rec_rec_nocs)
+			SV_RecPut(e, "pad 1");      // P1694; off under held metadata, as `startlag` (its strict reader)
 	}
 	SV_TimerSlowClock(e);
 
@@ -15262,6 +15321,7 @@ void(entity e) SV_TimerStart =
 	SV_ClockReset(e);
 	e.run_t_pwhy = PW_OK;           // Patch 840: a loaded ARMED save is not armed again
 	e.run_t_plat = PLAT_VERIFIED;   // P1603: likewise; the start's latch below sets it
+	e.run_t_pad = 0;                // P1694
 	e.run_t_movebig = 0;            // P1083: likewise, not the previous attempt's moves
 
 	// Leaving the start zone is the reset you asked for: the stopped time from
@@ -17948,11 +18008,12 @@ void(entity e) SV_TimerReport =
 	  report the truth is not a warning to ship.  Split, each call is well inside
 	  the limit and nothing has to be trusted.
 	*/
-	// P1603: `plat` the run's latched mark, `wouldplat` the live client's (PLAT_*).
+	// P1603: `plat` the run's latched mark, `wouldplat` the live client's (PLAT_*). P1694: `pad` the run's,
+	// `padin` 1 when this connection's commands carry a controller count (engine 1694+).
 	sprint(e, PRINT_HIGH,
-	       sprintf("        inprof:  said %g  keywould %g  plat %g  wouldplat %g\n",
+	       sprintf("        inprof:  said %g  keywould %g  plat %g  wouldplat %g  pad %g  padin %g\n",
 	               e.run_t_pev,
-	               SV_ProfileKeyBroken(e), e.run_t_plat, SV_ProfilePlat(e)));
+	               SV_ProfileKeyBroken(e), e.run_t_plat, SV_ProfilePlat(e), e.run_t_pad, e.rec_padok));
 	sprint(e, PRINT_HIGH,
 	       sprintf("        inprof:  ev \"%g %g %g %g %g %g\"\n",
 	               e.run_t_pevhave, e.run_t_pevraw, e.run_t_pevfilt,

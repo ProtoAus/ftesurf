@@ -2260,6 +2260,7 @@ float(float ver) FS_ProfileFields =
 #define PW_KEYS      11  // P1576: the engine is not dropping injected keys (in_keyguard)
 #define PW_KEYGUARD  12  // P1576: the key guard cannot run (engine too old, no API, remote play)
 #define PW_SCRIPTGUARD 13  // P1646: the engine cannot count script lapses (older than 1646)
+#define PW_PADCOUNT  14  // P1694: the engine sends no controller count (older than 1694)
 // P1603 (Lex, 17 Nov): a run's platform mark, its own field beside the flags (TF_ bit 21 is
 // reserved for movement styles). A client without in_rawinput ranks and is marked; the .rec's
 // `plat`, surfd's `plat` and the boards' sky blue carry it. 0 when absent; later values extend it.
@@ -2342,6 +2343,7 @@ string(float why) FS_ProfileWord =
 	if (why == PW_KEYS)     return "keys";
 	if (why == PW_KEYGUARD) return "keyguard";
 	if (why == PW_SCRIPTGUARD) return "scriptguard";
+	if (why == PW_PADCOUNT) return "padcount";
 	return "unknown";
 };
 
@@ -2361,6 +2363,7 @@ string(float why) FS_ProfileText =
 	if (why == PW_KEYS)     return "keys sent by other programs must be blocked (set in_keyguard 1)";
 	if (why == PW_KEYGUARD) return "input from other programs cannot be blocked here (latest game on Windows 8 or newer, no remote session or DirectInput)";
 	if (why == PW_SCRIPTGUARD) return "this game version cannot check for scripts (update the game)";
+	if (why == PW_PADCOUNT) return "this game version cannot report controller use (update the game)";
 	return "";
 };
 

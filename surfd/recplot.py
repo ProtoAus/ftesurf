@@ -353,6 +353,12 @@ def _parse(fh, max_bytes, max_points):
                 bad_recs += 1
                 continue
             cert["plat"] = v
+        elif kw == "pad":
+            # P1694: the run used a controller, after `plat`; written only as `pad 1`.
+            if a != ["1"]:
+                bad_recs += 1
+                continue
+            cert["pad"] = 1
         elif kw == "clk":
             # Patch 840: bound hyst allow wall stalls credited debt behind (the
             # grammar block over SV_RecOpen).

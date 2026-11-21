@@ -58,6 +58,12 @@
 
   // P1603: surfd's `plat` above 0 (the Linux game: no Windows raw-input check), the game's tooltip.
   var PLAT_TIP = 'Linux: Not mouse verified';
+  // P1694: surfd's `pad` (the run used a controller): light fire red, over Linux's sky blue.
+  var PAD_TIP = 'Controller';
+  function markOf(o) { return o.pad ? ' pad' : (o.plat > 0 ? ' linux' : ''); }
+  function markTip(o) {
+    return [o.pad ? PAD_TIP : '', o.plat > 0 ? PLAT_TIP : ''].filter(Boolean).join('\n');
+  }
 
   function vchip() {
     var c = el('span', 'vchip', 'VERIFIED');
@@ -275,10 +281,10 @@
       var badge = mtBadge(m.mt);
       if (badge) { a.appendChild(badge); }
       if (m.wr) {
-        var mk = m.wr.plat > 0 ? ' linux' : '';    // P1603: the WR holder, as the board's row
+        var mk = markOf(m.wr);    // P1603, P1694: the WR holder, as the board's row
         var wt = el('span', 'wr' + mk, fmt(m.wr.ms));
         var wn = el('span', 'why' + mk, plain(m.wr.name));
-        if (mk) { wt.title = wn.title = PLAT_TIP; }
+        if (mk) { wt.title = wn.title = markTip(m.wr); }
         a.appendChild(wt);
         a.appendChild(wn);
         if (m.wr.ver) { a.appendChild(vchip()); }
@@ -400,9 +406,9 @@
     rows.forEach(function (r) {
       var tier = r.tr || v.tier;
       if (tier === 'combined' || tier === 'imported') { tier = 'momentum'; }
-      var tr = el('tr', (tier !== 'ranked' ? 'foreign' : '') + (r.plat > 0 ? ' linux' : ''));
-      // P1603: a run from a client without Windows raw-input verification ranks, marked.
-      if (r.plat > 0) { tr.title = PLAT_TIP; }
+      var tr = el('tr', (tier !== 'ranked' ? 'foreign' : '') + markOf(r));
+      // P1603: a run from a client without Windows raw-input verification ranks, marked. P1694: a controller run.
+      if (markOf(r)) { tr.title = markTip(r); }
       tr.appendChild(el('td', 'num', r.r));
       var who = el('td', 'name');
       if (r.av) { who.appendChild(avatar(r.who)); }
@@ -412,7 +418,7 @@
         var plus = el('span', 'helped', ' +' + r.helpers.length);
         plus.title = 'With help: ' + r.helpers.map(plain).concat([plain(r.name)]).join(', ');
         who.appendChild(plus);
-        who.title = r.plat > 0 ? PLAT_TIP + '\n' + plus.title : plus.title;
+        who.title = markOf(r) ? markTip(r) + '\n' + plus.title : plus.title;
       }
       // Which game, where the board holds more than one.
       if (v.tier === 'combined' || v.tier === 'imported') {

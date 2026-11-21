@@ -423,7 +423,8 @@ PROF_WORDS = ("ok", "rawinput", "m_filter", "m_accel", "rawmice", "silent",
               "clicks", "touchpad",            # P1573: injected clicks allowed / touchpad on
               "keys",                          # P1576: injected keys not dropped
               "keyguard",                      # P1576: the key guard cannot run
-              "scriptguard")                   # P1646: the engine cannot count script lapses
+              "scriptguard",                   # P1646: the engine cannot count script lapses
+              "padcount")                      # P1694: the engine sends no controller count
 # Patch 840.  The game clock fell behind server time (slow motion).  The
 # finish's `clk` record states its own bound and the measure judged against it,
 # so the bit is judged from the file alone, outside CLK_EPS of the boundary (the
@@ -1286,6 +1287,7 @@ def _check_rec(r, path, verbose=False, *, data=None):
     saw_end = None
     profs = []              # (lineno, word) -- Patch 840: the finish's profile verdict
     plats = []              # (lineno, n) -- P1603: the finish's platform mark
+    pads = []               # lineno -- P1694: the finish's controller mark
     clks = []               # (lineno, floats) -- Patch 840: the finish's clock record
     splits = []
     resumes = []            # (lineno, args) -- build 17 save states
@@ -2086,6 +2088,12 @@ def _check_rec(r, path, verbose=False, *, data=None):
                     r.note("line %d: 'plat %d': the finish writes a mark only when it is non-zero"
                            % (lineno + 1, pn))
                 plats.append((lineno + 1, pn))
+        elif kind == "pad" and ver >= 9:
+            # P1694: the run used a controller, after `plat`, only when set. Display only: a note.
+            if tok[1:] != ["1"]:
+                r.note("line %d: 'pad' is written only as 'pad 1', has %r" % (lineno + 1, tok[1:]))
+            else:
+                pads.append(lineno + 1)
         elif kind == "clk" and ver >= 9:
             # Patch 840: <bound> <hyst> <allow> <wall> <stalls> <credited> <debt>
             # <behind>, written once by the finish.  The debt may be negative
@@ -3048,6 +3056,11 @@ def _check_rec(r, path, verbose=False, *, data=None):
             and (not plats or plats[-1][1] < plat_head):
         r.note("header 'plat %d' and the finish's mark is %s -- a mark only rises in a run"
                % (plat_head, plats[-1][1] if plats else "absent"))
+    # P1694: the controller mark, written once by the finish.
+    if pads:
+        r.info["pad_end"] = "1"
+        if len(pads) > 1:
+            r.note("%d 'pad' records; the finish writes one" % len(pads))
 
     if ver >= 4 and "flags" in head:
         try:
@@ -4935,6 +4948,7 @@ def emit(r, verbose):
                   "inprof", "clk", "slowclock_bit",
                   # P1603, same edit as the code that assigns them.
                   "plat", "plat_end",
+                  "pad_end",            # P1694
                   # Patch 1581 / P1604: were never printed, so -v could not say whether n covers static props.
                   "propmiss", "propstatic",
                   "ticks", "time", "rate", "view_version", "hid", "frames",

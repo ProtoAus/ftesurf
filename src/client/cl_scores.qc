@@ -1423,6 +1423,7 @@ void() Scores_Refresh =
 #define SBC_BAD     SUI_THEME_BAD
 #define SBC_WARN    SUI_THEME_WARN
 #define SBC_LINUX   '0.247 0.757 1'     // P1603: #3FC1FF, the web board's .linux; a marked (plat > 0) row's name
+#define SBC_PAD     '1 0.416 0.302'     // P1694: #FF6A4D, light fire red (Lex), the web board's .pad; over SBC_LINUX
 
 // Amber for the two states that explain a MISSING time, dim for the one that
 // explains nothing.  Never red: neither is something the player did, and this
@@ -2471,11 +2472,11 @@ string(float idx) Scores_OnlineTip =
 	if (ob_segs[idx] > 0)           // P1615
 		t = strcat((ob_segs[idx] == 1) ? "1 segment" : sprintf("%g segments", ob_segs[idx]),
 		           strcmp(t, "") ? "\n" : "", t);
-	if (ob_plat[idx] <= PLAT_VERIFIED)
-		return t;
-	if (!strcmp(t, ""))
-		return "Linux: Not mouse verified";
-	return strcat("Linux: Not mouse verified\n", t);
+	if (ob_plat[idx] > PLAT_VERIFIED)
+		t = strcat("Linux: Not mouse verified", strcmp(t, "") ? "\n" : "", t);
+	if (ob_pad[idx] > 0)            // P1694
+		t = strcat("Controller", strcmp(t, "") ? "\n" : "", t);
+	return t;
 };
 
 string(float idx) Scores_OnlineName =
@@ -2774,6 +2775,8 @@ float(vector rp, vector rs, float pad) Scores_DrawOnlineRows =
 			ncol = SBC_GOOD;
 		if (ob_plat[idx] > PLAT_VERIFIED && !sui_is_hovered(ownerid))
 			ncol = SBC_LINUX;       // P1603: over "mine", whose row fill still says so
+		if (ob_pad[idx] > 0 && !sui_is_hovered(ownerid))
+			ncol = SBC_PAD;         // P1694
 		if (sb_avpad)
 		{
 			SteamPic_Draw([lp_x + sb_colx[SBK_OWNER], lp_y + 2], rec_sb_rowh - 4,

@@ -1,5 +1,18 @@
 # AGENT_NOTES.md
 
+## P1694 controller tag: what it changes for arms and tools (21 Nov 2026)
+
+- The usercmd cursor block now carries the controller count: cursor_screen x = in_pad_frames mod 32767 (+0.5, exact
+  after the wire's x32767 truncation), y = 1 (engine 1694+; Patch 376 left both 0). Anything that writes cursor_screen
+  (a TAS tape, a test that sets the prydon cursor) reads as "no count"; SV_PadCmd skips engine-made commands (kind 0).
+- Controller input can be injected for an arm with `in_journal_synth 1 pad <v>` (right stick held at v) and
+  `in_journal_synth 1 padkey [down|up] [dpad]`; both count a script lapse every input frame while set, so such a run
+  is unranked (`changed`) as well as tagged. `cmd timer` prints `pad` (the run's mark) and `padin` (counts arrive).
+- A headless nested-compositor harness on the owner's PC: on 21 Nov the owner's labwc aborted (wlroots assert on a DRM
+  flip, NVIDIA) about a second after such a rig shut down its GPU client. Cause not proven; run harnesses off the GPU
+  (WLR_RENDERER=pixman for the nested compositor; client __EGL_VENDOR_LIBRARY_FILENAMES=.../50_mesa.json,
+  LIBGL_ALWAYS_SOFTWARE=1 -- its log then says GL_RENDERER llvmpipe), and not while the owner's game is running.
+
 ## P1692 retry: driving it from a test arm (21 Nov 2026)
 
 - A client connected to a dedicated server answers its own `retry` with the engine's reconnect: CSQC handles `retry`

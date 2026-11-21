@@ -1187,6 +1187,7 @@ void(entity e) SV_MsApply =
 		SV_StageOpen(e, ms_stseg, ms_sttick);
 		e.run_st_armed = ms_starmed ? TRUE : FALSE;
 		e.run_st_ms = TRUE;
+		e.run_st_pad = e.run_t_pad;     // P1694 review 3: as a load reopens it (sv_saveloc.qc)
 	}
 	e.run_leg_zone = ms_legzone;
 	e.run_leg_track = ms_legtrack;

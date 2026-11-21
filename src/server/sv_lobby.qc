@@ -3017,6 +3017,7 @@ void(float reqid, float code, string body) Lobby_RunReply =
   invisible.
 */
 float(entity e) SV_RunPlat;         // P1603, sv_timer.qc
+.float run_t_pad, run_st_pad;       // P1694, sv_timer.qc
 
 // The gates and the form, shared by a finish and a stage post (Patch 360):
 // "" when this server does not submit.
@@ -3241,6 +3242,8 @@ string(entity e, float track, float leg, float ticks, float flags,
 	body = Lobby_RunBody(e, track, leg, ticks, flags, rec, recbytes, rectrunc);
 	if (body == "")
 		return "";
+	if (e.run_t_pad)
+		body = strcat(body, "&pad=1");      // P1694: the run used a controller (a stage post: its stage's)
 	if (leg == 0)
 	if (!(flags & TF_MULTISESSION))
 	if (e.lobby_sty_ok)
@@ -3359,6 +3362,9 @@ float(entity e, float track, float leg, float ticks, float flags) Lobby_SubmitSt
 	story_serial = e.lobby_sty_completion_serial;
 	e.lobby_sty_completion_serial = 0;
 	body = Lobby_RunBody(e, track, leg, ticks, flags, "", -1, 0);
+	if (body != "")
+	if (e.run_st_pad)
+		body = strcat(body, "&pad=1");      // P1694 review 1: this stage used a controller
 	if (body == "")
 		return FALSE;
 	url = cvar_string("lobby_master");

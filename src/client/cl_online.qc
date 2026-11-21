@@ -284,6 +284,7 @@ float  *ob_run;
 float  *ob_ver;
 // P1603: surfd's `plat`, the run's platform mark (PLAT_*); sent only when non-zero.
 float  *ob_plat;
+float  *ob_pad;            // P1694: surfd's `pad`, 1 = the run used a controller; sent only when set
 float  *ob_segs;           // P1615: a segmented row's segment count (surfd `segs`), 0 unknown
 
 float  ob_bget;            // strbuf: NanoPi Momentum demo handle per row
@@ -315,6 +316,7 @@ void() Online_Alloc =
 	ob_run = memalloc(sizeof(float) * OB_MAXROW);
 	ob_ver = memalloc(sizeof(float) * OB_MAXROW);
 	ob_plat = memalloc(sizeof(float) * OB_MAXROW);
+	ob_pad = memalloc(sizeof(float) * OB_MAXROW);
 	ob_segs = memalloc(sizeof(float) * OB_MAXROW);
 };
 
@@ -616,6 +618,7 @@ void(float i, int row) Online_RowSet =
 	ob_run[i]   = json_get_float(json_find_object_child(row, "run"));
 	ob_ver[i]   = json_get_float(json_find_object_child(row, "ver"));
 	ob_plat[i]  = json_get_float(json_find_object_child(row, "plat"));
+	ob_pad[i]   = json_get_float(json_find_object_child(row, "pad"));
 	ob_segs[i]  = json_get_float(json_find_object_child(row, "segs"));
 	s           = json_get_string(json_find_object_child(row, "tr"));
 	ob_src[i]   = !strcmp(s, OB_TIER_MOM) ? OB_SRC_MOM :
@@ -646,6 +649,7 @@ void(float to, float from) Online_RowCopy =
 	ob_rep[to] = ob_rep[from]; ob_src[to] = ob_src[from];
 	ob_run[to] = ob_run[from]; ob_ver[to] = ob_ver[from];
 	ob_plat[to] = ob_plat[from]; ob_segs[to] = ob_segs[from];
+	ob_pad[to] = ob_pad[from];
 	bufstr_set(ob_bmap, to, bufstr_get(ob_bmap, from));
 	bufstr_set(ob_bget, to, bufstr_get(ob_bget, from));
 	bufstr_set(ob_bname, to, bufstr_get(ob_bname, from));
@@ -2592,6 +2596,8 @@ void() Online_Status =
 			word = strcat(word, " verified");	// Patch 374: the cell's mark
 		if (ob_plat[i] > PLAT_VERIFIED)
 			word = strcat(word, sprintf(" plat %g", ob_plat[i]));	// P1603: the name's sky blue
+		if (ob_pad[i] > 0)
+			word = strcat(word, " pad");	// P1694: the name's fire red
 		if (ob_segs[i] > 0)
 			word = strcat(word, sprintf(" segs %g", ob_segs[i]));	// P1615: the name's tooltip
 

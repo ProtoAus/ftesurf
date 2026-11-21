@@ -297,6 +297,7 @@ function renderRun(j) {
   dlRow(dl, "flags", frag(r.flags + " (0x" + Number(r.flags).toString(16) + ")",
         ...words.map(w => frag(" ", pill(w, "info")))));
   if (r.plat !== undefined) dlRow(dl, "platform", platWord(r.plat));
+  if (r.pad) dlRow(dl, "controller", "used (display tag only)");   // P1694
   dlRow(dl, "node", r.node);
   dlRow(dl, "submitted", fmtDate(r.submitted));
   dlRow(dl, "file", frag(span("mono", r.leaf), r.file ? "" : " \u2014 not on this node"));
@@ -958,6 +959,7 @@ function renderHead(P) {
   const cert = P.cert || {};
   if (cert.prof) dlRow(dl, "prof", cert.prof);
   if (Number(cert.plat) > 0) dlRow(dl, "plat", platWord(cert.plat));   // P1603: the run's (the header's is the start's)
+  if (Number(cert.pad) > 0) dlRow(dl, "pad", "1 (the finish: a controller was used)");   // P1694
   if (cert.clk) {
     const [bound, hyst, allow, wall, stalls, cred, debt, behind] = cert.clk;
     dlRow(dl, "clock", "behind " + behind.toFixed(3) + " s over " + wall.toFixed(3) +

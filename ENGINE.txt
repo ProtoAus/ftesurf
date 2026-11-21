@@ -1,4 +1,11 @@
 # The engine build this QuakeC requires.
+# P1694 (engine cl_input.c keys.c in_generic.c cl_main.c client.h; QC sv_timer sv_player sv_saveloc sv_resume
+# sv_rewindstate sv_lobby sh_defs, cl_online cl_scores; tools/reccheck.py; surfd surfd.py recplot.py board.js/css,
+# admin_run.html; Lex's 20 Nov ruling "lite fire red" controller tag, worldofsurf-6f): the read-only in_pad_frames
+# counts controller input that moved you (stick past the dead zone, a press whose bind plays, a held action) and every
+# move carries it (cursor_screen); a change in a driven command of the run marks it: `pad 1` (finish, saves), post
+# `pad=1`, surfd runs/replays.pad, the name light fire red with "Controller". sv_rank_padcount (0) unranks engines that
+# send no count. Linux has no controller input. Reaches players with a release. Record: ENGINE_PATCHES P1694.
 # P1696 (game cl_tasupload.qc + cl_tasui/cl_online/cl_share/cl_main/cl_history/cl_jargon, sv_timer SV_TASUpNote,
 # sv_tasautosurf SV_TASUpList, sh_defs TAS_EV_UPLIST; surfd/tasupd.py game route, install_tasupd.py; Lex: "keep building"):
 # the TAS menu's Upload tab sends a TAS run the local game finished to play.proto.bar/tasup, signed with the linked key
@@ -667,7 +674,7 @@
 
 repo     https://github.com/ProtoAus/ftequakers
 branch   main
-commit   c7f7135e1
+commit   bb6ccb187
 # ^ The pin is the ENGINE_PATCHES.md work this QuakeC is written against, NOT the
 #   commit a shipped binary was built from -- those drift, deliberately: patches
 #   420-438 are all mod-side, so the engine source moved without any binary

@@ -1694,6 +1694,31 @@ def case_profile_verdict():
           "an unclosed file is not judged against its flags word")
 
 
+def case_controller_mark():
+    """P1694: `pad 1`, a finish record (the run used a controller). Display only: every oddity is a note,
+    never a fault; a header `pad` is not part of the format."""
+    def pad_notes(lines):
+        f, n = run(lines)
+        return f, [x for x in n if "pad" in x]
+
+    def fin(b, *recs):
+        b = insert_before(b, "inend", "prof ok")
+        for x in recs:
+            b = insert_before(b, "inend", x)
+        return b
+
+    f, n = pad_notes(fin(build(), "pad 1"))
+    check(not f and not n, "a finish with pad 1 passes clean, no pad note")
+    _f, _n, out = run(fin(build(), "pad 1"), report=True)
+    check("pad_end" in out, "the report prints the finish's controller mark")
+    f, _n = run(insert_before(build(), "begin", "pad 1"))
+    check(not f, "a header pad (not written by any build) is not a fault")
+    notes_with(fin(build(), "pad 2"), "only as 'pad 1'", "a finish pad 2 is a note, not a fault")
+    f, _n = run(fin(build(), "pad"))
+    check(not f, "a bare pad record is not a fault")
+    notes_with(fin(build(), "pad 1", "pad 1"), "'pad' records", "two finish pad records are a note")
+
+
 def case_platform_mark():
     """P1603: the header's `plat` is the start's platform mark, latched with `inprof` in one packet
     (1 = spoke without in_rawinput); the finish's `plat` record is the run's, which only rises.
@@ -4218,7 +4243,7 @@ def main():
                case_spec_next_row_restates, case_spec_where, case_spec_flag_and_finish,
                case_spec_unknown_why_is_a_note, case_spec_below_v9_is_unknown,
                case_nonce_header, case_nonce_record, case_nonce_flag,
-               case_movebnd, case_profile_verdict, case_platform_mark, case_slow_clock,
+               case_movebnd, case_profile_verdict, case_platform_mark, case_controller_mark, case_slow_clock,
                case_angle_control, case_angle_blind_is_said_out_loud,
                case_angle_rotated, case_angle_one_frame_rule,
                case_angle_one_frame_rule_reaches_a_still_camera,

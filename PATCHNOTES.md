@@ -21,6 +21,10 @@
 
 ## next
 
+### P1694 Controller runs are tagged
+- A run that used a controller (a stick that moved you, or a button that did something) now shows the runner's name in light red on the boards, with "Controller" when you hover. Controllers stay allowed.
+- Needs the next game update; the Linux game has no controller support, so its runs are never tagged.
+
 ### P1696 Upload TAS runs from the game
 - The TAS menu has an Upload tab: in a game you host, send one of your finished TAS runs to the TAS board at play.proto.bar/tasup with a click, signed with your linked Steam account. The game says whether it was listed or waits for review.
 - Jargon also offers your own finished TAS runs as runs to follow.

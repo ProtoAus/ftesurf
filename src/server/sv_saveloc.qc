@@ -1455,6 +1455,8 @@ float(entity e, float id, float seq) SV_SaveWriteState =
 	// P1603: the run's platform mark (latched just above), so a load or a resume elsewhere keeps it.
 	if (e.run_t_state == TS_RUNNING && e.run_t_plat)
 		fputs(f, sprintf("plat %d\n", e.run_t_plat));
+	if (e.run_t_state == TS_RUNNING && e.run_t_pad)
+		fputs(f, "pad 1\n");               // P1694
 	// Slow-only TAS must not acquire native-control ancestry on load/retry.
 	fputs(f, sprintf("tasnative %d\n", e.run_tas_used ? 1 : 0));
 	fputs(f, sprintf("pb %d\n", e.run_t_pb));
@@ -2002,6 +2004,7 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	local float hasname, hasctx;
 	local float hlp;                // P1567: `helped` -- the save another player sent; -1 absent
 	local float plt;                // P1603: `plat`, the run's platform mark; absent = PLAT_VERIFIED
+	local float pdk;                // P1694: `pad`, the run used a controller; absent = 0
 
 	sl_voided = FALSE;
 	// Patch 450: cleared on EVERY call and above the fopen, for the same reason
@@ -2015,6 +2018,7 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	st = TS_IDLE; tr = ss = sg = spl = dlt = flg = pbv = dty = rfrom = 0;
 	tasnative = -1; tasnseen = 0;
 	plt = PLAT_VERIFIED;
+	pdk = 0;
 	cht = 0;                        // a pre-44 save file knows nothing about it
 	hcy = 0;
 	plc = plcseen = dmt = 0;        // P1643: a file without the key is read below the loop
@@ -2112,6 +2116,7 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 		if (k == "delta")      { dlt = stof(argv(1)); continue; }
 		if (k == "flags")      { flg = stof(argv(1)); continue; }
 		if (!strcmp(k, "plat")) { if (stof(argv(1)) > plt) plt = stof(argv(1)); continue; }  // P1603: raise-only
+		if (!strcmp(k, "pad"))  { if (stof(argv(1)) > 0) pdk = 1; continue; }               // P1694
 		if (k == "pb")         { pbv = stof(argv(1)); continue; }
 		if (k == "dirty")      { dty = stof(argv(1)); continue; }
 		if (k == "cheat")      { cht = stof(argv(1)); continue; }
@@ -2486,6 +2491,9 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 	// P1603: the prefix's mark replaces this edict's, as the flags do; the next latch (the load's,
 	// a resume's, the finish's) raises it to the client playing on.
 	e.run_t_plat = plt;
+	e.run_t_pad = pdk;                  // P1694: as plat
+	e.rec_padlast = 0;                  // review 4: the next command re-seeds -- a stringcmd load arrives with the press
+	                                    // that sent it; a warp-op load (read after the count) loses one command
 	// P1055: restored movement state does not inherit a queued live-control grant.
 	SV_TASCancel(e);
 	// Raise ancestry before recorder/header restore; never lower either latch.
@@ -2802,6 +2810,7 @@ void(entity e, float id, float retry, float rows) SV_SaveApplyStateRows =
 		if (e.run_t_seg >= 0 && e.run_t_seg < e.run_t_segs)
 		{
 			SV_StageOpen(e, e.run_t_seg, ticks);
+			e.run_st_pad = e.run_t_pad;     // P1694 review 2: as the taint the run brings back
 			// Only later full-track legs use the packet stage-arm resolver.
 			if (e.run_t_seg == 0 || e.run_t_stagerun)
 				e.run_st_armed = FALSE;

@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1694 -- controller runs are tagged (anti-cheat finish list; worldofsurf-6f) -- needs the next release
+Needs a Windows game with the P1694 engine and the lobbies (or your local server) on the P1694 QC; the board shows the
+tag once surfd's next generation is live.
+1. Plug in an Xbox-style pad and play a run moving or turning with it: `cmd timer` says `pad 1  padin 1`, and after the
+   finish your name on the board is light red, hovering says "Controller".
+2. With the pad plugged in but untouched, play a keyboard and mouse run: `pad 0`, no tag. Pressing the pad's Back
+   (scoreboard) or Start (menu) does not tag either.
+3. Tell me if a run you played without the pad got tagged.
+
 ## P1696 -- upload a TAS run from the game (root FTESurf-worktrees/tasingame-20261121-a03) -- LIVE 21 Nov 03:01Z
 Your dev install has it (rebuilt at main 73229378; that build is allowed to sign); players get it with the next release. Runs finished BEFORE this build are not offered (the game records each TAS finish from now on).
 1. In a game you host, finish a TAS run (Jargon or Manual TAS) on a main course or a bonus, then open the TAS menu >

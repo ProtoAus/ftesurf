@@ -1,5 +1,23 @@
 # BACKLOG.md
 
+## P1694 controller tag -- what it leaves (21 Nov, worldofsurf-6f)
+- Deploy order: surfd's next generation before the client release (an older surfd drops `pad=1`; no backfill -- a
+  one-off `_rec_finish_pad` pass over replays with files could add one). Lobby QC may go first. Set sv_rank_padcount 1
+  once a release with 1694 is out (0.1.54 has 1646, not 1694): until then any 1646-1693 engine plays untagged.
+- Not measured in the rig: the stage mark, the not-driven predicate, focus loss while holding, the gate (the headless
+  client's `rawmice` verdict comes first), a real XInput pad.
+- One command goes untagged at each edge: the command that leaves the start or a stage box (judged while ARMED, then
+  the start resets), a save-lock release sent inside a move (judged while held; such runs are practice), the command
+  after a warp-op load or a TAS pause (re-seed). The count is per packet with _pext_vrinputs 0.
+- Held metadata (rec_held_metadata 1) leaves `pad 1` out of the file (the post carries it); P1603's `plat` already
+  breaks that strict reader. A same-leaf re-post with new evidence takes the new post's mark (as `plat`).
+- Unplugging a pad while holding a button can leave its release command pending (in_sdl.c J_Kill releases buttons
+  0-31 only; XInput zeroes its state): the action and the count then run until that button is pressed again.
+- Split-screen seats share one count. A controller turned into a virtual mouse by a driver-level remapper is a mouse
+  (the Windows twin of the accepted Linux limit). Tournament score posts carry no `pad`.
+- P1646 gap seen in review: a bind or alias of non-button commands chained (`rotate 90; impulse 2`) is never a script
+  lapse (CL_DirectPress judges `+` presses only), though Lex ruled chaining a script; small gain, follow-up patch.
+
 ## P1692 retry away time -- what it leaves (21 Nov, worldofsurf-6f)
 - The away time is the server's own gettime(1) (whole ms as a float): about 8 ms steps after a day of uptime, 0.25 s
   after 30 days; a retry across the 49.7-day wrap goes practice. The stamp rides the cvar rec_retry_at, which a local

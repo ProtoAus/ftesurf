@@ -298,6 +298,8 @@ float(entity e, float id, float seq, float go) SV_RewindWriteState =
 	plat = fa ? max(SV_ProfilePlat(e), e.rec_fa_plat) : SV_RunPlat(e);
 	if (plat)
 		fputs(f, sprintf("plat %d\n", plat));
+	if (fa ? e.rec_fa_pad : e.run_t_pad)
+		fputs(f, "pad 1\n");               // P1694: as plat
 	fputs(f, sprintf("tasnative %d\n", e.run_tas_used ? 1 : 0));
 	// Patch 840: as SV_SaveWriteState spells it.
 	fputs(f, sprintf("slowclk %.4f %d %d %.4f %.4f ", m[b+55], m[b+56], m[b+57], m[b+58], m[b+59]));

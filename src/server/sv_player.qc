@@ -603,6 +603,10 @@ void() PlayerPreThink =
 
 	if (self.movetype == MOVETYPE_NOCLIP)   // P1643 review 4: per command, before a save op below can run
 		self.run_t_placed = TRUE;
+	// P1694: this command's controller count, above every early return and before a save op below can run
+	// review 4: a replay or rewind watch pins the body too; review 5: run_t_freeze, not run_t_frzon (cleared a packet late)
+	SV_PadCmd(self, self.run_pmhold || self.run_t_viewowner || self.rec_wt_hold || self.run_t_freeze
+	                || self.rec_sl_hold || self.rec_gh_on);
 	if (Tour_PreThink(self)) return;
 	if (SV_TimerSlowGround(self))       // P1643: at rest before this command moves the body
 		self.run_t_prerest = TRUE;

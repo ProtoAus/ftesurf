@@ -169,6 +169,9 @@ table.runs { width: 100%; border-collapse: collapse; margin-top: 6px; font-size:
    game's SBC_LINUX.  Rank, name and time, so it reads beside the accent-blue name links. */
 .runs tbody tr.linux td.num:not(.gap), .runs tbody tr.linux td.name,
 .runs tbody tr.linux .plink, .req .wr.linux, .req .why.linux { color: #3FC1FF; }
+/* P1694: a controller run (Lex: light fire red); the game's SBC_PAD.  Over .linux. */
+.runs tbody tr.pad td.num:not(.gap), .runs tbody tr.pad td.name,
+.runs tbody tr.pad .plink, .req .wr.pad, .req .why.pad { color: #FF6A4D; }
 .runs td.gap, .runs td.date, .runs td.leg { color: var(--dim); }
 .runs td.date { white-space: nowrap; font-size: 13px; }
 .runs td.leg { font-size: 13px; white-space: nowrap; }
