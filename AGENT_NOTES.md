@@ -8692,6 +8692,41 @@ publicly WITH its fix, not before it.
   4 MiB cap refuses any journal past ~38 s of run, and one that fits is 17,000
   round trips. Collecting journals from a public lobby needs a transport that is
   not the netchan.
+  P1704 (21 Nov 2026): VIEWS GO OVER HTTPS TOO on servers with
+  `sv_recupload_https 1` (the Pi-only lobby_local.cfg; lobby.cfg ships 0), for
+  clients advertising
+  `fsviewhttp 1`: SV_UploadAsk stuffs `rec_ul_http <nonce> view <map> <runid>`
+  (journals: P774) and the client POSTs a signed `FTESURF-VIEW 1` statement to
+  /api/view (own nginx zones), checked against the receipt's `signed view`
+  (surfd/hidupload.py; finished runs only, sized by the run clock, 4 MiB cap).
+  A MISMATCHED VIEW IS REFUSED, NOT STORED: stored it reads as a FAULT, and any
+  server's csprogs can arm a file under a visitor's public nonce (P1704 review 2
+  blocker; the first refused offer is kept as <runid>.viewrefused, since an honest
+  client cannot send one, and sweep.py reads it as the digest FAULT the netchan
+  route gave), and a view's statement must name the receipt's server. The engine
+  sends nothing over HTTPS without rec_terms >= 9 (online terms).
+  rec_sign pins its digests by nonce and server; a request is accepted only for a
+  run signed on the server asking and its bytes must match the pin when sent.
+  Over the netchan, lobbies 18-21 Nov: 67 receipts signed a view, 51 were asked
+  (16 hit "not asking again"), 23 landed. THE CLIENT TAKES AN ACCEPTED FILE out of
+  data/staged/ (the gamecode keeps two runs there and clears it at every csprogs
+  load) into the queue: a journal is moved (a raw journal is not left
+  for the next server's csprogs; an unsent one goes with its arming), a view
+  copied (cl_watch.qc rebuilds the player's own replay from the staged view).
+  It queues it (40, 20 per IP address or IPv6 /64; a full queue makes room
+  only from hosts with no stored upload this session), retries no answer/900+/
+  404/408/429/500-504 (6 tries, ~36 min) and removes the queued copy when done; a
+  refused request's armed journal is removed (a view stays); a disconnect does
+  not cancel accepted requests, and CL_Receipt_Disarm removes only journals that
+  were never asked for. The queue is httpq/ under FS_ROOT (home or install root),
+  outside every game searchpath. The collector answers "no such run"
+  410 (final; three per host and kind with no stored upload between stop that
+  host's uploads of that kind for the session); a missing map directory 503 only
+  while the evidence root is empty or unreadable (a wrong deployment), else 410.
+  Older clients keep the netchan route above. A SIGNED VIEW DIGEST DOES NOT
+  MEAN THE CLIENT STAGED A COPY: without online consent it
+  signs its local sidecar's digest and drops the upload (`replay: sidecar
+  dropped`). Count landed files.
 - THE SIDECAR IS CHECKED AGAINST THE RECORDING, not just hashed. `reccheck`
   joins the `.view`'s frames to the `.rec`'s `in` rows by run tick and compares
   angles; `rcptcheck` reaches it by RUNID, so one command covers signature,

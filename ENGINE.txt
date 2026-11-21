@@ -1,4 +1,7 @@
 # The engine build this QuakeC requires.
+# P1704 (engine client cl_receipt.c, server sv_user.c sv_main.c; surfd hidupload.py surfd.nginx setup_public.sh; menu
+# m_main.qc terms text; lobby.cfg; Lex 21 Nov "please do"): on sv_recupload_https 1 servers, views go to /api/view
+# (rec_sign-pinned bytes, an httpq/ queue, retries, kept across a disconnect); netchan 23/51. Record: ENGINE_PATCHES.
 # P1698 (engine gl_warp.c gl_alias.c renderer.c r_surf.c cl_ents.c pr_csqc.c render.h client.h, hl2 mod_vbsp.c; QC
 # cl_scene/cl_body/cl_emit/cl_ropes/cl_portal, cfg/maps/render_default.cfg; worldofsurf-42): a Source map's sky is a
 # hole (r_sky_forcedepth 1; 2 means 1 there) and only the PVS shows behind it -- r_entpvs_source culls entities with a

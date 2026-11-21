@@ -7,6 +7,27 @@ CURRENT = cd1965f1 (root /srv/nvme/agent-work/gen1674-20261121-e3; kit FTESurf-p
 pins native fteqw-svarm64 1753f9d4 (lobby engine patch-1683, swapped 01:38Z), and keeps the consumer's 900 s
 `systemctl start` (its drop-in will have 18 ExecStartPre blocks, ~280 s; or the owner prunes retired blocks).
 
+## P1704 views over HTTPS -- surfd + nginx part READY for the NEXT generation; lobby engine AFTER it (worldofsurf-47)
+1. surfd/hidupload.py: POST /api/view (`FTESURF-VIEW 1`, exactly the receipt's signed view, finished runs,
+   min(4 MiB, 256 KiB + 4 KiB/tick), 30/min, statement names the receipt's server; a refused mismatch leaves
+   <map>/<runid>.viewrefused). Check: surfd/test_hidupload.py (29).
+2. nginx: `sudo sh surfd/setup_public.sh --view-only BACKUP_DIR SNIPPET_SHA256 ZONES_SHA256` adds `location =
+   /api/view` and its three zones (surfdview, surfdviewip, surfdviewglobal) the way --hid-only added the journal's.
+   Check: surfd/test_hid_proxy_install.py (10). Then `curl -X POST` an empty body to /api/view: 413 from surfd.
+3. Then the lobby engine at engine >= the P1704 commit; then add `set sv_recupload_https 1` to the Pi-only
+   cfg/lobby_local.cfg (exec'd last, run.sh) and rcon it to the running lobbies -- not the repo lobby.cfg, which ships
+   0 and is exec'd by ~14 test cfgs whose clients would then post to the live collector. Before 1-2 it would send new clients' views to a route that
+   does not exist. ORDER FOR THE CLIENT: release a P1704 client only AFTER step 1 is live -- it retries 503s, and
+   today's collector answers 503 to every community server's journal (no receipt), so each would be re-sent up to six
+   times, up to 64 MiB each, holding the lobby's next upload behind it. Old clients are unaffected by order. ROLLBACK: before taking surfd or
+   nginx back past P1704, rcon `sv_recupload_https 0` on every running lobby AND remove the line from lobby_local.cfg
+   (every lobby restart runs the file; clients retry a 404 for ~36 minutes, then drop the view). After enabling, check the
+   surfd log shows `stored view for <map>/<runid>` for a real run. A wrong evidence root answers 503 while it is
+   empty or unreadable, but a wrong POPULATED root answers 410 to every run, and three 410s cut that lobby off for
+   the rest of each player's session: check the log right after enabling.
+   surfd/sweep.py reads <runid>.viewrefused (no .view beside it) as the digest FAULT the netchan route gave. install_board_endpoint.sh writes the view zones too (surfd.nginx uses them).
+   The collector now answers a missing receipt 410 on /api/hid too (it was 503): final, so clients do not re-send.
+
 ## P1703 journal in online play -- surfd part READY for the NEXT generation (worldofsurf-47)
 surfd/surfd.py: SURFD_NOEV_JOURNAL_SINCE (epoch seconds; unset = a missing Windows journal never counts toward P1699's
 mark). Set it to the release time of the build whose menu asks for terms 10. Check: surfd/test_noev.py.

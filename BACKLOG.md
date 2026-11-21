@@ -1,5 +1,38 @@
 # BACKLOG.md
 
+## P1704 views over HTTPS -- what it leaves (21 Nov, worldofsurf-47)
+- Deploy order: surfd generation + `setup_public.sh --view-only` (nginx /api/view), then the lobby engine, then
+  `set sv_recupload_https 1` in the Pi-only lobby_local.cfg (lobby.cfg ships 0; test cfgs exec it), then measure:
+  of the views receipts sign, how many land (netchan baseline 18-21 Nov: 23 of 67; surfd logs `stored view` / `view
+  upload refused`). The client ships AFTER the surfd generation (it retries the old collector's 503s); a P1704
+  client on an old lobby engine already takes its journals through the new queue (pin, terms, retries).
+- `fsviewhttp` is advertised without testing TLS: a Linux client whose GnuTLS fails to load loses its views (6 tries)
+  where the netchan delivered about a third. A client report back to the server would let it fall back.
+- The 4 of 51 netchan asks that never started (client had nothing armed) are not addressed.
+- Journals still go to the collector from any server (P774); only views have the sv_recupload_https switch. A
+  community server's journal on a map the collector never hosted is uploaded once and answered 410 (three cut that
+  server's host off for journals this session). Gating journals by sv_recupload_https too would stop the upload, but
+  the deploy flip would then also gate the official lobbies' journals.
+- nginx keys /api/view (and /api/hid) limits by full address: one IPv6 /64 can hold many slots. Key IPv6 by /64.
+- A second game instance on one install empties the first's httpq/ at its first frame.
+- data/consent.txt is read only as the current gamedir's loose file (QC_MenuTable since P1704 review 12): a server
+  naming another gamedir, then a manual menu_restart, reads no consent (rec_terms 0, the terms asked again).
+- At quit, a running POST ends with code 0 and prints "trying again"; the next launch's sweep removes the file.
+- nginx: the global connection caps (/api/hid 4, /api/view 64) are cheaper to hold with slow bodies than the
+  per-address ones (client_body_timeout limits gaps, not totals), and the client sends no Expect: 100-continue, so a
+  refused attempt still uploads its whole body (up to 6 x 64 MiB for a journal). Consider a total body deadline.
+- A `.view-*.part` / `.hid-*.part` temp left by a killed surfd is never reaped (SV_EvidenceSweepPat keys on a runid
+  date; the leading dot has none).
+- Windows: a file being read when rec_upload/rec_hid_upload goes to 0 cannot be removed then; it stays until the next
+  launch's sweep. Rare: an HTTP completion inside the accept's rename can fill the queue and drop the new request.
+- <runid>.viewrefused (a refused mismatched view: only a modified client sends one) reads as a digest FAULT in the
+  sweep; the Top 10 review page and the in-game Admin tab should also show the offered digest beside the run.
+- About 3x as many top runs will get angle checks once views arrive: reccheck's false-positive rate matters more.
+- Slow practice (host_timescale < 1) at very high fps can exceed the view budget (final 413); not ranked runs.
+- Terms tier: the view's new recipient (play.proto.bar) is disclosed in the text and rec_upload's description, but
+  the terms version was not raised. Owner's call.
+- The lobby log prints `sv_recupload: asked 1 for <view>` after the `over HTTPS` lines (SV_RecUpload_f's own dprint).
+
 ## P1698 Source sky as a hole -- what it leaves (21 Nov, worldofsurf-42)
 - Site: `src/client/cl_emit.qc` persistent bursts (ps_bpers). A glow placed once lives in the engine's particle list
   and shows through a sky after you leave its area. Fix: re-place it with a short life while in view, or draw it as
@@ -26,6 +59,7 @@
 - Views: rec_upload defaults on, but the client uploads only with the online terms accepted, fs_ul >= 1 and a free
   slot (one upload at a time; a run finishing during another's upload is never asked again; staged files cleared at
   map load). Find which of these loses most views, then re-ask a top-10 run's client until its view lands.
+  Found (P1704): the netchan transfer and the one slot; views now go over HTTPS.
 - Journals: rec_hid_upload is an opt-in box on the terms screen (pre-ticked only for players who had not accepted
   yet), so most Windows players never send one. Making it the default is the owner's call (it is raw input timing).
 - A stage row is not judged (its run may have ended without a receipt); runs before NOEV_SINCE are not judged.

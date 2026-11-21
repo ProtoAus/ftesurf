@@ -1,5 +1,9 @@
 # lextest.md — things waiting on a human
 
+## P1704 -- run views reach the anti-cheat server (worldofsurf-47) -- after the release and the lobby update
+1. Finish a run on a lobby, open the console: `rec_ul_send: view HTTP stored and digest acknowledged`.
+2. Finish another and leave the server at once: the same line still appears a moment later.
+
 ## P1698 -- the sky is a hole, and only what you could see shows behind it (worldofsurf-42) -- your dev install
 1. ahop_coast save 3 (west of the map, looking back): the sea draws whole, no jagged diagonal cut, zone outlines show.
    Fly toward any sky and away: nothing behind it shrinks or vanishes as you get closer.
