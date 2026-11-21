@@ -46,6 +46,7 @@ UNREADABLE_OK = re.compile(r'\.(key|pem|crt)$')           # TLS material names n
 UNIT_SUFFIXES = ('.service', '.socket', '.timer', '.path', '.mount', '.automount', '.swap', '.target', '.slice', '.scope', '.device')
 READER_PICKS = (('/srv/nvme/ftesurf-server/game/ftesurf/csprogs.dat.pre[0-9]*', 2),)   # tasupd.py LOBBY_BACKUPS, by mtime
 CRONTAB = ('crontab', '-l')
+MOUNTINFO = '/proc/self/mountinfo'
 MAX_CONFIG = 32 << 20
 MEMORY = 1 << 30      # RLIMIT_AS: a MemoryError here, never the OOM killer choosing among the live services
 NOW = time.time
@@ -201,24 +202,33 @@ def backup_plan(refs, used):
     return remove, kept
 
 
-def blocker(root, cut):
-    """Why `root` must stay: changed after `cut`, partly unreadable, holding another user's files, or crossing a mount.
-    None when it is idle and wholly ours to remove."""
+def mount_points():
+    """Every mount point (a bind mount from the same disk keeps st_dev, so it is read from the mount table)."""
+    try:
+        with open(MOUNTINFO) as f:
+            return {re.sub(r'\\([0-7]{3})', lambda m: chr(int(m.group(1), 8)), line.split()[4]) for line in f if line.strip()}
+    except (OSError, IndexError) as e: raise Unreadable('%s: %s' % (MOUNTINFO, e)) from e
+
+
+def blocker(root, cut, mounts):
+    """Why `root` must stay: changed after `cut` (None: age not asked), partly unreadable, holding another user's
+    files, or holding a mount. None when it is idle and wholly ours to remove."""
     me, top = os.geteuid(), os.lstat(root)
-    if changed(top) > cut: return 'changed in the last %d days' % IDLE_DAYS
+    if any(m == root or m.startswith(root + '/') for m in mounts): return 'holds a mount point'
+    if cut is not None and changed(top) > cut: return 'changed in the last %d days' % IDLE_DAYS
     if top.st_uid != me: return 'owned by another user'
     unreadable = []
     for dp, dn, fn in os.walk(root, onerror=unreadable.append):
         for n in dn + fn:
             try: st = os.lstat(os.path.join(dp, n))
             except FileNotFoundError: continue
-            if changed(st) > cut: return 'changed in the last %d days' % IDLE_DAYS
+            if cut is not None and changed(st) > cut: return 'changed in the last %d days' % IDLE_DAYS
             if st.st_uid != me: return 'holds files owned by another user'
             if st.st_dev != top.st_dev: return 'crosses a mount point'
     return 'partly unreadable' if unreadable else None
 
 
-def root_plan(refs, used, now):
+def root_plan(refs, used, now, mounts=frozenset()):
     """(remove, keep) task roots in AGENT_WORK; keep carries the reason."""
     refd = {m.group(1) for x in refs | used for m in [AW_NAME.match(x)] if m}
     try: names = sorted(os.listdir(AGENT_WORK))
@@ -231,14 +241,14 @@ def root_plan(refs, used, now):
         try:
             if os.path.islink(p) or not os.path.isdir(p): kept.append((p, 'not a directory')); continue
             why = ('named by the live configuration or a process' if n in refd else 'one of the newest generations' if n in gens
-                   else 'holds RETAIN' if os.path.lexists(os.path.join(p, 'RETAIN')) else blocker(p, cut))
+                   else 'holds RETAIN' if os.path.lexists(os.path.join(p, 'RETAIN')) else blocker(p, cut, mounts))
         except FileNotFoundError: continue
         if why: kept.append((p, why))
         else: remove.append(p)
     return remove, kept
 
 
-def checkout_plan(refs, used):
+def checkout_plan(refs, used, mounts=frozenset()):
     try: names = [n for n in os.listdir(OPS) if n.startswith('tasupd-src-')]
     except FileNotFoundError: return []
     try: releases = os.listdir(TASUPD_RELEASES)
@@ -253,7 +263,7 @@ def checkout_plan(refs, used):
     for i, (_, p) in enumerate(sorted(paths, reverse=True)):
         c = p.rsplit('tasupd-src-', 1)[1]
         live = COMMIT.fullmatch(c) and any(r.startswith(c) for r in releases)
-        if i >= KEEP and not live and not named(p, refs, used): out.append(p)
+        if i >= KEEP and not live and not named(p, refs, used) and not blocker(p, None, mounts): out.append(p)
     return out
 
 
@@ -291,14 +301,14 @@ def main(argv=None):
     ap.add_argument('--log', help='append the summary here (kept to its last 2000 lines)')
     a = ap.parse_args(argv)
     now = NOW()
-    try: refs, used = config_refs(), in_use()
+    try: refs, used, mounts = config_refs(), in_use(), mount_points()
     except Unreadable as e:
         lines = ['%s STOPPED, nothing removed: %s' % (stamp(), e)]
         print('\n'.join(lines)); log_lines(a.log, lines)
         return 2
     files, _ = backup_plan(refs, used)
-    roots, _ = root_plan(refs, used, now)
-    checkouts = checkout_plan(refs, used)
+    roots, _ = root_plan(refs, used, now, mounts)
+    checkouts = checkout_plan(refs, used, mounts)
     size = 0
     for p in files:
         try: size += os.lstat(p).st_size
@@ -314,12 +324,11 @@ def main(argv=None):
         except FileNotFoundError: pass
         except OSError as e: failed.append('%s: %s' % (p, e))
     cut = now - IDLE_DAYS * 86400
-    for p in roots:
-        try: why = blocker(p, cut)
+    for p, age in [(x, cut) for x in roots] + [(x, None) for x in checkouts]:
+        try: why = blocker(p, age, mount_points())
         except FileNotFoundError: continue
         if why: failed.append('%s: %s (found after planning); kept' % (p, why)); continue
         remove_tree(p, failed); done += 1
-    for p in checkouts: remove_tree(p, failed); done += 1
     out = ['%s done: %d removed, %d problems' % (stamp(), done, len(failed))] + ['  NOT REMOVED ' + f for f in failed]
     print('\n'.join(out)); log_lines(a.log, out)
     return 1 if failed else 0

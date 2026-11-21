@@ -16,7 +16,7 @@ import pi_retention as r
 DAY = 86400
 REAL = time.time()
 NAMES = ('AGENT_WORK', 'OPS', 'TASUPD_RELEASES', 'BACKUP_DIRS', 'CONFIG_TREES', 'CONFIG_FLAT', 'CONFIG_FILES', 'CRONTAB',
-         'NOW', 'AW_NAME', 'PATH', 'READER_PICKS', 'config_refs', 'in_use', 'blocker', 'remove_tree')
+         'NOW', 'AW_NAME', 'PATH', 'READER_PICKS', 'MOUNTINFO', 'config_refs', 'in_use', 'blocker', 'remove_tree')
 
 
 class Base(unittest.TestCase):
@@ -29,6 +29,8 @@ class Base(unittest.TestCase):
         r.BACKUP_DIRS, r.AGENT_WORK, r.OPS, r.TASUPD_RELEASES = (str(self.data),), str(self.aw), str(self.ops), str(self.rel)
         r.CONFIG_TREES, r.CONFIG_FLAT, r.CONFIG_FILES, r.CRONTAB = (str(self.etc),), (), (), ('true',)
         r.READER_PICKS = ()
+        self.mountinfo = d / 'mountinfo'; self.mountinfo.write_text('22 1 259:1 / / rw - ext4 /dev/root rw\n')
+        r.MOUNTINFO = str(self.mountinfo)
         r.AW_NAME = re.compile(re.escape(str(self.aw)) + r'/([A-Za-z0-9._-]+)')
         r.PATH = re.compile(re.escape(str(d)) + r'/[A-Za-z0-9._@+=/-]+')
         self.now = REAL + 30 * DAY; r.NOW = lambda: self.now
@@ -173,6 +175,20 @@ class Roots(Base):
         finally: os.lstat = real
         self.assertEqual(remove, []); self.assertEqual(dict(kept)[p], 'holds files owned by another user')
 
+    def test_a_bind_mount_inside_keeps_the_root(self):
+        """A bind mount from the same disk keeps st_dev: the mount table is what shows it."""
+        p = self.dir(self.aw / 'has mount', 25)
+        sub = Path(p) / 'svencoop_addon'; sub.mkdir(); os.utime(sub, (self.now - 25 * DAY,) * 2); os.utime(p, (self.now - 25 * DAY,) * 2)
+        self.mountinfo.write_text('22 1 259:1 / / rw - ext4 /dev/root rw\n'
+                                  '90 22 259:1 /srv/x %s rw - ext4 /dev/nvme0n1p1 rw\n' % str(sub).replace(' ', '\\040'))
+        rc, out = self.run_main('--apply')
+        self.assertTrue(sub.is_dir()); self.assertEqual(r.root_plan(set(), set(), self.now, r.mount_points())[0], [])
+        self.assertEqual(dict(r.root_plan(set(), set(), self.now, r.mount_points())[1])[p], 'holds a mount point')
+
+    def test_an_unreadable_mount_table_stops_the_run(self):
+        r.MOUNTINFO = str(self.d / 'missing')
+        rc, out = self.run_main('--apply'); self.assertEqual(rc, 2); self.assertIn('STOPPED, nothing removed: %s' % r.MOUNTINFO, out)
+
     def test_a_referenced_old_generation_stays(self):
         aw = self.aw
         for n in ('gen1674-a', 'gen1650-b'): self.dir(aw / n, 20)
@@ -202,6 +218,8 @@ class Checkouts(Base):
         self.dir(o / 'tasupd-src-091ad1e9', 2); self.dir(o / 'tasupd-src-e5ecca2b', 1)
         self.dir(o / 'retention', 50)
         self.assertEqual(r.checkout_plan(set(), set()), [old])
+        self.mountinfo.write_text('90 22 259:1 /x %s/sub rw - ext4 /dev/nvme0n1p1 rw\n' % old)
+        self.assertEqual(r.checkout_plan(set(), set(), r.mount_points()), [])
 
 
 class Refs(Base):
@@ -344,7 +362,7 @@ class Run(Base):
     def test_a_root_written_after_planning_is_kept(self):
         root = self.dir(self.aw / 'woke-up', 25)
         calls = []
-        def blocker(p, cut): calls.append(p); return 'changed in the last 14 days' if len(calls) > 1 else None
+        def blocker(p, cut, mounts): calls.append(p); return 'changed in the last 14 days' if len(calls) > 1 else None
         r.blocker = blocker
         rc, out = self.run_main('--apply')
         self.assertEqual(rc, 1); self.assertTrue(os.path.isdir(root)); self.assertIn('(found after planning); kept', out)
