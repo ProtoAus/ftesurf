@@ -135,91 +135,91 @@ location = /ftesurf/board/api/map {
 location = /ftesurf/board/ {
     root /srv/nvme/ftesurf-site/board/current;
     try_files /board.html =404;    # a URI ending in / never serves an aliased file (the index module takes it)
-    charset utf-8;
+    charset utf-8; charset_types text/css application/javascript text/javascript;
     limit_except GET { deny all; }
     add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Cache-Control no-cache always;
     add_header X-FTESurf-Site "1" always;
-    gzip on; gzip_vary on; gzip_types text/css application/javascript;
+    gzip on; gzip_vary on; gzip_types text/css application/javascript text/javascript;
 }
 location = /ftesurf/board/board.css {
     alias /srv/nvme/ftesurf-site/board/current/board.css;
-    charset utf-8;
+    charset utf-8; charset_types text/css application/javascript text/javascript;
     limit_except GET { deny all; }
     add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Cache-Control no-cache always;
     add_header X-FTESurf-Site "1" always;
-    gzip on; gzip_vary on; gzip_types text/css application/javascript;
+    gzip on; gzip_vary on; gzip_types text/css application/javascript text/javascript;
 }
 location = /ftesurf/board/board.js {
     alias /srv/nvme/ftesurf-site/board/current/board.js;
-    charset utf-8;
+    charset utf-8; charset_types text/css application/javascript text/javascript;
     limit_except GET { deny all; }
     add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Cache-Control no-cache always;
     add_header X-FTESurf-Site "1" always;
-    gzip on; gzip_vary on; gzip_types text/css application/javascript;
+    gzip on; gzip_vary on; gzip_types text/css application/javascript text/javascript;
 }
 location = /ftesurf/board/link.css {
     alias /srv/nvme/ftesurf-site/board/current/link.css;
-    charset utf-8;
+    charset utf-8; charset_types text/css application/javascript text/javascript;
     limit_except GET { deny all; }
     add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Cache-Control no-cache always;
     add_header X-FTESurf-Site "1" always;
-    gzip on; gzip_vary on; gzip_types text/css application/javascript;
+    gzip on; gzip_vary on; gzip_types text/css application/javascript text/javascript;
 }
 location = /ftesurf/board/runview.js {
     alias /srv/nvme/ftesurf-site/board/current/runview.js;
-    charset utf-8;
+    charset utf-8; charset_types text/css application/javascript text/javascript;
     limit_except GET { deny all; }
     add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Cache-Control no-cache always;
     add_header X-FTESurf-Site "1" always;
-    gzip on; gzip_vary on; gzip_types text/css application/javascript;
+    gzip on; gzip_vary on; gzip_types text/css application/javascript text/javascript;
 }
 location = /ftesurf/board/watch.css {
     alias /srv/nvme/ftesurf-site/board/current/watch.css;
-    charset utf-8;
+    charset utf-8; charset_types text/css application/javascript text/javascript;
     limit_except GET { deny all; }
     add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Cache-Control no-cache always;
     add_header X-FTESurf-Site "1" always;
-    gzip on; gzip_vary on; gzip_types text/css application/javascript;
+    gzip on; gzip_vary on; gzip_types text/css application/javascript text/javascript;
 }
 location = /ftesurf/board/watch.html {
     alias /srv/nvme/ftesurf-site/board/current/watch.html;
-    charset utf-8;
+    charset utf-8; charset_types text/css application/javascript text/javascript;
     limit_except GET { deny all; }
     add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self' https://play.proto.bar https://2a2e9751dc963919eb0896275279ba13.r2.cloudflarestorage.com; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Cache-Control no-cache always;
     add_header X-FTESurf-Site "1" always;
-    gzip on; gzip_vary on; gzip_types text/css application/javascript;
+    gzip on; gzip_vary on; gzip_types text/css application/javascript text/javascript;
 }
 location = /ftesurf/board/watch.js {
     alias /srv/nvme/ftesurf-site/board/current/watch.js;
-    charset utf-8;
+    charset utf-8; charset_types text/css application/javascript text/javascript;
     limit_except GET { deny all; }
     add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Cache-Control no-cache always;
     add_header X-FTESurf-Site "1" always;
-    gzip on; gzip_vary on; gzip_types text/css application/javascript;
+    gzip on; gzip_vary on; gzip_types text/css application/javascript text/javascript;
 }
 
 location ^~ /ftesurf/board/ {
@@ -314,91 +314,91 @@ location = /worldofsurf/board/api/map {
 location = /worldofsurf/board/ {
     root /srv/nvme/ftesurf-site/board/current;
     try_files /board.html =404;    # a URI ending in / never serves an aliased file (the index module takes it)
-    charset utf-8;
+    charset utf-8; charset_types text/css application/javascript text/javascript;
     limit_except GET { deny all; }
     add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Cache-Control no-cache always;
     add_header X-FTESurf-Site "1" always;
-    gzip on; gzip_vary on; gzip_types text/css application/javascript;
+    gzip on; gzip_vary on; gzip_types text/css application/javascript text/javascript;
 }
 location = /worldofsurf/board/board.css {
     alias /srv/nvme/ftesurf-site/board/current/board.css;
-    charset utf-8;
+    charset utf-8; charset_types text/css application/javascript text/javascript;
     limit_except GET { deny all; }
     add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Cache-Control no-cache always;
     add_header X-FTESurf-Site "1" always;
-    gzip on; gzip_vary on; gzip_types text/css application/javascript;
+    gzip on; gzip_vary on; gzip_types text/css application/javascript text/javascript;
 }
 location = /worldofsurf/board/board.js {
     alias /srv/nvme/ftesurf-site/board/current/board.js;
-    charset utf-8;
+    charset utf-8; charset_types text/css application/javascript text/javascript;
     limit_except GET { deny all; }
     add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Cache-Control no-cache always;
     add_header X-FTESurf-Site "1" always;
-    gzip on; gzip_vary on; gzip_types text/css application/javascript;
+    gzip on; gzip_vary on; gzip_types text/css application/javascript text/javascript;
 }
 location = /worldofsurf/board/link.css {
     alias /srv/nvme/ftesurf-site/board/current/link.css;
-    charset utf-8;
+    charset utf-8; charset_types text/css application/javascript text/javascript;
     limit_except GET { deny all; }
     add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Cache-Control no-cache always;
     add_header X-FTESurf-Site "1" always;
-    gzip on; gzip_vary on; gzip_types text/css application/javascript;
+    gzip on; gzip_vary on; gzip_types text/css application/javascript text/javascript;
 }
 location = /worldofsurf/board/runview.js {
     alias /srv/nvme/ftesurf-site/board/current/runview.js;
-    charset utf-8;
+    charset utf-8; charset_types text/css application/javascript text/javascript;
     limit_except GET { deny all; }
     add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Cache-Control no-cache always;
     add_header X-FTESurf-Site "1" always;
-    gzip on; gzip_vary on; gzip_types text/css application/javascript;
+    gzip on; gzip_vary on; gzip_types text/css application/javascript text/javascript;
 }
 location = /worldofsurf/board/watch.css {
     alias /srv/nvme/ftesurf-site/board/current/watch.css;
-    charset utf-8;
+    charset utf-8; charset_types text/css application/javascript text/javascript;
     limit_except GET { deny all; }
     add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Cache-Control no-cache always;
     add_header X-FTESurf-Site "1" always;
-    gzip on; gzip_vary on; gzip_types text/css application/javascript;
+    gzip on; gzip_vary on; gzip_types text/css application/javascript text/javascript;
 }
 location = /worldofsurf/board/watch.html {
     alias /srv/nvme/ftesurf-site/board/current/watch.html;
-    charset utf-8;
+    charset utf-8; charset_types text/css application/javascript text/javascript;
     limit_except GET { deny all; }
     add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self' https://play.proto.bar https://2a2e9751dc963919eb0896275279ba13.r2.cloudflarestorage.com; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Cache-Control no-cache always;
     add_header X-FTESurf-Site "1" always;
-    gzip on; gzip_vary on; gzip_types text/css application/javascript;
+    gzip on; gzip_vary on; gzip_types text/css application/javascript text/javascript;
 }
 location = /worldofsurf/board/watch.js {
     alias /srv/nvme/ftesurf-site/board/current/watch.js;
-    charset utf-8;
+    charset utf-8; charset_types text/css application/javascript text/javascript;
     limit_except GET { deny all; }
     add_header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Cache-Control no-cache always;
     add_header X-FTESurf-Site "1" always;
-    gzip on; gzip_vary on; gzip_types text/css application/javascript;
+    gzip on; gzip_vary on; gzip_types text/css application/javascript text/javascript;
 }
 
 location ^~ /worldofsurf/board/ {

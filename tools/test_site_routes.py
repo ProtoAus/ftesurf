@@ -313,7 +313,7 @@ http {
                     self.assertEqual(status, 200)
                     self.assertEqual(body, (self.board / name).read_bytes())
                     self.assertEqual(len(self.seen), before)          # nginx served it, surfd never saw it
-                    self.assertEqual(headers['content-type'].split(';')[0], types[name.rsplit('.', 1)[1]])
+                    self.assertEqual(headers['content-type'], types[name.rsplit('.', 1)[1]] + '; charset=utf-8')
                     self.assertEqual(headers.get('content-security-policy'),
                                      self.appmod.WEB_CSP_WATCH if name == 'watch.html' else app_csp)
                     self.assertEqual(headers.get('x-content-type-options'), 'nosniff')

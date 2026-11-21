@@ -41,7 +41,8 @@ SURFD=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8084/board/api/m
 for f in board.html board.css board.js link.css runview.js watch.css watch.html watch.js; do
     [ -f "$SITE/board/current/$f" ] || {
         echo "missing $SITE/board/current/$f -- publish the board first (as proto):" >&2
-        echo "    python3 -B tools/publish_board.py --live      (from a game checkout)" >&2
+        echo "    python3 -B tools/publish_board.py --install-follow   (from a game checkout; publishes within 5 min)" >&2
+        echo "    python3 -B tools/publish_board.py --live             (or at once)" >&2
         exit 1
     }
 done
@@ -155,12 +156,19 @@ echo "   server_name proto.bar count after: $AFTER  (must equal $BEFORE)"
 PROBE=$(mktemp -d)
 trap 'rm -f "$PROBE/headers" "$PROBE/body"; rmdir "$PROBE"' EXIT
 trap 'exit 1' HUP INT TERM
+probe_failed() {
+    echo "FAILED: $1 -- nginx is reloaded with the new snippet." >&2
+    echo "Restore vhost: cp -p $BAK $VHOST" >&2
+    if [ -n "$SNIP_BAK" ]; then echo "Restore snippet: cp -p $SNIP_BAK $SNIP" >&2; fi
+    echo "Then: nginx -t && systemctl reload nginx" >&2
+    exit 1
+}
 for BASE in ftesurf worldofsurf; do
     curl --fail --silent --show-error --max-time 10 \
         --resolve proto.bar:443:127.0.0.1 \
         -D "$PROBE/headers" -o "$PROBE/body" \
-        "https://proto.bar/$BASE/board/api/maps"
-    python3 - "$PROBE/headers" "$PROBE/body" <<'PY'
+        "https://proto.bar/$BASE/board/api/maps" || probe_failed "/$BASE/board/api/maps did not answer"
+    if ! python3 - "$PROBE/headers" "$PROBE/body" <<'PY'
 import json
 import pathlib
 import re
@@ -174,14 +182,15 @@ body = json.loads(pathlib.Path(sys.argv[2]).read_text())
 if not isinstance(body, dict) or body.get("v") != 1 or not isinstance(body.get("maps"), list):
     sys.exit("FAILED: not the board maps envelope")
 PY
+    then probe_failed "/$BASE/board/api/maps is not the marked board JSON"; fi
     echo "   GET /$BASE/board/api/maps -> marked board JSON"
     for f in "" board.js watch.html; do
         curl --fail --silent --show-error --max-time 10 --resolve proto.bar:443:127.0.0.1 \
-            -D "$PROBE/headers" -o "$PROBE/body" "https://proto.bar/$BASE/board/$f"
+            -D "$PROBE/headers" -o "$PROBE/body" "https://proto.bar/$BASE/board/$f" ||
+            probe_failed "/$BASE/board/$f did not answer"
         cmp -s "$PROBE/body" "$SITE/board/current/${f:-board.html}" ||
-            { echo "FAILED: /$BASE/board/$f is not the published board/current/${f:-board.html}" >&2; exit 1; }
-        grep -qi '^content-security-policy:' "$PROBE/headers" ||
-            { echo "FAILED: /$BASE/board/$f has no Content-Security-Policy" >&2; exit 1; }
+            probe_failed "/$BASE/board/$f is not the published board/current/${f:-board.html}"
+        grep -qi '^content-security-policy:' "$PROBE/headers" || probe_failed "/$BASE/board/$f has no Content-Security-Policy"
     done
     echo "   GET /$BASE/board/{,board.js,watch.html} -> the published static files, with CSP"
 done
