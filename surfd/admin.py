@@ -142,6 +142,9 @@ SAY_TEXT = re.compile(r"^[A-Za-z0-9 _.,:!?'/+()\[\]@-]{1,120}$")
 
 REVIEW_ACTIONS = ("approve", "reject", "clear", "recheck")
 RUNS_PAGE = 100
+TOP10_DAYS = 14             # P1697: the review list's default window (?days=, 1-3650)
+STARTLAG_READ = 256 << 10   # bytes of a .rec searched for its `startlag` (it follows the start's seed and padding)
+STARTLAG_FLAG = 3           # ticks: the review flags a start that ran this many untimed (BACKLOG, P1675)
 NOTE_MAX = 200
 QUERY_MAX = 64
 VERDICTS_SHOWN = 200
@@ -349,6 +352,53 @@ RUN_STATES = {
     "stages": "x.stage_note",
     "all": "1",
 }
+
+
+# P1697 (Lex's anti-cheat finish list item 7): every row standing in a ranked top 10, main boards and stages, newest
+# first, with what a review needs. Store-only: nothing here gates the board. A stage row with no recording of its own
+# shows its run's replay as the board finds it (surfd._PARENT_SQL, rejected ones included here). TAS boards have their
+# own review. The receipt columns are NULL until sweep.py made the tables.
+def list_top10(conn, since, offset):
+    rcols = {r[1] for r in conn.execute("PRAGMA table_info(receipts)")}
+    rc = ("rc.verdict AS rverdict, rc.angles, rc.reason AS rreason, rc.sig, "
+          + ("rc.journal" if "journal" in rcols else "NULL AS journal")
+          if {"verdict", "angles", "reason", "sig"} <= rcols
+          else "NULL AS rverdict, NULL AS angles, NULL AS rreason, NULL AS sig, NULL AS journal")
+    join = " LEFT JOIN receipts rc ON rc.runid = k.runid AND k.runid NOT IN ('', '-')" if "verdict" in rcols else ""
+    return conn.execute("""
+WITH ranked AS (
+  SELECT r.map, r.track, r.leg, r.style, r.player, r.name, r.millis, r.flags, r.submitted, r.replay_id, r.runid,
+         r.plat, r.pad,
+         ROW_NUMBER() OVER (PARTITION BY r.map, r.track, r.leg, r.style
+                            ORDER BY r.millis, r.submitted, r.player) AS rk
+    FROM runs r WHERE r.tier = 'ranked' AND r.style <> 'tas'),
+top AS (
+  SELECT k.*, CASE WHEN k.replay_id > 0 THEN k.replay_id ELSE
+           (SELECT q.id FROM replays q WHERE k.leg > 0 AND k.runid NOT IN ('', '-') AND q.runid = k.runid
+               AND q.map = k.map AND q.track = k.track AND q.leg = 0 AND q.player = k.player
+             ORDER BY q.bound DESC, q.kind <> 'run', q.id DESC LIMIT 1) END AS rid
+    FROM ranked k WHERE k.rk <= 10 AND k.submitted >= ?)
+SELECT k.*, p.map_dir, p.track AS ptrack, p.leg AS pleg, p.leaf, p.kind,
+       (SELECT v.verdict FROM verdicts v WHERE v.replay_id = p.id AND v.at >= p.submitted
+          AND v.verdict <> 'ERROR' ORDER BY v.id DESC LIMIT 1) AS verdict,
+       CASE WHEN w.at >= p.submitted THEN w.decision END AS decision, """ + rc + """
+  FROM top k
+  LEFT JOIN replays p ON p.id = k.rid
+  LEFT JOIN reviews w ON w.replay_id = p.id""" + join + """
+ ORDER BY k.submitted DESC, k.map, k.track, k.leg, k.style, k.rk, k.player LIMIT ? OFFSET ?""",
+                        (since, RUNS_PAGE, offset)).fetchall()
+
+
+def rec_startlag(path):
+    """P1675's `startlag <ticks> <s> <max>` from the head of a .rec, as (ticks, s, max); None when absent (not
+    measured: a stage handover, held metadata, an older build) or unreadable."""
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(STARTLAG_READ).decode("utf-8", "replace")
+    except OSError:
+        return None
+    m = re.search(r"(?m)^startlag ([0-9]+) ([0-9.]+) ([0-9.]+)\s*$", head)
+    return (int(m.group(1)), float(m.group(2)), float(m.group(3))) if m else None
 
 
 def receipt_for(conn, rid, runid, *, own_association_budget=False):
@@ -1798,6 +1848,51 @@ def build_blueprint(app, log, db_connect, lobby_ttl, client_identity=None,
             return render_template("admin_runs.html", csrf=csrf_token(),
                                    states=list(RUN_STATES),
                                    have_bans=bans is not None)
+
+        @bp.get("/top10")
+        def top10_page():
+            if not logged_in():
+                return redirect(url_for("admin.login_form"))
+            return render_template("admin_top10.html", csrf=csrf_token(), days=TOP10_DAYS,
+                                   flag=STARTLAG_FLAG)
+
+        @bp.get("/api/top10")
+        def top10_list():
+            if not logged_in():
+                return jsonify({"ok": False, "error": "not logged in"}), 401
+            raw_days = request.args.get("days", str(TOP10_DAYS))
+            raw_off = request.args.get("offset", "0")
+            if not RID_TEXT.match(raw_days) or not 1 <= int(raw_days) <= 3650:
+                return jsonify({"ok": False, "error": "bad days"}), 400
+            if not RID_TEXT.match(raw_off) or int(raw_off) > 10 ** 7:
+                return jsonify({"ok": False, "error": "bad offset"}), 400
+            days, offset = int(raw_days), int(raw_off)
+            now = int(time.time())
+            conn = db_connect()
+            try:
+                rows = list_top10(conn, now - days * 86400, offset)
+            except sqlite3.Error as exc:
+                log.exception("admin top10 db error: %s", exc)
+                return jsonify({"ok": False, "error": "storage error"}), 500
+            finally:
+                conn.close()
+            out = []
+            for row in rows:
+                r = dict(row)
+                lag = None
+                # a stage after the first starts with a handover, which is never measured (the grammar's startlag)
+                if r["rid"] is not None and r["leaf"] and r["leg"] <= 1:
+                    path, _why = replay_file({"map_dir": r["map_dir"], "track": r["ptrack"], "leg": r["pleg"],
+                                              "leaf": r["leaf"], "kind": r["kind"]})
+                    lag = rec_startlag(path) if path else None
+                r["startlag"] = list(lag) if lag else None
+                r["via_run"] = bool(r["rid"]) and not r["replay_id"]     # a stage row showing its run's replay
+                r["legdir"] = leg_dir(r["track"], r["leg"])
+                for k in ("map_dir", "ptrack", "pleg", "leaf"):
+                    r.pop(k, None)
+                out.append(r)
+            return jsonify({"ok": True, "days": days, "offset": offset, "limit": RUNS_PAGE, "now": now,
+                            "flag": STARTLAG_FLAG, "rows": out})
 
         @bp.get("/run/<int:rid>")
         def run_page(rid):

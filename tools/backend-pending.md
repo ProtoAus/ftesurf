@@ -7,6 +7,12 @@ CURRENT = cd1965f1 (root /srv/nvme/agent-work/gen1674-20261121-e3; kit FTESurf-p
 pins native fteqw-svarm64 1753f9d4 (lobby engine patch-1683, swapped 01:38Z), and keeps the consumer's 900 s
 `systemctl start` (its drop-in will have 18 ExecStartPre blocks, ~280 s; or the owner prunes retired blocks).
 
+## P1697 top-10 review page -- READY for the NEXT generation (worldofsurf-47)
+surfd/admin.py (list_top10, rec_startlag, /admin/top10, /admin/api/top10), surfd/recplot.py (the `startlag` record into
+the admin cert), templates/admin_top10.html (new), admin_run.html (start lag row), the "Top 10" nav link in admin.html,
+admin_runs.html, admin_run.html, admin_maps.html, admin_accounts.html and reportd_reports.html. Read-only: no schema,
+no board or verdict change. Check: surfd/test_admin.py (section 9t); live, /admin/top10 lists rows after login.
+
 ## P1694 controller tag -- surfd half READY for the NEXT generation; BEFORE the next client release (worldofsurf-6f)
 Game main 9841756b. Files: surfd/surfd.py (`runs_pad`: `ALTER TABLE runs|replays ADD COLUMN pad INTEGER NOT NULL
 DEFAULT 0`, idempotent, no schema bump; post `pad=1` and the finish record `pad 1` raise it like `plat`; board and

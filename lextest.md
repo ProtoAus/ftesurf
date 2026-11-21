@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1697 -- the top 10 review page (anti-cheat finish list item 7; worldofsurf-47) -- after the next backend generation
+1. Open the admin, click "Top 10" (beside Runs). Every run in a ranked top 10 from the last 14 days is listed, newest
+   first, with its rank, verdict, your review, the receipt, whether its view and journal were checked, its start lag
+   and a Controller/Linux tag. Change the days box to look further back.
+2. Click a row: the run page opens, with "start lag" in its details. Approve or reject there as usual.
+3. Tell me what you want flagged that is not there (for example top-10 runs with no evidence at all).
+
 ## P1694 -- controller runs are tagged (anti-cheat finish list; worldofsurf-6f) -- needs the next release
 Needs a Windows game with the P1694 engine and the lobbies (or your local server) on the P1694 QC; the board shows the
 tag once surfd's next generation is live.

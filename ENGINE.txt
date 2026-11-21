@@ -1,4 +1,9 @@
 # The engine build this QuakeC requires.
+# P1697 (backend surfd/admin.py recplot.py templates/admin_top10.html admin_run.html + nav; Lex's anti-cheat finish
+# list item 7, worldofsurf-47): /admin/top10 lists every row standing in a ranked top 10 (main, bonus, stage), newest
+# first, with verdict, review, receipt (signature, view angles, journal), Linux/Controller tags and the run's start
+# lag (3+ ticks flagged); the run page shows the start lag too. Store-only: no board, verdict or evidence changes.
+# Reaches the Pi with a guarded generation. No engine or QC change. Record: engine ENGINE_PATCHES P1697.
 # P1694 (engine cl_input.c keys.c in_generic.c cl_main.c client.h; QC sv_timer sv_player sv_saveloc sv_resume
 # sv_rewindstate sv_lobby sh_defs, cl_online cl_scores; tools/reccheck.py; surfd surfd.py recplot.py board.js/css,
 # admin_run.html; Lex's 20 Nov ruling "lite fire red" controller tag, worldofsurf-6f): the read-only in_pad_frames

@@ -160,7 +160,7 @@ REC = ("FTESURF-REC 9\nmap surf_kitsune\ntickrate 0.01\nmovetickrate 0.01\n"
        "0.0100 2.00 0.00 0.00 300.00 400.00 0.00 0.0 16.0 0\n"
        "cp 1 1\nend 2 3 1 1\n")
 
-REVIEW_RULES = {"/admin/runs", "/admin/run/<int:rid>", "/admin/api/runs",
+REVIEW_RULES = {"/admin/runs", "/admin/run/<int:rid>", "/admin/api/runs", "/admin/top10", "/admin/api/top10",
                 "/admin/api/run/<int:rid>", "/admin/api/run/<int:rid>/path",
                 "/admin/api/review", "/admin/api/keydecision"}
 ROW_KEYS = {"id", "kind", "stage_note", "map", "map_dir", "track", "leg", "legdir",
@@ -950,6 +950,108 @@ def review_section(pw_hash, pw):
     check("panel off: /board/ still works", c.get("/board/").status_code, 200)
 
 
+def top10_section(pw_hash, pw):
+    """P1697: /admin/api/top10 lists the rows standing in a ranked top 10, newest first, with the receipt and the
+    run's startlag; login required; nothing else changes."""
+    print("\n--- 9t. top 10 review --")
+    clock = FakeClock()
+    m = fresh(SURFD_ADMIN_HASH=pw_hash, SURFD_ADMIN_SECRET="s" * 48, SURFD_ADMIN_INSECURE_COOKIE="1")
+    adm = sys.modules["admin"]
+    m.time = clock
+    adm.time = clock
+    c = m.app.test_client()
+    check("top10: not logged in -> 401", c.get("/admin/api/top10").status_code, 401)
+    check("top10 page: not logged in -> login", c.get("/admin/top10").status_code, 302)
+
+    def submit(player, ticks, runid, startlag=None):
+        leaf = rec_leaf(ticks, player)
+        path = os.path.join(m.RUNS_DIR, "surf_kitsune", "main", leaf)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        body = "runid %s\nbegin\n" % runid + ("startlag %s\n" % startlag if startlag else "")
+        with open(path, "w", newline="\n") as fh:
+            fh.write(REC.replace("begin\n", body))
+        j = m.app.test_client().post("/api/run", data={
+            "key": "testkey", "map": "surf_kitsune", "track": "0", "leg": "0", "player": player,
+            "name": player.capitalize(), "ticks": str(ticks), "tickrate": "100", "flags": "0",
+            "node": "p27510", "rec": leaf, "runid": runid},
+            environ_base={"REMOTE_ADDR": "127.0.0.1"}).get_json()
+        clock.now += 60
+        return j
+
+    # twelve players, the fastest submitted LAST: ranks 11 and 12 are the two slowest, submitted first
+    for i in range(12):
+        submit("p%02d" % i, 5000 - i * 100, "r-p%02d" % i, startlag="4 0.04 0.06" if i == 11 else None)
+    conn = m.connect()
+    try:
+        with conn:
+            conn.execute("INSERT INTO receipts (runid, map, pub, verdict, angles, reason, at, sig, signed_at)"
+                         " VALUES ('r-p11', 'surf_kitsune', ?, 'VALID', 'OK', '', 100, 1, 1)", ("a" * 64,))
+    except sqlite3.OperationalError as exc:
+        print("skip  receipts table: %s" % exc)
+    finally:
+        conn.close()
+    check("top10: login", login(c, pw).status_code, 302)
+    r = c.get("/admin/api/top10")
+    j = r.get_json() or {}
+    rows = j.get("rows", [])
+    check("top10: 200 and ok", (r.status_code, j.get("ok")), (200, True))
+    check("top10: ten rows (ranks 11 and 12 are left out)", len(rows), 10)
+    check("top10: newest first, so the fastest (#1, p11) leads", (rows[0]["rk"], rows[0]["player"]) if rows else None,
+          (1, "p11"))
+    check("top10: the ranks are 1-10", sorted(x["rk"] for x in rows), list(range(1, 11)))
+    check("top10: the slowest two are absent", {"p00", "p01"} & {x["player"] for x in rows}, set())
+    check("top10: the receipt joins by runid", (rows[0].get("rverdict"), rows[0].get("angles"), rows[0].get("sig"))
+          if rows else None, ("VALID", "OK", 1))
+    check("top10: the run's startlag is read from its .rec", rows[0].get("startlag") if rows else None,
+          [4, 0.04, 0.06])
+    check("top10: a .rec without startlag reads None", rows[1].get("startlag") if len(rows) > 1 else "?", None)
+    check("top10: a row links its replay", all(x.get("rid") for x in rows), True)
+    check("top10: no file paths leak", any(k in rows[0] for k in ("map_dir", "leaf")) if rows else True, False)
+    # stage rows with no recording of their own show their run's replay; a stage after the first has no start lag;
+    # a ranked TAS-style row is left out
+    conn = m.connect()
+    try:
+        with conn:
+            rid11 = conn.execute("SELECT id FROM replays WHERE runid = 'r-p11'").fetchone()[0]
+            for leg in (1, 2):
+                conn.execute("INSERT INTO runs (map, track, leg, tier, style, player, name, ticks, tickrate, millis,"
+                             " flags, node, runid, submitted, replay_id) VALUES ('surf_kitsune', 0, ?, 'ranked',"
+                             " 'clean', 'p11', 'P11', 900, 100, 9000, 0, 'p27510', 'r-p11', ?, 0)",
+                             (leg, int(clock.now)))
+            conn.execute("INSERT INTO runs (map, track, leg, tier, style, player, name, ticks, tickrate, millis,"
+                         " flags, node, runid, submitted, replay_id) VALUES ('surf_kitsune', 0, 0, 'ranked',"
+                         " 'tas', 'tasser', 'Tasser', 100, 100, 1000, 0, 'p27510', 'r-tas', ?, 0)", (int(clock.now),))
+    finally:
+        conn.close()
+    rows = (c.get("/admin/api/top10").get_json() or {}).get("rows", [])
+    st = {x["leg"]: x for x in rows if x["leg"] > 0}
+    check("top10: stage rows are listed and open their run's replay",
+          (st.get(1, {}).get("rid"), st.get(2, {}).get("rid")), (rid11, rid11))
+    check("top10: ...marked as showing the run's", (st.get(1, {}).get("via_run"), rows[-1].get("via_run")),
+          (True, False))
+    check("top10: stage 1 shows the run's start lag, stage 2 none (a handover)",
+          (st.get(1, {}).get("startlag"), st.get(2, {}).get("startlag")), ([4, 0.04, 0.06], None))
+    check("top10: a ranked TAS-style row is left out", any(x["style"] == "tas" for x in rows), False)
+    clock.now += 30 * 86400
+    check("top10: login again (the session aged out with the clock)", login(c, pw).status_code, 302)
+    j = c.get("/admin/api/top10", query_string={"days": "7"}).get_json() or {}
+    check("top10: runs older than ?days are left out", (j.get("ok"), len(j.get("rows", []))), (True, 0))
+    j = c.get("/admin/api/top10", query_string={"days": "60"}).get_json() or {}
+    check("top10: a wider window finds them again", len(j.get("rows", [])), 12)
+    for bad in ("0", "9999", "x", "-1"):
+        check("top10: days=%s is 400" % bad, c.get("/admin/api/top10", query_string={"days": bad}).status_code, 400)
+    check("top10: a bad offset is 400", c.get("/admin/api/top10", query_string={"offset": "x"}).status_code, 400)
+    page = c.get("/admin/top10")
+    check("top10 page: 200 with the table", (page.status_code, 'id="top"' in page.get_data(as_text=True)),
+          (200, True))
+    check("runs page links the top 10 page", "/admin/top10" in c.get("/admin/runs").get_data(as_text=True), True)
+    ok = js_parses("admin_top10.html")
+    if ok is None:
+        print("skip %-62s %s" % ("the admin_top10.html script parses", "no node on PATH"))
+    else:
+        check("the admin_top10.html script parses", ok, True)
+
+
 def main():
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import admin
@@ -1372,6 +1474,7 @@ def main():
     rcon2.budget_reset()
 
     review_section(HASH, PW)
+    top10_section(HASH, PW)
 
     for h in HOMES:
         shutil.rmtree(h, ignore_errors=True)

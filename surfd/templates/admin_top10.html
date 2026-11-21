@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>FTESurf admin - top 10</title>
+{% include "_admin_style.html" %}
+</head>
+<body>
+<header>
+  <h1>FTESurf admin</h1>
+  <nav class="nav"><a href="/admin/">Fleet</a><a href="/admin/maps">Maps</a><a href="/admin/runs">Runs</a><a href="/admin/top10" aria-current="page">Top 10</a><a href="/admin/accounts">Accounts</a><a href="/admin/reports">Reports</a><a href="https://proto.bar/worldofsurf/">Site</a></nav>
+  <span class="spacer"></span>
+  <form method="post" action="/admin/logout" style="margin:0">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit">Sign out</button>
+  </form>
+</header>
+
+<main>
+  <div class="card">
+    <h2>Top 10 review <span class="muted" style="font-weight:400" id="summary"></span></h2>
+    <p class="note">Every run standing in a ranked top 10 (main courses, bonuses and stages), newest first. Open a row
+      to see its evidence and approve or reject it. Nothing on this page changes the board by itself.</p>
+    <div class="row" style="margin-bottom:.6rem">
+      <label>Submitted in the last <input type="number" id="days" min="1" max="3650" value="{{ days }}"
+             style="width:5em"> days</label>
+    </div>
+    <div class="scroll">
+      <table id="top"><thead><tr>
+        <th class="num">rank</th><th>map</th><th>leg</th><th>style</th><th>name</th><th class="num">time</th>
+        <th>submitted</th><th>verdict</th><th>review</th><th>receipt</th><th>view</th><th>journal</th>
+        <th>start lag</th><th>tags</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+    <div class="row"><button id="more" hidden>Show more</button></div>
+  </div>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const FLAG = {{ flag | tojson }};
+const VERDICT_CLS = {PASS: "up", HOLD: "warn", REFUSE: "down"};
+const DECISION_CLS = {approve: "up", reject: "down"};
+const RCPT_CLS = {VALID: "up", FAULT: "down"};
+const CHECK_CLS = {OK: "up", BLIND: "info", PENDING: "info", ABSENT: "warn", FAULT: "down"};
+let days = {{ days | tojson }}, offset = 0, seq = 0;
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = String(text);
+  return e;
+}
+function pill(word, cls, title) {
+  const e = word ? el("span", "pill " + (cls || ""), word) : el("span", "muted", "-");
+  if (title) e.title = title;
+  return e;
+}
+function toast(msg, ok) {
+  const d = el("div", ok ? "ok" : "bad", msg);
+  document.getElementById("toast").appendChild(d);
+  setTimeout(() => d.remove(), ok ? 4000 : 9000);
+}
+function fmtMs(ms) {
+  if (!(ms >= 0)) return "-";
+  const m = Math.floor(ms / 60000), s = Math.floor(ms / 1000) % 60;
+  return m + ":" + String(s).padStart(2, "0") + "." + String(ms % 1000).padStart(3, "0");
+}
+function fmtDate(t) {
+  return t > 0 ? new Date(t * 1000).toLocaleString([], {dateStyle: "medium", timeStyle: "short"}) : "-";
+}
+function legLabel(r) {
+  if (r.track <= 0) return r.leg <= 0 ? "Main" : "Stage " + r.leg;
+  return "Bonus " + r.track + (r.leg > 0 ? " / Stage " + r.leg : "");
+}
+function cell(child) { const td = el("td"); td.appendChild(child); return td; }
+
+function row(r) {
+  const tr = el("tr", r.rid ? "link" : "");
+  if (r.rid) tr.dataset.rid = r.rid;
+  // the receipt: VALID/FAULT, and "unsigned" when the client did not sign (no evidence for the run's inputs)
+  const rcpt = r.rverdict ? pill(r.rverdict + (r.sig ? "" : " unsigned"), r.sig ? RCPT_CLS[r.rverdict] : "warn",
+                                 r.rreason || "") : pill(r.runid && r.runid !== "-" ? "none yet" : "no run id", "warn");
+  // `angles` "" = not checked or no .view uploaded (sweep.py cannot tell them apart)
+  const view = r.angles ? pill(r.angles, CHECK_CLS[r.angles]) : pill(r.rverdict ? "no view" : "", "warn");
+  const jr = r.journal ? pill(r.journal, CHECK_CLS[r.journal]) : el("span", "muted", "-");
+  const lag = r.startlag ? pill(r.startlag[0] + " tick" + (r.startlag[0] === 1 ? "" : "s"),
+                                r.startlag[0] >= FLAG ? "warn" : "",
+                                r.startlag[1] + " s untimed (bound " + r.startlag[2] + " s)")
+                         : el("span", "muted", !r.rid ? "no recording" : r.leg > 1 ? "handover" : "not measured");
+  const tags = el("td");
+  if (r.pad) tags.appendChild(pill("Controller", "warn"));
+  if (Number(r.plat) > 0) { if (r.pad) tags.append(" "); tags.appendChild(pill("Linux", "info")); }
+  if (!r.pad && !(Number(r.plat) > 0)) tags.appendChild(el("span", "muted", "-"));
+  tr.append(el("td", "num mono", "#" + r.rk), el("td", "", r.map), el("td", "", legLabel(r)), el("td", "", r.style),
+            el("td", "", r.name), el("td", "num mono", fmtMs(r.millis)), el("td", "", fmtDate(r.submitted)),
+            cell(pill(r.verdict && r.via_run ? r.verdict + " (run)" : r.verdict, VERDICT_CLS[r.verdict],
+                      r.via_run ? "this stage has no recording of its own: its run's verdict" : "")),
+            cell(pill(r.decision && r.via_run ? r.decision + " (run)" : r.decision, DECISION_CLS[r.decision])),
+            cell(rcpt), cell(view), cell(jr), cell(lag), tags);
+  return tr;
+}
+
+async function load(append) {
+  const my = ++seq;
+  const qs = new URLSearchParams({days: String(days), offset: String(append ? offset : 0)});
+  let r, j;
+  try {
+    r = await fetch("/admin/api/top10?" + qs, {credentials: "same-origin"});
+    if (r.status === 401) { location.href = "/admin/login"; return; }
+    j = await r.json();
+  } catch (e) { toast("could not load the list: " + e.message, false); return; }
+  if (my !== seq) return;
+  if (!j.ok) { toast(j.error || "failed", false); return; }
+  const tb = document.querySelector("#top tbody");
+  if (!append) { tb.replaceChildren(); offset = 0; }
+  for (const x of j.rows) tb.appendChild(row(x));
+  offset += j.rows.length;
+  document.getElementById("more").hidden = j.rows.length < j.limit;
+  document.getElementById("summary").textContent = offset + " in the last " + j.days + " days";
+}
+
+document.querySelector("#top tbody").addEventListener("click", ev => {
+  const tr = ev.target.closest("tr[data-rid]");
+  if (tr) window.open("/admin/run/" + tr.dataset.rid, "_blank", "noopener");
+});
+document.getElementById("days").addEventListener("change", ev => {
+  const v = parseInt(ev.target.value, 10);
+  if (v >= 1 && v <= 3650) { days = v; load(false); }
+});
+document.getElementById("more").addEventListener("click", () => load(true));
+load(false);
+</script>
+</body>
+</html>

@@ -353,6 +353,14 @@ def _parse(fh, max_bytes, max_points):
                 bad_recs += 1
                 continue
             cert["plat"] = v
+        elif kw == "startlag":
+            # P1675: <ticks> <s> <max>, at a fresh start; P1697 shows it on the run page (3+ ticks flagged).
+            v = [_num(x) for x in a]
+            counts["startlag"] += 1
+            if len(v) != 3 or any(x is None or x < 0 or x > VALUE_LIMIT for x in v):
+                bad_recs += 1
+                continue
+            cert["startlag"] = v
         elif kw == "pad":
             # P1694: the run used a controller, after `plat`; written only as `pad 1`.
             if a != ["1"]:

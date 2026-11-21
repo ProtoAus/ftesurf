@@ -10,7 +10,7 @@
 <body>
 <header>
   <h1>FTESurf admin</h1>
-  <nav class="nav"><a href="/admin/">Fleet</a><a href="/admin/maps">Maps</a><a href="/admin/runs" aria-current="page">Runs</a><a href="/admin/accounts">Accounts</a><a href="/admin/reports">Reports</a><a href="https://proto.bar/worldofsurf/">Site</a></nav>
+  <nav class="nav"><a href="/admin/">Fleet</a><a href="/admin/maps">Maps</a><a href="/admin/runs" aria-current="page">Runs</a><a href="/admin/top10">Top 10</a><a href="/admin/accounts">Accounts</a><a href="/admin/reports">Reports</a><a href="https://proto.bar/worldofsurf/">Site</a></nav>
   <span class="spacer"></span>
   <form method="post" action="/admin/logout" style="margin:0">
     <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -960,6 +960,8 @@ function renderHead(P) {
   if (cert.prof) dlRow(dl, "prof", cert.prof);
   if (Number(cert.plat) > 0) dlRow(dl, "plat", platWord(cert.plat));   // P1603: the run's (the header's is the start's)
   if (Number(cert.pad) > 0) dlRow(dl, "pad", "1 (the finish: a controller was used)");   // P1694
+  if (cert.startlag) dlRow(dl, "start lag", cert.startlag[0] + " tick(s), " + cert.startlag[1] + " s untimed (bound " +
+                           cert.startlag[2] + " s)" + (cert.startlag[0] >= 3 ? " -- 3 or more: look at the start" : ""));   // P1697
   if (cert.clk) {
     const [bound, hyst, allow, wall, stalls, cred, debt, behind] = cert.clk;
     dlRow(dl, "clock", "behind " + behind.toFixed(3) + " s over " + wall.toFixed(3) +
