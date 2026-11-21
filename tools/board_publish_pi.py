@@ -198,7 +198,7 @@ def run(p):
             state = {}
         if state.get('generation') == m['generation']:
             return {'action': 'none', 'generation': m['generation'], 'snippet': snippet, 'quiet': True}
-        return dict(live_publish(p, m, home), action='published')
+        return dict(live_publish(p, m, home), action='would publish' if p.get('dry_run') else 'published')
     if p['live_generation'] != m['generation']:
         raise Refused('the live generation changed since planning')
     if tuple(p['csp']) != live_csp(m, home):

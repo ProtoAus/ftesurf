@@ -9,8 +9,9 @@ fix can go ahead of a generation: `python3 -B tools/publish_board.py --commit <r
 generation carries its source_ref's board, and `git diff source_ref ref` touches no live member outside web/ (so it
 is refused while main's server code is ahead of the live generation; cut the fix from the live source_ref). It holds
 until the next generation, and must also land on main (or the next generation drops it). Keeps two releases. A surfd
-WEB_CSP change ships with its generation and needs ftesurf.nginx + `sudo sh install.sh` then (install.sh compares each
-file's CSP with the live surfd's; the timer fails on a per-location mismatch every tick). Members the live generation
+WEB_CSP change ships with its generation; run `sudo sh install.sh` (with the matching ftesurf.nginx) right AFTER that
+generation is live: install.sh compares each file's CSP with the live surfd's and refuses earlier, and until it runs the
+timer fails every tick and the public board keeps the previous page files. Members the live generation
 holds at other bytes than its source_ref (mapwatch.py) are reported as `held`, not refused. ORDER when this lands:
 `--install-follow` (publishes), then the release's `sudo sh install.sh`: until then release.ps1's "Verify the page"
 fails after the site swap (snippet STALE). Pi side: tools/board_publish_pi.py.

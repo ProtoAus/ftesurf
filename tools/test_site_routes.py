@@ -80,6 +80,7 @@ class SiteRoutes(unittest.TestCase):
                 pass
 
         backend = make_server('127.0.0.1', 0, app, request_handler=Quiet)
+        cls.backend_port = backend.server_port
         thread = threading.Thread(target=backend.serve_forever, daemon=True)
         thread.start()
         cls.addClassCleanup(lambda: (backend.shutdown(), thread.join(5), backend.server_close()))
@@ -219,6 +220,17 @@ http {
         finally:
             conn.close()
 
+    @classmethod
+    def direct(cls, path):
+        """surfd itself, bypassing nginx (install.sh compares against this)."""
+        conn = http.client.HTTPConnection('127.0.0.1', cls.backend_port, timeout=10)
+        try:
+            conn.request('GET', path)
+            resp = conn.getresponse()
+            return resp.status, {k.lower(): v for k, v in resp.getheaders()}, resp.read()
+        finally:
+            conn.close()
+
     def test_static_and_direct_feed(self):
         types = {'index.html': 'text/html', 'anticheat.html': 'text/html',
                  'site.css': 'text/css', 'site.js': 'application/javascript',
@@ -320,6 +332,7 @@ http {
                     self.assertEqual(headers.get('referrer-policy'), 'strict-origin-when-cross-origin')
                     self.assertEqual(headers.get('cache-control'), 'no-cache')
                     self.assertEqual(headers.get('x-ftesurf-site'), '1')
+                    self.assertIn('last-modified', headers)              # install.sh's static-copy marker
                     self.assertEqual(self.request(prefix + uri, 'HEAD')[0], 200)
                     self.assertEqual(self.request(prefix + uri, 'POST')[0], 403)
                     self.assertEqual(len(self.seen), before)
@@ -328,6 +341,10 @@ http {
                 before = len(self.seen)
                 self.request(prefix + uri)
                 self.assertEqual(len(self.seen), before + 1, uri)
+            # surfd's own page files carry no Last-Modified, so install.sh can tell the static copy from a proxied one.
+            for name in BOARD_FILES[1:]:
+                self.assertNotIn('last-modified', self.direct('/board/' + name)[1], name)
+            self.assertNotIn('last-modified', self.direct('/board/')[1])
 
     def test_staged_accounts_use_legacy_callback(self):
         for base in ('ftesurf', 'worldofsurf'):

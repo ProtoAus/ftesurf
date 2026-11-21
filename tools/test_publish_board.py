@@ -220,7 +220,8 @@ class ByteRule(unittest.TestCase):
         hashes.update({'surfd.py': '0' * 64, 'recplot.py': '0' * 64, 'templates/admin.html': '0' * 64,
                        'tools/ksfconvert.py': '0' * 64, 'test_board.py': '0' * 64, 'momfetch.py': '0' * 64})
         hashes['recplot.py'] = sha(pb.git('show', '%s:surfd/recplot.py' % self.base, root=self.repo))
-        return dict(dict(source_ref=self.base, hashes=hashes, external_python={'momimport': '/x/momimport.py'}), **over)
+        conv = sha(pb.git('show', '%s:tools/momimport.py' % self.base, root=self.repo))
+        return dict(dict(source_ref=self.base, hashes=hashes, external_python={'momimport': conv}), **over)
 
     def refused(self, ref, why, **over):
         with self.assertRaisesRegex(SystemExit, why): pb.ui_only(self.info(**over), ref, self.repo)
@@ -247,7 +248,8 @@ class ByteRule(unittest.TestCase):
         info = self.info(); info['hashes']['ghost.py'] = '0' * 64
         with self.assertRaisesRegex(SystemExit, 'no git source'): pb.ui_only(info, ref, self.repo)
         held = pb.ui_only(self.info(), ref, self.repo)
-        self.assertIn('surfd/surfd.py', held); self.assertNotIn('surfd/recplot.py', held)
+        self.assertIn('surfd/surfd.py', held); self.assertNotIn('surfd/recplot.py', held); self.assertNotIn('tools/momimport.py', held)
+        with self.assertRaisesRegex(SystemExit, 'no dry run'): quiet(pb.main, ['--install-follow', '--dry-run'])
 
     def test_a_reverted_server_change_passes(self):
         self.write('surfd/surfd.py', 'tried'); self.commit('try')

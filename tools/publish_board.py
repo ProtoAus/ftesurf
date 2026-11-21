@@ -105,6 +105,7 @@ def install_follow(pi):
     script += ('echo %s > "$D/SOURCE.txt"\n' % git('rev-parse', 'HEAD').decode().strip() +
                'systemctl --user daemon-reload\nsystemctl --user enable --now ftesurf-board-follow.timer\n'
                'systemctl --user is-active --quiet ftesurf-board-follow.timer\n'
+               'test "$(loginctl show-user "$(id -un)" -p Linger --value)" = yes   # else the timer dies at logout\n'
                '/usr/bin/python3.11 -I -B "$D/board_publish_pi.py" --follow\n'
                'test -f /srv/nvme/ftesurf-site/board/current/board.html\necho FOLLOW INSTALLED\n')
     done = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-T', pi, 'sh -s'], input=script.encode(), capture_output=True, timeout=180)

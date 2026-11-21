@@ -151,7 +151,7 @@ probe_failed() {
     echo "Then: nginx -t && systemctl reload nginx" >&2
     exit 1
 }
-systemctl reload nginx || probe_failed "systemctl reload nginx (nginx keeps its previous configuration)"
+systemctl reload nginx || probe_failed "systemctl reload nginx failed (is nginx running? systemctl status nginx)"
 echo "== reloaded =="
 
 AFTER=$(nginx -T 2>/dev/null | grep -c 'server_name proto.bar;' || true)
@@ -161,7 +161,7 @@ echo "   server_name proto.bar count after: $AFTER  (must equal $BEFORE)"
 # Probe both prefixes through this nginx, not public DNS. A filebrowser SPA
 # can answer 200 too: require the marker, JSON type and actual board envelope.
 PROBE=$(mktemp -d)
-trap 'rm -f "$PROBE/headers" "$PROBE/body"; rmdir "$PROBE"' EXIT
+trap 'rm -f "$PROBE/headers" "$PROBE/body" "$PROBE/want"; rmdir "$PROBE"' EXIT
 trap 'exit 1' HUP INT TERM
 for BASE in ftesurf worldofsurf; do
     curl --fail --silent --show-error --max-time 10 \
@@ -190,12 +190,17 @@ PY
             probe_failed "/$BASE/board/$f did not answer"
         cmp -s "$PROBE/body" "$SITE/board/current/${f:-board.html}" ||
             probe_failed "/$BASE/board/$f is not the published board/current/${f:-board.html}"
+        # nginx's static module sends Last-Modified; surfd's /board/<file> does not: this is the static copy.
+        grep -qi '^last-modified:' "$PROBE/headers" || probe_failed "/$BASE/board/$f was not served from board/current"
         # The CSP must be the one the LIVE surfd sends for the same file (it still serves /board/<file>).
+        curl --silent --show-error --max-time 10 -D "$PROBE/want" -o /dev/null "http://127.0.0.1:8084/board/$f" ||
+            probe_failed "the live surfd did not answer /board/$f (re-run install.sh once it does)"
         GOT=$(grep -i '^content-security-policy:' "$PROBE/headers" | tr -d '\r' | cut -d: -f2-)
-        WANT=$(curl --silent --max-time 10 -D - -o /dev/null "http://127.0.0.1:8084/board/$f" |
-               grep -i '^content-security-policy:' | tr -d '\r' | cut -d: -f2-)
+        WANT=$(grep -i '^content-security-policy:' "$PROBE/want" | tr -d '\r' | cut -d: -f2-)
+        [ -n "$WANT" ] || probe_failed "the live surfd sent no CSP for /board/$f"
         [ -n "$GOT" ] && [ "$GOT" = "$WANT" ] ||
-            probe_failed "/$BASE/board/$f CSP differs from the live surfd's (ftesurf.nginx vs surfd.py WEB_CSP)"
+            probe_failed "/$BASE/board/$f CSP differs from the live surfd's. If this snippet carries a NEWER surfd.py's
+        CSP, the generation shipping it is not live yet: restore, and run install.sh after that generation"
     done
     echo "   GET /$BASE/board/{page + 7 assets} -> the published files, with the live surfd's CSP"
 done
