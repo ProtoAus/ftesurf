@@ -13,14 +13,16 @@
 - A charged retry makes run_t_viewsec > 0: later stage files in that run read `clock sampled` and TAS legal-start
   saves are refused with a viewing-window message. A stage reopened at a retry may qualify after a ground jump with a
   duration counted from the retry (older behaviour; its own look).
-- Owner defaults taken (tell me to change them): a stage spanning a retry still qualifies with the away seconds inside
-  it; TAS and segmented runs are charged the same way.
+- Owner confirmed these defaults (Lex, 21 Nov: "ok"): a stage spanning a retry still qualifies with the away seconds
+  inside it; TAS and segmented runs are charged the same way.
 
 ## P1646 script guard -- what it leaves (21 Nov, worldofsurf-6f)
-- Owner rulings pending: are `rotate`, `impulse` and cvar-changing binds (toggle, cycle, inc) scripts? They are not
-  button presses and are not counted. Is the engine's cl_iDrive (on by default: releasing the newer of two opposite
-  movement keys re-presses the older, as "snap tap" does) allowed? Linux outside injection (XTEST keyboard,
-  XSendEvent, uinput, Steam Input or firmware macros) looks like real presses: accepted as a known limit?
+- Owner rulings (Lex, 21 Nov): "scripts are not allowed, 1 button per action" -- a key that runs one command the game
+  offers (`rotate`, `impulse`, a cvar toggle/cycle/inc) is one action and stays uncounted; chaining is a script.
+  "Features we offer are 'standard'": cl_iDrive (on by default; releasing the newer of two opposite movement keys
+  re-presses the older, as "snap tap" does) is allowed, as is any shipped client feature. Linux outside injection
+  (XTEST keyboard, XSendEvent, uinput, Steam Input or firmware macros) looks like real presses: "I accept" -- a known
+  limit, not a bug.
 - A wait/in/deferral is counted when it runs, not when its tail runs: one issued before a run can land its tail inside
   the run uncounted (button presses in the tail are still judged when they execute).
 - After a wait at level 29 the level's buffer is held up to one network frame (cmd.c re-stamps waitattime); key lines
