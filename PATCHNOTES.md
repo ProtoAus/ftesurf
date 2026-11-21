@@ -26,7 +26,8 @@
 - The upload finishes in the background even if you leave the server straight away. Needs the next game update and a server update.
 
 ### P1698 The sky is a window, not a cutoff
-- On Source maps the sky no longer hides what is behind it at twice its distance (it hid more the closer you flew). What you could see behind the sky is drawn, as in Source, and only that: other stages' players, trails, effects, ropes and decals are no longer drawn where you cannot see them.
+- On Source maps the sky no longer hides what is behind it at twice its distance (it hid more the closer you flew).
+- What you could see behind the sky is drawn, as in Source, and only that: other stages' players, trails, effects, ropes and decals are no longer drawn where you cannot see them.
 - ahop_coast's sea no longer has a jagged edge seen from outside the map. Zone outlines show again on a few maps without vis data.
 
 ### P1703 The input journal is part of online play
