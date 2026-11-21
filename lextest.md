@@ -1,6 +1,6 @@
 # lextest.md — things waiting on a human
 
-## P1700 -- TAS uploads on the website (root FTESurf-worktrees/tasweb-20261121-a03)
+## P1700 -- TAS uploads on the website (root FTESurf-worktrees/tasweb-20261121-a03) -- LIVE 21 Nov (tasupd da9042b3)
 1. proto.bar/ftesurf/ (Overview, Zoning, Anti-Cheat): the menu has "TAS uploads"; it opens play.proto.bar/tasup/. The
    Leaderboard page gets it with the next backend generation (tools/backend-pending.md).
 2. play.proto.bar/tasup/: the site's menu across the top. Under Find a course, type "sand": the browser offers

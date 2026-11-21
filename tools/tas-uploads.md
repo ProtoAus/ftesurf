@@ -193,6 +193,10 @@ the browser's own list (`<datalist>`, no script) of every map in the site's medi
 re-read when it changes); a map's page (`/tasup/board?map=`, track defaults to Main) shows its thumbnail
 (/ftesurf/media/thumbs/<uuid>.jpg, same origin: CSP img-src 'self'), tier, stage and bonus counts, and chips for
 Main and each bonus (and any track with runs). The Steam link page is proto.bar/ftesurf/board/link.
+INSTALLED 21 Nov (Lex's root run, `--upgrade-from 73229378`): release /opt/ftesurf-tasupd/da9042b3; checked live: the
+menu, 2846 maps in the finder, surf_sandtrap2's thumbnail and Bonus 4 chip, CSP img-src 'self'. The site's static
+pages (releases/0.1.54 index/zoning/anticheat) carry the link (edited in place, *.pre1700 backups); board.html waits
+for the next surfd generation.
 
 ## Still to build
 
