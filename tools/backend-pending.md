@@ -11,6 +11,14 @@ pins native fteqw-svarm64 1753f9d4 (lobby engine patch-1683, swapped 01:38Z), an
 surfd/surfd.py: SURFD_NOEV_JOURNAL_SINCE (epoch seconds; unset = a missing Windows journal never counts toward P1699's
 mark). Set it to the release time of the build whose menu asks for terms 10. Check: surfd/test_noev.py.
 
+## NEXT GENERATION KIT READY (offline): gen1702 (session a03de808, 21 Nov)
+Private kit FTESurf-private/worktrees/gen1702-20261121-a03 (RUNBOOK.md), made with the one maintained tool
+FTESurf-private/genkit/advance.py. It resolves both blockers below (ships the members-v1 guard and
+templates/admin_top10.html, excludes tasupd*.py), adds hand step 2c for P1694's runs.pad/replays.pad (as gen1603 did
+plat), installs a TRIMMED drop-in (1303 -> 139 lines, 17 -> 2 preflights) and gives the owner installer keep-two
+rotation. Its step 4 requires the deployed tools/pi_retention.py to keep what the newest two generations' code names.
+Dry build at main 4caa1ad7 passes every bank; two independent reviews + a fix round. Waits for Lex's go.
+
 ## BLOCKERS for a generation at current main (session a03de808, 21 Nov; checked against the gen1674 kit)
 1. surfd/tasupd.py + tasupd_wsgi.py (P1640/P1696/P1700) are a separate service (tools/install_tasupd.py), not surfd
    runtime, but sit in surfd/: the kit's build_candidate.py asserts "REF adds modules outside the 91-member runtime".

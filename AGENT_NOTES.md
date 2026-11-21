@@ -5,8 +5,9 @@ Lex's rule, everywhere: keep the newest 2 backups. On the Pi, proto's daily `fte
 runs tools/pi_retention.py (tools/pi-retention.md): backup copies `NAME.pre*`/`NAME.bak*`/`NAME-pre<N>*` in the surfd
 home and data, the lobby game folders and the site keep two per file (+ tasupd's two csprogs.dat.pre[0-9]*);
 `/srv/nvme/agent-work/<root>` is REMOVED after 14 days with no change (mtime or ctime) unless something live names it
-(units, drop-ins, nginx, cron, the live generation's records, a running process), it is one of the newest two
-`gen<N>-*`, or it holds a `RETAIN` file. **A Pi task root you need past 14 idle days: `touch RETAIN` in it.** It fails
+(units, drop-ins, nginx, cron, the live generation's records, a running process), it is one of the newest two STAGED
+`gen<N>-*` (backend/candidate.json) or named by their own transition code (operator/retained/root-proposal: e.g. the
+ac-lexical activation lock every owner install takes), or it holds a `RETAIN` file. **A Pi task root you need past 14 idle days: `touch RETAIN` in it.** It fails
 closed (unreadable configuration stops the run) and logs to /srv/nvme/ftesurf-ops/retention/retention.log. Producers
 prune their own root-owned copies: install_tasupd.py keeps two releases. A new backup scheme: name copies
 `<file>.pre<patch>-<UTC stamp>` so the stamp orders them.

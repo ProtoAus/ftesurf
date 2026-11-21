@@ -9,7 +9,8 @@ Runs as proto, daily (systemd --user ftesurf-retention.timer; tools/pi-retention
   October copy "newest"); a copy's -shm/-wal/-journal go with it. Also kept: what a reader picks by its own rule
   (READER_PICKS: tasupd trusts the newest two csprogs.dat.pre[0-9]* by mtime).
 - Task roots in AGENT_WORK: removed once nothing in them changed (mtime or ctime: cp -a/rsync -a keep old mtimes) for
-  IDLE_DAYS and nothing live names them. The newest KEEP gen<N>-* roots and a root holding RETAIN always stay.
+  IDLE_DAYS and nothing live names them. The newest KEEP STAGED gen<N>-* roots (backend/candidate.json), every root their
+  own transition code names (GEN_CODE), and a root holding RETAIN always stay.
 - tasupd-src-* checkouts in OPS: the newest KEEP and any whose commit has a release in TASUPD_RELEASES.
 
 Never removed: a path the live configuration names (systemd units and drop-ins, nginx, cron, the surfd home's own
@@ -57,6 +58,9 @@ STAMP = re.compile(r'(?<![0-9])(20[0-9]{2})([01][0-9])([0-3][0-9])[T-]?([0-2][0-
 AW_NAME = re.compile(r'/srv/nvme/agent-work/([A-Za-z0-9._-]+)')
 PATH = re.compile(r'/srv/nvme/[A-Za-z0-9._@+=/-]+')
 GEN = re.compile(r'^gen([0-9]+)-')
+# What a generation's transition runs, under <root>/backend/: its operator (with the assembled launchers), the retained
+# modules it loads and the Root installer. They name roots outside the generation (ac-lexical-...'s activation.lock).
+GEN_CODE = ('operator', 'retained', 'root-proposal')
 COMMIT = re.compile(r'[0-9a-f]{7,40}')
 
 
@@ -68,7 +72,7 @@ def config_refs():
     """Every /srv/nvme path the live configuration names. Raises Unreadable rather than miss one."""
     refs = set()
     def scan(text): refs.update(m.rstrip('/.') for m in PATH.findall(text))
-    def read(p):
+    def read(p, code=False):
         try:
             if os.path.islink(p):
                 scan(os.readlink(p))
@@ -76,7 +80,9 @@ def config_refs():
                 except FileNotFoundError: return          # dangling: the link text is all it names
             st = os.stat(p)
             if not stat.S_ISREG(st.st_mode): return       # /dev/null masks and the like
-            if st.st_size > MAX_CONFIG: raise Unreadable('%s is %d bytes' % (p, st.st_size))
+            if st.st_size > MAX_CONFIG:
+                if code: return                           # a log beside generation code is not code
+                raise Unreadable('%s is %d bytes' % (p, st.st_size))
             with open(p, errors='replace') as f: scan(f.read())
         except OSError as e:
             if UNREADABLE_OK.search(p) or (BACKUP.match(os.path.basename(p)) and not loaded(p)): return
@@ -111,7 +117,34 @@ def config_refs():
         for p in glob.glob('%s/%s/backend/*/control/manifest.json' % (AGENT_WORK, root)) + \
                  glob.glob('%s/%s/backend/*/generation-identity.json' % (AGENT_WORK, root)):
             read(p)
+    # The newest two generations are kept whole (root_plan); so is what their own transition code names, or the next
+    # owner install / swap would find its lock or a retained input gone once the drop-in stopped naming it.
+    for root in generations():
+        for sub in GEN_CODE:
+            top = os.path.join(AGENT_WORK, root, 'backend', sub)
+            try: st = os.lstat(top)
+            except FileNotFoundError: continue
+            except OSError as e: raise Unreadable('%s: %s' % (top, e)) from e
+            if not stat.S_ISDIR(st.st_mode): continue    # a link or a file is not generation code
+            for dp, dn, fn in os.walk(top, onerror=fail):
+                for f in fn: read(os.path.join(dp, f), code=True)
     return refs
+
+
+def generations():
+    """The newest KEEP staged generations: gen<N>-* roots holding backend/candidate.json (a bare mkdir does not count),
+    by N."""
+    try: names = os.listdir(AGENT_WORK)
+    except FileNotFoundError: return []
+    staged = []
+    for n in names:
+        if not GEN.match(n) or os.path.islink(os.path.join(AGENT_WORK, n)): continue
+        marker = os.path.join(AGENT_WORK, n, 'backend', 'candidate.json')
+        try: st = os.stat(marker)
+        except (FileNotFoundError, NotADirectoryError): continue
+        except OSError as e: raise Unreadable('%s: %s' % (marker, e)) from e   # never guess which generations exist
+        if stat.S_ISREG(st.st_mode): staged.append(n)
+    return sorted(staged, key=lambda n: int(GEN.match(n).group(1)), reverse=True)[:KEEP]
 
 
 def loaded(p):
@@ -233,7 +266,7 @@ def root_plan(refs, used, now, mounts=frozenset()):
     refd = {m.group(1) for x in refs | used for m in [AW_NAME.match(x)] if m}
     try: names = sorted(os.listdir(AGENT_WORK))
     except FileNotFoundError: return [], []
-    gens = sorted((n for n in names if GEN.match(n)), key=lambda n: int(GEN.match(n).group(1)), reverse=True)[:KEEP]
+    gens = generations()
     cut = now - IDLE_DAYS * 86400
     remove, kept = [], []
     for n in names:

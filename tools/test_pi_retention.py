@@ -56,6 +56,10 @@ class Base(unittest.TestCase):
             for n in dn + fn: os.utime(os.path.join(dp, n), (t, t))
         os.utime(p, (t, t)); return str(p)
 
+    def gen(self, path, age_days):
+        """A staged generation root (backend/candidate.json), aged like dir()."""
+        self.file(Path(path) / 'backend' / 'candidate.json', age_days, b'{}'); return self.dir(path, age_days)
+
     def run_main(self, *args):
         out = io.StringIO()
         with contextlib.redirect_stdout(out): rc = r.main(list(args))
@@ -124,7 +128,8 @@ class Backups(Base):
 class Roots(Base):
     def test_old_unnamed_roots_go_and_the_live_and_marked_stay(self):
         aw = self.aw
-        g = [self.dir(aw / n, 20) for n in ('gen1674-20261121-e3', 'gen1650-20261120-ed', 'gen1635-20261120-ed')]
+        g = [self.gen(aw / n, 20) for n in ('gen1674-20261121-e3', 'gen1650-20261120-ed', 'gen1635-20261120-ed')]
+        bare = self.dir(aw / 'gen1702-20261122-x', 20)          # mkdir'ed, never staged: neither newest nor kept for it
         old = self.dir(aw / 'surfd825-20261019T0815Z', 25)
         named = self.dir(aw / 'playerfix-import-01a1c798', 25)
         marked = self.dir(aw / 'tq1635-ed', 25); self.file(aw / 'tq1635-ed' / 'RETAIN', 25)
@@ -132,7 +137,7 @@ class Roots(Base):
         running = self.dir(aw / 'pictures-coverage-d25cd9e', 25)
         os.symlink(old, aw / 'link-root')
         remove, kept = r.root_plan({named + '/state'}, {running + '/bin/worker.py'}, self.now)
-        self.assertEqual(sorted(remove), sorted([g[2], old]))
+        self.assertEqual(sorted(remove), sorted([g[2], old, bare]))
         why = dict(kept)
         self.assertEqual(why[g[0]], 'one of the newest generations'); self.assertEqual(why[g[1]], 'one of the newest generations')
         self.assertIn('named', why[named]); self.assertIn('named', why[running])
@@ -191,8 +196,8 @@ class Roots(Base):
 
     def test_a_referenced_old_generation_stays(self):
         aw = self.aw
-        for n in ('gen1674-a', 'gen1650-b'): self.dir(aw / n, 20)
-        g = self.dir(aw / 'gen1603-c', 25)
+        for n in ('gen1674-a', 'gen1650-b'): self.gen(aw / n, 20)
+        g = self.gen(aw / 'gen1603-c', 25)
         self.assertEqual(r.root_plan({g + '/backend'}, set(), self.now)[0], [])
 
     def test_the_real_process_scan_protects_a_root(self):
@@ -247,6 +252,36 @@ class Refs(Base):
             self.assertIn('%s/%s' % (aw, want), refs)
         self.assertIn(str(home / 'run.sh'), refs)                        # stops at the quote and the literal \n
         for dead in ('dead-1', 'dead-2', 'dead-3'): self.assertFalse(any(dead in x for x in refs), dead)
+
+    def test_what_the_newest_generations_code_names_is_kept(self):
+        """P1702: the trimmed drop-in stops naming ac-lexical-..., whose activation.lock the next owner install takes."""
+        aw = str(self.aw)
+        for n, body in (('gen1702-a', '%s/lock-root/activation.lock' % aw), ('gen1674-b', '%s/retained-root/x' % aw),
+                        ('gen1650-c', '%s/third-root/x' % aw)):
+            self.file(Path(aw) / n / 'backend' / 'retained' / 'reuse' / 'm.py', 1, ('X = "%s"\n' % body).encode())
+            self.file(Path(aw) / n / 'backend' / 'candidate.json', 1, b'{}')
+        os.makedirs(Path(aw) / 'gen9999-bare')                                         # a bare mkdir is no generation
+        os.makedirs(Path(aw) / 'gen9998-odd' / 'backend' / 'candidate.json')            # nor a folder named like the marker
+        self.file(Path(aw) / 'gen1702-a' / 'backend' / 'operator' / 'big.log', 1, b'x' * 4096)
+        self.file(Path(aw) / 'gen1702-a' / 'backend' / 'root-proposal' / 'owner_install.py', 1, ('L = "%s/inst-root/l"' % aw).encode())
+        self.file(Path(aw) / 'gen1702-a' / 'backend' / 'operator' / 'launchers' / 'run.sh', 1, ('%s/launch-root/x' % aw).encode())
+        self.file(Path(aw) / 'gen1702-a' / 'backend' / 'test_preparation.py', 1, ('%s/test-root/x' % aw).encode())
+        self.file(Path(aw) / 'gen1702-a' / 'backend' / 'primary' / 'runtime' / 'x.py', 1, ('%s/runtime-root/x' % aw).encode())
+        os.symlink(str(self.d), Path(aw) / 'gen1674-b' / 'backend' / 'operator')         # a linked code folder is not walked
+        refs = r.config_refs()
+        for want in ('lock-root/activation.lock', 'retained-root/x', 'inst-root/l', 'launch-root/x'):
+            self.assertIn('%s/%s' % (aw, want), refs)
+        for gone in ('third-root', 'test-root', 'runtime-root'):
+            self.assertFalse(any(gone in x for x in refs), gone)
+        self.assertEqual(r.generations(), ['gen1702-a', 'gen1674-b'])
+        saved = r.MAX_CONFIG; r.MAX_CONFIG = 1024
+        try: self.assertIn('%s/lock-root/activation.lock' % aw, r.config_refs())    # an oversized log is skipped, not fatal
+        finally: r.MAX_CONFIG = saved
+        os.chmod(Path(aw) / 'gen1702-a' / 'backend' / 'retained' / 'reuse', 0)
+        with self.assertRaises(r.Unreadable): r.config_refs()
+        os.chmod(Path(aw) / 'gen1702-a' / 'backend' / 'retained' / 'reuse', 0o700)
+        os.chmod(Path(aw) / 'gen1674-b' / 'backend', 0)                      # cannot tell whether it is staged: stop
+        with self.assertRaises(r.Unreadable): r.generations()
 
     def test_unreadable_configuration_stops_the_run(self):
         if os.geteuid() == 0: self.skipTest('root reads everything')
