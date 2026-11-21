@@ -356,6 +356,7 @@ client/cl_tassections.qc
 // Shared transport policy must precede both TAS directory callers.
 shared/sh_tasdirectory.qc
 client/cl_tasshare.qc
+client/cl_tasupload.qc       // P1695: after cl_jargon.qc (its header reader) and cl_tasshare.qc (the terms check)
 // Patch 1195: prederror reports; cl_triggers/cl_chat/cl_warpop call it through prototypes.
 client/cl_prederr.qc
 client/cl_crash.qc          // P1418: after cl_prederr.qc (PE_Local, PE_BoxUp)

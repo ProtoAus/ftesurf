@@ -1044,5 +1044,190 @@ class Service(unittest.TestCase):
         r = self.upload(c, rec())
         self.assertEqual(r.status_code, 409); self.assertIn('You uploaded this file already: run %d' % j['id'], r.get_json()['error'])
 
+
+import hashlib
+import threading
+import ed25519 as ed
+
+SEED_ALICE, SEED_BOB, SEED_BANNED, SEED_NOBODY = (bytes([i]) * 32 for i in (1, 2, 3, 4))
+CODE_BYTES = b'csprogs of a lobby, P1695'
+
+
+class GameUpload(Service):
+    """P1695: the game's signed upload (cl_tasupload.qc): a challenge, then the proof and the file in one body."""
+
+    def setUp(self):
+        super().setUp()
+        d = Path(self.tmp.name)
+        with contextlib.closing(sqlite3.connect(self.accounts)) as db, db:
+            db.execute('CREATE TABLE keylinks (pub TEXT PRIMARY KEY, steamid TEXT NOT NULL)')
+            db.executemany('INSERT INTO keylinks VALUES (?, ?)', [(ed.publickey(SEED_ALICE).hex(), ALICE),
+                           (ed.publickey(SEED_BOB).hex(), BOB), (ed.publickey(SEED_BANNED).hex(), BANNED)])
+        self.lobby = d / 'csprogs.dat'; self.lobby.write_bytes(CODE_BYTES)
+        self.code = hashlib.sha256(CODE_BYTES).hexdigest()
+        self.releases = d / 'releases'; self.releases.mkdir()
+        self.fetched = []
+        self.app = self.game_app()
+
+    def game_app(self, **over):
+        kw = dict(http=self.fake_http, clock=self.clock, game_files=[str(self.lobby)], releases=str(self.releases),
+                  fetch=self.fake_fetch, verify=ed)
+        kw.update(over)
+        return svc.create_app(self.store, self.accounts, self.zdirs, BASE, **kw)
+
+    def fake_fetch(self, url, cap):
+        self.fetched.append(url)
+        return self.objects[url]
+
+    def challenge(self, c, body):
+        r = c.post('/tasup/api/game/challenge', json={'sha': hashlib.sha256(body).hexdigest()})
+        self.assertEqual(r.status_code, 200)
+        return r.get_json()
+
+    def game_body(self, body, nonce, seed=SEED_ALICE, code=None, signed=None, sha=None):
+        code = code or self.code
+        sha = sha or hashlib.sha256(body).hexdigest()
+        signed = signed or svc.game_nonce(nonce, sha)
+        sig = ed.sign(seed, (svc.ACCT_STATEMENT % (svc.GAME_SITE, signed, svc.GAME_KIND, 1, code)).encode())
+        return b'FTESURF-TASUP 1\nnonce %s\npub %s\nsig %s\ngame %s\n' % (
+            nonce.encode(), ed.publickey(seed).hex().encode(), sig.hex().encode(), code.encode()) + body
+
+    def post(self, c, data):
+        return c.post('/tasup/upload', data=data, content_type=svc.GAME_MIME)
+
+    def send(self, body=None, **kw):
+        c = self.app.test_client()
+        body = rec() if body is None else body
+        n = self.challenge(c, body)['nonce']
+        return self.post(c, self.game_body(body, n, **kw))
+
+    def refused(self, r, status, words):
+        j = r.get_json()
+        self.assertEqual((r.status_code, j['ok'], j['status']), (200, 0, status), j)   # the game reads 200 bodies only
+        self.assertIn(words, j['error'])
+
+    def test_statement_is_surfds(self):
+        text = (Path(__file__).resolve().parent / 'accounts.py').read_text()
+        self.assertIn('STATEMENT = %s' % json.dumps(svc.ACCT_STATEMENT), text)
+
+    def test_a_signed_upload_is_checked_and_kept_as_the_linked_account(self):
+        r = self.send()
+        j = r.get_json()
+        self.assertEqual((r.status_code, j['ok'], j['state'], j['verdict']), (200, 1, 'shown', 'PASS'), j)
+        self.assertEqual(j['page'], BASE + '/run/%d' % j['id'])
+        with contextlib.closing(sqlite3.connect(self.store)) as db:
+            self.assertEqual(db.execute('SELECT steamid, tool FROM runs WHERE id = ?', (j['id'],)).fetchone(), (ALICE, svc.GAME_TOOL))
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM challenges').fetchone()[0], 0)   # spent
+
+    def test_a_confirmation_is_used_once(self):
+        c, body = self.app.test_client(), rec()
+        n = self.challenge(c, body)['nonce']
+        self.assertEqual(self.post(c, self.game_body(body, n)).get_json()['ok'], 1)
+        self.refused(self.post(c, self.game_body(body, n)), 409, 'expired or was used')
+
+    def test_a_confirmation_expires(self):
+        c, body = self.app.test_client(), rec()
+        n = self.challenge(c, body)['nonce']
+        self.clock.t += svc.CHALLENGE_TTL + 1
+        self.refused(self.post(c, self.game_body(body, n)), 409, 'expired or was used')
+
+    def test_the_file_must_be_the_one_confirmed(self):
+        c, body = self.app.test_client(), rec()
+        n = self.challenge(c, body)['nonce']
+        other = rec(extra='comment other\n')
+        self.refused(self.post(c, self.game_body(other, n)), 409, 'The file changed')
+
+    def test_unknown_game_code_is_told_to_update(self):
+        self.refused(self.send(code='ab' * 32), 403, 'Update your game')
+
+    def test_a_wrong_signature_is_refused(self):
+        c, body = self.app.test_client(), rec()
+        n = self.challenge(c, body)['nonce']
+        good = self.game_body(body, n)
+        bad = good.replace(b'sig ' + good.split(b'sig ')[1][:4], b'sig 0000', 1)
+        self.refused(self.post(c, bad), 403, 'did not check out')
+
+    def test_a_zone_publish_style_proof_is_not_an_upload_proof(self):
+        """The raw nonce signed (as zone publishing signs its own) is no proof here: game_nonce names the purpose."""
+        c, body = self.app.test_client(), rec()
+        n = self.challenge(c, body)['nonce']
+        self.refused(self.post(c, self.game_body(body, n, signed=n)), 403, 'did not check out')
+
+    def test_the_proof_names_the_file(self):
+        """A proof made for one file does not carry another (the challenge for the second, the proof of the first)."""
+        c, a, b = self.app.test_client(), rec(), rec(extra='comment b\n')
+        n = self.challenge(c, b)['nonce']
+        self.refused(self.post(c, self.game_body(b, n, sha=hashlib.sha256(a).hexdigest())), 403, 'did not check out')
+
+    def test_three_tries_a_confirmation(self):
+        c, body = self.app.test_client(), rec()
+        n = self.challenge(c, body)['nonce']
+        for _ in range(3): self.refused(self.post(c, self.game_body(body, n, code='ab' * 32)), 403, 'Update')
+        self.refused(self.post(c, self.game_body(body, n)), 409, 'expired or was used')
+
+    def test_unlinked_and_banned_keys(self):
+        self.refused(self.send(seed=SEED_NOBODY), 403, 'Link your Steam account first')
+        self.refused(self.send(seed=SEED_BANNED), 403, 'cannot upload')
+
+    def test_no_proof_and_web_form_unchanged(self):
+        c = self.app.test_client()
+        self.refused(self.post(c, rec()), 400, 'no account proof')
+        r = self.upload(c, rec())                    # the form still needs a Steam session
+        self.assertEqual(r.status_code, 401)
+
+    def test_refusals_from_the_checker_come_back_as_200(self):
+        r = self.send(body=edited_speed())
+        j = r.get_json()
+        self.assertEqual((r.status_code, j['ok']), (200, 1), j)
+        self.assertEqual(j['state'], 'held')
+        self.refused(self.send(body=b'not a recording'), 400, 'not a FTESURF-REC')
+
+    def test_a_released_csprogs_is_learned_from_its_manifest(self):
+        rel = b'csprogs of release 0.1.60'
+        blake = hashlib.blake2b(rel, digest_size=32).hexdigest()
+        (self.releases / '0.1.60').mkdir()
+        pay = {'hash_algo': 'blake2b-256', 'object_layout': 'objects/{h0h1}/{hash}', 'mirrors': ['https://dl.example/u'],
+               'files': [{'path': 'ftesurf/csprogs.dat', 'hash': blake, 'size': len(rel), 'platform': 'all', 'exec': False}]}
+        (self.releases / '0.1.60' / 'update.json').write_text(json.dumps({'payload': json.dumps(pay), 'signature': 'x'}))
+        url = 'https://dl.example/u/objects/%s/%s' % (blake[:2], blake)
+        self.objects = {url: rel}
+        code = hashlib.sha256(rel).hexdigest()
+        c, body = self.app.test_client(), rec()
+        n = self.challenge(c, body)['nonce']        # starts learning it in the background
+        for _ in range(200):
+            with contextlib.closing(sqlite3.connect(self.store)) as db:
+                if db.execute('SELECT sha FROM codes WHERE blake = ?', (blake,)).fetchone(): break
+            time.sleep(0.01)
+        self.assertEqual(self.fetched, [url])
+        j = self.post(c, self.game_body(body, n, code=code)).get_json()
+        self.assertEqual((j['ok'], j['state']), (1, 'shown'), j)
+
+    def test_a_release_object_with_other_bytes_is_not_learned(self):
+        rel = b'csprogs of release 0.1.61'
+        blake = hashlib.blake2b(rel, digest_size=32).hexdigest()
+        (self.releases / '0.1.61').mkdir()
+        pay = {'hash_algo': 'blake2b-256', 'object_layout': 'objects/{h0h1}/{hash}', 'mirrors': ['https://dl.example/u'],
+               'files': [{'path': 'ftesurf/csprogs.dat', 'hash': blake, 'size': len(rel), 'platform': 'all', 'exec': False}]}
+        (self.releases / '0.1.61' / 'update.json').write_text(json.dumps({'payload': json.dumps(pay), 'signature': 'x'}))
+        self.objects = {'https://dl.example/u/objects/%s/%s' % (blake[:2], blake): b'something else'}
+        c, body = self.app.test_client(), rec()
+        n = self.challenge(c, body)['nonce']
+        for _ in range(200):
+            if self.fetched and not any(t.name != 'MainThread' and t.is_alive() for t in threading.enumerate()): break
+            time.sleep(0.01)
+        self.refused(self.post(c, self.game_body(body, n, code=hashlib.sha256(rel).hexdigest())), 403, 'Update your game')
+
+    def test_an_oversized_body_is_refused_before_it_is_read(self):
+        c = self.app.test_client()
+        r = c.post('/tasup/upload', data=b'x' * 16, content_type=svc.GAME_MIME,
+                   environ_overrides={'CONTENT_LENGTH': str(svc.MAX_FORM + 1)})   # the client would send 16
+        self.refused(r, 413, 'over 8 MB')
+
+    def test_challenges_are_capped_per_address(self):
+        c = self.app.test_client()
+        for i in range(svc.CHALLENGES_PEER): self.assertEqual(self.challenge(c, b'%d' % i)['ok'], 1)
+        j = self.challenge(c, b'one more')
+        self.assertEqual((j['ok'], j['status']), (0, 429))
+
 if __name__ == '__main__':
     unittest.main()

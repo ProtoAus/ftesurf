@@ -2654,6 +2654,8 @@ float(string cmd) CSQC_ConsoleCommand =
 				else TASOptUI_Go(tsline);
 			}
 		}
+		else if (cmdargc >= 2 && !strcmp(argv(1), "upload"))
+			TASUp_Verb(cmdargc);        // P1695: the Upload tab (cl_tasupload.qc)
 		else if (cmdargc >= 3 && !strcmp(argv(1), "jargon") && (argv(2) == "start" || argv(2) == "mode" || argv(2) == "set" ||
 		         argv(2) == "air" || argv(2) == "del" || argv(2) == "undo" || argv(2) == "redo" || argv(2) == "list" ||
 		         argv(2) == "field" || argv(2) == "guide" || argv(2) == "guides" || argv(2) == "drop" || argv(2) == "options" || argv(2) == "takeover" || argv(2) == "redofrom" || argv(2) == "download"))

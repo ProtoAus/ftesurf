@@ -39,10 +39,11 @@ import sys
 import threading
 import time
 import urllib.parse
+import urllib.request
 import zlib
 from array import array
 from contextlib import contextmanager
-from flask import Flask, Response, jsonify, redirect, request
+from flask import Flask, Response, g, jsonify, redirect, request
 import steam
 
 MAX_REC = 8 * 1024 ** 2             # ~10 minutes of a native .rec (~200 B a sample); a KSF/sparse export runs longer
@@ -80,7 +81,7 @@ HITS_MAX = 50000                    # rate-limit keys a minute; past it new addr
 # The course record a PASS must not reach: trusted tiers' clean runs only. Community rows are demoted,
 # banned:* hidden, and surfd marks any TF_TAS run style tas (cheat or practice history too).
 TIERS_RECORD, STYLES_RECORD = ('ranked', 'momentum', 'ksf'), ('clean',)
-SCHEMA = 1                          # PRAGMA user_version `init` leaves; a release needs at least its own
+SCHEMA = 2                          # PRAGMA user_version `init` leaves; a release needs at least its own (2: P1695)
 MAPNAME = re.compile(r'[a-z0-9_][a-z0-9_.+-]{0,63}')
 STATE_RE = re.compile(r'[0-9a-f]{32}')
 _CTRL = re.compile(r'[\x00-\x1f\x7f]')
@@ -90,6 +91,19 @@ STATES = ('shown', 'held', 'rejected', 'removed')
 # Header keys only surfd's KSF/Momentum importers write (117 imports against 164 of our recordings).
 IMPORT_KEYS = frozenset(('foreign', 'demodata', 'ksfdemo', 'ksfground', 'ksfmoves', 'ksftime', 'mapbuild',
                          'momdemo', 'momquality'))
+# P1695: the game posts to /upload as GAME_MIME, the linked key's proof before the file (cl_tasupload.qc). Signed as zone
+# publishing signs (acct_sign kind -6, the site fixed) but over game_nonce(): this purpose and the file's hash, so neither
+# service takes the other's proof and no game code before P1695 can make one.
+GAME_MIME = 'application/x-ftesurf-tasup'
+GAME_HEAD = re.compile(rb'FTESURF-TASUP 1\nnonce ([0-9a-f]{32})\npub ([0-9a-f]{64})\nsig ([0-9a-f]{128})\ngame ([0-9a-f]{64})\n')
+GAME_SITE, GAME_KIND = 'play.proto.bar:443', -6
+ACCT_STATEMENT = 'FTESURF-ACCT 1\nserver %s\nnonce %s\nkind %d\nkey %d\ncode %s\n'   # surfd accounts.STATEMENT (a test pins it)
+GAME_TOOL = 'World of Surf (in game)'
+CHALLENGE_TTL, CHALLENGES_MAX, CHALLENGES_PEER = 600, 256, 8
+PEER_GAME = 20                      # challenges and game uploads a minute per address (each upload verifies a signature)
+RELEASES_KEPT = 6                   # the newest releases whose csprogs may sign (a TAS run is made in a local game)
+CODE_MAX = 32 * 1024 ** 2
+CODE_RETRY = 600                    # s before a release csprogs that could not be fetched is tried again
 SQL = '''
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS runs(id INTEGER PRIMARY KEY AUTOINCREMENT, sha TEXT NOT NULL UNIQUE,
@@ -105,6 +119,9 @@ CREATE INDEX IF NOT EXISTS runs_motion ON runs(samples_sha);
 CREATE TABLE IF NOT EXISTS nonces(nonce TEXT PRIMARY KEY, seen_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS spend(who TEXT NOT NULL, day INTEGER NOT NULL, n INTEGER NOT NULL,
  bytes INTEGER NOT NULL, PRIMARY KEY(who, day));
+CREATE TABLE IF NOT EXISTS challenges(nonce TEXT PRIMARY KEY, sha TEXT NOT NULL, peer TEXT NOT NULL,
+ created INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS codes(blake TEXT PRIMARY KEY, sha TEXT NOT NULL, version TEXT NOT NULL, got_at INTEGER NOT NULL);
 '''
 
 
@@ -117,6 +134,25 @@ def load_tasplaus():
     if tools not in sys.path: sys.path.insert(0, tools)
     import tasplaus
     return tasplaus
+
+
+def load_ed25519():
+    load_tasplaus()   # the same tools directory on the path
+    import ed25519
+    return ed25519
+
+
+def game_nonce(nonce, sha):
+    """What the game signs for an upload of the file `sha` under the service's `nonce` (cl_tasupload.qc TASUp_Send)."""
+    return hashlib.sha256(('ftesurf-tasup %s %s' % (nonce, sha)).encode()).hexdigest()[:32]
+
+
+def fetch_https(url, cap, timeout=20):
+    """At most cap + 1 bytes of an https URL (a release object); no other scheme."""
+    if not url.startswith('https://'): raise ValueError('not https')
+    with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'tasupd'}), timeout=timeout) as r:
+        if not r.geturl().startswith('https://'): raise ValueError('redirected off https')
+        return r.read(cap + 1)
 
 
 @contextmanager
@@ -376,7 +412,10 @@ def label(r):
     return 'owner approved' if r['state'] == 'shown' and r['verdict'] != 'PASS' else LABEL[r['state']]
 
 
-def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=time.time, map_cfg_dirs=()):
+def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=time.time, map_cfg_dirs=(),
+               game_files=(), releases=None, fetch=fetch_https, verify=None):
+    """game_files: csprogs the lobbies serve; releases: the site's releases/ (<version>/update.json) -- the game code
+    whose proofs are taken (P1695). verify: an ed25519 module (tests), else tools/ed25519.py."""
     tp = load_tasplaus()
     app = Flask(__name__)
     app.config['MAX_CONTENT_LENGTH'] = MAX_FORM
@@ -486,10 +525,12 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         return Response(doc, status=status, mimetype='text/html')
 
     def wants_json():
-        return request.path.startswith(base + '/api/') or (
+        return g.get('game') or request.path.startswith(base + '/api/') or (
             request.accept_mimetypes.best_match(['text/html', 'application/json']) == 'application/json')
 
     def refuse(message, status, reasons=None):
+        # P1695: the game's HTTP client drops a non-200 reply's body (zonepub.py P826): the status goes inside
+        if g.get('game'): return jsonify(ok=0, error=message, status=status, reasons=reasons or []), 200
         if wants_json():
             return jsonify(ok=0, error=message, reasons=reasons or []), status
         inner = '<h1>Not uploaded</h1>\n<p class="lede">%s</p>' % html.escape(message)
@@ -516,6 +557,17 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
             return refuse('Too many requests; try again in a minute.', 429)
         if request.method == 'POST' and request.path == base + '/signout' and (request.content_length or 0) > SIGNOUT_BODY:
             return refuse('That form is too large.', 413)
+        if request.method == 'POST' and request.path == base + '/api/game/challenge':
+            g.game = True
+            if limited('game', PEER_GAME): return refuse('Too many requests; try again in a minute.', 429)
+        if request.method == 'POST' and request.path == base + '/upload' and request.mimetype == GAME_MIME:
+            g.game = True   # the proof is in the body: game_upload reads it
+            if limited('game', PEER_GAME): return refuse('Too many requests; try again in a minute.', 429)
+            # Werkzeug 2.2.2's get_data does not hold MAX_CONTENT_LENGTH (zonepub.py body_budget); nginx sends the length
+            size = request.content_length
+            if size is None or size <= 0: return refuse('Request length required.', 411)
+            if size > MAX_FORM: return refuse('That file is over %d MB.' % (MAX_REC // 1024 ** 2), 413)
+            return None
         if request.method == 'POST' and request.path == base + '/upload':
             if not session(): return refuse('Sign in with Steam first.', 401)   # before reading 8 MB
             # Read the body once and count its parts before Werkzeug parses it (2.2.2: no part cap).
@@ -808,20 +860,175 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
     uploading = threading.BoundedSemaphore(UPLOADS_AT_ONCE) if UPLOADS_AT_ONCE else None
     inflight, inflight_lock = set(), threading.Lock()   # one upload at a time per account (review 7: two held both slots)
 
-    @app.post(base + '/upload')
-    def upload():
-        sid = session()
-        if not sid: return refuse('Sign in with Steam first.', 401)
+    # ---- P1695: the game's upload. The csprogs that may sign: the lobbies' files, and released ones, whose manifests
+    # name them by BLAKE2b (updatefeed.py) -- fetched once from the release mirror and kept by SHA-256 in `codes`. ----
+    file_codes, codes_lock, fetching = {}, threading.Lock(), threading.Lock()
+    fetch_failed = {}
+
+    def lobby_codes():
+        out = set()
+        for p in map(Path, game_files):
+            try:
+                # No links; read once, and only if it did not change while read (zonepub.py known_game).
+                if p.is_symlink() or not p.is_file(): continue
+                st = p.stat()
+                ident = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns)
+                with codes_lock: got = file_codes.get(str(p))
+                if got and got[0] == ident: out.add(got[1]); continue
+                if st.st_size > CODE_MAX: continue
+                with p.open('rb') as f:
+                    before = os.fstat(f.fileno()); data = f.read(CODE_MAX + 1); after = os.fstat(f.fileno())
+                same = lambda s: (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns)
+                if same(before) != ident or same(after) != ident or len(data) > CODE_MAX: continue
+                h = hashlib.sha256(data).hexdigest()
+                with codes_lock: file_codes[str(p)] = (ident, h)
+                out.add(h)
+            except OSError:
+                continue
+        return out
+
+    def release_list():
+        """[(version, blake2b of its csprogs, object url)] for the newest RELEASES_KEPT manifests; unreadable ones skipped."""
+        if not releases: return []
+        found = []
+        try: dirs = [d for d in Path(releases).iterdir() if re.fullmatch(r'[0-9]{1,4}(\.[0-9]{1,6}){2}', d.name)]
+        except OSError: return []
+        for d in sorted(dirs, key=lambda d: tuple(int(x) for x in d.name.split('.')), reverse=True)[:RELEASES_KEPT]:
+            try:
+                with (d / 'update.json').open('rb') as f: raw = f.read(8 * 1024 ** 2 + 1)
+                pay = json.loads(json.loads(raw)['payload'])
+                if pay.get('hash_algo') != 'blake2b-256' or pay.get('object_layout') != 'objects/{h0h1}/{hash}': continue
+                cs = [x.get('hash') for x in pay.get('files', []) if isinstance(x, dict) and x.get('path') == 'ftesurf/csprogs.dat']
+                mirror = next((m for m in pay.get('mirrors', []) if isinstance(m, str) and m.startswith('https://')), None)
+                if len(cs) == 1 and isinstance(cs[0], str) and re.fullmatch('[0-9a-f]{64}', cs[0]) and mirror:
+                    found.append((d.name, cs[0], '%s/objects/%s/%s' % (mirror.rstrip('/'), cs[0][:2], cs[0])))
+            except (OSError, ValueError, KeyError, TypeError, AttributeError):
+                continue
+        return found
+
+    def missing_releases():
+        rel = release_list()
+        if not rel: return rel, []
+        with connect(store) as db:
+            have = {r['blake'] for r in db.execute('SELECT blake FROM codes WHERE blake IN (%s)' % ','.join('?' * len(rel)),
+                                                   [b for _v, b, _u in rel])}
+        now = clock()
+        return rel, [x for x in rel if x[1] not in have and now - fetch_failed.get(x[1], -CODE_RETRY) >= CODE_RETRY]
+
+    def learn_releases():
+        """Fetch the csprogs of releases not yet known, one caller at a time (a challenge's thread, in the background)."""
+        if not fetching.acquire(blocking=False): return
+        try:
+            for version, blake, url in missing_releases()[1]:
+                try:
+                    data = fetch(url, CODE_MAX)
+                    if len(data) > CODE_MAX or hashlib.blake2b(data, digest_size=32).hexdigest() != blake:
+                        raise ValueError('not the manifest\'s bytes')
+                    with connect(store) as db, writing(db):
+                        db.execute('INSERT OR REPLACE INTO codes(blake, sha, version, got_at) VALUES (?, ?, ?, ?)',
+                                   (blake, hashlib.sha256(data).hexdigest(), version, int(clock())))
+                    app.logger.info('tasupd: release %s csprogs learned', version)
+                except Exception as e:
+                    fetch_failed[blake] = clock()
+                    app.logger.warning('tasupd: release %s csprogs not fetched (%s)', version, type(e).__name__)
+        finally:
+            fetching.release()
+
+    def known_game(code):
+        """True, False, or None when nothing could be read to say (no lobby file, no release known or waiting)."""
+        lob = lobby_codes()
+        if code in lob: return True
+        rel, waiting = missing_releases()
+        if rel:
+            with connect(store) as db:
+                if db.execute('SELECT 1 FROM codes WHERE sha = ? AND blake IN (%s)' % ','.join('?' * len(rel)),
+                              [code] + [b for _v, b, _u in rel]).fetchone():
+                    return True
+        if waiting:
+            threading.Thread(target=learn_releases, daemon=True).start()
+            return None
+        return False if (lob or rel) else None
+
+    def signature(pub, signed, code, sig):
+        ed = verify
+        if ed is None:
+            try: ed = load_ed25519()
+            except ImportError: return None
+        message = (ACCT_STATEMENT % (GAME_SITE, signed, GAME_KIND, 1, code)).encode()
+        try: return bool(ed.verify(bytes.fromhex(pub), message, bytes.fromhex(sig)))
+        except Exception: return False
+
+    def key_account(pub):
+        """(steamid, banned) the linked key answers to, or ('', False); raises Unavailable."""
+        rows = read_surfd('SELECT k.steamid, a.banned_at FROM keylinks k JOIN accounts a ON a.steamid = k.steamid'
+                          ' WHERE k.pub = ?', (pub,))
+        return (rows[0]['steamid'], bool(rows[0]['banned_at'])) if rows else ('', False)
+
+    @app.post(base + '/api/game/challenge')
+    def game_challenge():
+        data = request.get_json(silent=True)
+        sha = data.get('sha') if isinstance(data, dict) else None
+        if not isinstance(sha, str) or not re.fullmatch('[0-9a-f]{64}', sha): return refuse('Invalid request.', 400)
+        now, who = int(clock()), peer()
+        with connect(store) as db, writing(db):
+            db.execute('DELETE FROM challenges WHERE created < ?', (now - CHALLENGE_TTL,))
+            if (db.execute('SELECT COUNT(*) FROM challenges').fetchone()[0] >= CHALLENGES_MAX
+                    or db.execute('SELECT COUNT(*) FROM challenges WHERE peer = ?', (who,)).fetchone()[0] >= CHALLENGES_PEER):
+                return refuse('The upload service is busy; try again in a minute.', 429)
+            nonce = secrets.token_hex(16)
+            db.execute('INSERT INTO challenges(nonce, sha, peer, created) VALUES (?, ?, ?, ?)',
+                       (hashlib.sha256(nonce.encode()).hexdigest(), sha, who, now))
+        if missing_releases()[1]: threading.Thread(target=learn_releases, daemon=True).start()   # ready by the press
+        return jsonify(ok=1, nonce=nonce, sha=sha)
+
+    def game_upload():
+        body = request.get_data(cache=False)     # MAX_CONTENT_LENGTH bounds it
+        m = GAME_HEAD.match(body)
+        if not m: return refuse('That upload carries no account proof: update your game.', 400)
+        nonce, pub, sig, code = (x.decode('ascii') for x in m.groups())
+        data = body[m.end():]
+        del body
+        if len(data) > MAX_REC: return refuse('That file is over %d MB.' % (MAX_REC // 1024 ** 2), 413)
+        sha, now = hashlib.sha256(data).hexdigest(), int(clock())
+        key = hashlib.sha256(nonce.encode()).hexdigest()
+        with connect(store) as db, writing(db):
+            row = db.execute('SELECT sha FROM challenges WHERE nonce = ? AND created >= ? AND attempts < 3',
+                             (key, now - CHALLENGE_TTL)).fetchone()
+            if row is not None: db.execute('UPDATE challenges SET attempts = attempts + 1 WHERE nonce = ?', (key,))
+        if row is None: return refuse('That upload\'s confirmation expired or was used: press Upload again.', 409)
+        if not hmac.compare_digest(row['sha'], sha): return refuse('The file changed after you pressed Upload: press it again.', 409)
+        known = known_game(code)
+        if known is None: return refuse('The upload service is still reading the game versions; try again in a minute.', 503)
+        if not known: return refuse('Update your game before uploading from it.', 403)
+        good = signature(pub, game_nonce(nonce, sha), code, sig)
+        if good is None: return refuse('The upload service cannot check account proofs right now.', 503)
+        if not good: return refuse('The account proof did not check out.', 403)
+        sid, banned = key_account(pub)
+        if not sid: return refuse('Link your Steam account first (play.proto.bar/board/link), then upload again.', 403)
+        if banned: return refuse('This Steam account cannot upload.', 403)
+        with connect(store) as db, writing(db):
+            if not db.execute('DELETE FROM challenges WHERE nonce = ?', (key,)).rowcount:
+                return refuse('That upload\'s confirmation was used: press Upload again.', 409)
+        return one_at_a_time(sid, lambda: accept(sid, data, GAME_TOOL))
+
+    def one_at_a_time(sid, work):
         with inflight_lock:
             if sid in inflight: return refuse('Your other upload is still being checked; wait for it.', 429)
             inflight.add(sid)
         try:
             if uploading is None or not uploading.acquire(blocking=False):
                 return refuse('Two uploads are being checked; try again in a minute.', 503)
-            try: return upload_signed_in(sid)
+            try: return work()
             finally: uploading.release()
         finally:
             with inflight_lock: inflight.discard(sid)
+
+    @app.post(base + '/upload')
+    def upload():
+        if g.get('game'): return game_upload()
+        sid = session()
+        if not sid: return refuse('Sign in with Steam first.', 401)
+        return one_at_a_time(sid, lambda: upload_signed_in(sid))
 
     def upload_signed_in(sid):
         if not post_ok(): return refuse('That form is out of date; reload the page.', 403)
@@ -831,7 +1038,10 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         if f is None: return refuse('Choose a .rec file.', 400)
         body = f.read(MAX_REC + 1)
         if len(body) > MAX_REC: return refuse('That file is over %d MB.' % (MAX_REC // 1024 ** 2), 413)
-        tool = clean_tool(request.form.get('tool'))
+        return accept(sid, body, clean_tool(request.form.get('tool')))
+
+    def accept(sid, body, tool):
+        """Check, compare and keep one upload of `sid`'s, from the form or the game."""
         now = int(clock())
         with spend_lock, connect(store) as db, writing(db):
             over = spend(db, sid, now)
@@ -1066,7 +1276,8 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                 with connect(store) as db:
                     if not db.execute('SELECT 1 FROM runs WHERE sha = ?', (sha,)).fetchone(): path.unlink()
         if wants_json():
-            return jsonify(ok=1, id=rid, state=state, verdict=res['verdict'], reasons=reasons, time=round(end * TICK, 3))
+            return jsonify(ok=1, id=rid, state=state, verdict=res['verdict'], reasons=reasons, time=round(end * TICK, 3),
+                           map=mapname, track=track, page='%s/run/%d' % (base_url.rstrip('/'), rid))
         return redirect('%s/run/%d' % (base, rid), 303)
 
     return app

@@ -217,7 +217,8 @@ void(float want) TASJargon_Ksf =
 };
 
 // P1693: your own clean runs of a course -- PBs and other finishes, data/runs/<map>/<leg>/<ticks>_..._<pb|run>.rec (the
-// zero-padded ticks sort fastest first); a cheated/practice/segmented one (FS_RunClass) or a lobby stub is no guide
+// zero-padded ticks sort fastest first); a cheated/practice/segmented one (FS_RunClass) or a lobby stub is no guide.
+// P1695: and your finished TAS runs (_tas.rec), unless a cheat (noclip, a cvar) is in their flags
 void(float track, float leg, float want) TASJargon_Own =
 {
 	local float h, n, c, k, g, hd, tg, t;
@@ -232,14 +233,16 @@ void(float track, float leg, float want) TASJargon_Own =
 		f = search_getfilename(h, c);
 		b = TASJargon_Base(f);
 		tg = FS_TagFromName(FS_NameTag(b));
-		if (tg != RT_PB) if (tg != RT_RUN) continue;
+		if (tg != RT_PB) if (tg != RT_RUN) if (tg != RT_TAS) continue;
 		hd = TASJargon_Head(f);
 		if (hd < 0) continue;
-		if (jg_hcf[hd] < 0 || FS_RunClass(jg_hcf[hd]) != RC_CLEAN) continue;   // no flags line: unknown, not clean
+		if (jg_hcf[hd] < 0) continue;   // no flags line: unknown, not clean
+		if (tg == RT_TAS) { if (!(jg_hcf[hd] & TF_TAS) || (jg_hcf[hd] & TF_CHEAT)) continue; }
+		else if (FS_RunClass(jg_hcf[hd]) != RC_CLEAN) continue;
 		t = rint(stof(substring(b, 0, strstrofs(b, "_"))) * jg_hctr[hd] * 100) / 100;
 		g = jg_gn;
-		TASJargon_Add(f, (t >= 60) ? sprintf("my run %g:%s%.2f", floor(t / 60), (t - 60 * floor(t / 60) < 10) ? "0" : "", t - 60 * floor(t / 60))
-			: sprintf("my run %.2fs", t), want);
+		TASJargon_Add(f, (t >= 60) ? sprintf("%s %g:%s%.2f", (tg == RT_TAS) ? "my TAS" : "my run", floor(t / 60), (t - 60 * floor(t / 60) < 10) ? "0" : "",
+			t - 60 * floor(t / 60)) : sprintf("%s %.2fs", (tg == RT_TAS) ? "my TAS" : "my run", t), want);
 		if (jg_gn > g) k = k + 1;
 	}
 	search_end(h);

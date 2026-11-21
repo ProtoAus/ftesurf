@@ -5,7 +5,8 @@
 #define TAS_TAB_PROJECT 3
 #define TAS_TAB_SECTIONS 4
 #define TAS_TAB_OPTIMIZE 5      // P1449: tas autosurf and the one-stretch optimizer (cl_tasoptui.qc)
-#define TAS_TAB_COUNT 6
+#define TAS_TAB_UPLOAD 6        // P1695: send a TAS run to play.proto.bar/tasup (cl_tasupload.qc)
+#define TAS_TAB_COUNT 7         // the Manual TAS tabs are the ones before TAS_TAB_OPTIMIZE
 float tasu_open, tasu_nextclick, tasu_frames, tasu_advanced, tasu_dirty;
 var float tasu_mode = TAS_PLAN_HOLD;
 float tasu_forward, tasu_side, tasu_pitch, tasu_yaw, tasu_bits;
@@ -42,6 +43,8 @@ void() TASProject_SignPress;
 void() TASProject_IntentRequest;
 void(vector at, float width, float tsz, float hint, float row) TASShare_Draw;
 void(vector at, float width, float tsz, float hint, float row) TASOptUI_Draw;
+void(vector at, float width, float tsz, float hint, float row) TASUp_Draw;
+void() TASUp_Press;
 void(float offset, string sha) TASShare_Request;
 float(float argc, float seat) TASShare_ConsoleCommand;
 
@@ -305,7 +308,7 @@ void(vector scr) TASUI_Draw =
 	if (seat != 0) return;
 	if (numclientseats > 1 || UI_CursorHeld() != UIC_TAS || rec_sb_open || !LT_StatsAreMine()) { TASUI_Close(); return; }
 	tasu_frames = tasu_frames+1;
-	panelrows = tasu_tab == TAS_TAB_SECTIONS ? 65 : ((tasu_tab == TAS_TAB_OPTIMIZE) ? 64 : (tasu_advanced ? 58 : 46));
+	panelrows = tasu_tab == TAS_TAB_SECTIONS ? 65 : ((tasu_tab == TAS_TAB_OPTIMIZE) ? 64 : ((tasu_tab == TAS_TAB_UPLOAD) ? 46 : (tasu_advanced ? 58 : 46)));
 	sc = max(.5,ui_cv_scale);
 	while (sc > .5 && (Font_Px(8*sc)*48 > scr_x-12 || Font_Px(8*sc)*panelrows > scr_y-12)) sc = sc-.5;
 	oldfont = drawfont; Font_Set(ui_font_ui);
@@ -313,20 +316,22 @@ void(vector scr) TASUI_Draw =
 	size = [min(scr_x-8,tsz*48),min(scr_y-8,tsz*panelrows),0];
 	pos = [scr_x-size_x-6,max(4,(scr_y-size_y)*.5),0]; width = size_x-pad*2;
 	sui_begin(scr_x,scr_y); sui_style_panel(pos,size,ceil(pad*.75),.98);
-	sui_text(pos+[pad,pad,0],[tsz*1.25,tsz*1.25],(tasu_tab == TAS_TAB_OPTIMIZE) ? "Jargon" : "Manual TAS",
+	sui_text(pos+[pad,pad,0],[tsz*1.25,tsz*1.25],(tasu_tab == TAS_TAB_OPTIMIZE) ? "Jargon" : ((tasu_tab == TAS_TAB_UPLOAD) ? "Upload" : "Manual TAS"),
 		(tasu_tab == TAS_TAB_OPTIMIZE) ? SUI_THEME_ACCENT : SUI_THEME_TEXT,1,0);
 	if (Profile_Chip("tasu_close",pos+[size_x-pad-row,pad*.6,0],[row,row,0],"X",tsz,FALSE))
 		{ TASUI_Close(); sui_end(); Font_Set(oldfont); return; }
 	// P1449: two tabs -- Jargon, and the manual frame-by-frame workshop with its own five under it (Lex, 10 Nov:
 	// "the whole menu wiped and start from scratch")
-	at = pos+[pad,tsz*3,0]; chip = [(width-6)/2,row,0];
+	// P1695: and Upload, a TAS run to play.proto.bar/tasup
+	at = pos+[pad,tsz*3,0]; chip = [(width-12)/3,row,0];
 	if (Profile_Chip("tasu_tabj",at,chip,"Jargon",tsz,tasu_tab==TAS_TAB_OPTIMIZE)) TASUI_SelectTab(TAS_TAB_OPTIMIZE);
-	if (Profile_Chip("tasu_tabm",at+[(width+6)/2,0,0],chip,"Manual TAS",tsz,tasu_tab!=TAS_TAB_OPTIMIZE))
-		if (tasu_tab == TAS_TAB_OPTIMIZE) TASUI_SelectTab(TAS_TAB_CONTROLS);
-	if (tasu_tab != TAS_TAB_OPTIMIZE)
+	if (Profile_Chip("tasu_tabm",at+[(width+6)/3,0,0],chip,"Manual TAS",tsz,tasu_tab<TAS_TAB_OPTIMIZE))
+		if (tasu_tab >= TAS_TAB_OPTIMIZE) TASUI_SelectTab(TAS_TAB_CONTROLS);
+	if (Profile_Chip("tasu_tabu",at+[(width+6)*2/3,0,0],chip,"Upload",tsz,tasu_tab==TAS_TAB_UPLOAD)) TASUI_SelectTab(TAS_TAB_UPLOAD);
+	if (tasu_tab < TAS_TAB_OPTIMIZE)
 	{
 		at_y = at_y+row+4; chip = [(width-6*4)/5,row,0];
-		for (i=0;i<TAS_TAB_COUNT-1;i=i+1)
+		for (i=0;i<TAS_TAB_OPTIMIZE;i=i+1)
 		{
 			label = i == TAS_TAB_CONTROLS ? "Controls" : (i == TAS_TAB_TIMELINE ? "Timeline" : (i == TAS_TAB_SHARED ? "Shared" : (i == TAS_TAB_PROJECT ? "Project" : "Sections")));
 			if (Profile_Chip(sprintf("tasu_tab%g",i),at+[i*(width+6)/5,0,0],chip,label,hint,tasu_tab==i))
@@ -337,6 +342,7 @@ void(vector scr) TASUI_Draw =
 	if (tasu_tab == TAS_TAB_SECTIONS) TASSections_Pump();
 	at_y = at_y+row+hint; chip = [(width-12)/3,row,0];
 	if (tasu_tab == TAS_TAB_OPTIMIZE) { TASOptUI_Draw(at,width,tsz,hint,row); sui_end(); Font_Set(oldfont); return; }
+	if (tasu_tab == TAS_TAB_UPLOAD) { TASUp_Draw(at,width,tsz,hint,row); sui_end(); Font_Set(oldfont); return; }
 	paused = (getstatf(STAT_FS_TASPAUSE) == 1);
 	sui_text(at,[hint,hint],sprintf("%s | tick %.0f | queued %.0f | ASSISTED / PRACTICE",paused?"PAUSED":"PLAYING",getstatf(STAT_FS_TIMERTICKS),getstatf(STAT_FS_TASPENDING)),SUI_THEME_DIM,1,0);
 	at_y = at_y+hint*1.7;
@@ -427,6 +433,7 @@ float(float evtype, float scanx, float chary, float devid) TASUI_Input =
 		if (evtype==IE_KEYDOWN) _sui_mouse_move(_cursor_position,FALSE);
 		TASTimeline_RecipeInput(evtype,scanx,chary);
 		if (evtype==IE_KEYDOWN && scanx==K_MOUSE1 && tasu_tab==TAS_TAB_PROJECT && sui_is_hovered("tasp_sign")) TASProject_SignPress();
+		if (evtype==IE_KEYDOWN && scanx==K_MOUSE1 && tasu_tab==TAS_TAB_UPLOAD) TASUp_Press();     // P1695: Send signs on the press
 		sui_input_event(evtype,scanx,chary,devid); return TRUE;
 	}
 	// Keyboard name ownership runs before chat in CL_InputChain, including closed-panel ups.

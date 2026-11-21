@@ -152,6 +152,7 @@ float(float reqid, float code, string bdy) SteamPic_Reply;
 // Patch 663, cl_profile.qc: a player's breakdown and the player search.
 float(float reqid, float code, string bdy) Profile_Reply;
 float(float reqid, float code, string body) TASShare_Reply;
+float(float reqid, float code, string body) TASUp_Reply;   // P1695, cl_tasupload.qc
 
 float  ob_state;
 float  ob_req;             // uri request id in flight; 0 = none
@@ -2005,6 +2006,7 @@ void(float reqid, float responsecode, string resourcebody) URI_Get_Callback =
 	if (PE_HttpReply(reqid, responsecode, resourcebody)) return;
 	if (RampWear_Reply(reqid, responsecode, resourcebody)) return;
 	if (TASShare_Reply(reqid, responsecode, resourcebody)) return;
+	if (TASUp_Reply(reqid, responsecode, resourcebody)) return;
 	if (ok_req)
 	if (reqid == ok_req)
 	{

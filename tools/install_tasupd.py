@@ -87,7 +87,10 @@ limit_conn_zone $binary_remote_addr zone=tasupd_addr:2m;
 limit_conn_zone $server_name zone=tasupd_all:64k;
 '''
 FILES = {'surfd/tasupd.py': 'tasupd.py', 'surfd/tasupd_wsgi.py': 'tasupd_wsgi.py', 'surfd/steam.py': 'steam.py',
-         'tools/tasplaus.py': 'tools/tasplaus.py'}
+         'tools/tasplaus.py': 'tools/tasplaus.py', 'tools/ed25519.py': 'tools/ed25519.py'}
+# P1695: the game code whose upload proofs are taken -- the lobbies' csprogs, and released ones by their manifests
+GAME_FILES = ['/srv/nvme/ftesurf-server/game/ftesurf/csprogs.dat', '/srv/nvme/ftesurf-server/game/ftesurf/csprogs.dat.prev']
+SITE_RELEASES = '/srv/nvme/ftesurf-site/releases'   # <version>/update.json (not RELEASES, the installs)
 
 
 def sha(body): return hashlib.sha256(body).hexdigest()
@@ -181,7 +184,7 @@ def check_imports(blobs):
             p = Path(d) / dest; p.parent.mkdir(parents=True, exist_ok=True); p.parent.chmod(0o755); p.write_bytes(body); p.chmod(0o644)
         env = {k: v for k, v in os.environ.items() if k != 'PYTHONPATH'}
         env['SURFD_TOOLS'] = str(Path(d) / 'tools')
-        try: run(*as_user('proto', sys.executable, '-c', 'import tasupd; tasupd.load_tasplaus()'), cwd=d, env=env)
+        try: run(*as_user('proto', sys.executable, '-c', 'import tasupd; tasupd.load_tasplaus(); tasupd.load_ed25519()'), cwd=d, env=env)
         except subprocess.CalledProcessError as e:
             raise RuntimeError('Service files do not import on their own: ' + (e.stderr or b'').decode(errors='replace')[-400:])
 
@@ -203,6 +206,7 @@ def service_env(release, account_db, commit):
     return dict(TASUPD_STORE=str(STATE / 'tasup.sqlite3'), TASUPD_ACCOUNTS=str(account_db),
                 TASUPD_ZONES=os.pathsep.join(ZONE_DIRS), TASUPD_MAPCFG=os.pathsep.join(MAPCFG_DIRS),
                 TASUPD_URL=PUBLIC_URL, SURFD_TOOLS=str(release / 'tools'),
+                TASUPD_GAMES=json.dumps(GAME_FILES), TASUPD_RELEASES=SITE_RELEASES,
                 TASUPD_SOURCE=commit)
 
 
