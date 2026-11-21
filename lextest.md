@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1701 -- no spike flying into the void (worldofsurf-42) -- your dev install (engine patch-1701)
+1. ahop_coast save 3, noclip, `r_frametime 1`, fly backward into the void: no spike in the graph when the view switches
+   to the whole map, and none when you fly back in (it reloaded every particle shader: 375 ms here on the software
+   renderer, 6 ms now).
+2. Particles still look right afterwards (fire, sparks, map effects) once you are back inside.
+The sky (your second point) is not in this build: removing the sky mask exposed things drawn with no visibility test
+(other players and their trails on other stages, sky-room props, decals, particle ropes); that work continues as P1698.
+
 ## P1700 -- TAS uploads on the website (root FTESurf-worktrees/tasweb-20261121-a03) -- LIVE 21 Nov (tasupd da9042b3)
 1. proto.bar/ftesurf/ (Overview, Zoning, Anti-Cheat): the menu has "TAS uploads"; it opens play.proto.bar/tasup/. The
    Leaderboard page gets it with the next backend generation (tools/backend-pending.md).

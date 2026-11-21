@@ -21,6 +21,9 @@
 
 ## next
 
+### P1701 No stutter when you noclip out of the map
+- Flying out of the map into the void (and back in) no longer freezes the game for a moment: it was reloading every particle effect's look each time.
+
 ### P1700 TAS uploads on the website
 - Every World of Surf web page links to TAS uploads, and the TAS upload pages carry the site's menu.
 - Finding a TAS board is a map picker: type a map name, pick it, and its page shows the map's picture and its main course and bonuses by name.
