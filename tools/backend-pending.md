@@ -7,6 +7,16 @@ CURRENT = cd1965f1 (root /srv/nvme/agent-work/gen1674-20261121-e3; kit FTESurf-p
 pins native fteqw-svarm64 1753f9d4 (lobby engine patch-1683, swapped 01:38Z), and keeps the consumer's 900 s
 `systemctl start` (its drop-in will have 18 ExecStartPre blocks, ~280 s; or the owner prunes retired blocks).
 
+## BLOCKERS for a generation at current main (session a03de808, 21 Nov; checked against the gen1674 kit)
+1. surfd/tasupd.py + tasupd_wsgi.py (P1640/P1696/P1700) are a separate service (tools/install_tasupd.py), not surfd
+   runtime, but sit in surfd/: the kit's build_candidate.py asserts "REF adds modules outside the 91-member runtime".
+   The kit must exclude tasupd*.py (they never ship in a generation).
+2. P1697's admin.py renders templates/admin_top10.html (admin.py:1856), a file outside tour91-v1's 91 members:
+   build_candidate classes it as config and does NOT ship it, so /admin/top10 would raise TemplateNotFound. Shipping
+   it needs a member-set change (P1702 is making the member list flexible; until then, a new guard profile).
+Also: the guard re-hashes all 91 members at every `launch` (surfd_transition_guard.py verify_hashes), so a member
+edited in place in a live generation stops the next surfd start. Never hand-edit a generation's files.
+
 ## P1700 board menu link -- READY for the NEXT generation (session a03de808, 21 Nov)
 - surfd/web/board.html: one `<a href="https://play.proto.bar/tasup/">TAS uploads</a>` after Anti-Cheat in the site
   nav (the static pages and tasupd carry it already), and a "TAS uploads for this map" button under each map's title,
