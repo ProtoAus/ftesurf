@@ -66,8 +66,15 @@ class MembersProfile(unittest.TestCase):
 
     def test_a_package_never_sits_beside_a_module_of_its_name(self):
         """Python imports the package X/ over X.py, which would still hash-verify (review: surfd/__init__.py)."""
-        for n in ('surfd/__init__.py', 'admin/views.py', 'mapmanifest/x.py', 'tools/surfd.py'):
+        for n in ('surfd/__init__.py', 'admin/views.py', 'mapmanifest/x.py', 'tools/surfd.py',
+                  # runtime/tools is on sys.path too (ksfgrab.py puts it first): review round 2
+                  'tools/ksfconvert/__init__.py', 'tools/ksfreplay_info/__init__.py', 'tools/rcptcheck/__init__.py',
+                  'tools/ed25519/__init__.py', 'tools/json/__init__.py', 'tools/flask/__init__.py', 'tools/surfd/x.py'):
             self.refused(self.add(n), 'added member name')
+        m = self.add('newpkg2_p1702/__init__.py'); body = b'z\n'
+        (self.home / 'tools/newpkg2_p1702.py').write_bytes(body); m['hashes']['tools/newpkg2_p1702.py'] = sha(body)
+        self.refused(m, 'added member name')                                # one name, two places on sys.path
+        self.check(self.add('tools/newtoolpkg_p1702/__init__.py'))
         m = self.add('newpkg_p1702/__init__.py'); body = b'y\n'
         (self.home / 'newpkg_p1702.py').write_bytes(body); m['hashes']['newpkg_p1702.py'] = sha(body)
         self.refused(m, 'added member name')

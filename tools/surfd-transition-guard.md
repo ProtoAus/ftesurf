@@ -312,11 +312,12 @@ profile per added file; Lex, 21 Nov: "The 91-file list is rigid -- also fix"), h
 must contain every non-test `tour91-v1` member (TOUR91_RUNTIME); test files may come and go. `members_ok` checks the
 member list against fixed names only, never the host's installed packages (a later `apt install` must not refuse
 `close`/`status`): at most 512 members; an added member is a plain relative path (no dot-segments, at most three deep,
-`.py .html .css .js .json .txt`); no module `X.py` beside a package `X/` (Python imports the package while `X.py`
-still hash-verifies); an added top-level module, a new folder, or an added `tools/*.py` (ksfgrab.py puts runtime/tools
-on sys.path) may not take a name in SHADOW (stdlib, surfd's third-party stack, the game tools folder's modules,
-`tools`, `static` -- Flask serves runtime/static), nor may `tools/X.py` and `X.py` coexist; no added `__init__.py` /
-`__main__.py` at the top or directly in templates/, web/ or tools/. A data-only folder may have any plain name.
+`.py .html .css .js .json .txt`). runtime/ and runtime/tools/ are both on sys.path (ksfgrab.py puts the latter
+first), so every import name the members make -- `X.py` or `X/` at either level -- must belong to exactly one of them
+(Python imports a package over a same-named module, which would still hash-verify); an added member's import names
+may not be in SHADOW (stdlib, surfd's third-party stack, the game tools folder's modules, `tools`, `static` -- Flask
+serves runtime/static); no added `__init__.py` / `__main__.py` at the top or directly in templates/, web/ or tools/.
+A data-only folder may have any plain name.
 This is a second line of defence behind the generation's independent review, which owns the member list.
 `tools/test_surfd_guard_members_profile.py` (plain unittest, no preimage).
 

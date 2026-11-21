@@ -53,34 +53,43 @@ SHADOW = frozenset(sys.stdlib_module_names) | {
     "ksfreplay_info", "tasplaus", "tools", "static"}
 
 
+def import_names(n):
+    """(level, name, kind) a member makes importable: runtime/ and runtime/tools/ are both on sys.path."""
+    parts, out = n.split("/"), []
+    if len(parts) == 1:
+        if n.endswith(".py"): out.append(("runtime", n[:-3], "module"))
+    else:
+        out.append(("runtime", parts[0], "package"))
+        if parts[0] == "tools":
+            if len(parts) == 2 and n.endswith(".py"): out.append(("tools", parts[1][:-3], "module"))
+            elif len(parts) > 2: out.append(("tools", parts[1], "package"))
+    return out
+
+
 def members_ok(files):
-    """members-v1's rules for a member set (see SHADOW above); True when every added member passes."""
+    """members-v1's rules for a member set (see SHADOW above); True when the set passes."""
     if len(files) > MEMBER_LIMIT:
         return False
-    mods = {n[:-3] for n in files if "/" not in n and n.endswith(".py")}
-    dirs = {n.split("/")[0] for n in files if "/" in n}
-    if mods & dirs:
-        return False
+    owners = {}                                  # import name -> the (level, kind) pairs claiming it
+    for n in files:
+        for level, name, kind in import_names(n):
+            owners.setdefault(name, set()).add((level, kind))
+    if any(len(claims) > 1 for claims in owners.values()):
+        return False                             # X.py beside X/, or the same name in runtime/ and runtime/tools/
     old_dirs = {n.split("/")[0] for n in TOUR91_FILES if "/" in n}
-    tool_mods = {Path(n).stem for n in files if n.startswith("tools/") and n.endswith(".py")}
     for n in files - TOUR91_FILES:
         if type(n) is not str or not MEMBER_NAME.fullmatch(n) or not n.endswith(MEMBER_SUFFIXES):
             return False
         parts = n.split("/")
-        if parts[-1] in ("__init__.py", "__main__.py") and (len(parts) == 1 or parts[0] in old_dirs and len(parts) == 2):
+        if parts[-1] in ("__init__.py", "__main__.py") and (len(parts) == 1 or (len(parts) == 2 and parts[0] in old_dirs)):
             return False
-        names = set()
-        if len(parts) == 1 and n.endswith(".py"):
-            names.add(n[:-3])
-            if n[:-3] in tool_mods: return False
-        elif len(parts) > 1 and parts[0] not in old_dirs:
-            names.add(parts[0])
-        if parts[0] == "tools" and n.endswith(".py"):
-            names.add(Path(n).stem)
-            if Path(n).stem in mods: return False
-        for name in names:
-            if name in SHADOW or (not name.isidentifier() and (n.endswith(".py") or name in mods)):
-                return False                 # a data-only folder (no .py) may have any plain name
+        for level, name, kind in import_names(n):
+            if level == "runtime" and kind == "package" and name in old_dirs:
+                continue                         # templates/, web/, tools/ themselves
+            if name in SHADOW:
+                return False
+            if not name.isidentifier() and (n.endswith(".py") or kind == "module"):
+                return False                     # a data-only folder may have any plain name
     return True
 
 
