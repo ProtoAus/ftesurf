@@ -221,19 +221,20 @@ void(float want) TASJargon_Ksf =
 // P1696: and your finished TAS runs (_tas.rec with TF_TAS; every TAS run also carries TF_CHEAT, sv_timer.qc SV_TASFlags)
 void(float track, float leg, float want) TASJargon_Own =
 {
-	local float h, n, c, k, g, hd, tg, t;
+	local float h, n, c, k, kt, g, hd, tg, t;
 	local string f, b, dir;
 	dir = FS_MovementProfilePath(serverkey("*movementprofile"), FS_RunDir(serverkey("map"), track, leg));
 	if (dir == "") return;
 	h = search_begin(strcat(dir, "*.rec"), 33, TRUE);
 	if (h < 0) return;
-	n = search_getsize(h); k = 0;
-	for (c = 0; c < n && k < 2 && jg_gn < JG_GUIDES; c = c + 1)
+	n = search_getsize(h); k = kt = 0;   // two runs and two TAS runs: faster TAS runs must not push out the PB (flow review 2)
+	for (c = 0; c < n && (k < 2 || kt < 2) && jg_gn < JG_GUIDES; c = c + 1)
 	{
 		f = search_getfilename(h, c);
 		b = TASJargon_Base(f);
 		tg = FS_TagFromName(FS_NameTag(b));
 		if (tg != RT_PB) if (tg != RT_RUN) if (tg != RT_TAS) continue;
+		if ((tg == RT_TAS) ? (kt >= 2) : (k >= 2)) continue;
 		hd = TASJargon_Head(f);
 		if (hd < 0) continue;
 		if (jg_hcf[hd] < 0) continue;   // no flags line: unknown, not clean
@@ -243,7 +244,7 @@ void(float track, float leg, float want) TASJargon_Own =
 		g = jg_gn;
 		TASJargon_Add(f, (t >= 60) ? sprintf("%s %g:%s%.2f", (tg == RT_TAS) ? "my TAS" : "my run", floor(t / 60), (t - 60 * floor(t / 60) < 10) ? "0" : "",
 			t - 60 * floor(t / 60)) : sprintf("%s %.2fs", (tg == RT_TAS) ? "my TAS" : "my run", t), want);
-		if (jg_gn > g) k = k + 1;
+		if (jg_gn > g) { if (tg == RT_TAS) kt = kt + 1; else k = k + 1; }
 	}
 	search_end(h);
 };

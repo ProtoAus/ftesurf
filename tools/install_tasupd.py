@@ -357,7 +357,10 @@ def upgrade(a, blobs):
             raise RuntimeError(outcome) from e
     finally:
         for n, h in held.items(): signal.signal(n, h)
-    outcome = 'Upgraded the TAS upload service to %s (the old release stays at %s)' % (a.commit, old)
+    # the unit it replaced, as read: going back by hand (an older installer refuses the newer unit: ops review 2)
+    try: (new / 'unit.prev').write_bytes(oldunit); (new / 'unit.prev').chmod(0o644)
+    except OSError as e: say('(could not keep the old unit in %s: %s)' % (new / 'unit.prev', e))
+    outcome = 'Upgraded the TAS upload service to %s (the old release stays at %s; its unit is %s)' % (a.commit, old, new / 'unit.prev')
     record(new, outcome); say(outcome)
 
 

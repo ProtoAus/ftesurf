@@ -2972,6 +2972,51 @@ void(entity e, float ct, float cl) SV_TASAutoSavedQuery =
 	WriteByte(MSG_MULTICAST, ct); WriteByte(MSG_MULTICAST, cl); WriteShort(MSG_MULTICAST, bound(0, k, 999)); WriteShort(MSG_MULTICAST, bound(0, n, 999));
 	msg_entity = e; multicast(e.origin, MULTICAST_ONE_R);
 };
+// P1696: `tas uploads`, the Upload tab's list: this map's TAS runs this game finished (SV_TASUpNote), newest first, a
+// path once, as events (CSQC may not read data/tasproj/) to the host's own client only. An empty list is one event.
+#define TAS_UPSHOW 10
+void(entity e) SV_TASUpList =
+{
+	local float fh, i, n, k, c, all, show, local_host;
+	local string ip, l, pre;
+	all = show = -1;
+	ip = strtolower(infokey(e, "ip"));
+	local_host = !Lobby_Active() && (!strcmp(ip, "loopback") || !strcmp(ip, "127.0.0.1") || !strcmp(substring(ip, 0, 10), "127.0.0.1:"));
+	n = 0;
+	if (local_host)
+	{
+		all = buf_create(); show = buf_create();
+		pre = strcat("/runs/", strtolower(mapname), "/");
+		fh = fopen(TAS_UPLIST, FILE_READ);
+		if (fh >= 0)
+		{
+			for (i = 0; i < 100000; i = i + 1)
+			{
+				l = fgets(fh);
+				if (l == "") break;
+				c = tokenize(l);
+				if (c == 2 && strlen(argv(0)) == 64 && strstrofs(strtolower(argv(1)), pre) >= 0) bufstr_add(all, l, TRUE);
+			}
+			fclose(fh);
+		}
+		for (i = buf_getsize(all) - 1; i >= 0 && n < TAS_UPSHOW; i = i - 1)
+		{	// newest first; an older line for the same path is that file's past bytes
+			l = bufstr_get(all, i);
+			for (k = buf_getsize(all) - 1; k > i; k = k - 1) if (!strcmp(substring(bufstr_get(all, k), 65, -1), substring(l, 65, -1))) break;
+			if (k > i) continue;
+			bufstr_add(show, l, TRUE);
+			n = n + 1;
+		}
+	}
+	for (i = 0; i < max(1, n); i = i + 1)
+	{
+		WriteByte(MSG_MULTICAST, SVC_CGAMEPACKET); WriteByte(MSG_MULTICAST, TAS_EV_UPLIST);
+		WriteByte(MSG_MULTICAST, i); WriteByte(MSG_MULTICAST, n);
+		if (n) { c = tokenize(bufstr_get(show, i)); WriteString(MSG_MULTICAST, argv(0)); WriteString(MSG_MULTICAST, argv(1)); }
+		msg_entity = e; multicast(e.origin, MULTICAST_ONE_R);
+	}
+	if (local_host) { buf_del(all); buf_del(show); }
+};
 void(entity e, float argc) SV_TASAutoCommand =
 {
 	local float i, s, n, st, flip, arm, pl, ct, cl, zg, nct, ncl, hr;

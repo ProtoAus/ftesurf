@@ -168,6 +168,11 @@ class Upgrade(unittest.TestCase):
         self.main('--apply')
         self.assertEqual(self.serving, NEW)
 
+    def test_the_old_unit_is_kept_in_the_new_release(self):
+        old = t.UNIT.read_bytes()
+        self.main('--apply')
+        self.assertEqual((t.RELEASES / NEW / 'unit.prev').read_bytes(), old)
+
     def test_a_unit_with_one_added_key_is_refused(self):
         env = t.service_env(t.ROOT / OLD, Path('/srv/nvme/surfd/data/surfd.db'), OLD); del env['TASUPD_RELEASES']
         t.UNIT.write_text(t.unit_text(t.ROOT / OLD, env))

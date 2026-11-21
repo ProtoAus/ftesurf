@@ -7144,6 +7144,26 @@ void(entity e, float ticks, float stamp, float tag, float flags, string destinat
 	// No poll/publication here: the callback/message still owns its tail.
 };
 
+// P1696: a TAS run this game finished, by its bytes' SHA-256, in data/tasproj/ -- which client code cannot write
+// (pr_bgcmd.c QC_TasprojDenied) -- so the Upload tab offers only these (SV_TASUpList), not a file a server's csprogs
+// put in data/runs/. A local game only; read once at the finish (a few MB at most).
+#define TAS_UPLIST "data/tasproj/uploads.txt"
+void(string path) SV_TASUpNote =
+{
+	local float fh;
+	local string body;
+	if (Lobby_Active()) return;
+	fh = fopen(path, FILE_READNL);
+	if (fh < 0) return;
+	body = fgets(fh);
+	fclose(fh);
+	if (strlen(body) < 16 || strlen(body) > 8388608) return;
+	fh = fopen(TAS_UPLIST, FILE_APPEND);
+	if (fh < 0) { dprint(sprintf("tas upload: cannot write %s\n", TAS_UPLIST)); return; }
+	fputs(fh, strcat(strtolower(digest_hex("SHA256", body)), " ", path, "\n"));
+	fclose(fh);
+};
+
 void(entity e, float ticks, float tag, float flags) SV_RecClose =
 {
 	local float i, base, fh, stamp;
@@ -7399,6 +7419,7 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 		{
 			e.rec_rec_saved = TRUE;
 			SV_RecSetLeaf(e, FS_RunLeaf(stamp, who, SV_RecTagName(tag), "rec"));
+			if (tag == RT_TAS) SV_TASUpNote(dst);     // P1696
 			if (FS_TagHistory(tag))
 			{
 				Archive_SealFile(e, dst);
@@ -7448,6 +7469,7 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 		// file, no rename -- so reaching here IS the file landing.
 		e.rec_rec_saved = TRUE;
 		SV_RecSetLeaf(e, FS_RunLeaf(stamp, who, SV_RecTagName(tag), "rec"));
+		if (tag == RT_TAS) SV_TASUpNote(dst);     // P1696
 		if (FS_TagHistory(tag))
 		{
 			Archive_SealFile(e, dst);

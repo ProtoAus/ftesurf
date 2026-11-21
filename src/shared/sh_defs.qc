@@ -214,6 +214,7 @@
 #define TAS_EV_SEARCH 58     // P1449: a curve search's progress for the search panel (cl_tasoptui.qc TASSearch_Draw)
 #define TAS_EV_JSAVED 60     // the Jargon panel's Continue: a course's saved run (track, leg, stretch, of)
 #define TAS_EV_JPLAN 59      // P1449: Jargon's route from a guide run (tas autosurf <demo> plan), drawn and edited (cl_jargon.qc)
+#define TAS_EV_UPLIST 61     // P1696: a TAS run this game finished, for the Upload tab (SV_TASUpList, cl_tasupload.qc)
 #define TAS_CONTACT_ROWS 4
 #define TAS_CONTACT_MAX 4096
 #define TAS_PAGE_ROWS 8

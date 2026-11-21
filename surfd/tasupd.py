@@ -100,20 +100,18 @@ GAME_HEAD = re.compile(rb'FTESURF-TASUP 1\nnonce ([0-9a-f]{32})\nsha ([0-9a-f]{6
 GAME_HEAD_LEN = 16 + 39 + 69 + 69 + 133 + 70     # the proof is read and checked before the file (P1696 ops review)
 GAME_SITE, GAME_KIND = 'play.proto.bar:443', -6
 ACCT_STATEMENT = 'FTESURF-ACCT 1\nserver %s\nnonce %s\nkind %d\nkey %d\ncode %s\n'   # surfd accounts.STATEMENT (a test pins it)
-GAME_TOOL = 'sent from the game'    # a file whose header has no TF_TAS (a bot's, say)
-TF_TAS = 4194304                    # sh_defs.qc
+GAME_TOOL = 'sent from the game'    # how it came, not what made it: any linked key can sign any file (attack review 2)
 CHALLENGE_TTL = 600                 # s a code is good for; it is the service's own MAC, stored only once used
-PEER_GAME = 20                      # challenges and game uploads a minute per address (each upload verifies a signature)
+PEER_GAME, GAME_ALL = 20, 600       # challenges and game uploads a minute: per address, everyone (each may verify a signature)
 RELEASES_KEPT = 10                  # the newest releases whose csprogs may sign (a TAS run is made in a local game)
 CODE_PATHS = ('ftesurf/csprogs.dat', 'worldofsurf/csprogs.dat')   # its path in a manifest, before and after the rename
 CODE_MARK = b'ftesurf-tasup '      # in a csprogs with this upload flow (cl_tasupload.qc TASUp_Signed): no other signs here
-CODE_TRIES = 3                      # fetches of a release object before it is taken as unknowable (not 'try again')
-GAME_TOOL_TAS = 'World of Surf TAS (sent from the game)'
+CODE_TRIES = 3                      # fetches that gave other bytes than the manifest's before that object is given up
 CODE_MAX = 32 * 1024 ** 2
-CODE_RETRY = 600                    # s before a release csprogs that could not be fetched is tried again
+CODE_RETRY, CODE_RETRY_MAX = 600, 3600   # s before a failed release fetch is tried again, doubling to an hour
 CODE_FETCH_S = 90                   # s a release object may take in all (urllib's timeout is a read's)
 LOBBY_BACKUPS = 2                   # newest csprogs.dat.pre* kept by lobby deploys: a player still on the last build
-MANUAL = 'manual-'                  # codes.blake of a build the owner allowed (`allow-code`): no release names it
+MANUAL, DENIED = 'manual-', 'deny-' # codes.blake of a build the owner allowed / refused (`allow-code`, `deny-code`)
 SQL = '''
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS runs(id INTEGER PRIMARY KEY AUTOINCREMENT, sha TEXT NOT NULL UNIQUE,
@@ -162,7 +160,7 @@ def fetch_https(url, cap, timeout=20, total=CODE_FETCH_S):
     with urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'tasupd'}), timeout=timeout) as r:
         if not r.geturl().startswith('https://'): raise ValueError('redirected off https')
         while len(out) <= cap:
-            chunk = r.read(65536)
+            chunk = r.read1(65536)   # one socket read (each within `timeout`): read() waits for the whole 64 KB (ops review 2)
             if not chunk: break
             out += chunk
             if time.monotonic() > end: raise TimeoutError('slower than %d s' % total)
@@ -573,14 +571,16 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
             return refuse('That form is too large.', 413)
         if request.method == 'POST' and request.path == base + '/api/game/challenge':
             g.game = True
-            if limited('game', PEER_GAME): return refuse('Too many requests; try again in a minute.', 429)
+            if limited('game', PEER_GAME) or limited('game', GAME_ALL, 'everyone'):
+                return refuse('Too many requests; try again in a minute.', 429)
         if request.method == 'POST' and request.path == base + '/upload' and request.mimetype == GAME_MIME:
             g.game = True   # the proof is in the body: game_upload reads it
-            if limited('game', PEER_GAME): return refuse('Too many requests; try again in a minute.', 429)
             # Werkzeug 2.2.2's get_data does not hold MAX_CONTENT_LENGTH (zonepub.py body_budget); nginx sends the length
             size = request.content_length
             if size is None or size <= 0: return refuse('Request length required.', 411)
-            if size > MAX_FORM: return refuse('That file is over %d MB.' % (MAX_REC // 1024 ** 2), 413)
+            if size > MAX_FORM: return drained('That file is over %d MB.' % (MAX_REC // 1024 ** 2), 413)
+            if limited('game', PEER_GAME) or limited('game', GAME_ALL, 'everyone'):
+                return drained('Too many requests; try again in a minute.', 429)
             return None
         if request.method == 'POST' and request.path == base + '/upload':
             if not session(): return refuse('Sign in with Steam first.', 401)   # before reading 8 MB
@@ -590,6 +590,14 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                 return refuse('Upload the file with the form.', 400)
             if request.get_data(cache=True).count(b'--' + boundary.encode('latin-1', 'replace')) > FORM_PARTS:
                 return refuse('That form has too many parts.', 400)
+
+    def drained(message, status):
+        """refuse(), after reading what is left of the body (nginx has it buffered): a reply while it still writes the body
+        can reach the game as a 502 (ops review 2). Bounded by nginx's client_max_body_size."""
+        try:
+            while request.stream.read(65536): pass
+        except Exception: pass
+        return refuse(message, status)
 
     @app.after_request
     def headers(resp):
@@ -935,10 +943,11 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                 with (d / 'update.json').open('rb') as f: raw = f.read(8 * 1024 ** 2 + 1)
                 pay = json.loads(json.loads(raw)['payload'])
                 if pay.get('hash_algo') != 'blake2b-256' or pay.get('object_layout') != 'objects/{h0h1}/{hash}': continue
-                cs = [x.get('hash') for x in pay.get('files', []) if isinstance(x, dict) and x.get('path') in CODE_PATHS]
+                # one csprogs, or one a platform (a Windows-only release keeps Linux's older one: flow review 2)
+                cs = {x.get('hash') for x in pay.get('files', []) if isinstance(x, dict) and x.get('path') in CODE_PATHS}
                 mirror = next((m for m in pay.get('mirrors', []) if isinstance(m, str) and m.startswith('https://')), None)
-                if len(cs) == 1 and isinstance(cs[0], str) and re.fullmatch('[0-9a-f]{64}', cs[0]) and mirror:
-                    found.append((d.name, cs[0], '%s/objects/%s/%s' % (mirror.rstrip('/'), cs[0][:2], cs[0])))
+                if mirror and 1 <= len(cs) <= 4 and all(isinstance(h, str) and re.fullmatch('[0-9a-f]{64}', h) for h in cs):
+                    found += [(d.name, h, '%s/objects/%s/%s' % (mirror.rstrip('/'), h[:2], h)) for h in sorted(cs)]
             except (OSError, ValueError, KeyError, TypeError, AttributeError):
                 continue
         if key is not None:
@@ -951,34 +960,46 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         with connect(store) as db:
             have = {r['blake'] for r in db.execute('SELECT blake FROM codes WHERE blake IN (%s)' % ','.join('?' * len(rel)),
                                                    [b for _v, b, _u in rel])}
-        now, todo = clock(), [x for x in rel if x[1] not in have and fetch_failed.get(x[1], (0, 0))[1] < CODE_TRIES]
-        return rel, todo, [x for x in todo if now - fetch_failed.get(x[1], (-CODE_RETRY, 0))[0] >= CODE_RETRY]
+        # (rel, not learned and not given up, of those the ones due a fetch). fetch_failed: blake -> (when, network fails,
+        # wrong-bytes fails); only the mirror serving other bytes gives up -- a network outage never does (ops review 2)
+        now = clock()
+        todo = [x for x in rel if x[1] not in have and fetch_failed.get(x[1], (0, 0, 0))[2] < CODE_TRIES]
+        due = lambda f: now - f[0] >= min(CODE_RETRY_MAX, CODE_RETRY * 2 ** max(0, f[1] + f[2] - 1))
+        return rel, todo, [x for x in todo if x[1] not in fetch_failed or due(fetch_failed[x[1]])]
 
     def learn_releases():
         """Fetch the csprogs of releases not yet known, one caller at a time (a challenge's thread, in the background)."""
         if not fetching.acquire(blocking=False): return
         try:
             for version, blake, url in missing_releases()[2]:
+                _when, net, wrong = fetch_failed.get(blake, (0, 0, 0))
+                try: data = fetch(url, CODE_MAX)
+                except Exception as e:
+                    fetch_failed[blake] = (clock(), net + 1, wrong)
+                    app.logger.warning('tasupd: release %s csprogs not fetched (%s); tried again later', version, type(e).__name__)
+                    continue
+                if len(data) > CODE_MAX or hashlib.blake2b(data, digest_size=32).hexdigest() != blake:
+                    fetch_failed[blake] = (clock(), net, wrong + 1)
+                    app.logger.warning('tasupd: release %s csprogs: the mirror gave other bytes (%d of %d)', version, wrong + 1, CODE_TRIES)
+                    continue
+                # a release without this upload flow is known too (not fetched again), and matches nothing
+                marked = CODE_MARK in data
                 try:
-                    data = fetch(url, CODE_MAX)
-                    if len(data) > CODE_MAX or hashlib.blake2b(data, digest_size=32).hexdigest() != blake:
-                        raise ValueError('not the manifest\'s bytes')
-                    # a release without this upload flow is known too (not fetched again), and matches nothing
-                    marked = CODE_MARK in data
                     with connect(store) as db, writing(db):
                         db.execute('INSERT OR REPLACE INTO codes(blake, sha, version, got_at) VALUES (?, ?, ?, ?)',
                                    (blake, hashlib.sha256(data).hexdigest() if marked else '', version, int(clock())))
-                    app.logger.info('tasupd: release %s csprogs learned%s', version, '' if marked else ' (no upload flow)')
-                except Exception as e:
-                    n = fetch_failed.get(blake, (0, 0))[1] + 1
-                    fetch_failed[blake] = (clock(), n)
-                    app.logger.warning('tasupd: release %s csprogs not fetched (%s), try %d of %d', version, type(e).__name__,
-                                       n, CODE_TRIES)
+                except sqlite3.Error as e:   # the store, not the mirror: the next challenge tries again
+                    app.logger.warning('tasupd: release %s csprogs not kept (%s)', version, type(e).__name__)
+                    continue
+                fetch_failed.pop(blake, None)
+                app.logger.info('tasupd: release %s csprogs learned%s', version, '' if marked else ' (no upload flow)')
         finally:
             fetching.release()
 
     def known_game(code):
         """True, False, or None when nothing could be read to say (no lobby file, no release known or waiting)."""
+        with connect(store) as db:
+            if db.execute('SELECT 1 FROM codes WHERE blake = ?', (DENIED + code,)).fetchone(): return False   # the owner's word
         lob, seen = lobby_codes()
         if code in lob: return True
         rel, unknown, waiting = missing_releases()
@@ -1026,33 +1047,33 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
     def game_upload():
         head = request.stream.read(GAME_HEAD_LEN)
         m = GAME_HEAD.fullmatch(head)
-        if not m: return refuse('That upload carries no account proof: update your game.', 400)
+        if not m: return drained('That upload carries no account proof: update your game.', 400)
         nonce, sha, pub, sig, code = (x.decode('ascii') for x in m.groups())
         now, stamp = int(clock()), int(nonce[:8], 16)
         if not (0 <= now - stamp <= CHALLENGE_TTL and hmac.compare_digest(nonce, game_token(stamp, nonce[8:16], sha))):
-            return refuse('That upload\'s confirmation expired or is not this file\'s: press Upload again.', 409)
+            return drained('That upload\'s confirmation expired or is not this file\'s: press Upload again.', 409)
         burned = 'game ' + nonce
         with connect(store) as db:
             if db.execute('SELECT 1 FROM nonces WHERE nonce = ?', (burned,)).fetchone():
-                return refuse('That upload\'s confirmation was used: press Upload again.', 409)
+                return drained('That upload\'s confirmation was used: press Upload again.', 409)
         known = known_game(code)
-        if known is None: return refuse('The upload service is still reading the game versions; try again in a minute.', 503)
-        if not known: return refuse('Update your game before uploading from it.', 403)
+        if known is None: return drained('The upload service is still reading the game versions; try again in a minute.', 503)
+        if not known: return drained('Update your game before uploading from it.', 403)
         good = signature(pub, game_nonce(nonce, sha), code, sig)
-        if good is None: return refuse('The upload service cannot check account proofs right now.', 503)
-        if not good: return refuse('The account proof did not check out.', 403)
+        if good is None: return drained('The upload service cannot check account proofs right now.', 503)
+        if not good: return drained('The account proof did not check out.', 403)
         sid, banned = key_account(pub)
-        if not sid: return refuse('Link your Steam account first (play.proto.bar/board/link), then upload again.', 403)
-        if banned: return refuse('This Steam account cannot upload.', 403)
+        if not sid: return drained('Link your Steam account first (play.proto.bar/board/link), then upload again.', 403)
+        if banned: return drained('This Steam account cannot upload.', 403)
         try:
             with connect(store) as db, writing(db):
                 db.execute("DELETE FROM nonces WHERE nonce LIKE 'game %' AND seen_at < ?", (now - CHALLENGE_TTL - 60,))   # past its code's life
                 db.execute('INSERT INTO nonces(nonce, seen_at) VALUES (?, ?)', (burned, now))
         except sqlite3.IntegrityError:
-            return refuse('That upload\'s confirmation was used: press Upload again.', 409)
+            return drained('That upload\'s confirmation was used: press Upload again.', 409)
         # Only now the file: an account has proved it, and the one code is spent
         data = request.stream.read(MAX_REC + 1)
-        if len(data) > MAX_REC: return refuse('That file is over %d MB.' % (MAX_REC // 1024 ** 2), 413)
+        if len(data) > MAX_REC: return drained('That file is over %d MB.' % (MAX_REC // 1024 ** 2), 413)
         if not hmac.compare_digest(hashlib.sha256(data).hexdigest(), sha):
             return refuse('The file is not the one confirmed: press Upload again.', 409)
         return one_at_a_time(sid, lambda: accept(sid, data, None))
@@ -1087,7 +1108,7 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         return accept(sid, body, clean_tool(request.form.get('tool')))
 
     def accept(sid, body, tool):
-        """Check, compare and keep one upload of `sid`'s, from the form or the game (tool None: named by its TF_TAS)."""
+        """Check, compare and keep one upload of `sid`'s, from the form or the game (tool None)."""
         now = int(clock())
         with spend_lock, connect(store) as db, writing(db):
             over = spend(db, sid, now)
@@ -1107,7 +1128,7 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         if pre.dups: return refuse('The header gives %s twice.' % ', '.join(sorted(pre.dups)), 400)
         if pre.odd_breaks: return refuse('The file has line breaks or spaces other than newline, space and tab.', 400)
         hdr = pre.hdr
-        if tool is None: tool = GAME_TOOL_TAS if tp.hdr_int(hdr, 'flags') & TF_TAS else GAME_TOOL
+        if tool is None: tool = GAME_TOOL
         mapname = (hdr.get('map') or '').strip().lower()
         if not MAPNAME.fullmatch(mapname): return refuse('The header names no usable map.', 400)
         track = tp.hdr_int(hdr, 'track', -1) if 'track' in hdr else 0
@@ -1354,12 +1375,16 @@ def main(argv=None):
             if not re.fullmatch('[0-9a-f]{64}', sha): print('a csprogs.dat SHA-256: 64 hex digits'); return 1
             with writing(db):
                 if a.cmd == 'allow-code':
+                    db.execute('DELETE FROM codes WHERE blake = ?', (DENIED + sha,))
                     db.execute('INSERT OR REPLACE INTO codes(blake, sha, version, got_at) VALUES (?, ?, ?, ?)',
                                (MANUAL + sha, sha, 'manual: ' + _CTRL.sub('', a.note)[:80], int(time.time())))
                     print('game uploads signed by csprogs %s are taken' % sha[:16])
                 else:
-                    n = db.execute('DELETE FROM codes WHERE blake = ?', (MANUAL + sha,)).rowcount
-                    print('removed' if n else 'not an allowed code (releases are learned from their manifests)', sha[:16])
+                    # any build, a learned release too (attack review 2: a release with a bad upload flow must be stoppable)
+                    db.execute('DELETE FROM codes WHERE blake = ?', (MANUAL + sha,))
+                    db.execute('INSERT OR REPLACE INTO codes(blake, sha, version, got_at) VALUES (?, ?, ?, ?)',
+                               (DENIED + sha, sha, 'denied', int(time.time())))
+                    print('game uploads signed by csprogs %s are refused (allow-code undoes it)' % sha[:16])
             return 0
         if a.cmd == 'codes':
             for r in db.execute('SELECT * FROM codes ORDER BY got_at'):

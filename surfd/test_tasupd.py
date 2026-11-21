@@ -1164,10 +1164,29 @@ class GameUpload(Service):
         self.refused(self.post(c, self.game_body(body, n, code=hashlib.sha256(rel).hexdigest())), 403, 'Update your game')
         self.assertEqual(len(self.fetched), 1)                  # known now: not fetched again
 
-    def test_the_tool_is_named_by_the_runs_tas_flag(self):
-        j = self.send(body=rec(extra='flags %d\n' % (svc.TF_TAS | 256 | 1))).get_json()
+    def test_the_tool_says_how_it_came_not_what_made_it(self):
+        """Any linked key can sign any file with a public game code: a TAS flag in the header names nothing more."""
+        j = self.send(body=rec(extra='flags %d\n' % (4194304 | 256 | 1))).get_json()
         with contextlib.closing(sqlite3.connect(self.store)) as db:
-            self.assertEqual(db.execute('SELECT tool FROM runs WHERE id = ?', (j['id'],)).fetchone()[0], svc.GAME_TOOL_TAS)
+            self.assertEqual(db.execute('SELECT tool FROM runs WHERE id = ?', (j['id'],)).fetchone()[0], svc.GAME_TOOL)
+
+    def test_the_owner_can_refuse_any_build(self):
+        """deny-code stops a build the service would take (here the lobby's), until allow-code."""
+        self.assertEqual(self.cli('deny-code', self.code)[0], 0)
+        self.refused(self.send(), 403, 'Update your game')
+        self.assertEqual(self.cli('allow-code', self.code)[0], 0)
+        self.assertEqual(self.send(body=rec(extra='comment again\n')).get_json()['ok'], 1)
+
+    def test_a_refusal_before_the_file_reads_the_rest_of_the_body(self):
+        """nginx may still be writing the body: a reply then can reach the game as a 502 (ops review 2)."""
+        c, body = self.app.test_client(), rec()
+        forged = '%08x' % int(self.clock.t) + '0' * 24
+        data = self.game_body(body, forged)
+        stream = io.BytesIO(data)
+        r = c.post('/tasup/upload', content_type=svc.GAME_MIME,
+                   environ_overrides={'wsgi.input': stream, 'CONTENT_LENGTH': str(len(data))})
+        self.refused(r, 409, 'not this file')
+        self.assertEqual(stream.tell(), len(data))
 
     def test_codes_are_not_stored(self):
         c = self.app.test_client()
@@ -1260,7 +1279,7 @@ class GameUpload(Service):
             n = self.challenge(c, body)['nonce']; settle(k)
             # flow review: a release that could not be read yet is "try again", not "update your game"
             if k < svc.CODE_TRIES: self.refused(self.post(c, self.game_body(body, n, code=code)), 503, 'still reading')
-            self.clock.t += svc.CODE_RETRY + 1
+            self.clock.t += svc.CODE_RETRY_MAX + 1     # past the doubled wait
         self.assertEqual(len(self.fetched), svc.CODE_TRIES)
         body = rec(extra='comment last\n')
         n = self.challenge(c, body)['nonce']
@@ -1281,6 +1300,50 @@ class GameUpload(Service):
         self.assertEqual(self.cli('deny-code', dev)[0], 0)
         self.refused(self.send(code=dev, body=rec(extra='comment dev2\n')), 403, 'Update your game')
         self.assertEqual(self.cli('allow-code', 'nothex')[0], 1)
+
+    def test_a_network_outage_never_gives_up_a_release(self):
+        """ops review 2: three failed fetches said "update your game" until a restart. Network failures retry, doubling
+        to an hour, and the answer stays "try again"; the release is learned once the mirror answers."""
+        rel = b'csprogs of release 0.1.62 ' + svc.CODE_MARK
+        blake = hashlib.blake2b(rel, digest_size=32).hexdigest()
+        (self.releases / '0.1.62').mkdir()
+        pay = {'hash_algo': 'blake2b-256', 'object_layout': 'objects/{h0h1}/{hash}', 'mirrors': ['https://dl.example/u'],
+               'files': [{'path': 'ftesurf/csprogs.dat', 'hash': blake, 'size': len(rel), 'platform': 'all', 'exec': False}]}
+        (self.releases / '0.1.62' / 'update.json').write_text(json.dumps({'payload': json.dumps(pay), 'signature': 'x'}))
+        self.objects = {}                                            # every fetch raises KeyError: the network is down
+        c, code = self.app.test_client(), hashlib.sha256(rel).hexdigest()
+        def settle(k):
+            for _ in range(300):
+                if len(self.fetched) >= k and not any(t.name != 'MainThread' and t.is_alive() for t in threading.enumerate()): return
+                time.sleep(0.01)
+        for k in range(1, 6):
+            body = rec(extra='comment out %d\n' % k)
+            n = self.challenge(c, body)['nonce']; settle(k)
+            self.refused(self.post(c, self.game_body(body, n, code=code)), 503, 'still reading')
+            self.clock.t += svc.CODE_RETRY_MAX + 1
+        self.objects = {'https://dl.example/u/objects/%s/%s' % (blake[:2], blake): rel}   # back
+        body = rec(extra='comment back\n')
+        n = self.challenge(c, body)['nonce']; settle(6)
+        self.assertEqual(self.post(c, self.game_body(body, n, code=code)).get_json()['ok'], 1)
+
+    def test_a_release_with_a_csprogs_a_platform_learns_both(self):
+        """A Windows-only release carries Linux's older csprogs beside the new one (updatefeed merge_shared)."""
+        new, old = b'win csprogs ' + svc.CODE_MARK, b'linux csprogs ' + svc.CODE_MARK
+        bn, bo = (hashlib.blake2b(x, digest_size=32).hexdigest() for x in (new, old))
+        (self.releases / '0.1.63').mkdir()
+        pay = {'hash_algo': 'blake2b-256', 'object_layout': 'objects/{h0h1}/{hash}', 'mirrors': ['https://dl.example/u'],
+               'files': [{'path': 'ftesurf/csprogs.dat', 'hash': bn, 'size': len(new), 'platform': 'win64', 'exec': False},
+                         {'path': 'ftesurf/csprogs.dat', 'hash': bo, 'size': len(old), 'platform': 'linux64', 'exec': False}]}
+        (self.releases / '0.1.63' / 'update.json').write_text(json.dumps({'payload': json.dumps(pay), 'signature': 'x'}))
+        self.objects = {'https://dl.example/u/objects/%s/%s' % (b[:2], b): x for b, x in ((bn, new), (bo, old))}
+        c = self.app.test_client()
+        self.challenge(c, b'warm')
+        for _ in range(300):
+            with contextlib.closing(sqlite3.connect(self.store)) as db:
+                if db.execute('SELECT COUNT(*) FROM codes WHERE blake IN (?, ?)', (bn, bo)).fetchone()[0] == 2: break
+            time.sleep(0.01)
+        for k, x in enumerate((new, old)):
+            self.assertEqual(self.send(code=hashlib.sha256(x).hexdigest(), body=rec(extra='comment p%d\n' % k)).get_json()['ok'], 1)
 
     def test_lobby_backups_are_the_newest_two(self):
         """csprogs.dat.pre* (a lobby deploy's copy of the build it replaced): the newest LOBBY_BACKUPS of them sign."""

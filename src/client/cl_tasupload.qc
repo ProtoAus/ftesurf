@@ -3,15 +3,19 @@
   tab. Upload asks the service for a code bound to the file's SHA-256; Send, on a real press only, signs
   TASUp_Signed (the code, the purpose and the file) with the linked key -- acct_sign kind -6, as zone publishing signs --
   and posts the proof and the file in one body. The service checks the run as it checks the web form's.
+  The list is the local game's own word (SV_TASUpList: runs it finished, by their SHA-256, kept in data/tasproj/ where
+  client code cannot write), so a file a server's csprogs put in data/runs/ is never offered as yours (attack review 2).
+  A bot's .rec goes through the web form.
 */
 #ifndef TUP_BASE   // a test build only (fteqcc -DTUP_BASE): a server must never choose where a proof goes
 #define TUP_BASE "https://play.proto.bar/tasup/"
 #endif
 #define TUP_MAX 10
 #define TUP_BYTES 8388608                           // tasupd.MAX_REC
-string tup_p[TUP_MAX], tup_l[TUP_MAX];
-float tup_n, tup_at;
-string tup_key;                 // the map and its courses the list was made for
+string tup_p[TUP_MAX], tup_l[TUP_MAX], tup_s[TUP_MAX];   // path, label, the SHA-256 the game saved it with
+string tupe_p[TUP_MAX], tupe_s[TUP_MAX];                  // the list arriving (TASUp_ListEvent)
+float tup_n, tup_at, tupe_n;
+string tup_key;                 // the map the list was asked for
 float tup_state;                // 0 the list, 1 asking for a code, 2 confirm, 3 sending, 4 answered
 float tup_req, tup_until, tup_armed, tup_size;
 string tup_path, tup_label, tup_nonce, tup_sha, tup_note;
@@ -47,62 +51,51 @@ string(string nonce, string sha) TASUp_Signed =
 };
 string(float track) TASUp_Course = { return (track > 0) ? sprintf("Bonus %g", track) : "Main"; };
 
-void(string p, string l) TASUp_Add =
+// a run the local game says it finished (path, sha): offered if it is still there, of this map, a whole course
+void(string p, string sha) TASUp_Add =
 {
-	local float i;
-	if (tup_n >= TUP_MAX || !TASJargon_Safe(p)) return;
+	local float i, hd, t;
+	local string b;
+	if (tup_n >= TUP_MAX || !TASJargon_Safe(p) || !TASUp_Hex(sha, 64)) return;
+	if (substring(p, 0, 10) != "data/runs/" || FS_TagFromName(FS_NameTag(TASJargon_Base(p))) != RT_TAS)   // Base drops .rec
+		return;
 	for (i = 0; i < tup_n; i = i + 1) if (!strcmp(tup_p[i], p)) return;
-	tup_p[tup_n] = strzone(p); tup_l[tup_n] = strzone(l); tup_n = tup_n + 1;
+	hd = TASJargon_Head(p);
+	if (hd < 0) return;            // nested: QC's || reads jg_hcok[-1] too (flow review 2)
+	if (!jg_hcok[hd] || jg_hcl[hd] > 0) return;
+	b = TASJargon_Base(p);
+	t = rint(stof(substring(b, 0, strstrofs(b, "_"))) * jg_hctr[hd] * 100) / 100;
+	tup_p[tup_n] = strzone(p); tup_s[tup_n] = strzone(sha);
+	tup_l[tup_n] = strzone(sprintf("%s  %s  TAS run", TASUp_Course(max(0, jg_hct[hd])), (t >= 60)
+		? sprintf("%g:%s%.2f", floor(t / 60), (t - 60 * floor(t / 60) < 10) ? "0" : "", t - 60 * floor(t / 60)) : sprintf("%.2fs", t)));
+	tup_n = tup_n + 1;
 };
-// Your finished TAS runs of the map's whole courses (data/runs/<map>/<main|bonus_N>/<ticks>_..._tas.rec, fastest first),
-// then a bot's .rec loose in data/ that names this map. Stage legs are not offered: the board takes whole courses.
-void(float track) TASUp_Own =
+// SV_TASUpList's events: index, count, then the run's sha and path; the list is replaced once the last arrives
+void() TASUp_ListEvent =
 {
-	local float h, n, c, k, hd, t;
-	local string f, b, dir;
-	dir = FS_MovementProfilePath(serverkey("*movementprofile"), FS_RunDir(serverkey("map"), track, 0));
-	if (dir == "") return;
-	h = search_begin(strcat(dir, "*.rec"), 33, TRUE);
-	if (h < 0) return;
-	n = search_getsize(h); k = 0;
-	for (c = 0; c < n && k < 3 && tup_n < TUP_MAX; c = c + 1)
-	{
-		f = search_getfilename(h, c);
-		b = TASJargon_Base(f);
-		if (FS_TagFromName(FS_NameTag(b)) != RT_TAS) continue;
-		hd = TASJargon_Head(f);
-		if (hd < 0 || !jg_hcok[hd]) continue;
-		t = rint(stof(substring(b, 0, strstrofs(b, "_"))) * jg_hctr[hd] * 100) / 100;
-		TASUp_Add(f, sprintf("%s  %s  TAS run", TASUp_Course(track), (t >= 60)
-			? sprintf("%g:%s%.2f", floor(t / 60), (t - 60 * floor(t / 60) < 10) ? "0" : "", t - 60 * floor(t / 60)) : sprintf("%.2fs", t)));
-		k = k + 1;
-	}
-	search_end(h);
+	local float i, n, k;
+	local string sha, path;
+	i = readbyte(); n = readbyte();
+	sha = path = "";
+	if (n) { sha = readstring(); path = readstring(); }
+	if (!isserver()) return;        // only the game this process hosts says what it finished
+	if (i == 0) { for (k = 0; k < tupe_n; k = k + 1) { strunzone(tupe_p[k]); strunzone(tupe_s[k]); } tupe_n = 0; }
+	if (n && i == tupe_n && tupe_n < TUP_MAX) { tupe_p[tupe_n] = strzone(path); tupe_s[tupe_n] = strzone(sha); tupe_n = tupe_n + 1; }
+	if (i < n - 1) return;
+	for (k = 0; k < tup_n; k = k + 1) { strunzone(tup_p[k]); strunzone(tup_l[k]); strunzone(tup_s[k]); }
+	tup_n = 0;
+	for (k = 0; k < tupe_n; k = k + 1) TASUp_Add(tupe_p[k], tupe_s[k]);
 };
+// asks the local game for its list: when the map changes, and every 3 s while the tab is drawn
 void() TASUp_List =
 {
-	local float i, h, n, hd;
-	local string key, f;
-	TASJargon_Courses();
-	key = sprintf("%s %g", zone_mapname, jg_cn);
+	local string key;
+	if (!isserver()) return;
+	key = zone_mapname;
 	if (key == tup_key && cltime < tup_at) return;
 	tup_at = cltime + 3;
-	tup_key = TASUp_Keep(tup_key, key);
-	for (i = 0; i < tup_n; i = i + 1) { strunzone(tup_p[i]); strunzone(tup_l[i]); }
-	tup_n = 0;
-	if (!jg_cn) TASUp_Own(0);
-	for (i = 0; i < jg_cn; i = i + 1) if (!jg_cl[i]) TASUp_Own(jg_ct[i]);
-	h = search_begin("data/*.rec", 33, TRUE);
-	if (h < 0) return;
-	n = search_getsize(h);
-	for (i = 0; i < n && tup_n < TUP_MAX; i = i + 1)
-	{
-		f = search_getfilename(h, i);
-		hd = TASJargon_Head(f);
-		if (hd < 0 || !jg_hcok[hd] || jg_hcl[hd] > 0) continue;
-		TASUp_Add(f, sprintf("%s  file %s", TASUp_Course(max(0, jg_hct[hd])), TASJargon_Base(f)));
-	}
-	search_end(h);
+	if (key != tup_key) { tup_key = TASUp_Keep(tup_key, key); }
+	localcmd("cmd tas uploads\n");
 };
 
 void(string note) TASUp_Answer =
@@ -129,13 +122,14 @@ void(float i) TASUp_Ask =
 {
 	local string body;
 	if (i < 0 || i >= tup_n || tup_state == 1 || tup_state == 3) return;
+	tup_label = TASUp_Keep(tup_label, tup_l[i]);   // first: a refusal below shows this run's name (flow review 2)
 	if (!TASShare_Allowed()) { TASUp_Answer("accept the online terms in the main menu first"); return; }
-	if (Rec_ServerIsRemote()) { TASUp_Answer("upload from a local game, not while on a server"); return; }   // review: a server's plant
+	if (!isserver()) { TASUp_Answer("upload from a game you host, not while on a server"); return; }
 	body = TASUp_Read(tup_p[i]);
 	if (body == "") { TASUp_Answer((tup_size > TUP_BYTES) ? "that file is over 8 MB" : "that file could not be read"); return; }
-	tup_path = TASUp_Keep(tup_path, tup_p[i]);
-	tup_label = TASUp_Keep(tup_label, tup_l[i]);
 	tup_sha = TASUp_Keep(tup_sha, strtolower(digest_hex("SHA256", body)));
+	if (strcmp(tup_sha, tup_s[i])) { TASUp_Answer("that file is not the run your game saved (it changed since); nothing was sent"); return; }
+	tup_path = TASUp_Keep(tup_path, tup_p[i]);
 	tup_req = Online_NextReq();
 	if (!uri_post(strcat(TUP_BASE, "api/game/challenge"), tup_req, "application/json", sprintf("{\"sha\":\"%s\"}", tup_sha)))
 	{
@@ -151,7 +145,7 @@ void() TASUp_Send =
 	local string body, p, env;
 	if (tup_state != 2 || !cl_input_real) return;
 	if (gettime(0) < tup_armed) return;     // no press carried in from the Upload click
-	if (Rec_ServerIsRemote()) { TASUp_Answer("upload from a local game, not while on a server; nothing was sent"); return; }
+	if (!isserver()) { TASUp_Answer("upload from a game you host, not while on a server; nothing was sent"); return; }
 	body = TASUp_Read(tup_path);
 	if (body == "" || strcmp(strtolower(digest_hex("SHA256", body)), tup_sha))
 	{
@@ -249,11 +243,16 @@ void(vector at, float width, float tsz, float hint, float row) TASUp_Draw =
 	half = [(width - 6) / 2, row, 0];
 	if (tup_state == 0)
 	{
+		if (!isserver())
+		{
+			ZonePub_Wrap(at, width, tsz, "Upload from a game you host: TAS runs are made there.", SUI_THEME_TEXT, TRUE);
+			return;
+		}
 		TASUp_List();
 		if (!tup_n)
 		{
-			ZonePub_Wrap(at, width, tsz, "No TAS run of this map yet. Finish one with Jargon or Manual TAS (or put a bot's .rec "
-				"in data/) and it shows here.", SUI_THEME_TEXT, TRUE);
+			ZonePub_Wrap(at, width, tsz, "No TAS run of this map yet. Finish one with Jargon or Manual TAS and it shows here. "
+				"(A bot's .rec: upload it at play.proto.bar/tasup.)", SUI_THEME_TEXT, TRUE);
 			return;
 		}
 		chip = [tsz * 7, row, 0];
@@ -301,6 +300,7 @@ void(float argc) TASUp_Verb =
 		if (i != floor(i) || i < 0 || i >= tup_n) { print(sprintf("tas upload: 1..%g\n", tup_n)); return; }
 		if (!tasu_open) TASUI_Toggle(0);
 		TASUI_SelectTab(TAS_TAB_UPLOAD);
+		if (tup_state == 1 || tup_state == 3) { print("tas upload: one is on its way; wait for its answer\n"); return; }
 		tup_state = 0; TASUp_Ask(i);
 		return;
 	}
