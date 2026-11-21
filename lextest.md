@@ -1,5 +1,13 @@
 # lextest.md — things waiting on a human
 
+## P1700 -- TAS uploads on the website (root FTESurf-worktrees/tasweb-20261121-a03)
+1. proto.bar/ftesurf/ (Overview, Zoning, Anti-Cheat): the menu has "TAS uploads"; it opens play.proto.bar/tasup/. The
+   Leaderboard page gets it with the next backend generation (tools/backend-pending.md).
+2. play.proto.bar/tasup/: the site's menu across the top. Under Find a course, type "sand": the browser offers
+   matching maps; pick surf_sandtrap2 and Show: its picture, "tier 2, linear, 4 bonuses", and Main / Bonus 1-4 to
+   click. A staged map says its main course is taken whole.
+3. "Link your Steam account" on that page opens the link page (it was a 404 before).
+
 ## P1697 -- the top 10 review page (anti-cheat finish list item 7; worldofsurf-47) -- after the next backend generation
 1. Open the admin, click "Top 10" (beside Runs). Every run in a ranked top 10 from the last 14 days is listed, newest
    first, with its rank, verdict, your review, the receipt, whether its view and journal were checked, its start lag

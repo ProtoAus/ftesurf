@@ -10,7 +10,8 @@ app = create_app(os.environ['TASUPD_STORE'], os.environ['TASUPD_ACCOUNTS'],
                  map_cfg_dirs=[d for d in os.environ.get('TASUPD_MAPCFG', '').split(os.pathsep) if d],
                  # P1696: the csprogs whose proofs the game's upload takes
                  game_files=json.loads(os.environ.get('TASUPD_GAMES', '[]')),
-                 releases=os.environ.get('TASUPD_RELEASES') or None)
+                 releases=os.environ.get('TASUPD_RELEASES') or None,
+                 mapmeta=os.environ.get('TASUPD_MAPMETA') or None)   # P1700: the course finder
 # The nginx location replaces X-Forwarded-For with its connection's address.
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1)
 source = os.environ['TASUPD_SOURCE']

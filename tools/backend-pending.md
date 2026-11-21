@@ -7,6 +7,10 @@ CURRENT = cd1965f1 (root /srv/nvme/agent-work/gen1674-20261121-e3; kit FTESurf-p
 pins native fteqw-svarm64 1753f9d4 (lobby engine patch-1683, swapped 01:38Z), and keeps the consumer's 900 s
 `systemctl start` (its drop-in will have 18 ExecStartPre blocks, ~280 s; or the owner prunes retired blocks).
 
+## P1700 board menu link -- READY for the NEXT generation (session a03de808, 21 Nov)
+- surfd/web/board.html: one `<a href="https://play.proto.bar/tasup/">TAS uploads</a>` after Anti-Cheat in the site
+  nav (the static pages and tasupd carry it already). Markup only; no surfd code or schema change.
+
 ## P1699 "no evidence" mark -- READY for the NEXT generation, switched OFF (worldofsurf-47)
 surfd/surfd.py (noev_reasons, board_rows' `noev`), web/board.js + board.css; the lobby QC (cl_online/cl_scores) shows
 it once the JSON carries it. Leave SURFD_NOEV unset until top-10 evidence uploads are reliable (21 Nov, live db: of

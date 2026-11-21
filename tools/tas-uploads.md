@@ -185,6 +185,15 @@ old unit kept as its unit.prev). Checked live: health and X-Tasupd-Source 732293
 proofless game upload refused (200, ok=0); releases 0.1.45-0.1.54 learned (none carries the upload flow yet);
 `allow-code 4af237be...` for Lex's dev install (main 73229378). Players: from the first release with P1696.
 
+## P1700: on the website
+
+tasupd's pages carry the site's menu (SITE_NAV, `TAS uploads` current) and every site page links here (the release
+page template, site/zoning.html, site/anticheat.html, surfd/web/board.html). The course finder is a map name with
+the browser's own list (`<datalist>`, no script) of every map in the site's media/mapmeta.txt (TASUPD_MAPMETA,
+re-read when it changes); a map's page (`/tasup/board?map=`, track defaults to Main) shows its thumbnail
+(/ftesurf/media/thumbs/<uuid>.jpg, same origin: CSP img-src 'self'), tier, stage and bonus counts, and chips for
+Main and each bonus (and any track with runs). The Steam link page is proto.bar/ftesurf/board/link.
+
 ## Still to build
 
 1. A TAS-uploads tab on the web/menu boards reading `/tasup/api/board` (surfd's board.js rides a guarded

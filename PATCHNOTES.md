@@ -21,6 +21,10 @@
 
 ## next
 
+### P1700 TAS uploads on the website
+- Every World of Surf web page links to TAS uploads, and the TAS upload pages carry the site's menu.
+- Finding a TAS board is a map picker: type a map name, pick it, and its page shows the map's picture and its main course and bonuses by name.
+
 ### P1694 Controller runs are tagged
 - A run that used a controller (a stick that moved you, or a button that did something) now shows the runner's name in light red on the boards, with "Controller" when you hover. Controllers stay allowed.
 - Needs the next game update; the Linux game has no controller support, so its runs are never tagged.

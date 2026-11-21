@@ -439,7 +439,21 @@ td:last-child,td.n{white-space:nowrap}.stats{max-width:460px}
 input[type=text],input[type=number]{font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);max-width:100%}
 form.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.fine{color:var(--muted);font-size:13px}
 ul.why{padding-left:18px}code{font-size:13px}button.link{background:none;color:var(--acc);padding:0}
+nav.site{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--card)}
+nav.site a{color:var(--muted);text-decoration:none;font-size:14px}nav.site a:hover{color:var(--ink)}
+nav.site a[aria-current]{color:var(--ink);font-weight:600}nav.site .mark{margin-right:10px;color:var(--ink);font-size:15px}
+input[list]{min-width:260px}
+.mapcard{display:flex;flex-wrap:wrap;gap:16px;align-items:center}.mapcard img{width:240px;max-width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.chip{padding:5px 12px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--ink);font-size:14px}
+.chip[aria-current]{background:var(--acc);border-color:var(--acc);color:#fff}
 '''
+
+# P1700: the main site's pages (src/release/page.template.html's nav), this service's own entry marked
+SITE = 'https://proto.bar/ftesurf/'
+SITE_NAV = (('Overview', SITE), ('Leaderboard', SITE + 'board/'), ('Players', SITE + 'board/#who='),
+            ('Zoning', SITE + 'zoning.html'), ('Anti-Cheat', SITE + 'anticheat.html'), ('TAS uploads', None),
+            ('Download', SITE + '#download'))
+THUMB = re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
 
 LABEL = {'shown': 'physics checked', 'held': 'waiting for review', 'rejected': 'rejected', 'removed': 'removed'}
 
@@ -449,9 +463,10 @@ def label(r):
 
 
 def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=time.time, map_cfg_dirs=(),
-               game_files=(), releases=None, fetch=fetch_https, verify=None):
+               game_files=(), releases=None, fetch=fetch_https, verify=None, mapmeta=None):
     """game_files: csprogs the lobbies serve; releases: the site's releases/ (<version>/update.json) -- the game code
-    whose proofs are taken (P1696). verify: an ed25519 module (tests), else tools/ed25519.py."""
+    whose proofs are taken (P1696). verify: an ed25519 module (tests), else tools/ed25519.py. mapmeta: the site's
+    media/mapmeta.txt (tools/mapmeta.py) -- the course finder's maps, their courses and thumbnails (P1700)."""
     tp = load_tasplaus()
     app = Flask(__name__)
     app.config['MAX_CONTENT_LENGTH'] = MAX_FORM
@@ -552,11 +567,13 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         return name or 'Steam ' + steamid[-4:]
 
     def page(title, inner, status=200, sid=None):
-        top = ('<a class="mark" href="%s/">World of <b>Surf</b> &middot; TAS uploads</a>' % base)
+        top = '<nav class="site" aria-label="Site"><a class="mark" href="%s">World of <b>Surf</b></a>%s</nav>' % (SITE, ''.join(
+            '<a href="%s/" aria-current="page">%s</a>' % (base, n) if u is None else '<a href="%s">%s</a>' % (u, n)
+            for n, u in SITE_NAV))
         doc = ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
                '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
                '<meta name="color-scheme" content="light dark">\n<title>%s - World of Surf</title>\n'
-               '<style>%s</style>\n</head>\n<body>\n<main>\n%s\n%s\n</main>\n</body>\n</html>\n'
+               '<style>%s</style>\n</head>\n<body>\n%s\n<main>\n%s\n</main>\n</body>\n</html>\n'
                % (html.escape(title), CSS, top, inner))
         return Response(doc, status=status, mimetype='text/html')
 
@@ -631,7 +648,7 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         resp.headers['X-Content-Type-Options'] = 'nosniff'
         resp.headers['Referrer-Policy'] = 'same-origin'
         resp.headers['Content-Security-Policy'] = (
-            "default-src 'none'; style-src 'unsafe-inline'; form-action 'self';"
+            "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self';"
             " frame-ancestors 'none'; base-uri 'none'")
         return resp
 
@@ -657,6 +674,38 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         rows = db.execute("SELECT " + LIST + " FROM runs WHERE state = 'shown' ORDER BY id DESC LIMIT ?", (limit * 2,)).fetchall()
         accts = accounts_of(r['steamid'] for r in rows)
         return [r for r in rows if r['steamid'] in accts and not accts[r['steamid']][1]][:limit], accts
+
+    meta_cache = {}
+
+    def maps_known():
+        """{map: (tier, stages, bonuses, thumb uuid)} from mapmeta.txt (`meta <name> <tier> <linear> <stages> <bonuses>
+        <page> <cell> <thumb> ...`, tools/mapmeta.py Meta.line), read again only when the file changes; {} without it."""
+        if not mapmeta: return {}
+        try: st = os.stat(mapmeta)
+        except OSError: return {}
+        key = (st.st_ino, st.st_size, st.st_mtime_ns)
+        with codes_lock:
+            if meta_cache.get('key') == key: return meta_cache['maps']
+        maps = {}
+        try:
+            with open(mapmeta, 'rb') as f: raw = f.read(16 * 1024 ** 2)
+            for line in raw.decode('utf-8', 'replace').splitlines():
+                w = line.split()
+                if len(w) < 9 or w[0] != 'meta' or not MAPNAME.fullmatch(w[1].lower()): continue
+                num = lambda x: int(x) if x.isdigit() else 0
+                maps[w[1].lower()] = (num(w[2]), num(w[4]), min(num(w[5]), MAX_TRACK), w[8] if THUMB.fullmatch(w[8]) else '')
+        except OSError:
+            return {}
+        with codes_lock: meta_cache.update(key=key, maps=maps)
+        return maps
+
+    def map_finder(value=''):
+        """The course finder: a map name with the browser's own list of every known map (no script)."""
+        names = sorted(maps_known())
+        return ('<form class="row" method="get" action="%s/board"><input type="text" name="map" list="tasup-maps" value="%s" '
+                'placeholder="Type a map name" autocomplete="off" required aria-label="Map">'
+                '<datalist id="tasup-maps">%s</datalist><button type="submit">Show</button></form>'
+                % (base, html.escape(value), ''.join('<option value="%s">' % html.escape(n) for n in names)))
 
     def course_args():
         mapname = (request.args.get('map') or '').strip().lower()
@@ -711,12 +760,9 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         else:
             out.append('<div class="card"><p><a class="go" href="%s/steam">Sign in with Steam to upload</a></p>'
                        '<p class="fine">Uploading needs a Steam account linked to World of Surf. First time? '
-                       '<a href="%s/board/link">Link your Steam account</a> once (about twenty seconds), then sign in here.</p></div>'
-                       % (base, origin))
-        out.append('<h2>Find a course</h2><form class="row" method="get" action="%s/board">'
-                   '<input type="text" name="map" placeholder="surf_sandtrap2" required>'
-                   '<input type="number" name="track" min="0" max="%d" value="0" style="width:6em" aria-label="Course (0 main, 1+ bonus)">'
-                   '<button type="submit">Show board</button></form>' % (base, MAX_TRACK))
+                       '<a href="%sboard/link">Link your Steam account</a> once (about twenty seconds), then sign in here.</p></div>'
+                       % (base, SITE))   # P1700: the board lives on the site, not this host (play.proto.bar/board/link is 404)
+        out.append('<h2>Find a course</h2>' + map_finder() + '<p class="fine">Pick a map, then its main course or a bonus.</p>')
         if mine:
             out.append('<h2>Your uploads</h2>' + runs_table(mine, accts, mine=True))
         out.append('<h2>Recently checked</h2>' + runs_table(recent, accts))
@@ -725,11 +771,25 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
     @app.get(base + '/board')
     def board_page():
         mapname, track = course_args()
-        if mapname is None: return refuse('Name a map (letters, digits, _ . + -) and a course number.', 400)
-        with connect(store) as db: rows, accts = board_rows(db, mapname, track)
-        return page('%s %s' % (mapname, course(track)), '<h1>%s <span class="lede">%s</span></h1>\n'
-                    '<p class="lede">Uploaded TAS runs, best per player. Times are the file\'s own clock at 66.67 tick.</p>\n%s'
-                    % (html.escape(mapname), course(track), runs_table(rows, accts, ranked=True)))
+        if mapname is None: return refuse('Name a map (letters, digits, _ . + -).', 400)
+        with connect(store) as db:
+            rows, accts = board_rows(db, mapname, track)
+            have = {r[0] for r in db.execute("SELECT DISTINCT track FROM runs WHERE map = ? AND state = 'shown'", (mapname,))}
+        info = maps_known().get(mapname)
+        tier, stages, bonuses, thumb = info if info else (0, 0, 0, '')
+        tracks = sorted(set(range(bonuses + 1)) | have | {track})     # Main, its bonuses, and any course with runs
+        chips = ''.join('<a class="chip" href="%s/board?map=%s&amp;track=%d"%s>%s</a>' % (
+            base, urllib.parse.quote(mapname), t, ' aria-current="page"' if t == track else '', course(t)) for t in tracks)
+        facts = ', '.join(x for x in ('tier %d' % tier if tier else '', '%d stages' % stages if stages > 1 else 'linear' if info else '',
+                                       '%d bonus%s' % (bonuses, 'es' if bonuses != 1 else '') if bonuses else '') if x)
+        card = ('<div class="card mapcard">%s<div><h1>%s</h1><p class="lede">%s</p></div></div>' % (
+            '<img src="/ftesurf/media/thumbs/%s.jpg" alt="">' % thumb if thumb else '', html.escape(mapname),
+            html.escape(facts) if facts else ('not in the map list' if not info else '')))
+        note = ('<p class="fine">TAS uploads are whole courses: the main course from its start (all %d stages) or a bonus.</p>'
+                % stages if stages > 1 else '')
+        return page('%s %s' % (mapname, course(track)), map_finder(mapname) + card + '<div class="chips">%s</div>' % chips + note
+                    + '<h2>%s</h2><p class="lede">Uploaded TAS runs, best per player. Times are the file\'s own clock at 66.67 tick.</p>\n%s'
+                    % (course(track), runs_table(rows, accts, ranked=True)))
 
     @app.get(base + '/api/health')
     def api_health():
@@ -858,8 +918,8 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         acct = accounts_of([sid]).get(sid)
         if acct is None:
             return page('Link first', '<h1>Link your Steam account first</h1><p class="lede">World of Surf does not know '
-                        'this Steam account yet. <a href="%s/board/link">Link it</a> once (it says how your name is shown), '
-                        'then <a href="%s/steam">sign in here again</a>.</p>' % (origin, base), 403)
+                        'this Steam account yet. <a href="%sboard/link">Link it</a> once (it says how your name is shown), '
+                        'then <a href="%s/steam">sign in here again</a>.</p>' % (SITE, base), 403)
         if acct[1]:
             return refuse('This Steam account cannot upload.', 403)
         exp = str(now + SESSION_TTL)
@@ -1098,7 +1158,7 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         if not known: return drained('Update your game before uploading from it.', 403)
         # the key's account before its signature: an unlinked key costs a query, not a pure-Python verify (attack review 4)
         sid, banned = key_account(pub)
-        if not sid: return drained('Link your Steam account first (play.proto.bar/board/link), then upload again.', 403)
+        if not sid: return drained('Link your Steam account first (proto.bar/ftesurf/board/link), then upload again.', 403)
         good = signature(pub, game_nonce(nonce, sha), code, sig)
         if good is None: return drained('The upload service cannot check account proofs right now.', 503)
         if not good: return drained('The account proof did not check out.', 403)

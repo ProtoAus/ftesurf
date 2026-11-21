@@ -91,7 +91,8 @@ FILES = {'surfd/tasupd.py': 'tasupd.py', 'surfd/tasupd_wsgi.py': 'tasupd_wsgi.py
 # P1696: the game code whose upload proofs are taken -- the lobbies' csprogs, and released ones by their manifests
 # (a lobby deploy keeps the build it replaced as csprogs.dat.preNNNN-<when>: tasupd takes the newest two; .prev* are stale)
 GAME_FILES = ['/srv/nvme/ftesurf-server/game/ftesurf/csprogs.dat', '/srv/nvme/ftesurf-server/game/ftesurf/csprogs.dat.pre[0-9]*']
-SITE_RELEASES = '/srv/nvme/ftesurf-site/releases'   # <version>/update.json (not RELEASES, the installs)
+SITE_RELEASES = '/srv/nvme/ftesurf-site/releases'
+MAPMETA = '/srv/nvme/ftesurf-site/media/mapmeta.txt'   # P1700: the course finder's maps and thumbnails   # <version>/update.json (not RELEASES, the installs)
 
 
 def sha(body): return hashlib.sha256(body).hexdigest()
@@ -204,20 +205,26 @@ def init_store(release):
 
 
 # P1696: environment an earlier installer did not write (a8efd378's has none of these); its unit is still its own
-ENV_ADDED = ('TASUPD_GAMES', 'TASUPD_RELEASES')
+# Environment each later installer added, in order: a8efd378 wrote none of it, 73229378 (P1696) the first group
+ENV_ADDED = (('TASUPD_GAMES', 'TASUPD_RELEASES'), ('TASUPD_MAPMETA',))
 
 
 def old_units(old, account_db, commit):
-    """The units an installer could have written for the release `old`: this one's, or one from before ENV_ADDED."""
+    """The units an installer could have written for the release `old`: this one's first, then each earlier one's
+    (without the newest group of ENV_ADDED, then the next...)."""
     env = service_env(old, account_db, commit)
-    return (unit_text(old, env).encode(), unit_text(old, {k: v for k, v in env.items() if k not in ENV_ADDED}).encode())
+    out = []
+    for k in range(len(ENV_ADDED) + 1):
+        drop = {key for group in ENV_ADDED[len(ENV_ADDED) - k:] for key in group}
+        out.append(unit_text(old, {a: b for a, b in env.items() if a not in drop}).encode())
+    return tuple(out)
 
 
 def service_env(release, account_db, commit):
     return dict(TASUPD_STORE=str(STATE / 'tasup.sqlite3'), TASUPD_ACCOUNTS=str(account_db),
                 TASUPD_ZONES=os.pathsep.join(ZONE_DIRS), TASUPD_MAPCFG=os.pathsep.join(MAPCFG_DIRS),
                 TASUPD_URL=PUBLIC_URL, SURFD_TOOLS=str(release / 'tools'),
-                TASUPD_GAMES=json.dumps(GAME_FILES), TASUPD_RELEASES=SITE_RELEASES,
+                TASUPD_GAMES=json.dumps(GAME_FILES), TASUPD_RELEASES=SITE_RELEASES, TASUPD_MAPMETA=MAPMETA,
                 TASUPD_SOURCE=commit)
 
 

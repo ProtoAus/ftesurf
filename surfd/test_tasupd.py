@@ -1471,5 +1471,63 @@ class GameUpload(Service):
         self.sign_in(BOB)
         self.refused(self.post(c, self.game_body(body, n)), 409, 'was used')
 
+
+class CourseFinder(Service):
+    """P1700: the site's navigation, the map picker and the map page (thumbnail, named courses)."""
+
+    def setUp(self):
+        super().setUp()
+        self.meta = Path(self.tmp.name) / 'mapmeta.txt'
+        self.meta.write_text('FTESURF-MAPMETA 1\n# meta <name> ...\n'
+                             'meta surf_sandtrap2 2 1 0 4 5 208 f119c37b-216f-4588-b8c3-4e2d379aa661 1 rank 2 x 10 36\n'
+                             'meta surf_staged 3 0 6 1 5 209 - 1 rank 3 x 10 37\n'
+                             'variant surf_sandtrap2 surf_sandtrap2_css\n'
+                             'meta bad<name> 1 1 0 0 5 1 - 1 rank 1 x 1 1\n')
+        self.app = svc.create_app(self.store, self.accounts, self.zdirs, BASE, http=self.fake_http, clock=self.clock,
+                                  mapmeta=str(self.meta))
+
+    def test_every_page_carries_the_site_nav(self):
+        for path in ('/tasup/', '/tasup/board?map=surf_sandtrap2'):
+            h = self.app.test_client().get(path).get_data(as_text=True)
+            self.assertIn('href="https://proto.bar/ftesurf/board/">Leaderboard</a>', h)
+            self.assertIn('href="https://proto.bar/ftesurf/zoning.html">Zoning</a>', h)
+            self.assertIn('<a href="/tasup/" aria-current="page">TAS uploads</a>', h)
+
+    def test_the_finder_lists_the_known_maps(self):
+        h = self.app.test_client().get('/tasup/').get_data(as_text=True)
+        self.assertIn('list="tasup-maps"', h)
+        self.assertIn('<option value="surf_sandtrap2">', h)
+        self.assertIn('<option value="surf_staged">', h)
+        self.assertNotIn('bad', h.split('<datalist')[1].split('</datalist>')[0])
+        self.assertNotIn('type="number"', h)                                   # no bare course number any more
+
+    def test_a_map_page_shows_its_picture_and_named_courses(self):
+        r = self.app.test_client().get('/tasup/board?map=surf_sandtrap2')
+        h = r.get_data(as_text=True)
+        self.assertIn('<img src="/ftesurf/media/thumbs/f119c37b-216f-4588-b8c3-4e2d379aa661.jpg"', h)
+        for t, name in enumerate(('Main', 'Bonus 1', 'Bonus 2', 'Bonus 3', 'Bonus 4')):
+            self.assertIn('track=%d"%s>%s</a>' % (t, ' aria-current="page"' if t == 0 else '', name), h)
+        self.assertNotIn('Bonus 5', h)
+        self.assertIn("img-src 'self'", r.headers['Content-Security-Policy'])
+        h = self.app.test_client().get('/tasup/board?map=surf_sandtrap2&track=4').get_data(as_text=True)
+        self.assertIn('track=4" aria-current="page">Bonus 4</a>', h)
+
+    def test_a_staged_map_says_its_main_course_is_whole(self):
+        h = self.app.test_client().get('/tasup/board?map=surf_staged').get_data(as_text=True)
+        self.assertIn('all 6 stages', h)
+        self.assertIn('>Bonus 1</a>', h)
+        self.assertNotIn('<img', h)                                             # no thumbnail id: no picture
+
+    def test_a_map_outside_the_list_still_has_its_board(self):
+        h = self.app.test_client().get('/tasup/board?map=surf_unknown&track=2').get_data(as_text=True)
+        self.assertIn('not in the map list', h)
+        self.assertIn('track=2" aria-current="page">Bonus 2</a>', h)
+        self.assertIn('>Main</a>', h)
+
+    def test_no_mapmeta_still_works(self):
+        app = svc.create_app(self.store, self.accounts, self.zdirs, BASE, http=self.fake_http, clock=self.clock)
+        self.assertEqual(app.test_client().get('/tasup/board?map=surf_sandtrap2').status_code, 200)
+        self.assertIn('<datalist id="tasup-maps"></datalist>', app.test_client().get('/tasup/').get_data(as_text=True))
+
 if __name__ == '__main__':
     unittest.main()
