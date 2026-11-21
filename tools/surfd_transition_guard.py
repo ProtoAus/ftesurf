@@ -2,6 +2,7 @@
 """Cooperative POSIX pre-import admission fence; never imports surfd."""
 import argparse
 import hashlib
+import importlib.util
 import json
 import math
 import os
@@ -26,6 +27,30 @@ SCHEMA_FILES = {19: FILES, 20: FILES | {"accounts.py", "social.py"},
 
 
 CURRENT_FAMILY_FILES = frozenset(['accounts.py', 'admin.py', 'b65stub.py', 'b66stub.py', 'hidupload.py', 'ksfgrab.py', 'ksfimport.py', 'ksfprofile.py', 'ksftopup.py', 'mapmanifest.py', 'mapwatch.py', 'mkadminpw.py', 'momboards.py', 'momdates.py', 'momfetch.py', 'momgrab.py', 'momindex.py', 'momrequest.py', 'momwatch.py', 'msml.py', 'p357board.py', 'p371stub.py', 'rcon.py', 'recplot.py', 'simcheck.py', 'social.py', 'steam.py', 'steamsync.py', 'surfd.py', 'sweep.py', 'templates/_admin_style.html', 'templates/admin.html', 'templates/admin_accounts.html', 'templates/admin_login.html', 'templates/admin_maps.html', 'templates/admin_run.html', 'templates/admin_runs.html', 'test_accounts.py', 'test_admin.py', 'test_admin_association_bounds.py', 'test_admin_log_bounds.py', 'test_admin_metrics.py', 'test_admin_similarity.py', 'test_board.py', 'test_evidence.py', 'test_join.py', 'test_ksfimport.py', 'test_mappool.py', 'test_momboards.py', 'test_momgrab.py', 'test_momindex.py', 'test_momrequest.py', 'test_ranked.py', 'test_receipt_angle_reasons.py', 'test_receipt_identity.py', 'test_receipt_late_hid.py', 'test_receipt_late_rec.py', 'test_receipt_late_view.py', 'test_recplot.py', 'test_recplot_budget.py', 'test_recsim_observations.py', 'test_replays.py', 'test_simcheck.py', 'test_surfd.py', 'test_sweep.py', 'test_verifier_counts.py', 'test_verifier_finish.py', 'test_verifier_sources.py', 'test_web.py', 'tools/ksfconvert.py', 'tools/ksfreplay_info.py', 'viewmodel.py', 'web/board.css', 'web/board.html', 'web/board.js', 'web/link.css', 'web/runview.js', 'web/watch.css', 'web/watch.html', 'web/watch.js', 'zonefit.py'])
+
+
+TOUR91_FILES = CURRENT_FAMILY_FILES | {"inventory.py", "playstats.py", "momprofile.py", "fetchq.py", "tascontent.py",
+                                      "mapnew.py", "party_lobbies.py", "tournaments.py", "tournament_rules.py", "tournament_pool.py"}
+# P1702 members-v1 (Lex 21 Nov: "The 91-file list is rigid -- also fix"): the generation's own reviewed member list,
+# hash-verified at every launch like any profile. It keeps every tour91-v1 runtime module; an added member is a plain
+# relative path (no dot-segments, at most three deep, a known suffix) whose top-level name shadows no module Python
+# could import (a member json.py or flask.py would hijack that import from the script's directory).
+TOUR91_RUNTIME = frozenset(n for n in TOUR91_FILES if not Path(n).name.startswith("test_"))
+MEMBER_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*(?:/[A-Za-z0-9_][A-Za-z0-9_.-]*){0,2}")
+MEMBER_SUFFIXES = (".py", ".html", ".css", ".js", ".json", ".txt")
+
+
+def member_ok(name):
+    if type(name) is not str or not MEMBER_NAME.fullmatch(name) or not name.endswith(MEMBER_SUFFIXES):
+        return False
+    top = name.split("/")[0]
+    mod = top[:-3] if top.endswith(".py") and "/" not in name else (top if "/" in name else None)
+    if mod is None:
+        return True                      # a top-level page or data file is never imported
+    if not mod.isidentifier() or mod == "__init__":
+        return False
+    return mod not in sys.stdlib_module_names and importlib.util.find_spec(mod) is None
+
 
 def target_schema(m):
     # Keyless manifests retain their original schema19 meaning; never infer from receipts.
@@ -99,8 +124,13 @@ def manifest_check(m):
         elif m["runtime_profile"] == "tour91-v1":
             # P1634: tournament lobbies (surfd.py imports party_lobbies/tournaments; they import tournament_rules/_pool).
             require(schema == 26, "tour91-v1 requires explicit schema26")
-            files = CURRENT_FAMILY_FILES | {"inventory.py", "playstats.py", "momprofile.py", "fetchq.py", "tascontent.py", "mapnew.py",
-                                            "party_lobbies.py", "tournaments.py", "tournament_rules.py", "tournament_pool.py"}
+            files = TOUR91_FILES
+        elif m["runtime_profile"] == "members-v1":
+            require(schema == 26, "members-v1 requires explicit schema26")
+            require(type(m["hashes"]) is dict, "members-v1 requires a hash map")
+            files = set(m["hashes"])
+            require(TOUR91_RUNTIME <= files, "members-v1 keeps every tour91-v1 runtime module")
+            require(all(member_ok(n) for n in files - TOUR91_FILES), "members-v1 added member name")
         else:
             require(schema in (20, 22, 23, 24, 25, 26) and m["runtime_profile"] == "hid-v1", "unsupported runtime_profile")
             files = files | {"hidupload.py"}
@@ -109,7 +139,7 @@ def manifest_check(m):
     require(plain_path(m["source_home"]).is_dir(), "missing source home")
     require(type(m["hashes"]) is dict and set(m["hashes"]) == files,
             "exact schema%d/profile raw hash set required" % schema)
-    if m.get("runtime_profile") in ("current81-v1", "inventory82-v1", "activity83-v1", "collectors84-v1", "fetch85-v1", "tas86-v1", "mapnew87-v1", "tour91-v1"):
+    if m.get("runtime_profile") in ("current81-v1", "inventory82-v1", "activity83-v1", "collectors84-v1", "fetch85-v1", "tas86-v1", "mapnew87-v1", "tour91-v1", "members-v1"):
         external = m.get("external_python")
         require(type(external) is dict and set(external) == {"momimport", "momreimport", "momreplay"},
                 "exact three-converter external source closure required")
