@@ -7,6 +7,15 @@ CURRENT = cd1965f1 (root /srv/nvme/agent-work/gen1674-20261121-e3; kit FTESurf-p
 pins native fteqw-svarm64 1753f9d4 (lobby engine patch-1683, swapped 01:38Z), and keeps the consumer's 900 s
 `systemctl start` (its drop-in will have 18 ExecStartPre blocks, ~280 s; or the owner prunes retired blocks).
 
+## P1694 controller tag -- surfd half READY for the NEXT generation; BEFORE the next client release (worldofsurf-6f)
+Game main 9841756b. Files: surfd/surfd.py (`runs_pad`: `ALTER TABLE runs|replays ADD COLUMN pad INTEGER NOT NULL
+DEFAULT 0`, idempotent, no schema bump; post `pad=1` and the finish record `pad 1` raise it like `plat`; board and
+maps JSON `pad: 1`), surfd/recplot.py, surfd/web/board.js + board.css, surfd/templates/admin_run.html; SURFD_TOOLS
+tools/reccheck.py (the `pad` record and the `padcount` verdict: notes only on an older copy). Order: this generation
+before the release that carries engine 1694 (an older surfd drops `pad=1` and there is no backfill); the lobby QC
+(9841756b or later) may go before or after it. Check: surfd/test_pad.py before; live, `PRAGMA table_info(runs)` and
+`(replays)` list `pad`. After the release: sv_rank_padcount 1 in lobby.cfg (unranks engines that send no count).
+
 ## P1671 pending: simcheck reads current (REC 14) recordings -- NEXT generation (queued 21 Nov, worldofsurf-6f)
 - Pin tools/census/recsim.py at or after the P1671 commit in SURFD_TOOLS. Effect: the stored, never-acted-on
   similarity scores start covering lobby runs from 10 Nov on (REC 14); no player-visible change. The surfd similarity
