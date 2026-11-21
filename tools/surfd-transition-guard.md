@@ -304,6 +304,22 @@ python3 -B tools/test_surfd_guard_tour_profile.py --out /owned/NEW-tour-profile 
 
 `--preimage` is the frozen mapnew87-v1 guard (de7c06f6); same rules as the tas suite.
 
+## Schema26 member-list closure (P1702)
+
+The explicit `"runtime_profile":"members-v1"` requires explicit integer `"target_schema":26` and the same
+three-converter external closure as `tour91-v1`. Its raw hash set is the manifest's own member list (no new guard
+profile per added file; Lex, 21 Nov: "The 91-file list is rigid -- also fix"), hash-verified at every launch, and
+must contain every non-test `tour91-v1` member (TOUR91_RUNTIME); test files may come and go. `members_ok` checks the
+member list against fixed names only, never the host's installed packages (a later `apt install` must not refuse
+`close`/`status`): at most 512 members; an added member is a plain relative path (no dot-segments, at most three deep,
+`.py .html .css .js .json .txt`); no module `X.py` beside a package `X/` (Python imports the package while `X.py`
+still hash-verifies); an added top-level module, a new folder, or an added `tools/*.py` (ksfgrab.py puts runtime/tools
+on sys.path) may not take a name in SHADOW (stdlib, surfd's third-party stack, the game tools folder's modules,
+`tools`, `static` -- Flask serves runtime/static), nor may `tools/X.py` and `X.py` coexist; no added `__init__.py` /
+`__main__.py` at the top or directly in templates/, web/ or tools/. A data-only folder may have any plain name.
+This is a second line of defence behind the generation's independent review, which owns the member list.
+`tools/test_surfd_guard_members_profile.py` (plain unittest, no preimage).
+
 ## Offline acceptance tests
 
 Run only on local Linux/POSIX, with an exclusively NEW absolute synthetic output

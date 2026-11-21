@@ -2,7 +2,6 @@
 """Cooperative POSIX pre-import admission fence; never imports surfd."""
 import argparse
 import hashlib
-import importlib.util
 import json
 import math
 import os
@@ -32,24 +31,57 @@ CURRENT_FAMILY_FILES = frozenset(['accounts.py', 'admin.py', 'b65stub.py', 'b66s
 TOUR91_FILES = CURRENT_FAMILY_FILES | {"inventory.py", "playstats.py", "momprofile.py", "fetchq.py", "tascontent.py",
                                       "mapnew.py", "party_lobbies.py", "tournaments.py", "tournament_rules.py", "tournament_pool.py"}
 # P1702 members-v1 (Lex 21 Nov: "The 91-file list is rigid -- also fix"): the generation's own reviewed member list,
-# hash-verified at every launch like any profile. It keeps every tour91-v1 runtime module; an added member is a plain
-# relative path (no dot-segments, at most three deep, a known suffix) whose top-level name shadows no module Python
-# could import (a member json.py or flask.py would hijack that import from the script's directory).
+# hash-verified at every launch like any profile, keeping every tour91-v1 runtime module. A second line of defence
+# behind the generation review, from the member list and fixed names only (never the host's installed packages: a
+# later apt install must not stop `close`): an added member is a plain relative path (no dot-segments, <= 3 deep, a
+# known suffix) that makes no name importable which surfd resolves elsewhere -- stdlib, its third-party stack, the game
+# tools folder SURFD_TOOLS (ed25519, rcptcheck...), runtime/tools (ksfgrab.py puts it on sys.path) -- and no module
+# X.py may sit beside a package X/ (the package wins the import while X.py still hash-verifies). No new static/
+# (Flask serves runtime/static at /static/).
 TOUR91_RUNTIME = frozenset(n for n in TOUR91_FILES if not Path(n).name.startswith("test_"))
 MEMBER_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.-]*(?:/[A-Za-z0-9_][A-Za-z0-9_.-]*){0,2}")
 MEMBER_SUFFIXES = (".py", ".html", ".css", ".js", ".json", ".txt")
+MEMBER_LIMIT = 512
+SHADOW = frozenset(sys.stdlib_module_names) | {
+    # surfd's third-party stack on the Pi (and what it pulls in)
+    "flask", "werkzeug", "jinja2", "markupsafe", "itsdangerous", "click", "blinker", "gunicorn", "cryptography", "PIL",
+    "zstandard", "requests", "urllib3", "certifi", "idna", "charset_normalizer", "chardet", "packaging", "setuptools",
+    "pkg_resources", "_distutils_hack", "six", "typing_extensions", "importlib_metadata", "zipp", "simplejson", "yaml",
+    "numpy", "psutil", "pyinotify", "dotenv", "OpenSSL", "cffi", "_cffi_backend",
+    # the game tools folder and runtime/tools
+    "ed25519", "heldmeta", "hidcheck", "momimport", "momreimport", "momreplay", "rcptcheck", "reccheck", "ksfconvert",
+    "ksfreplay_info", "tasplaus", "tools", "static"}
 
 
-def member_ok(name):
-    if type(name) is not str or not MEMBER_NAME.fullmatch(name) or not name.endswith(MEMBER_SUFFIXES):
+def members_ok(files):
+    """members-v1's rules for a member set (see SHADOW above); True when every added member passes."""
+    if len(files) > MEMBER_LIMIT:
         return False
-    top = name.split("/")[0]
-    mod = top[:-3] if top.endswith(".py") and "/" not in name else (top if "/" in name else None)
-    if mod is None:
-        return True                      # a top-level page or data file is never imported
-    if not mod.isidentifier() or mod == "__init__":
+    mods = {n[:-3] for n in files if "/" not in n and n.endswith(".py")}
+    dirs = {n.split("/")[0] for n in files if "/" in n}
+    if mods & dirs:
         return False
-    return mod not in sys.stdlib_module_names and importlib.util.find_spec(mod) is None
+    old_dirs = {n.split("/")[0] for n in TOUR91_FILES if "/" in n}
+    tool_mods = {Path(n).stem for n in files if n.startswith("tools/") and n.endswith(".py")}
+    for n in files - TOUR91_FILES:
+        if type(n) is not str or not MEMBER_NAME.fullmatch(n) or not n.endswith(MEMBER_SUFFIXES):
+            return False
+        parts = n.split("/")
+        if parts[-1] in ("__init__.py", "__main__.py") and (len(parts) == 1 or parts[0] in old_dirs and len(parts) == 2):
+            return False
+        names = set()
+        if len(parts) == 1 and n.endswith(".py"):
+            names.add(n[:-3])
+            if n[:-3] in tool_mods: return False
+        elif len(parts) > 1 and parts[0] not in old_dirs:
+            names.add(parts[0])
+        if parts[0] == "tools" and n.endswith(".py"):
+            names.add(Path(n).stem)
+            if Path(n).stem in mods: return False
+        for name in names:
+            if name in SHADOW or (not name.isidentifier() and (n.endswith(".py") or name in mods)):
+                return False                 # a data-only folder (no .py) may have any plain name
+    return True
 
 
 def target_schema(m):
@@ -130,7 +162,7 @@ def manifest_check(m):
             require(type(m["hashes"]) is dict, "members-v1 requires a hash map")
             files = set(m["hashes"])
             require(TOUR91_RUNTIME <= files, "members-v1 keeps every tour91-v1 runtime module")
-            require(all(member_ok(n) for n in files - TOUR91_FILES), "members-v1 added member name")
+            require(members_ok(files), "members-v1 added member name")
         else:
             require(schema in (20, 22, 23, 24, 25, 26) and m["runtime_profile"] == "hid-v1", "unsupported runtime_profile")
             files = files | {"hidupload.py"}
