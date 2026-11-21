@@ -18,7 +18,7 @@ float tup_n, tup_at, tupe_n;
 string tup_key;                 // the map the list was asked for
 float tup_state;                // 0 the list, 1 asking for a code, 2 confirm, 3 sending, 4 answered
 float tup_req, tup_until, tup_armed, tup_size;
-var float tup_pend = -1;         // `tas upload N` waiting for the list (or -2: `tas upload`, to print it)
+float tup_pend, tup_pendt;       // `tas upload N` waiting for the list (row N-1, or -2: `tas upload`, to print it) until tup_pendt
 string tup_path, tup_label, tup_nonce, tup_sha, tup_note;
 
 string(string old, string value) TASUp_Keep =
@@ -87,7 +87,7 @@ void() TASUp_ListEvent =
 	for (k = 0; k < tup_n; k = k + 1) { strunzone(tup_p[k]); strunzone(tup_l[k]); strunzone(tup_s[k]); }
 	tup_n = 0;
 	for (k = 0; k < tupe_n; k = k + 1) TASUp_Add(tupe_p[k], tupe_s[k]);
-	if (tup_pend != -1) TASUp_Pending();    // the console verb, answered by this list (flow review 3: it read the last one)
+	if (tup_pendt) TASUp_Pending();         // the console verb, answered by this list (flow review 3: it read the last one)
 };
 // asks the local game for its list: when the map changes, and every 3 s while the tab is drawn
 void() TASUp_List =
@@ -293,7 +293,9 @@ void(vector at, float width, float tsz, float hint, float row) TASUp_Draw =
 void() TASUp_Pending =
 {
 	local float i;
-	i = tup_pend; tup_pend = -1;
+	i = tup_pend;
+	if (cltime > tup_pendt) { tup_pendt = 0; return; }   // asked too long ago: not a click's answer now (flow review 4)
+	tup_pendt = 0;
 	if (i == -2)
 	{
 		print(sprintf("tas upload: %g run(s) of %s\n", tup_n, zone_mapname));
@@ -319,6 +321,6 @@ void(float argc) TASUp_Verb =
 		return;
 	}
 	if (!isserver()) { print("tas upload: in a game you host\n"); return; }
-	tup_pend = i;
+	tup_pend = i; tup_pendt = cltime + 5;
 	tup_at = 0; TASUp_List();
 };

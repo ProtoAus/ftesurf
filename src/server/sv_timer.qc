@@ -7150,10 +7150,22 @@ void(entity e, float ticks, float stamp, float tag, float flags, string destinat
 // still there, rewritten through a .part (append mode rewrites the whole file anyway; a crash then emptied it: ops 3).
 #define TAS_UPKEEP 50
 string() SV_TASUpListPath = { return sprintf("data/tasproj/%s/uploads.txt", strtolower(mapname)); };
-float(string path) SV_TASUpCourse =     // the default profile's whole courses: what the tab offers and tasupd takes
+// the default profile's whole courses: data/runs/<map>/main/ or .../bonus_<N>/ -- not bonus_<N>_stage_<M> (FS_LegDir: flow
+// review 4) -- what the tab offers and tasupd takes
+float(string path) SV_TASUpCourse =
 {
+	local float i, c;
 	if (substring(path, 0, 10) != "data/runs/") return FALSE;
-	return (strstrofs(path, "/main/") >= 0 || strstrofs(path, "/bonus_") >= 0);
+	if (strstrofs(path, "/main/") >= 0) return TRUE;
+	i = strstrofs(path, "/bonus_");
+	if (i < 0) return FALSE;
+	for (i = i + 7; i < strlen(path); i = i + 1)
+	{
+		c = str2chr(path, i);
+		if (c == 47) return TRUE;          // '/'
+		if (c < 48 || c > 57) return FALSE;
+	}
+	return FALSE;
 };
 // read only from the player's own loose files: a server can make the client mount a package holding a data/tasproj/
 // file (downloads/*.pk3), and every read searches packages (attack review 3; fs.c's P1102 note, Zone_LooseOwn)

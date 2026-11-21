@@ -1402,6 +1402,32 @@ class GameUpload(Service):
         for k, code in enumerate(olds[1:]):
             self.assertEqual(self.send(code=code, body=rec(extra='comment %d\n' % k)).get_json()['ok'], 1)
 
+    def test_the_fast_verifier_agrees_with_ed25519_py(self):
+        """ed25519_verifier (the cryptography library where installed): the same answers, small-order keys refused."""
+        v = svc.ed25519_verifier()
+        msg = b'FTESURF-ACCT 1 test'
+        sig = ed.sign(SEED_ALICE, msg)
+        pub = ed.publickey(SEED_ALICE)
+        self.assertTrue(v(pub, msg, sig))
+        self.assertFalse(v(pub, msg + b'x', sig))
+        self.assertFalse(v(ed.publickey(SEED_BOB), msg, sig))
+        self.assertFalse(v(bytes(32), msg, bytes(64)))              # the identity point: small order
+        app = self.game_app(verify=None)                            # the service's own verifier, end to end
+        c, body = app.test_client(), rec()
+        n = c.post('/tasup/api/game/challenge', json={'sha': hashlib.sha256(body).hexdigest()}).get_json()['nonce']
+        self.assertEqual(self.post(c, self.game_body(body, n)).get_json()['ok'], 1)
+
+    def test_junk_does_not_spend_everyones_budget(self):
+        """attack review 4: junk from many addresses emptied the shared minute; only proofs of an account count now."""
+        saved = svc.GAME_ALL; svc.GAME_ALL = 2
+        try:
+            for k in range(4): self.refused(self.send(seed=SEED_NOBODY, body=rec(extra='comment j%d\n' % k)), 403, 'Link')
+            self.assertEqual(self.send().get_json()['ok'], 1)
+            self.assertEqual(self.send(body=rec(extra='comment second\n')).get_json()['ok'], 1)
+            self.refused(self.send(body=rec(extra='comment third\n')), 429, 'busy')
+        finally:
+            svc.GAME_ALL = saved
+
     def test_game_requests_are_rate_limited_per_address(self):
         c = self.app.test_client()
         for i in range(svc.PEER_GAME): self.assertEqual(self.challenge(c, b'%d' % i)['ok'], 1)

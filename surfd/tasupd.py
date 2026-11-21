@@ -103,7 +103,7 @@ GAME_SITE, GAME_KIND = 'play.proto.bar:443', -6
 ACCT_STATEMENT = 'FTESURF-ACCT 1\nserver %s\nnonce %s\nkind %d\nkey %d\ncode %s\n'   # surfd accounts.STATEMENT (a test pins it)
 GAME_TOOL = 'sent from the game'    # how it came, not what made it: any linked key can sign any file (attack review 2)
 CHALLENGE_TTL = 600                 # s a code is good for; it is the service's own MAC, stored only once used
-PEER_GAME, GAME_ALL = 20, 1200      # game requests a minute per address; game uploads a minute, everyone (a signature each)
+PEER_GAME, GAME_ALL = 20, 1200      # game requests a minute per address; verified game uploads a minute, everyone
 RELEASES_KEPT = 10                  # the newest releases whose csprogs may sign (a TAS run is made in a local game)
 CODE_PATHS = ('ftesurf/csprogs.dat', 'worldofsurf/csprogs.dat')   # its path in a manifest, before and after the rename
 CODE_MARK = b'ftesurf-tasup '      # in a csprogs with this upload flow (cl_tasupload.qc TASUp_Signed): no other signs here
@@ -147,6 +147,26 @@ def load_ed25519():
     load_tasplaus()   # the same tools directory on the path
     import ed25519
     return ed25519
+
+
+def ed25519_verifier():
+    """verify(pub, msg, sig) -> bool: the cryptography library's when it is there (python3-cryptography on the Pi: 0.17 ms
+    a check against tools/ed25519.py's 5-19 ms, ops review 4), ed25519.py's small-order refusal kept beside it; else
+    ed25519.py's own."""
+    ed = load_ed25519()
+    try:
+        from cryptography.exceptions import InvalidSignature
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    except ImportError:
+        return ed.verify
+    def fast(pub, msg, sig):
+        if len(pub) != 32 or len(sig) != 64 or ed.small_order(pub): return False
+        try:
+            Ed25519PublicKey.from_public_bytes(pub).verify(sig, msg)
+            return True
+        except (InvalidSignature, ValueError):
+            return False
+    return fast
 
 
 def game_nonce(nonce, sha):
@@ -586,8 +606,7 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
             size = request.content_length
             if size is None or size <= 0: return refuse('Request length required.', 411)
             if size > MAX_FORM: return drained('That file is over %d MB.' % (MAX_REC // 1024 ** 2), 413)
-            if limited('game', PEER_GAME) or limited('game', GAME_ALL, 'everyone'):
-                return drained('Too many requests; try again in a minute.', 429)
+            if limited('game', PEER_GAME): return drained('Too many requests; try again in a minute.', 429)
             return None
         if request.method == 'POST' and request.path == base + '/upload':
             if not session(): return refuse('Sign in with Steam first.', 401)   # before reading 8 MB
@@ -975,13 +994,16 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         """Fetch the csprogs of releases not yet known, one caller at a time (a challenge's thread, in the background)."""
         if not fetching.acquire(blocking=False): return
         try:
+            done = set()
             for version, blake, url in missing_releases()[2]:
+                if blake in done: continue     # two releases with one csprogs: fetched once (ops review 4)
+                done.add(blake)
                 _when, net, wrong = fetch_failed.get(blake, (0, 0, 0))
                 try: data = fetch(url, CODE_MAX)
                 except urllib.error.HTTPError as e:
                     # the mirror answered: an object it says is not there counts as given-up-able (flow review 3: a 404
                     # said "try again" forever, never "update your game"); its other errors are an outage
-                    gone = e.code in (403, 404, 410)
+                    gone = e.code in (404, 410)    # a 403 can be the CDN's bot wall: an outage (ops review 4)
                     fetch_failed[blake] = (clock(), net + (not gone), wrong + gone)
                     app.logger.warning('tasupd: release %s csprogs: the mirror answered %d', version, e.code)
                     continue
@@ -1027,13 +1049,14 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         if unknown: return None
         return False if (seen or rel) else None
 
+    verifier = []
+
     def signature(pub, signed, code, sig):
-        ed = verify
-        if ed is None:
-            try: ed = load_ed25519()
+        if not verifier:
+            try: verifier.append(verify.verify if verify is not None else ed25519_verifier())
             except ImportError: return None
         message = (ACCT_STATEMENT % (GAME_SITE, signed, GAME_KIND, 1, code)).encode()
-        try: return bool(ed.verify(bytes.fromhex(pub), message, bytes.fromhex(sig)))
+        try: return bool(verifier[0](bytes.fromhex(pub), message, bytes.fromhex(sig)))
         except Exception: return False
 
     def key_account(pub):
@@ -1070,12 +1093,15 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         known = known_game(code)
         if known is None: return drained('The upload service is still reading the game versions; try again in a minute.', 503)
         if not known: return drained('Update your game before uploading from it.', 403)
-        good = signature(pub, game_nonce(nonce, sha), code, sig)
-        if good is None: return drained('The upload service cannot check account proofs right now.', 503)
-        if not good: return drained('The account proof did not check out.', 403)
+        # the key's account before its signature: an unlinked key costs a query, not a pure-Python verify (attack review 4)
         sid, banned = key_account(pub)
         if not sid: return drained('Link your Steam account first (play.proto.bar/board/link), then upload again.', 403)
         if banned: return drained('This Steam account cannot upload.', 403)
+        good = signature(pub, game_nonce(nonce, sha), code, sig)
+        if good is None: return drained('The upload service cannot check account proofs right now.', 503)
+        if not good: return drained('The account proof did not check out.', 403)
+        # everyone's budget counts proofs that verified to an account: junk from many addresses cannot spend it (review 4)
+        if limited('game', GAME_ALL, 'everyone'): return drained('The upload service is busy; try again in a minute.', 429)
         try:
             with connect(store) as db, writing(db):
                 db.execute("DELETE FROM nonces WHERE nonce LIKE 'game %' AND seen_at < ?", (now - CHALLENGE_TTL - 60,))   # past its code's life
