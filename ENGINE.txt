@@ -1,4 +1,9 @@
 # The engine build this QuakeC requires.
+# P1703 (menu m_main.qc m_settings.qc, sh_defs.qc; surfd.py; Lex 21 Nov: "when you play online, also accept input
+# journal ... runs before this point dated, and accepted ... it should be on if you're playing on a lobby"): terms
+# tier 10 (FS_TERMS_JOURNAL) makes the input journal part of online play: no box or switch, accepting sets rec_hid 1
+# and rec_hid_upload 1; a player whose answer is 9 is asked once per launch; online gates stay at 9. surfd counts a
+# missing Windows journal only from SURFD_NOEV_JOURNAL_SINCE. No engine change. Record: ENGINE_PATCHES P1703.
 # P1701 (engine client p_script.c pr_csqc.c; worldofsurf-42): the noclip void overview's edge clear (P1345) keeps
 # every particle type's shader and models -- PScript_ClearParticles reloaded them all, 375 ms on ahop_coast's first
 # overview frame (Lex's void spike, save 3); 6.3 ms now. Client only; no QC change. Record: engine ENGINE_PATCHES P1701.

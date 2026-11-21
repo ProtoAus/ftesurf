@@ -6092,7 +6092,7 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 		ui_tm_head(p, draw, "Updates");
 		ui_tm_par(p, w, draw, "Choosing Play online also turns on automatic updates: World of Surf checks proto.bar and downloads game-owned files from dl.proto.bar. Those services see your IP address; settings, recordings and mounted game assets are not uploaded. Play offline does not turn them on. F2's Updates page turns them off.", COL_TEXT);
 		ui_tm_head(p, draw, "Turning it off");
-		ui_tm_par(p, w, draw, "rec_hid 0 stops the raw input journal. Runs recorded without it are marked as such, rather than passing as runs that had one.", COL_TEXT);
+		ui_tm_par(p, w, draw, "rec_hid 0 stops the raw input journal. Runs recorded without it are marked as such, rather than passing as runs that had one; on a lobby the journal is part of online play.", COL_TEXT);
 	}
 	else
 	{
@@ -6102,7 +6102,7 @@ float(float c, vector p, float w, float draw) ui_terms_col =
 		ui_tm_par(p, w, draw, "Your finish time goes to play.proto.bar and appears on a public leaderboard. That server also keeps its own recording of the run (positions, velocities and angles), which anyone can download from the board.", SUI_THEME_WARN);
 		ui_tm_par(p, w, draw, "Public server replays can also include limited pause-check timing and order, movement settings, physical state and clock snapshots. This adds no raw paused input to those replays and no new player or device identifiers. The same public downloads and replay retention apply.", SUI_THEME_WARN);
 		ui_tm_par(p, w, draw, "Detailed pause-check records appear only for qualifying intervals. Their presence indicates the permitted movement/jump mode and absence of relevant use actions, unmodeled transitions and effects. Other intervals receive only a generic unsupported or incomplete result.", SUI_THEME_WARN);
-		ui_tm_par(p, w, draw, "Your client's view-angle sidecar also goes to that server for anti-cheat review (rec_upload controls it). Choosing play online includes raw mouse and keyboard event journals, with timings, sent to play.proto.bar over HTTPS for private review, not public replays. A journal also names the programs that load into or change the game (overlays, recorders, security software, mods), by file name only, never folders or your user name. Untick the journal box on the summary to opt out, or stop uploads later with F2. Stopping does not delete evidence already received.", COL_TEXT);
+		ui_tm_par(p, w, draw, "Your client's view-angle sidecar also goes to that server for anti-cheat review (rec_upload controls it). Online play includes the raw mouse and keyboard event journal of every run you play on a lobby, with timings, sent to play.proto.bar over HTTPS for private review, not public replays. A journal also names the programs that load into or change the game (overlays, recorders, security software, mods), by file name only, never folders or your user name. The journal is part of online play: to keep it on this machine, play offline. Runs from before this rule keep their standing without one. Stopping does not delete evidence already received.", COL_TEXT);
 		ui_tm_par(p, w, draw, "With online features enabled, play.proto.bar refreshes the map list at startup and serves zones, leaderboards and player pictures. Selecting a map can fetch its backdrop from dl.proto.bar. These services see your IP address, as does any lobby you join.", COL_TEXT);
 		ui_tm_par(p, w, draw, "A zone admin can upload saved zones to play.proto.bar. They are stored with the linked account and go live on the lobbies once none of them has the map loaded; existing times stay.", COL_TEXT);
 		ui_tm_head(p, draw, "Playtime and attempts");
@@ -6169,7 +6169,7 @@ float(vector p, float w, float draw) ui_terms_short =
 	tm_y = 0;
 	ui_tm_dot(p, w, draw, "Each run is recorded on this PC: your position, speed and view, your mouse and keyboard input, and which other programs load into or change the game (by file name).");
 	ui_tm_dot(p, w, draw, "Offline, nothing about a run leaves your PC.");
-	ui_tm_dot(p, w, draw, "Online, times and server replays are public. Your view-angle file and, unless you untick below, input journal go to play.proto.bar for anti-cheat review. Playing online also turns on automatic updates from proto.bar. Players see your play and chat; servers see your IP address.");
+	ui_tm_dot(p, w, draw, "Online, times and server replays are public. Your view-angle file and, for runs on a lobby, input journal go to play.proto.bar for anti-cheat review. Playing online also turns on automatic updates from proto.bar. Players see your play and chat; servers see your IP address.");
 	ui_tm_dot(p, w, draw, "Public replays can also include pause-check timing, order, movement settings and physical/clock snapshots, but no raw paused input or new player/device identifiers.");
 	ui_tm_dot(p, w, draw, "Detailed pause checks mean the interval qualified: they indicate the allowed movement/jump mode and absence of relevant use actions or unmodeled effects/transitions. Other intervals get only a generic unsupported/incomplete result.");
 	ui_tm_dot(p, w, draw, "Never recorded: what you type (only that a key was pressed, and when), or anything outside the game beyond those program names.");
@@ -6223,15 +6223,18 @@ void(vector pos, float w) ui_tm_jdraw =
 // P823: Play online also turns updates on, as the text above says; offline leaves them.
 float(float tier) ui_tm_answer =
 {
+	local float prev;
+	prev = ms_consent;
 	if (!ui_consent_write(tier))
 		return FALSE;
 	if (tier >= FS_TERMS_ONLINE)
+	if (prev < FS_TERMS_ONLINE)             // P1703 review 3: a 9 taking 10 keeps its own update choice
 		MU_Consent(TRUE);
 	if (ui_tm_jcan())
 	{
-		if (tier >= FS_TERMS_ONLINE && ui_tm_jbox)
-			localcmd_local("set rec_hid_upload 1\n");
-		else
+		if (tier >= FS_TERMS_JOURNAL)           // P1703: the journal is part of online play
+			localcmd_local("set rec_hid 1; set rec_hid_upload 1\n");
+		else if (ms_consent < FS_TERMS_ONLINE)  // a fresh offline answer (a 9's Not now never gets here)
 			localcmd_local("set rec_hid_upload 0\n");
 	}
 	ui_tm_jtouched = FALSE;
@@ -6242,7 +6245,7 @@ float(float tier) ui_tm_answer =
 void(vector screensize) screen_terms =
 {
 	local vector p, q;
-	local float w, colw, two, ha, hb, cards, ph, by, x, head, big, strip, jb, fh;
+	local float w, colw, two, ha, hb, cards, ph, by, x, head, big, strip, jb, fh, was;
 	local string lab, lead, foot;
 
 	if (!ui_tm_jtouched)
@@ -6252,7 +6255,7 @@ void(vector screensize) screen_terms =
 		else
 			ui_tm_jbox = (cvar("rec_hid_upload") != 0);
 	}
-	jb = (ui_tm_jcan() && !ui_tm_full) ? TM_JBOX : 0;  // the summary's: the cards have no room
+	jb = 0;     // P1703: no journal box -- online play includes the journal (was TM_JBOX when ui_tm_jcan())
 	fh = 0;                                 // the footnote's line, under the cards only
 
 	if (ui_tm_full)
@@ -6265,6 +6268,9 @@ void(vector screensize) screen_terms =
 		lead = "The short version. Choosing below means you have read it.";
 		w = min(700, screensize_x - 32);
 	}
+	// P1703 review 2: an answer of 9 is asked for 10 at startup; say what changed and what Not now keeps
+	if (ms_consent >= FS_TERMS_ONLINE && ms_consent < FS_TERMS_JOURNAL)
+		lead = "New: online play now includes your input journal on lobby runs (it used to be optional). Play online accepts it; Not now keeps your current answer, journal uploads on or off.";
 	foot = "Your answer is kept in a file on this machine. It is a record that you agreed, not a lock.";
 	two = (ui_tm_full && w >= 700);
 	colw = two ? floor((w - TM_PAD * 2 - 16) * 0.5) - TM_CARD * 2 : w - TM_PAD * 2 - TM_CARD * 2;
@@ -6323,7 +6329,8 @@ void(vector screensize) screen_terms =
 		sui_style_box(q, [colw + TM_CARD * 2, by + x + TM_CARD * 2], 9, SUI_THEME_WELL, SUI_THEME_EDGE, 1);
 		sui_text([q_x + TM_CARD, q_y + TM_CARD], tm_sz, "PUBLIC LOBBIES", COL_DIM, 1, 0);
 		sui_text([q_x + TM_CARD + stringwidth("PUBLIC LOBBIES", TRUE, tm_sz) + 10, q_y + TM_CARD],
-		         tm_sz, (ui_tm_f2 && ms_consent >= FS_TERMS_ONLINE) ? "chosen with Play online; switches in F2"
+		         tm_sz, (ms_consent >= FS_TERMS_JOURNAL) ? "chosen with Play online"
+		         : (ms_consent >= FS_TERMS_ONLINE) ? "on now; Play online adds the journal rule"
 		         : "only if you turn them on below", SUI_THEME_MUTED, 1, 0);
 		ui_terms_col(1, [q_x + TM_CARD, q_y + TM_CARD + x], colw, TRUE);
 	}
@@ -6341,8 +6348,8 @@ void(vector screensize) screen_terms =
 	if (ui_tm_full)
 		sui_text([p_x + TM_PAD, by - tm_pitch - 10], tm_sz, foot, SUI_THEME_MUTED, 1, 0);
 
-	// P902: read from F2 at the top tier, there is nothing to answer -- Back, and no write.
-	if (ui_tm_f2 && ms_consent >= FS_TERMS_ONLINE)
+	// P902: read from F2 at the top tier, there is nothing to answer -- Back, and no write. P1703: the top tier is 10.
+	if (ui_tm_f2 && ms_consent >= FS_TERMS_JOURNAL)
 	{
 		if (ui_button("tm_back", [p_x + w - TM_PAD - 100, by], [100, 30], "Back", TRUE))
 			menu_screen = SCREEN_JOURNAL;
@@ -6350,13 +6357,16 @@ void(vector screensize) screen_terms =
 	}
 	// Placed from their labels' widths (ui_button grows to fit one): at fixed
 	// widths the first cut drew one over the other.
-	lab = (ms_consent >= FS_TERMS_VERSION) ? "Stay offline" : "Play offline";
+	lab = (ms_consent >= FS_TERMS_ONLINE) ? "Not now"      // P1703 review 2: a 9 keeps its answer
+	    : (ms_consent >= FS_TERMS_VERSION) ? "Stay offline" : "Play offline";
 	ha = stringwidth("Play online", TRUE, SZ_LABEL) + 28;
 	hb = stringwidth(lab, TRUE, SZ_LABEL) + 28;
 	if (ui_button("tm_accept", [p_x + w - TM_PAD - ha - 12 - hb, by], [hb, 30], lab))
 	{
 		if (ui_synth())
 			print("menu: the terms take a real key or click, not ui_key or ui_click\n");
+		else if (ms_consent >= FS_TERMS_ONLINE)
+			menu_screen = ui_tm_f2 ? SCREEN_JOURNAL : SCREEN_MAIN;  // P1703 review 3: Not now writes nothing
 		else
 			ui_tm_answer(FS_TERMS_VERSION);
 	}
@@ -6367,9 +6377,10 @@ void(vector screensize) screen_terms =
 			print("menu: the terms take a real key or click, not ui_key or ui_click\n");
 		else
 		{
-			if (ui_tm_answer(FS_TERMS_ONLINE))
+			was = ms_consent;
+			if (ui_tm_answer(FS_TERMS_JOURNAL))     // P1703
 			{
-				if (!cvar("ui_bootcheck"))
+				if (!cvar("ui_bootcheck") && was < FS_TERMS_ONLINE)     // a 9 going to 10 saw the Steam offer already
 				{
 					menu_screen = SCREEN_STEAM;
 					ui_steam_t0 = time;
@@ -6632,7 +6643,7 @@ void(string pg) ui_f2_open =
 void(vector screensize) screen_journal =
 {
 	local vector p;
-	local float w, h, lw, x, y, k, have, enabled;
+	local float w, h, lw, x, y, k, have, enabled, canjrn;
 	local string body, note, label, terms, rid;
 
 	w = min(760, screensize_x - 32);
@@ -6665,12 +6676,34 @@ void(vector screensize) screen_journal =
 	{
 		body = "Accepting online play allows a public lobby to request your run's raw mouse and keyboard event journal, with timings. It is sent to play.proto.bar over HTTPS for private anti-cheat review, not as a public replay. Console/menu text and activity outside the game window are not recorded.";
 		note = "New online acceptance includes journals unless you opt out. Uploads also require the online terms; this page can allow or stop them. Stopping cancels an active upload and prevents new ones, without deleting evidence already received. rec_hid 0 stops local recording too.";
+		if (ms_consent >= FS_TERMS_JOURNAL)     // P1703
+			note = "The journal is part of online play: every run you play on the official lobbies records and sends one. To keep it on this machine, play single player or on your own server. rec_hid_upload 0, rec_hid 0 or rec_upload 0 in the console stop it too; a top run without its journal can then be marked as missing evidence. Stopping does not delete evidence already received.";
+		else if (ms_consent >= FS_TERMS_ONLINE)
+			note = "Your online answer is from before the journal became part of online play. Until you accept the updated terms (the Terms tab), this page can allow or stop journal uploads. Stopping cancels an active upload and prevents new ones, without deleting evidence already received. rec_hid 0 stops local recording too.";
+		else
+			note = "The online terms include the input journal on lobby runs: accepting them turns it on. Offline, the journal never leaves this machine.";
 		y = y + ui_para([p_x + 16, y], lw, SZ_LABEL, 20, body, COL_TEXT, TRUE) + 14;
 		y = y + ui_para([p_x + 16, y], lw, SZ_LABEL, 20, note, COL_DIM, TRUE) + 18;
 		have = checkextension("FTESURF_HID_HTTP");
 		if (have)
 			have = checkbuiltin(localcmd_local);
+		canjrn = have;                          // review 3: the engine can send one, whatever the tier
 		enabled = cvar("rec_hid_upload");
+		if (ms_consent >= FS_TERMS_JOURNAL)
+		{   // P1703 review 2: no Stop switch at 10; a way back when uploads are off (an older engine, the console)
+			if (have)           // nested: fteqcc evaluates both sides of &&, and ui_button draws
+			if (!enabled || !cvar("rec_hid"))
+			if (ui_button("journal_resume", [p_x + 16, y], [240, 30], "Resume journal uploads", TRUE))
+			{
+				if (ui_synth())
+					print("menu: journal upload consent takes a real click or key, not ui_key/ui_click\n");
+				else
+					localcmd_local("set rec_hid 1; set rec_hid_upload 1\n");
+			}
+			have = FALSE;
+		}
+		else if (ms_consent < FS_TERMS_ONLINE)
+			have = FALSE;                       // below 9 the switch reaches nothing
 		label = enabled ? "Stop journal uploads" : "Allow journal uploads";
 		if (have)
 		{
@@ -6692,15 +6725,16 @@ void(vector screensize) screen_journal =
 				}
 			}
 		}
-		else
+		else if (!canjrn)
 			sui_text([p_x + 16, y + 7], SZ_LABEL, "Update the native client to enable uploads", SUI_THEME_WARN, 1, 0);
 	}
 	else
 	{
-		// Below the online tier the button opens the terms screen itself, on the summary
-		// where the journal box is; at it, the full text to read.
+		// Below the online tier the button opens the terms screen itself, on the summary; at it, the full text.
 		if (ms_consent >= FS_TERMS_ONLINE)
-			terms = "You have accepted the terms for offline and online play. The Updates and Input journal pages turn updates and journal uploads off.";
+			terms = (ms_consent >= FS_TERMS_JOURNAL)    // P1703
+			        ? "You have accepted the terms for offline and online play, including the input journal on lobby runs. The Updates page turns updates off."
+			        : "You have accepted the terms for offline and online play. Online play now includes the input journal on lobby runs: Read the terms below to accept the updated version. The Updates and Input journal pages turn updates and journal uploads off.";
 		else
 			terms = "You have accepted the terms for offline play. Public lobbies, the board, story and updates need the online terms: Play online or the button below shows them, and nothing changes until you choose.";
 		y = y + ui_para([p_x + 16, y], lw, SZ_LABEL, 20, terms, COL_TEXT, TRUE) + 18;
@@ -8524,6 +8558,8 @@ void() m_init =
 		localcmd_local("bind F2 ui_journal\n");
 	if (ms_consent < FS_TERMS_VERSION)
 		menu_screen = SCREEN_TERMS;
+	else if (ms_consent >= FS_TERMS_ONLINE && ms_consent < FS_TERMS_JOURNAL && !cvar("ui_bootcheck"))
+		menu_screen = SCREEN_TERMS;     // P1703: once per launch, an answer of 9 is asked for 10 (the journal)
 
 	// Patch 270.  Creates the public-lobby buffers and registers lobby_dir,
 	// which SHIPS WITH A DIRECTORY URL -- the empty default was removed once it

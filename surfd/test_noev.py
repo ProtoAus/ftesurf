@@ -80,6 +80,12 @@ def main():
     eq("SURFD_NOEV unset (the default): nothing is marked", [k for k, v in m.items() if v], [])
     mod.NOEV_ON = True
     m = marks(test_board.board(mod))
+    eq("no journal date set: a missing Windows journal is not required", m.get("p03"), None)
+    mod.NOEV_JOURNAL_SINCE = sub + 1
+    m = marks(test_board.board(mod))
+    eq("runs before the journal date are accepted without one (P1703)", m.get("p03"), None)
+    mod.NOEV_JOURNAL_SINCE = 1
+    m = marks(test_board.board(mod))
     eq("ranked board: the missing pieces are named",
           {k: v for k, v in m.items() if v}, {"p02": "view", "p03": "journal", "p09": "receipt"})
     eq("a Linux run without a journal is not marked", m.get("p04"), None)

@@ -713,6 +713,13 @@ PUBLIC_HOST = load_public_host(setting("SURFD_PUBLIC_HOST"))
 # previous 14 days lacked a view file or a Windows journal (uploads are opt-in or best effort), so it would mark
 # almost every top-10 run; it goes on once top-10 evidence is uploaded reliably.
 NOEV_ON = (setting("SURFD_NOEV") or "").strip() == "1"
+# P1703 (Lex, 21 Nov: runs before the journal became part of online play are "dated, and accepted"): a missing
+# Windows journal counts only for runs submitted from SURFD_NOEV_JOURNAL_SINCE (epoch seconds; set it when the release
+# whose menu asks for terms 10 is out). Unset: the journal is never required.
+_njs = (setting("SURFD_NOEV_JOURNAL_SINCE") or "").strip()
+NOEV_JOURNAL_SINCE = int(_njs) if re.fullmatch(r"[0-9]{1,12}", _njs) else 0
+if _njs and not re.fullmatch(r"[0-9]{1,12}", _njs):
+    log.warning("SURFD_NOEV_JOURNAL_SINCE %r is not epoch seconds; the journal is not required", _njs[:32])
 # RANKED MEANS LINKED (Patch 629, ROADMAP 14.3 a).  On unless the setting is
 # "0": a ranked row is stored under the SteamID of the account the run's
 # connection proved a key of, and a run with no such account goes to the
@@ -3250,7 +3257,7 @@ def noev_reasons(db, cands):
             out[runid] = "receipt"
         elif not rc[0]:
             out[runid] = "view"
-        elif not plat and rc[1] == "ABSENT":
+        elif not plat and rc[1] == "ABSENT" and NOEV_JOURNAL_SINCE and submitted >= NOEV_JOURNAL_SINCE:
             out[runid] = "journal"
     return out
 

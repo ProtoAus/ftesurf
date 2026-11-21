@@ -1254,6 +1254,11 @@ float(float v)            FS_SlopId   = { return v - floor(v / FS_SLOP_RADIX) * 
 // text says the same without a re-ask: a local journal never leaves the PC. P1597 (17 Nov): the lobbies
 // require 9 too; the menu asked for it first (0.1.48), so an answer of 8 now reports 0.
 #define FS_TERMS_ONLINE 9
+// 10, P1703 (Lex, 21 Nov: "when you play online, also accept input journal ... it should be on if you're playing on
+// a lobby"): the online answer that makes the raw input journal part of online play -- no opt-out box or switch;
+// accepting sets rec_hid 1 and rec_hid_upload 1 (the engine sends a journal only with the latter). Every online gate
+// stays FS_TERMS_ONLINE: an answer of 9 keeps its opt-in, and the menu asks for 10 once per launch.
+#define FS_TERMS_JOURNAL 10
 
 #define TS_IDLE      0   // nothing armed
 #define TS_ARMED     1   // standing in the zone the run will start from

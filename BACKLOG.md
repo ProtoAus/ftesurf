@@ -1,5 +1,12 @@
 # BACKLOG.md
 
+## P1703 journal in online play -- what it leaves (21 Nov, worldofsurf-47)
+- Set surfd.env SURFD_NOEV_JOURNAL_SINCE to the release time of the build whose menu asks for terms 10 (before it,
+  runs are accepted without a journal); then SURFD_NOEV=1 once views upload reliably (P1699).
+- The engine's rec_hid_upload description (cl_receipt.c) still says "unless you opt out": next engine patch.
+- A tier-9 player who declines keeps playing online with their old opt-in; their lobby runs without a journal are
+  marked once the date is set. rec_hid_upload 0 by console does the same at tier 10.
+
 ## P1699 "no evidence" mark -- before SURFD_NOEV=1 (21 Nov, worldofsurf-47)
 - Live db, 21 Nov: of 239 WOS main/bonus rows from the previous 14 days (all of them in a top 10), 33 had no receipt,
   167 no view file and 188 Windows rows no input journal; 13 were complete. The mark would cover almost everyone.

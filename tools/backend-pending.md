@@ -7,6 +7,10 @@ CURRENT = cd1965f1 (root /srv/nvme/agent-work/gen1674-20261121-e3; kit FTESurf-p
 pins native fteqw-svarm64 1753f9d4 (lobby engine patch-1683, swapped 01:38Z), and keeps the consumer's 900 s
 `systemctl start` (its drop-in will have 18 ExecStartPre blocks, ~280 s; or the owner prunes retired blocks).
 
+## P1703 journal in online play -- surfd part READY for the NEXT generation (worldofsurf-47)
+surfd/surfd.py: SURFD_NOEV_JOURNAL_SINCE (epoch seconds; unset = a missing Windows journal never counts toward P1699's
+mark). Set it to the release time of the build whose menu asks for terms 10. Check: surfd/test_noev.py.
+
 ## BLOCKERS for a generation at current main (session a03de808, 21 Nov; checked against the gen1674 kit)
 1. surfd/tasupd.py + tasupd_wsgi.py (P1640/P1696/P1700) are a separate service (tools/install_tasupd.py), not surfd
    runtime, but sit in surfd/: the kit's build_candidate.py asserts "REF adds modules outside the 91-member runtime".

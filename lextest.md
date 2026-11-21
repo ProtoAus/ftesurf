@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1703 -- the input journal is part of online play (worldofsurf-47) -- with the next release
+1. Start the game with the new build: as an existing online player you see the terms once, with no journal box.
+   Press Play online. F2 > Input journal now says the journal is part of online play (no Stop button).
+2. Restart: the terms do not appear again.
+3. When the release is out, tell me, so the backend starts counting a missing journal from that day
+   (surfd.env SURFD_NOEV_JOURNAL_SINCE).
+
 ## P1701 -- no spike flying into the void (worldofsurf-42) -- your dev install (engine patch-1701)
 1. ahop_coast save 3, noclip, `r_frametime 1`, fly backward into the void: no spike in the graph when the view switches
    to the whole map, and none when you fly back in (it reloaded every particle shader: 375 ms here on the software

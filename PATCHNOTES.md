@@ -21,6 +21,10 @@
 
 ## next
 
+### P1703 The input journal is part of online play
+- Playing on the lobbies now always includes your input journal (your raw mouse and keyboard timings during a run), sent privately for anti-cheat review of top runs. It used to be a box you could untick.
+- If you already play online, the game shows the updated terms once when it starts. Runs you set before this keep their place without a journal. To keep the journal on your PC, play single player or on your own server.
+
 ### P1701 No stutter when you noclip out of the map
 - Flying out of the map into the void (and back in) no longer freezes the game for a moment: it was reloading every particle effect's look each time.
 

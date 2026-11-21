@@ -372,7 +372,8 @@ void() MSet_Online =
 	online = (ms_consent >= FS_TERMS_ONLINE);
 	cy = MSet_Row("Online play", online ? "Lobbies, boards and story are on" : "Offline only until you accept");
 	w = ceil(MT_Width("Privacy & online terms", 16, 0)) + 32;
-	if (MT_Button("home_privacy", [mset_cx, cy], [w, MSET_CH], "Privacy & online terms")) menu_screen = SCREEN_TERMS;
+	// P1703 review 2: through F2's Terms page (Back returns here), not the bare first-boot screen
+	if (MT_Button("home_privacy", [mset_cx, cy], [w, MSET_CH], "Privacy & online terms")) { ui_f2_open("terms"); ui_f2_back = SCREEN_SETTINGS; }
 	MSet_PillAt(mset_cx + w + 12, cy, online ? "ONLINE" : "OFFLINE", online ? SUI_THEME_GOOD : SUI_THEME_WARN);
 	// F2's pages; Back there returns here (ui_f2_back).
 	cy = MSet_Row("Patch notes", "What changed in each build");
