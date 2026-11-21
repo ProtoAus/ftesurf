@@ -68,7 +68,7 @@ def import_names(n):
 
 def members_ok(files):
     """members-v1's rules for a member set (see SHADOW above); True when the set passes."""
-    if len(files) > MEMBER_LIMIT:
+    if len(files) > MEMBER_LIMIT or not all(type(n) is str for n in files):
         return False
     owners = {}                                  # import name -> the (level, kind) pairs claiming it
     for n in files:

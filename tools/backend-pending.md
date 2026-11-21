@@ -16,8 +16,11 @@ mark). Set it to the release time of the build whose menu asks for terms 10. Che
    runtime, but sit in surfd/: the kit's build_candidate.py asserts "REF adds modules outside the 91-member runtime".
    The kit must exclude tasupd*.py (they never ship in a generation).
 2. P1697's admin.py renders templates/admin_top10.html (admin.py:1856), a file outside tour91-v1's 91 members:
-   build_candidate classes it as config and does NOT ship it, so /admin/top10 would raise TemplateNotFound. Shipping
-   it needs a member-set change (P1702 is making the member list flexible; until then, a new guard profile).
+   build_candidate classes it as config and does NOT ship it, so /admin/top10 would raise TemplateNotFound.
+   RESOLVED IN THE GUARD (P1702, three review rounds): tools/surfd_transition_guard.py profile `members-v1` takes the
+   manifest's own member list (tools/surfd-transition-guard.md). The next generation is therefore a GUARD-CHANGING
+   one (guard != live 32af9ea2): its kit must ship the new guard, write `"runtime_profile":"members-v1"` manifests,
+   add templates/admin_top10.html, and keep excluding surfd/tasupd*.py (P1702 kit work).
 Also: the guard re-hashes all 91 members at every `launch` (surfd_transition_guard.py verify_hashes), so a member
 edited in place in a live generation stops the next surfd start. Never hand-edit a generation's files.
 
