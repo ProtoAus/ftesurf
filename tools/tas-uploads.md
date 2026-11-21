@@ -160,10 +160,30 @@ INSTALLED 21 Nov 2026 00:10Z (Lex's root run): release /opt/ftesurf-tasupd/a8efd
 `ftesurf-tasupd` on 127.0.0.1:8093, store /srv/nvme/ftesurf-ops/tasupd-state. Checked live: health ok,
 the page, Steam sign-in redirect, an unsigned upload refused (401), `/tasup/api/board`.
 
+## Built: P1696 upload from the game
+
+The TAS menu's Upload tab (src/client/cl_tasupload.qc), in a game the player hosts (`isserver()`), lists the TAS runs
+that game finished: each TAS finish appends `<sha256> <path>` to data/tasproj/uploads.txt (sv_timer.qc SV_TASUpNote),
+which client code cannot write (engine QC_TasprojDenied), and `cmd tas uploads` (SV_TASUpList) answers the host's own
+client with this map's newest 10 (TAS_EV_UPLIST). So a file a server's csprogs wrote into data/runs/ is never offered
+as the player's run; Upload refuses bytes that differ from the recorded hash. A bot's .rec goes through the web form.
+Upload: `POST /tasup/api/game/challenge {"sha"}` -> a code (8 hex time, 8 hex salt, 16 hex of the service's HMAC over
+them and the file hash; nothing stored). Send, on a real press: `acct_sign(sha256("ftesurf-tasup <code> <sha>")[:32],
+-6)` (zone publishing's kind, the site fixed; the digest names this purpose and the file, so neither service takes the
+other's proof), then `POST /tasup/upload` as `application/x-ftesurf-tasup`: lines FTESURF-TASUP 1 / nonce / sha / pub /
+sig / game, then the raw .rec. The service checks the code, the game code, the signature and the key's linked
+unbanned account from the 396-byte header before reading the file (refusals then drain the body: nginx), spends the
+code, then runs the web form's checks. Game code: the lobbies' csprogs (and the newest two `csprogs.dat.pre*`), released
+csprogs learned from `releases/<ver>/update.json` (BLAKE2b, one a platform; fetched once from the mirror, network
+failures retried, doubling to an hour), each carrying the upload flow (`ftesurf-tasup ` in its bytes); or by the owner,
+as proto: `tasupd.py --store ... allow-code <sha256> [--note]` / `deny-code <sha256>` (any build) / `codes`. Refusals
+answer 200 with ok=0 (the game's HTTP client keeps no other body). The tool reads "sent from the game": how it came,
+not what made it (any linked key can sign any file).
+
 ## Still to build
 
-1. In-game "Upload to TAS board" after a TAS finish, and a TAS-uploads tab on the web/menu boards
-   reading `/tasup/api/board` (surfd's board.js rides a guarded generation; tasupd's page works now).
+1. A TAS-uploads tab on the web/menu boards reading `/tasup/api/board` (surfd's board.js rides a guarded
+   generation; tasupd's page works now). The in-game upload is built (P1696, above).
 2. EXACT: native recordings with `in` rows re-simulated by pm_verify (sweep.py), shown with a
    "re-simulated" badge.
 3. tasplaus: map push volumes from the entity lump; stage legs (both HOLD today).

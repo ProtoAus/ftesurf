@@ -39,8 +39,20 @@
   count (PW_SCRIPTGUARD, "update the game").
 
 ## TAS uploads -- what P1640 left (20 Nov, tasupload-20261120-c7; root FTESurf-worktrees/tasupload-20261120-c7)
-- In-game upload after a TAS finish, and a TAS-uploads view in the web/menu boards (read `/tasup/api/board`).
-  Falsifier: a run uploaded in game appears on `/tasup/board` for its map/track with the uploader's name.
+- A TAS-uploads view in the web/menu boards (read `/tasup/api/board`). (The in-game upload is P1696.)
+- P1696 left: runs finished before the P1696 build are not offered (no record of them); a TAS run made in the game
+  samples once a packet, and tasplaus held the one game-made file tried (a teleported finish) partly for "31 lost
+  packets": how genuine Jargon runs fare is not measured (no Jargon finish on this machine: sandtrap2 b4 stuck at
+  stretch 1 with both guides; monolith needs other games). A `warp` row at or after the finish tick (surf_ace's end
+  teleport) holds an upload (tasplaus NATIVE_STATE): ignore warps past the finish. TAS-board uploads as a Jargon
+  download tier. Own TAS runs offered as Jargon guides come from the folder, not the attested list.
+- P1696 review rounds (4 + a delta round) left: a hostile server's csprogs can read a finished data/runs/*_tas.rec
+  and upload it first under its own key (client code may read data/; predates P1696, the web form took these files
+  too): keep TAS runs where client code cannot read them, or bind each to its author's key at the finish. The web
+  form's tool field can show a look-alike of "sent from the game" (Unicode); the label is not provenance. A local
+  relay forwarding guests over 127.0.0.1 would make them count as the host (none in the tree). sv_tasshare.qc:38
+  compares the host's ip with "loopback", but the engine prints QLoopBack (older code: `tas share` may refuse
+  a local host). The held-metadata save path (rec_held_metadata 1, default 0) does not note TAS finishes.
 - EXACT verdict: re-simulate native `in`-row recordings with pm_verify (surfd/sweep.py) in the worker; today
   every upload is judged by tools/tasplaus.py alone. Falsifier: a native TAS .rec gets "re-simulated", a
   one-row edit of it does not.

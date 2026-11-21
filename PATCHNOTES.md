@@ -21,6 +21,10 @@
 
 ## next
 
+### P1696 Upload TAS runs from the game
+- The TAS menu has an Upload tab: in a game you host, send one of your finished TAS runs to the TAS board at play.proto.bar/tasup with a click, signed with your linked Steam account. The game says whether it was listed or waits for review.
+- Jargon also offers your own finished TAS runs as runs to follow.
+
 ## 0.1.54 2026-11-21
 
 ### P1695 A sky where a map's own is missing

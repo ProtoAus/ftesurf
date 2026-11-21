@@ -1,5 +1,14 @@
 # lextest.md — things waiting on a human
 
+## P1696 -- upload a TAS run from the game (root FTESurf-worktrees/tasingame-20261121-a03)
+Needs the build with P1696 (your dev install after its rebuild; players with the next release) and tasupd upgraded on
+the Pi. Runs finished BEFORE this build are not offered (the game records each TAS finish from now on).
+1. In a game you host, finish a TAS run (Jargon or Manual TAS) on a main course or a bonus, then open the TAS menu >
+   Upload: it is listed ("Bonus 4  7.86s  TAS run").
+2. Click Upload, then Send. The tab says "On the TAS board, physics checked: run N ..." or "Uploaded, waiting for
+   review: run N (why)"; the run is at play.proto.bar/tasup/run/N under your Steam name.
+3. Jargon's guide list on that course includes "my TAS ..." beside "my run ...".
+
 ## 0.1.54 release -- PUBLISHED 21 Nov 01:32Z (record: tools/release-0.1.54.md); owner check PENDING
 - 26 patches (P1640-P1695), and the first new engine since 0.1.52: the in-game download and the red map warning
   (P1669/P1670), the script guard's client half (P1646), Discord presence, GoldSrc mode fixes, the stand-in skies.
