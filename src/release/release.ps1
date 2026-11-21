@@ -389,6 +389,8 @@ $ShipGlobs = @(
     @{ Path = 'ftesurf/sound/winter';   Filter = '*.ogg' }
     # P1453: loading-screen map models (tools/loadwire.py); last, so the quoted --mutate indices hold.
     @{ Path = 'ftesurf/gfx/loadwire';   Filter = '*.txt' }
+    # P1695: R_SetSky's last stand-in sky (tools/wosdaysky.py, CC0); after loadwire for the same reason.
+    @{ Path = 'ftesurf/gfx/env';        Filter = 'wos_day*.jpg' }
 )
 
 # =============================================================================

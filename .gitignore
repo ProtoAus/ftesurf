@@ -329,6 +329,8 @@ __pycache__/
 #  The vessel world's two films (m_milk.qc), grayscale JPEG.
 !/ftesurf/gfx/env/xray1.jpg
 !/ftesurf/gfx/env/xray2.jpg
+#  P1695: the stand-in sky (tools/wosdaysky.py, CC0).
+!/ftesurf/gfx/env/wos_day*.jpg
 
 
 #  ftesurf/data/ -- one hand-written file; everything else is generated or

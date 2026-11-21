@@ -652,7 +652,7 @@ string(float row) Mgs_WarnTip =
 	local string w, s;
 	w = Mgs_Warn(row);
 	s = "";
-	if (strstrofs(w, "sky") >= 0)      s = "the sky draws plain";
+	if (strstrofs(w, "sky") >= 0)      s = "a stand-in sky draws in its place";	// P1695: Half-Life's desert, else ours
 	if (strstrofs(w, "textures") >= 0) s = strcat(s, (s == "") ? "" : ", ", "surfaces without their texture draw dark");
 	if (strstrofs(w, "models") >= 0)   s = strcat(s, (s == "") ? "" : ", ", "some models are left out");
 	if (strstrofs(w, "sounds") >= 0)   s = strcat(s, (s == "") ? "" : ", ", "some sounds are silent");

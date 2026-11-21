@@ -21,6 +21,10 @@
 
 ## next
 
+### P1695 A sky where a map's own is missing
+- A Half-Life map whose sky could not be found now shows the Half-Life desert sky instead of a grey one, and so does a Half-Life map that names no sky, as in Half-Life itself.
+- With neither Half-Life, Momentum nor Half-Life 2 installed, a map whose sky is missing now shows World of Surf's own blue sky instead of black.
+
 ### P1693 Jargon finds a run to follow
 - Jargon (the TAS menu) opens on the course you are standing in, a bonus or a stage, instead of always Main, and its Course list opens again when no run is loaded.
 - With no run to follow, one click downloads the course's fastest leaderboard runs (KSF first) to follow; your own clean recorded runs are listed too.
@@ -110,7 +114,7 @@
 
 ### P1669 Every Half-Life map can be downloaded
 - All 1308 Half-Life (GoldSrc) maps can now be downloaded and played, including 385 that were left out because some of their files could not be found, or because they are not bhop or kz maps.
-- A map with missing files shows a red "warning": hover over it to see what is missing (its sky, textures, models or sounds). Missing textures draw dark and a missing sky draws plain.
+- A map with missing files shows a red "warning": hover over it to see what is missing (its sky, textures, models or sounds). Missing textures draw dark, and a stand-in sky draws in place of a missing one.
 
 ## 0.1.53 2026-11-21
 
