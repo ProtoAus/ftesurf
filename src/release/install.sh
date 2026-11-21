@@ -144,25 +144,25 @@ if echo "$OUT" | grep -qi 'conflicting server name'; then
     exit 1
 fi
 
-systemctl reload nginx
+probe_failed() {
+    echo "FAILED: $1" >&2
+    echo "Restore vhost: cp -p $BAK $VHOST" >&2
+    if [ -n "$SNIP_BAK" ]; then echo "Restore snippet: cp -p $SNIP_BAK $SNIP" >&2; fi
+    echo "Then: nginx -t && systemctl reload nginx" >&2
+    exit 1
+}
+systemctl reload nginx || probe_failed "systemctl reload nginx (nginx keeps its previous configuration)"
 echo "== reloaded =="
 
 AFTER=$(nginx -T 2>/dev/null | grep -c 'server_name proto.bar;' || true)
 echo "   server_name proto.bar count after: $AFTER  (must equal $BEFORE)"
-[ "$AFTER" = "$BEFORE" ] || { echo "FAILED: the server_name count changed -- a duplicate vhost got loaded" >&2; exit 1; }
+[ "$AFTER" = "$BEFORE" ] || probe_failed "the server_name count changed -- a duplicate vhost got loaded"
 
 # Probe both prefixes through this nginx, not public DNS. A filebrowser SPA
 # can answer 200 too: require the marker, JSON type and actual board envelope.
 PROBE=$(mktemp -d)
 trap 'rm -f "$PROBE/headers" "$PROBE/body"; rmdir "$PROBE"' EXIT
 trap 'exit 1' HUP INT TERM
-probe_failed() {
-    echo "FAILED: $1 -- nginx is reloaded with the new snippet." >&2
-    echo "Restore vhost: cp -p $BAK $VHOST" >&2
-    if [ -n "$SNIP_BAK" ]; then echo "Restore snippet: cp -p $SNIP_BAK $SNIP" >&2; fi
-    echo "Then: nginx -t && systemctl reload nginx" >&2
-    exit 1
-}
 for BASE in ftesurf worldofsurf; do
     curl --fail --silent --show-error --max-time 10 \
         --resolve proto.bar:443:127.0.0.1 \
@@ -184,15 +184,20 @@ if not isinstance(body, dict) or body.get("v") != 1 or not isinstance(body.get("
 PY
     then probe_failed "/$BASE/board/api/maps is not the marked board JSON"; fi
     echo "   GET /$BASE/board/api/maps -> marked board JSON"
-    for f in "" board.js watch.html; do
+    for f in "" board.css board.js link.css runview.js watch.css watch.html watch.js; do
         curl --fail --silent --show-error --max-time 10 --resolve proto.bar:443:127.0.0.1 \
             -D "$PROBE/headers" -o "$PROBE/body" "https://proto.bar/$BASE/board/$f" ||
             probe_failed "/$BASE/board/$f did not answer"
         cmp -s "$PROBE/body" "$SITE/board/current/${f:-board.html}" ||
             probe_failed "/$BASE/board/$f is not the published board/current/${f:-board.html}"
-        grep -qi '^content-security-policy:' "$PROBE/headers" || probe_failed "/$BASE/board/$f has no Content-Security-Policy"
+        # The CSP must be the one the LIVE surfd sends for the same file (it still serves /board/<file>).
+        GOT=$(grep -i '^content-security-policy:' "$PROBE/headers" | tr -d '\r' | cut -d: -f2-)
+        WANT=$(curl --silent --max-time 10 -D - -o /dev/null "http://127.0.0.1:8084/board/$f" |
+               grep -i '^content-security-policy:' | tr -d '\r' | cut -d: -f2-)
+        [ -n "$GOT" ] && [ "$GOT" = "$WANT" ] ||
+            probe_failed "/$BASE/board/$f CSP differs from the live surfd's (ftesurf.nginx vs surfd.py WEB_CSP)"
     done
-    echo "   GET /$BASE/board/{,board.js,watch.html} -> the published static files, with CSP"
+    echo "   GET /$BASE/board/{page + 7 assets} -> the published files, with the live surfd's CSP"
 done
 
 echo

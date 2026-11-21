@@ -5,4 +5,5 @@ Description=P1702 static web board follows the live surfd generation (tools/publ
 Type=oneshot
 ExecStart=/usr/bin/python3.11 -I -B /srv/nvme/ftesurf-ops/board/board_publish_pi.py --follow
 Nice=10
+TimeoutStartSec=120
 IOSchedulingClass=idle

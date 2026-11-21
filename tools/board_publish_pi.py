@@ -70,6 +70,8 @@ def snippet_check(path, csp):
     """Each static board location in the installed snippet must carry this surfd.py's CSP (watch.html: WEB_CSP_WATCH)."""
     try:
         snip = Path(path).read_text()
+    except FileNotFoundError:
+        return 'no nginx snippet installed yet (install.sh)'
     except OSError as e:
         raise Refused('cannot read the installed nginx snippet %s: %r' % (path, e))
     if '/srv/nvme/ftesurf-site/board/current' not in snip:
@@ -84,12 +86,9 @@ def snippet_check(path, csp):
     return 'snippet CSP matches'
 
 
-def publish(p, files, rid, generation, csp, extra):
+def take_lock(p):
+    """Every writer holds board/.publish.lock for its whole read-decide-write (the follow timer included)."""
     board = Path(p['paths']['board'])
-    plan = {'release': rid, 'generation': generation, 'sha256': {f: sha(files[f]) for f in FILES},
-            'snippet': snippet_check(p['paths']['snippet'], csp)}
-    if p.get('dry_run'):
-        return dict(plan, dry_run=True)
     for d in (board, board / 'releases'):
         d.mkdir(exist_ok=True)
         os.chmod(d, 0o755)                                  # nginx (www-data) must read; umask must not decide
@@ -98,6 +97,15 @@ def publish(p, files, rid, generation, csp, extra):
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         raise Refused('another board publish is running')
+    return lock
+
+
+def publish(p, files, rid, generation, csp, extra):
+    board = Path(p['paths']['board'])
+    plan = {'release': rid, 'generation': generation, 'sha256': {f: sha(files[f]) for f in FILES},
+            'snippet': snippet_check(p['paths']['snippet'], csp)}
+    if p.get('dry_run'):
+        return dict(plan, dry_run=True)
     for d in os.listdir(board / 'releases'):                # a crashed earlier write
         path = board / 'releases' / d
         if TEMP.match(d) and path.is_dir() and not path.is_symlink():
@@ -145,6 +153,13 @@ def publish(p, files, rid, generation, csp, extra):
     return dict(plan, current=current, removed=removed)
 
 
+def live_csp(m, home):
+    surfd = (home / 'surfd.py').read_bytes()
+    if sha(surfd) != m['hashes'].get('surfd.py'):
+        raise Refused('live surfd.py does not match the live manifest')
+    return csp_of(surfd)
+
+
 def live_publish(p, m, home):
     files = {}
     for f in FILES:
@@ -152,43 +167,47 @@ def live_publish(p, m, home):
         if sha(raw) != m['hashes'].get('web/' + f):
             raise Refused('live web/%s does not match the live manifest' % f)
         files[f] = raw
-    surfd = (home / 'surfd.py').read_bytes()
-    if sha(surfd) != m['hashes'].get('surfd.py'):
-        raise Refused('live surfd.py does not match the live manifest')
-    return publish(p, files, 'live-' + m['generation'][:12], m['generation'], csp_of(surfd), {'mode': 'live'})
+    return publish(p, files, 'live-' + m['generation'][:12], m['generation'], live_csp(m, home), {'mode': 'live'})
 
 
 def run(p):
-    m, home = live(p['paths'])
     mode = p['mode']
     if mode == 'live-info':
+        m, home = live(p['paths'])
         ident = json.loads((home.parent / 'generation-identity.json').read_bytes())
         return {'generation': m['generation'], 'source_ref': ident.get('source_ref', ''), 'hashes': m['hashes'],
-                'external_python': {k: v.get('origin', '') for k, v in m.get('external_python', {}).items()}}
+                'external_python': {k: v.get('sha256', '') for k, v in m.get('external_python', {}).items()}}
+    if mode not in ('live', 'follow', 'commit'):
+        raise Refused('unknown mode %r' % mode)
+    if not p.get('dry_run'):
+        try:
+            take_lock(p)                                    # held until exit: read state, decide and write as one
+        except Refused:
+            if mode == 'follow':
+                return {'action': 'none', 'busy': True}
+            raise
+    m, home = live(p['paths'])                              # read under the lock
     if mode == 'live':
         return live_publish(p, m, home)
     if mode == 'follow':
+        # Every tick checks the installed snippet against the live surfd.py: drift fails the unit.
+        snippet = snippet_check(p['paths']['snippet'], live_csp(m, home))
         try:
             state = json.loads((Path(p['paths']['board']) / 'state.json').read_bytes())
         except (OSError, ValueError):
             state = {}
         if state.get('generation') == m['generation']:
-            return {'action': 'none', 'generation': m['generation']}
-        try:
-            return dict(live_publish(p, m, home), action='published')
-        except Refused as e:
-            if 'another board publish' in str(e):
-                return {'action': 'none', 'busy': True}
-            raise
-    if mode == 'commit':
-        if p['live_generation'] != m['generation']:
-            raise Refused('the live generation changed since planning')
-        files = {f: base64.b64decode(p['files'][f]) for f in FILES}
-        if set(p['files']) != set(FILES) or any(sha(files[f]) != p['expect'][f] for f in FILES):
-            raise Refused('payload file set')
-        return publish(p, files, 'commit-' + p['commit'][:12], m['generation'], tuple(p['csp']),
-                       {'mode': 'commit', 'commit': p['commit']})
-    raise Refused('unknown mode %r' % mode)
+            return {'action': 'none', 'generation': m['generation'], 'snippet': snippet, 'quiet': True}
+        return dict(live_publish(p, m, home), action='published')
+    if p['live_generation'] != m['generation']:
+        raise Refused('the live generation changed since planning')
+    if tuple(p['csp']) != live_csp(m, home):
+        raise Refused('REF\'s surfd.py CSP differs from the live surfd.py\'s')
+    files = {f: base64.b64decode(p['files'][f]) for f in FILES}
+    if set(p['files']) != set(FILES) or any(sha(files[f]) != p['expect'][f] for f in FILES):
+        raise Refused('payload file set')
+    return publish(p, files, 'commit-' + p['commit'][:12], m['generation'], tuple(p['csp']),
+                   {'mode': 'commit', 'commit': p['commit']})
 
 
 def main(argv):
@@ -201,7 +220,8 @@ def main(argv):
     except Refused as e:
         print(json.dumps({'ok': False, 'error': str(e)}))
         return 3
-    print(json.dumps(out, sort_keys=True))
+    if not (out.pop('quiet', False) and '--follow' in argv):    # a no-op timer tick logs nothing
+        print(json.dumps(out, sort_keys=True))
     return 0
 
 

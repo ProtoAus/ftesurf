@@ -115,6 +115,12 @@ class Publish(Live):
         swapped = swapped[:i] + swapped[i:j].replace(csp, watch) + swapped[j:]
         Path(self.paths['snippet']).write_text(swapped.replace('@W@', csp))
         with self.assertRaisesRegex(SystemExit, 'watch'): self.publish('--live')
+        i = snip.index('location = /worldofsurf/board/board.css'); j = snip.index('\n}', i)
+        Path(self.paths['snippet']).write_text(snip[:i] + snip[i:j].replace("img-src 'self'", 'img-src *') + snip[j:])
+        with self.assertRaisesRegex(SystemExit, '/worldofsurf/board/board.css'): self.publish('--live')
+        extra = snip[:j] + '\n    add_header Content-Security-Policy "x" always;' + snip[j:]
+        Path(self.paths['snippet']).write_text(extra)
+        with self.assertRaisesRegex(SystemExit, '/worldofsurf/board/board.css'): self.publish('--live')
         Path(self.paths['snippet']).write_text(snip)
         os.chmod(self.paths['snippet'], 0)
         if os.geteuid() != 0:
@@ -122,6 +128,8 @@ class Publish(Live):
         os.chmod(self.paths['snippet'], 0o644)
         Path(self.paths['snippet']).write_text('location / {}\n')
         self.assertIn('not installed', self.publish('--live', '--dry-run')['snippet'])
+        os.unlink(self.paths['snippet'])                       # a box with no snippet yet: install.sh needs a publish first
+        self.assertIn('no nginx snippet', self.publish('--live', '--dry-run')['snippet'])
 
 
 class PiGuards(Live):
@@ -132,6 +140,9 @@ class PiGuards(Live):
                  files={f: base64.b64encode(raw).decode() for f, raw in files.items()},
                  expect={f: sha(raw) for f, raw in files.items()}, csp=list(pb.csp_of((self.d / 'gen-aaaaaa/runtime/surfd.py').read_bytes())))
         p.update(over); return p
+
+    def test_commit_csp_must_be_the_live_surfds(self):
+        self.assertIn('differs from the live surfd.py', self.pi(**self.payload(csp=['a', 'b']))['error'])
 
     def test_commit_payload_guards(self):
         self.assertIn('changed since planning', self.pi(**self.payload(live_generation='b' * 40))['error'])
@@ -152,6 +163,17 @@ class PiGuards(Live):
 
 
 class Follow(Live):
+    def test_follow_checks_the_snippet_every_tick_and_is_quiet_when_idle(self):
+        self.pi(mode='follow')
+        code = ('import json, runpy, sys; ns = runpy.run_path(sys.argv[1], run_name="pi_main"); '
+                'ns["PATHS"].update(json.loads(sys.argv[2])); sys.exit(ns["main"](["--follow"]))')
+        done = subprocess.run(RUN + ['-c', code, str(pb.PI_PROGRAM), json.dumps(self.paths)], capture_output=True)
+        self.assertEqual((done.returncode, done.stdout), (0, b''))                     # the --follow entry, idle: silent
+        snip = Path(self.paths['snippet']).read_text()
+        Path(self.paths['snippet']).write_text(snip.replace("img-src 'self'", 'img-src *'))
+        self.assertIn('carries another CSP', self.pi(mode='follow')['error'])
+
+
     def test_follow_publishes_once_per_generation_and_holds_a_commit(self):
         self.assertEqual(self.pi(mode='follow')['action'], 'published')
         self.assertEqual(self.pi(mode='follow')['action'], 'none')
@@ -182,7 +204,8 @@ class ByteRule(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory(); self.repo = Path(self.tmp.name)
         self.g('init', '-q', '-b', 'main'); self.g('config', 'user.email', 't@t'); self.g('config', 'user.name', 't')
         for f in FILES: self.write('surfd/web/' + f, f)
-        for f in ('surfd/surfd.py', 'surfd/recplot.py', 'surfd/templates/admin.html', 'tools/ksfconvert.py', 'tools/momimport.py'):
+        for f in ('surfd/surfd.py', 'surfd/recplot.py', 'surfd/templates/admin.html', 'tools/ksfconvert.py', 'tools/momimport.py',
+                  'tools/momfetch.py'):
             self.write(f, f)
         self.base = self.commit('base')
 
@@ -195,7 +218,8 @@ class ByteRule(unittest.TestCase):
     def info(self, **over):
         hashes = {'web/' + f: sha(pb.git('show', '%s:surfd/web/%s' % (self.base, f), root=self.repo)) for f in FILES}
         hashes.update({'surfd.py': '0' * 64, 'recplot.py': '0' * 64, 'templates/admin.html': '0' * 64,
-                       'tools/ksfconvert.py': '0' * 64, 'test_board.py': '0' * 64})
+                       'tools/ksfconvert.py': '0' * 64, 'test_board.py': '0' * 64, 'momfetch.py': '0' * 64})
+        hashes['recplot.py'] = sha(pb.git('show', '%s:surfd/recplot.py' % self.base, root=self.repo))
         return dict(dict(source_ref=self.base, hashes=hashes, external_python={'momimport': '/x/momimport.py'}), **over)
 
     def refused(self, ref, why, **over):
@@ -215,6 +239,15 @@ class ByteRule(unittest.TestCase):
             self.refused(ref, path.replace('.', r'\.'))
             self.g('reset', '-q', '--hard', self.base)
         self.g('mv', 'surfd/recplot.py', 'surfd/recplot2.py'); self.refused(self.commit('rename'), r'surfd/recplot\.py')
+
+    def test_tools_sourced_mapping_unknown_members_and_held(self):
+        self.write('tools/momfetch.py', 'changed'); self.refused(self.commit('momfetch'), r'tools/momfetch\.py')
+        self.g('reset', '-q', '--hard', self.base)
+        self.write('surfd/web/board.css', 'css'); ref = self.commit('css')
+        info = self.info(); info['hashes']['ghost.py'] = '0' * 64
+        with self.assertRaisesRegex(SystemExit, 'no git source'): pb.ui_only(info, ref, self.repo)
+        held = pb.ui_only(self.info(), ref, self.repo)
+        self.assertIn('surfd/surfd.py', held); self.assertNotIn('surfd/recplot.py', held)
 
     def test_a_reverted_server_change_passes(self):
         self.write('surfd/surfd.py', 'tried'); self.commit('try')

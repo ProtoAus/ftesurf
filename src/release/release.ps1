@@ -608,9 +608,10 @@ if ($SetupSite) {
     }
     & ssh @sshOpts $PiHost "chmod +x '$SiteRoot/install.sh' '$SiteRoot/publish.sh'"
     Good "pushed ftesurf.nginx, install.sh and publish.sh to $SiteRoot"
-    Write-Host "`n  Run this once. It is the only step in the pipeline that needs a password:" -ForegroundColor Yellow
+    Write-Host "`n  First, from a workstation game checkout (publishes the web board; no password):" -ForegroundColor Yellow
+    Write-Host "      python3 -B tools/publish_board.py --install-follow" -ForegroundColor White
+    Write-Host "`n  Then run this once. It is the only step in the pipeline that needs a password:" -ForegroundColor Yellow
     Write-Host "`n      ssh $PiHost" -ForegroundColor White
-    Write-Host "  (install.sh refuses until the web board is published: python3 -B tools/publish_board.py --install-follow)" -ForegroundColor Yellow
     Write-Host "      sudo sh $SiteRoot/install.sh`n" -ForegroundColor White
     return
 }
@@ -2356,9 +2357,10 @@ refusing to deploy a page for an archive that is not published.
 
     if ($needSetup) {
         Write-Host "`n  ONE-TIME SETUP NEEDED. proto's sudo requires a password, so this script" -ForegroundColor Yellow
-        Write-Host   "  cannot touch /etc/nginx. Run this once, on the Pi or over ssh:" -ForegroundColor Yellow
+        Write-Host   "  cannot touch /etc/nginx. First, from a workstation game checkout (no password):" -ForegroundColor Yellow
+        Write-Host   "      python3 -B tools/publish_board.py --install-follow" -ForegroundColor White
+        Write-Host   "  Then run this once, on the Pi or over ssh:" -ForegroundColor Yellow
         Write-Host   "`n      ssh $PiHost" -ForegroundColor White
-        Write-Host   "  (install.sh refuses until the web board is published: python3 -B tools/publish_board.py --install-follow)" -ForegroundColor Yellow
         Write-Host   "      sudo sh $SiteRoot/install.sh`n" -ForegroundColor White
         Fail 'site swap completed but signed-feed release is not publicly verified; configure nginx and verify the exact feed before claiming publication'
     } else {

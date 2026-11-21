@@ -13,9 +13,12 @@ publish holds until the live generation changes.
 
 --commit is a BYTE rule, not a history one: the live generation must carry its source_ref's board files exactly, REF
 must descend from source_ref, and `git diff source_ref REF` must touch no live member outside web/ (tests aside;
-surfd/<name>, the four tools/ copies, the external converters). So REF's board was built against the server code that
-is live. Outside it: SURFD_TOOLS in the game install, the database, surfd.env switches.
-Both modes refuse when the installed snippet's CSP for any board file differs from that surfd.py's.
+surfd/<name>, the four tools/ copies, the external converters; each must exist at source_ref). So REF's board meets
+the same server code the live board was shipped with. A member the live generation deliberately holds at other bytes
+than source_ref (mapwatch.py today) is listed as `held`: the live board already runs against it. Outside the rule:
+SURFD_TOOLS in the game install, the database, surfd.env switches. A --commit fix cut from source_ref must also land
+on main, or the next generation drops it.
+Both modes refuse when the installed snippet's CSP for any board file differs from the live surfd.py's.
 """
 import argparse
 import base64
@@ -68,14 +71,19 @@ def ui_only(info, ref, root=None):
         if hashlib.sha256(git('show', '%s:surfd/web/%s' % (source_ref, f), root=root)).hexdigest() != info['hashes'].get('web/' + f):
             raise SystemExit('REFUSED: the live generation does not carry its source_ref\'s web/%s; publish --commit only '
                              'once a generation carries its own board (until then: --live)' % f)
-    paths = sorted({TOOLS_SOURCED.get(n, 'surfd/' + n) for n in info['hashes']
-                    if not n.startswith('web/') and not Path(n).name.startswith('test_')} |
-                   {'tools/%s.py' % name for name in info.get('external_python', {})})
+    live = {TOOLS_SOURCED.get(n, 'surfd/' + n): h for n, h in info['hashes'].items()
+            if not n.startswith('web/') and not Path(n).name.startswith('test_')}
+    live.update({'tools/%s.py' % name: h for name, h in info.get('external_python', {}).items()})
+    paths = sorted(live)
+    missing = [x for x in paths if subprocess.run(['git', '-C', str(root or ROOT), 'cat-file', '-e', '%s:%s' % (source_ref, x)],
+                                                  capture_output=True).returncode]
+    if missing:
+        raise SystemExit('REFUSED: live members with no git source at source_ref (a change would go unseen): %r' % missing)
     changed = git('diff', '--name-only', '--no-renames', source_ref, ref, '--', *paths, root=root).decode().split()
     if changed:
         raise SystemExit('REFUSED: server code changed since the live generation (%s): this board rides a generation, '
                          'then the follow timer publishes it' % ', '.join(changed))
-    return paths
+    return sorted(x for x in paths if hashlib.sha256(git('show', '%s:%s' % (source_ref, x), root=root)).hexdigest() != live[x])
 
 
 def csp_of(source):
@@ -85,20 +93,23 @@ def csp_of(source):
 
 
 def install_follow(pi):
-    """Install the Pi program and the user timer as proto (no root; proto lingers)."""
+    """Install the Pi program and the user timer as proto (no root; proto lingers), then publish once."""
     units = ROOT / 'tools/board-follow'
-    script = ('set -eu; D=%s; mkdir -p "$D" ~/.config/systemd/user; umask 022\n' % FOLLOW_DIR)
-    for name, path, dest in (('prog', PI_PROGRAM, '"$D/board_publish_pi.py"'),
-                             ('svc', units / 'ftesurf-board-follow.service', '~/.config/systemd/user/ftesurf-board-follow.service'),
-                             ('tmr', units / 'ftesurf-board-follow.timer', '~/.config/systemd/user/ftesurf-board-follow.timer')):
-        script += 'printf %%s %s | base64 -d > %s.new && mv %s.new %s\n' % (
-            shlex.quote(base64.b64encode(path.read_bytes()).decode()), dest, dest, dest)
+    script = 'set -eu\nD=%s\numask 022\nmkdir -p "$D" ~/.config/systemd/user\n' % FOLLOW_DIR
+    for path, dest in ((PI_PROGRAM, '"$D/board_publish_pi.py"'),
+                       (units / 'ftesurf-board-follow.service', '~/.config/systemd/user/ftesurf-board-follow.service'),
+                       (units / 'ftesurf-board-follow.timer', '~/.config/systemd/user/ftesurf-board-follow.timer')):
+        raw = path.read_bytes()
+        script += 'printf %%s %s | base64 -d > %s.new\n' % (shlex.quote(base64.b64encode(raw).decode()), dest)
+        script += 'test "$(sha256sum < %s.new | cut -c1-64)" = %s\nmv %s.new %s\n' % (dest, hashlib.sha256(raw).hexdigest(), dest, dest)
     script += ('echo %s > "$D/SOURCE.txt"\n' % git('rev-parse', 'HEAD').decode().strip() +
-               'systemctl --user daemon-reload && systemctl --user enable --now ftesurf-board-follow.timer\n'
-               '/usr/bin/python3.11 -I -B "$D/board_publish_pi.py" --follow --dry-run\n')
-    done = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-T', pi, 'sh -s'], input=script.encode(), capture_output=True, timeout=120)
+               'systemctl --user daemon-reload\nsystemctl --user enable --now ftesurf-board-follow.timer\n'
+               'systemctl --user is-active --quiet ftesurf-board-follow.timer\n'
+               '/usr/bin/python3.11 -I -B "$D/board_publish_pi.py" --follow\n'
+               'test -f /srv/nvme/ftesurf-site/board/current/board.html\necho FOLLOW INSTALLED\n')
+    done = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-T', pi, 'sh -s'], input=script.encode(), capture_output=True, timeout=180)
     sys.stdout.write(done.stdout.decode()); sys.stderr.write(done.stderr.decode())
-    if done.returncode:
+    if done.returncode or 'FOLLOW INSTALLED' not in done.stdout.decode():
         raise SystemExit('install-follow failed (rc %d)' % done.returncode)
 
 
@@ -112,6 +123,8 @@ def main(argv=None, runner=None, paths=None, root=None):
     ap.add_argument('--dry-run', action='store_true')
     a = ap.parse_args(argv)
     if a.install_follow:
+        if a.dry_run:
+            raise SystemExit('--install-follow has no dry run: it installs and publishes')
         return install_follow(a.pi)
     base = dict(paths=paths or PATHS, keep=KEEP, dry_run=a.dry_run)
     if a.live:
@@ -119,12 +132,13 @@ def main(argv=None, runner=None, paths=None, root=None):
     else:
         ref = git('rev-parse', a.commit + '^{commit}', root=root).decode().strip()
         info = remote(dict(base, mode='live-info'), a.pi, runner)
-        ui_only(info, ref, root)
+        held = ui_only(info, ref, root)
         files = {f: git('show', '%s:surfd/web/%s' % (ref, f), root=root) for f in FILES}
         out = remote(dict(base, mode='commit', commit=ref, live_generation=info['generation'],
                           files={f: base64.b64encode(raw).decode() for f, raw in files.items()},
                           expect={f: hashlib.sha256(raw).hexdigest() for f, raw in files.items()},
                           csp=list(csp_of(git('show', ref + ':surfd/surfd.py', root=root)))), a.pi, runner)
+        out['held'] = held
     print(json.dumps(out, indent=1, sort_keys=True))
     return out
 

@@ -8,8 +8,12 @@ republishes the LIVE generation's own web/ files whenever the live generation ch
 fix can go ahead of a generation: `python3 -B tools/publish_board.py --commit <ref>` -- a byte rule: the live
 generation carries its source_ref's board, and `git diff source_ref ref` touches no live member outside web/ (so it
 is refused while main's server code is ahead of the live generation; cut the fix from the live source_ref). It holds
-until the next generation. Keeps two releases. A surfd WEB_CSP change needs ftesurf.nginx + `sudo sh install.sh`
-(publish refuses on a per-location CSP mismatch or an unreadable snippet). Pi side: tools/board_publish_pi.py.
+until the next generation, and must also land on main (or the next generation drops it). Keeps two releases. A surfd
+WEB_CSP change ships with its generation and needs ftesurf.nginx + `sudo sh install.sh` then (install.sh compares each
+file's CSP with the live surfd's; the timer fails on a per-location mismatch every tick). Members the live generation
+holds at other bytes than its source_ref (mapwatch.py) are reported as `held`, not refused. ORDER when this lands:
+`--install-follow` (publishes), then the release's `sudo sh install.sh`: until then release.ps1's "Verify the page"
+fails after the site swap (snippet STALE). Pi side: tools/board_publish_pi.py.
 Tests: tools/test_publish_board.py, tools/test_site_routes.py (real nginx; ran on the Pi's /usr/sbin/nginx as proto).
 
 ## P1702 Pi backup rotation: keep the newest 2; idle task roots go (21 Nov 2026)
