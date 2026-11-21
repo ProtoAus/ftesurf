@@ -1,8 +1,7 @@
 # lextest.md — things waiting on a human
 
-## P1696 -- upload a TAS run from the game (root FTESurf-worktrees/tasingame-20261121-a03)
-Needs the build with P1696 (your dev install after its rebuild; players with the next release) and tasupd upgraded on
-the Pi. Runs finished BEFORE this build are not offered (the game records each TAS finish from now on).
+## P1696 -- upload a TAS run from the game (root FTESurf-worktrees/tasingame-20261121-a03) -- LIVE 21 Nov 03:01Z
+Your dev install has it (rebuilt at main 73229378; that build is allowed to sign); players get it with the next release. Runs finished BEFORE this build are not offered (the game records each TAS finish from now on).
 1. In a game you host, finish a TAS run (Jargon or Manual TAS) on a main course or a bonus, then open the TAS menu >
    Upload: it is listed ("Bonus 4  7.86s  TAS run").
 2. Click Upload, then Send. The tab says "On the TAS board, physics checked: run N ..." or "Uploaded, waiting for

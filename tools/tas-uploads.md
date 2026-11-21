@@ -180,6 +180,11 @@ as proto: `tasupd.py --store ... allow-code <sha256> [--note]` / `deny-code <sha
 answer 200 with ok=0 (the game's HTTP client keeps no other body). The tool reads "sent from the game": how it came,
 not what made it (any linked key can sign any file).
 
+INSTALLED 21 Nov 2026 03:01Z (Lex's root run, `--upgrade-from a8efd378`): release /opt/ftesurf-tasupd/73229378 (the
+old unit kept as its unit.prev). Checked live: health and X-Tasupd-Source 73229378, the page, a game challenge, a
+proofless game upload refused (200, ok=0); releases 0.1.45-0.1.54 learned (none carries the upload flow yet);
+`allow-code 4af237be...` for Lex's dev install (main 73229378). Players: from the first release with P1696.
+
 ## Still to build
 
 1. A TAS-uploads tab on the web/menu boards reading `/tasup/api/board` (surfd's board.js rides a guarded
