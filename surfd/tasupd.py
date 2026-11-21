@@ -733,23 +733,16 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
     @app.get(base)
     def bare(): return redirect(base + '/', 301)
 
-    @app.get(base + '/')
-    def index():
-        sid = session()
-        with connect(store) as db:
-            recent, accts = recent_rows(db)
-            mine = db.execute('SELECT ' + LIST + ' FROM runs WHERE steamid = ? ORDER BY id DESC LIMIT 50', (sid,)).fetchall() if sid else []
+    def upload_card(sid):
+        """Sign in, or (signed in) the upload form: on every page that shows boards, so picking a map does not lose it
+        (Lex, 21 Nov: the map page had no way on)."""
         me = accounts_of([sid]).get(sid) if sid else None
-        out = ['<h1>Uploaded TAS records</h1>',
-               '<p class="lede">Made a run with your own bot, a fork, or by hand? Upload its <code>.rec</code>. '
-               'It is checked against the game\'s movement physics (gravity, air acceleration, ground speed, '
-               'start, checkpoints and end zone). Runs that check out are listed here; anything the check '
-               'cannot clear waits for review. TAS runs stay off the normal leaderboards.</p>']
+        card = []
         if sid and me and not me[1]:
-            out.append('<div class="card"><form class="row" method="post" action="%s/signout">'
+            card.append('<div class="card"><form class="row" method="post" action="%s/signout">'
                        '<span>Signed in as <b>%s</b></span><input type="hidden" name="csrf" value="%s">'
                        '<button class="link" type="submit">Sign out</button></form>' % (base, html.escape(who(sid, {sid: me})), csrf()))
-            out.append('<form method="post" action="%s/upload" enctype="multipart/form-data">'
+            card.append('<form method="post" action="%s/upload" enctype="multipart/form-data">'
                        '<input type="hidden" name="csrf" value="%s"><p><label>Recording (.rec, up to %d MB)<br>'
                        '<input type="file" name="rec" accept=".rec,text/plain" required></label></p>'
                        '<p><label>Tool or bot (optional)<br><input type="text" name="tool" maxlength="%d" '
@@ -758,10 +751,24 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                        'Your Steam name is shown with the run and anyone can download the file.</p></form></div>'
                        % (base, csrf(), MAX_REC // 1024 ** 2, TOOL_MAX))
         else:
-            out.append('<div class="card"><p><a class="go" href="%s/steam">Sign in with Steam to upload</a></p>'
+            card.append('<div class="card"><p><a class="go" href="%s/steam">Sign in with Steam to upload</a></p>'
                        '<p class="fine">Uploading needs a Steam account linked to World of Surf. First time? '
                        '<a href="%sboard/link">Link your Steam account</a> once (about twenty seconds), then sign in here.</p></div>'
                        % (base, SITE))   # P1700: the board lives on the site, not this host (play.proto.bar/board/link is 404)
+        return ''.join(card)
+
+    @app.get(base + '/')
+    def index():
+        sid = session()
+        with connect(store) as db:
+            recent, accts = recent_rows(db)
+            mine = db.execute('SELECT ' + LIST + ' FROM runs WHERE steamid = ? ORDER BY id DESC LIMIT 50', (sid,)).fetchall() if sid else []
+        out = ['<h1>Uploaded TAS records</h1>',
+               '<p class="lede">Made a run with your own bot, a fork, or by hand? Upload its <code>.rec</code>. '
+               'It is checked against the game\'s movement physics (gravity, air acceleration, ground speed, '
+               'start, checkpoints and end zone). Runs that check out are listed here; anything the check '
+               'cannot clear waits for review. TAS runs stay off the normal leaderboards.</p>']
+        out.append(upload_card(sid))
         out.append('<h2>Find a course</h2>' + map_finder() + '<p class="fine">Pick a map, then its main course or a bonus.</p>')
         if mine:
             out.append('<h2>Your uploads</h2>' + runs_table(mine, accts, mine=True))
@@ -787,7 +794,8 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
             html.escape(facts) if facts else ('not in the map list' if not info else '')))
         note = ('<p class="fine">TAS uploads are whole courses: the main course from its start (all %d stages) or a bonus.</p>'
                 % stages if stages > 1 else '')
-        return page('%s %s' % (mapname, course(track)), map_finder(mapname) + card + '<div class="chips">%s</div>' % chips + note
+        return page('%s %s' % (mapname, course(track)), upload_card(session()) + map_finder(mapname) + card
+                    + '<div class="chips">%s</div>' % chips + note
                     + '<h2>%s</h2><p class="lede">Uploaded TAS runs, best per player. Times are the file\'s own clock at 66.67 tick.</p>\n%s'
                     % (course(track), runs_table(rows, accts, ranked=True)))
 

@@ -1524,6 +1524,17 @@ class CourseFinder(Service):
         self.assertIn('track=2" aria-current="page">Bonus 2</a>', h)
         self.assertIn('>Main</a>', h)
 
+    def test_a_map_page_keeps_the_way_to_upload(self):
+        """Lex, 21 Nov: picking a map lost the sign-in and the upload form."""
+        h = self.app.test_client().get('/tasup/board?map=surf_sandtrap2&track=4').get_data(as_text=True)
+        self.assertIn('Sign in with Steam to upload', h)
+        c, _ = self.sign_in(ALICE)
+        h = c.get('/tasup/board?map=surf_sandtrap2&track=4').get_data(as_text=True)
+        self.assertIn('action="/tasup/upload" enctype="multipart/form-data"', h)
+        self.assertIn('name="csrf"', h)
+        r = self.upload(c, rec(), json_reply=False)          # the form posted from the map page uploads as from the front
+        self.assertEqual(r.status_code, 303)
+
     def test_no_mapmeta_still_works(self):
         app = svc.create_app(self.store, self.accounts, self.zdirs, BASE, http=self.fake_http, clock=self.clock)
         self.assertEqual(app.test_client().get('/tasup/board?map=surf_sandtrap2').status_code, 200)
