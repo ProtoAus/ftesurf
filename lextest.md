@@ -30,15 +30,17 @@ Your request: all AG maps downloadable with a red warning, and no disconnecting 
 4. Players on 0.1.53 already see all 1,308 maps (the catalogue is live since 20 Nov 17:33Z), without the warning; the
    warning and the in-game download need the next release (engine + menu).
 
-## P1640 -- TAS uploads (tasupload-20261120-c7)
+## P1640 -- TAS uploads (tasupload-20261120-c7) -- LIVE 21 Nov 00:10Z
 
-After you run the installer (tools/tas-uploads.md, "Install"):
+Installed (release a8efd378). To check:
 - Open https://play.proto.bar/tasup/ and sign in with Steam. Does it come back signed in under your name?
 - Upload one of your own TAS .rec files (main or a bonus) that is slower than that course's record. It
   should say "physics checked" and appear on /tasup/board for that map and course, with Download working.
 - Upload one faster than the record (or on a course nobody has a time on): it should say "waiting for
-  review" with "a new record waits for the owner". Approve it with `tasupd.py ... approve ID` on the Pi and
-  check that it then shows. A run on a booster map will also wait for review.
+  review" with "a new record waits for the owner". Approve it (ID is on its page, /tasup/run/ID) and check that
+  it then shows: `ssh proto@nanopi python3 /opt/ftesurf-tasupd/a8efd378c4ca203eed017036bd3d84cd5bf01377/tasupd.py
+  --store /srv/nvme/ftesurf-ops/tasupd-state/tasup.sqlite3 approve ID` (`list` shows what waits). A run on a booster map
+  will also wait for review.
 - Read the page on your phone. Is anything unclear or cramped?
 
 ## P1675 -- start packets (anti-cheat finish list item 3; worldofsurf-6f) -- LIVE on the lobbies 21 Nov 18:52Z

@@ -156,6 +156,10 @@ probes read `/tasup/api/health`, which reads the store and surfd's accounts as t
 does (a closed WAL surfd.db with no `-wal` is read immutable, as r2gateway does). `--upgrade-from
 <installed commit>` for later releases; it runs the new release's `init` (additive schema steps) first.
 
+INSTALLED 21 Nov 2026 00:10Z (Lex's root run): release /opt/ftesurf-tasupd/a8efd378, unit
+`ftesurf-tasupd` on 127.0.0.1:8093, store /srv/nvme/ftesurf-ops/tasupd-state. Checked live: health ok,
+the page, Steam sign-in redirect, an unsigned upload refused (401), `/tasup/api/board`.
+
 ## Still to build
 
 1. In-game "Upload to TAS board" after a TAS finish, and a TAS-uploads tab on the web/menu boards
