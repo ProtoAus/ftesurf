@@ -21,6 +21,12 @@
 
 ## next
 
+### P1705 Lobbies no longer crash at the end of some runs
+- Finishing a run on a few long-named maps (surf_the_gloaming and others, mostly segmented runs) crashed the lobby: everyone froze at the end zone and it came back on another map. Fixed on the lobbies on 21 Nov.
+- Those runs still count and are recorded. Downloading them again from your run history on those maps follows in a later update.
+
+## 0.1.55 2026-11-21
+
 ### P1704 Your run's evidence arrives
 - After a lobby run, the game now sends its view recording (where you looked) straight to the anti-cheat server, like the input journal. Through the game connection it was lost for about two runs in three.
 - The upload finishes in the background even if you leave the server straight away. Needs the next game update and a server update.

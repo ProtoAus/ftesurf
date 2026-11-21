@@ -9,6 +9,8 @@ Carries P1694 surfd half, P1697, P1699 (OFF), P1700, P1703, P1704. runs.pad/repl
 surfd.db.bak-pre1702-20261121T100658Z). Root: trimmed drop-in 4d92f72e (139 lines, 2 preflights) -> each surfd start
 took ~2 s (was ~280 s), so the next kit may lower START_TIMEOUT. POSTFLIGHT PASS (mapwatch graded after 12:23Z).
 Readers stay pinned (P1671 recsim, P1694 reccheck NOT in SURFD_TOOLS yet). The static board follows 74bb6404 (11:30Z).
+Native for the next kit: lobby engine patch-1705 fteqw-svarm64 0ac1d567efeedb534dede8088cc6e60551df00c71e193d03b0c8174ceb2d4bb1
+(swapped 12:49Z; patch-1704 820137cd 11:28Z; gen1702 checked 1753f9d4 only inside its transition, not at surfd start).
 Ordering note: 0.1.55 (engine 1694) reached the lobbies at 10:03Z, before this generation; one run was posted in
 10:03-11:27Z, so at most that run lacks a controller tag (no backfill).
 

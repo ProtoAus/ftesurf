@@ -1,5 +1,17 @@
 # BACKLOG.md
 
+## P1705 follow-ups (21 Nov, worldofsurf-2c)
+- Game: Archive_Seal / Archive_SealFile (sv_archive.qc) still lose the owner seal when `<run>.rec.owner-p<port>-<n>.part`
+  exceeds MAX_QPATH (7 of 4632 recordings since 1 Nov; Archive_Seal removes the old `.owner` first). Write the part
+  under data/parts/ or check FS_WritePathStatus first, as sv_archive_stream.qc does. Then those runs can be fetched again.
+- Engine: FS_EnumerateFilesEachSys (fs.c ~4895) passes a possibly-NULL match to Sys_EnumerateFiles (search_begin
+  FORCESEARCH|FULLPACKAGE on an inactive gamedir; a server's CSQC could). A NULL guard at the top of FS_NativePath would
+  cover future callers. common.h's "0 on success" comment on FS_Rename/FS_Remove is wrong (both return true).
+- P1704 first real try: Markbeaton54's 0.1.55 client POSTed a world-record view at 12:14:28Z and nginx answered 408
+  (the /api/view location's 5 s client_body_timeout: the body stalled), and no retry reached nginx afterwards (408 is
+  in the client's retry list). Find why the body stalls (is the POST pumped only from CL_Receipt_Think, and does a
+  frame stall or the lobby crash stop it?) and why no retry followed; consider a longer body timeout.
+
 ## P1704 views over HTTPS -- what it leaves (21 Nov, worldofsurf-47)
 - Found by P1704's review 14, older than it: a server can list `quake.rc`/`hexen.rc` in its model precache;
   CL_EnqueDownload lets it into ftesurf/downloads/, and CL_ExecInitialConfigs (cl_main.c ~8348) then picks the quake.rc

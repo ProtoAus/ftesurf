@@ -1,4 +1,7 @@
 # The engine build this QuakeC requires.
+# P1705 (engine fs.c; worldofsurf-2c, 21 Nov): FS_Rename refuses a path FS_GetCleanPath rejected instead of passing NULL
+# on (lobbies segfaulted on a 129-character Archive_Seal .owner part). Lobby engine patch-1705 since 21 Nov 12:49Z;
+# clients with the next release. No QC change. Record: ENGINE_PATCHES P1705.
 # P1704 (engine client cl_receipt.c, server sv_user.c sv_main.c; surfd hidupload.py surfd.nginx setup_public.sh; menu
 # m_main.qc terms text; lobby.cfg; Lex 21 Nov "please do"): on sv_recupload_https 1 servers, views go to /api/view
 # (rec_sign-pinned bytes, an httpq/ queue, retries, kept across a disconnect); netchan 23/51. Record: ENGINE_PATCHES.

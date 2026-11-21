@@ -1,6 +1,14 @@
 # lextest.md — things waiting on a human
 
-## P1704 -- run views reach the anti-cheat server (worldofsurf-47) -- after the release and the lobby update
+## P1705 -- lobbies no longer crash at the end of some runs (worldofsurf-2c) -- LIVE on the lobbies 21 Nov 12:49Z
+1. Markbeaton54's report (freeze at the end zone, then another map): finish a segmented run on surf_the_gloaming
+   (or surf_lt_omnific stage 4/5). The run finishes normally and the lobby stays up.
+
+## 0.1.55 release -- PUBLISHED 21 Nov 10:00Z (record: tools/release-0.1.55.md); owner check PENDING
+- P1694, P1696, P1698, P1700, P1701, P1703, P1704. Lobbies: its QC 10:03Z, backend gen1702 11:27Z, engine
+  patch-1704 11:28Z (views over HTTPS on), patch-1705 12:49Z.
+
+## P1704 -- run views reach the anti-cheat server (worldofsurf-47) -- LIVE 21 Nov 11:28Z; first real try got a 408 (BACKLOG)
 1. Finish a run on a lobby, open the console: `rec_ul_send: view HTTP stored and digest acknowledged`.
 2. Finish another and leave the server at once: the same line still appears a moment later.
 
@@ -21,7 +29,7 @@
    Press Play online. F2 > Input journal now says the journal is part of online play (no Stop button).
 2. Restart: the terms do not appear again.
 3. When the release is out, tell me, so the backend starts counting a missing journal from that day
-   (surfd.env SURFD_NOEV_JOURNAL_SINCE).
+   (surfd.env SURFD_NOEV_JOURNAL_SINCE). 0.1.55 is out (21 Nov 10:00:18Z = 1795255218): your call when to set it.
 
 ## P1701 -- no spike flying into the void (worldofsurf-42) -- your dev install (engine patch-1701)
 1. ahop_coast save 3, noclip, `r_frametime 1`, fly backward into the void: no spike in the graph when the view switches
