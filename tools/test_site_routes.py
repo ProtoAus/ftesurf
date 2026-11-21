@@ -25,6 +25,7 @@ from urllib.parse import parse_qs, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 ARGS = None
+BOARD_FILES = ('board.html', 'board.css', 'board.js', 'link.css', 'runview.js', 'watch.css', 'watch.html', 'watch.js')
 
 
 def free_port():
@@ -111,6 +112,12 @@ class SiteRoutes(unittest.TestCase):
         snippet = ARGS.snippet.read_text(encoding='utf-8')
         # Only deployment addresses change. All location/method/cache policy is
         # the authored snippet, not a Python emulation or regenerated config.
+        # P1702: the board's page files as tools/publish_board.py --live would publish them.
+        cls.board = cls.home / 'board' / 'current'
+        cls.board.mkdir(parents=True)
+        for name in BOARD_FILES:
+            (cls.board / name).write_bytes((ROOT / 'surfd/web' / name).read_bytes())
+        snippet = snippet.replace('/srv/nvme/ftesurf-site/board/current', cls.board.as_posix())
         snippet = snippet.replace('/srv/nvme/ftesurf-site/static/', cls.static.as_posix() + '/')
         snippet = snippet.replace('/srv/nvme/ftesurf-site/releases/', cls.releases.as_posix() + '/')
         snippet = snippet.replace('127.0.0.1:8084', '127.0.0.1:%d' % backend.server_port)
@@ -292,6 +299,35 @@ http {
             # the one permitted POST traversed nginx (without enqueue/network).
             self.assertEqual(self.request(prefix + '/api/map', 'POST')[0], 400)
             self.assertEqual(self.seen[-1][0:3], ('/board/api/map', b'', 'POST'))
+
+    def test_static_board_page_files(self):
+        types = {'html': 'text/html', 'css': 'text/css', 'js': 'application/javascript'}
+        for base in ('ftesurf', 'worldofsurf'):
+            prefix = '/' + base + '/board/'
+            app_csp = self.request(prefix + 'api/maps')[1]['content-security-policy']
+            self.assertEqual(app_csp, self.appmod.WEB_CSP)
+            for uri, name in [('', 'board.html')] + [(n, n) for n in BOARD_FILES[1:]]:
+                with self.subTest(base=base, file=name):
+                    before = len(self.seen)
+                    status, headers, body = self.request(prefix + uri)
+                    self.assertEqual(status, 200)
+                    self.assertEqual(body, (self.board / name).read_bytes())
+                    self.assertEqual(len(self.seen), before)          # nginx served it, surfd never saw it
+                    self.assertEqual(headers['content-type'].split(';')[0], types[name.rsplit('.', 1)[1]])
+                    self.assertEqual(headers.get('content-security-policy'),
+                                     self.appmod.WEB_CSP_WATCH if name == 'watch.html' else app_csp)
+                    self.assertEqual(headers.get('x-content-type-options'), 'nosniff')
+                    self.assertEqual(headers.get('referrer-policy'), 'strict-origin-when-cross-origin')
+                    self.assertEqual(headers.get('cache-control'), 'no-cache')
+                    self.assertEqual(headers.get('x-ftesurf-site'), '1')
+                    self.assertEqual(self.request(prefix + uri, 'HEAD')[0], 200)
+                    self.assertEqual(self.request(prefix + uri, 'POST')[0], 403)
+                    self.assertEqual(len(self.seen), before)
+            # Only the eight names are static: anything else under /board/ still reaches surfd.
+            for uri in ('board.html', 'unknown.js', 'link', 'shot/x'):
+                before = len(self.seen)
+                self.request(prefix + uri)
+                self.assertEqual(len(self.seen), before + 1, uri)
 
     def test_staged_accounts_use_legacy_callback(self):
         for base in ('ftesurf', 'worldofsurf'):

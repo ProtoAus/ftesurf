@@ -37,6 +37,15 @@ SURFD=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8084/board/api/m
     exit 1
 }
 
+# P1702: nginx serves the board's page files from board/current (tools/publish_board.py, as proto).
+for f in board.html board.css board.js link.css runview.js watch.css watch.html watch.js; do
+    [ -f "$SITE/board/current/$f" ] || {
+        echo "missing $SITE/board/current/$f -- publish the board first (as proto):" >&2
+        echo "    python3 -B tools/publish_board.py --live      (from a game checkout)" >&2
+        exit 1
+    }
+done
+
 echo "== baseline =="
 BEFORE=$(nginx -T 2>/dev/null | grep -c 'server_name proto.bar;' || true)
 echo "   server_name proto.bar count before: $BEFORE"
@@ -166,6 +175,15 @@ if not isinstance(body, dict) or body.get("v") != 1 or not isinstance(body.get("
     sys.exit("FAILED: not the board maps envelope")
 PY
     echo "   GET /$BASE/board/api/maps -> marked board JSON"
+    for f in "" board.js watch.html; do
+        curl --fail --silent --show-error --max-time 10 --resolve proto.bar:443:127.0.0.1 \
+            -D "$PROBE/headers" -o "$PROBE/body" "https://proto.bar/$BASE/board/$f"
+        cmp -s "$PROBE/body" "$SITE/board/current/${f:-board.html}" ||
+            { echo "FAILED: /$BASE/board/$f is not the published board/current/${f:-board.html}" >&2; exit 1; }
+        grep -qi '^content-security-policy:' "$PROBE/headers" ||
+            { echo "FAILED: /$BASE/board/$f has no Content-Security-Policy" >&2; exit 1; }
+    done
+    echo "   GET /$BASE/board/{,board.js,watch.html} -> the published static files, with CSP"
 done
 
 echo

@@ -1,5 +1,14 @@
 # AGENT_NOTES.md
 
+## P1702 static web board (21 Nov 2026)
+nginx serves the board's page and seven assets (board.html/css/js, link.css, runview.js, watch.*) for /ftesurf/board/
+and /worldofsurf/board/ from /srv/nvme/ftesurf-site/board/current (src/release/ftesurf.nginx); every API/avatar/shot/
+link path stays on surfd. **After every backend generation: `python3 -B tools/publish_board.py --live`** (as proto)
+or the public board keeps the previous generation's page files. A UI-only board fix can go ahead of a generation with
+`--commit <ref>` (refused when a commit in the range also changes surfd code). Keeps two releases. A surfd WEB_CSP
+change needs ftesurf.nginx + `sudo sh install.sh` (publish refuses on a CSP mismatch). Tests: tools/test_publish_board.py,
+tools/test_site_routes.py (real nginx; ran on the Pi's /usr/sbin/nginx as proto).
+
 ## P1702 Pi backup rotation: keep the newest 2; idle task roots go (21 Nov 2026)
 Lex's rule, everywhere: keep the newest 2 backups. On the Pi, proto's daily `ftesurf-retention.timer` (17:17 UTC)
 runs tools/pi_retention.py (tools/pi-retention.md): backup copies `NAME.pre*`/`NAME.bak*`/`NAME-pre<N>*` in the surfd
