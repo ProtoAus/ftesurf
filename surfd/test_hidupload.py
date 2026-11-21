@@ -110,8 +110,15 @@ class UploadTests(unittest.TestCase):
         self.assertEqual(self.post(packet(self.blob)).status_code, 429)
         self.allowed = True
         self.dest.with_suffix(".rcpt").unlink()
-        self.assertEqual(self.post(packet(self.blob)).status_code, 503)
+        self.assertEqual(self.post(packet(self.blob)).status_code, 410)     # P1704: no receipt is final
         self.assert_clean()
+        for p in Path(self.tmp.name).iterdir():
+            for f in p.iterdir():
+                f.unlink()
+            p.rmdir()
+        self.assertEqual(self.post(packet(self.blob)).status_code, 503)     # an empty evidence root: retryable
+        (Path(self.tmp.name) / "surf_other").mkdir()
+        self.assertEqual(self.post(packet(self.blob)).status_code, 410)     # maps present, this one unknown: junk
 
     def test_wrong_nonce_key_signature_and_receipt_commitment(self):
         bad_signature = bytearray(packet(self.blob))
@@ -150,7 +157,7 @@ class UploadTests(unittest.TestCase):
         for mapname in ("../surf_test", ".hidden", "surf..test", "surf/test"):
             self.assertEqual(self.post(packet(self.blob, mapname=mapname)).status_code, 400)
             self.assert_clean()
-        self.assertEqual(self.post(packet(self.blob, runid="different")).status_code, 503)
+        self.assertEqual(self.post(packet(self.blob, runid="different")).status_code, 410)   # P1704: final
         self.assert_clean()
 
     def budget_client(self, base="128", per_tick="64"):
@@ -208,7 +215,8 @@ class UploadTests(unittest.TestCase):
                     result = client.open("/api/hid", method="POST", content_type="application/octet-stream",
                                          environ_overrides={"CONTENT_LENGTH": str(len(data)),
                                                             "wsgi.input": stream})
-                self.assertEqual(result.status_code, 503, result.data)
+                # still no verdict about the run; 403 since P1704, whose clients would re-send a 503 six times
+                self.assertEqual(result.status_code, 403, result.data)
                 self.assertEqual(result.json["error"], "journal run budget unavailable")
                 self.assertEqual(stream.tell(), hidupload.HEADER_SIZE)
                 create.assert_not_called()
@@ -261,7 +269,7 @@ class UploadTests(unittest.TestCase):
         client = self.budget_client()
         for data, expected in ((packet(self.blob, nonce="11" * 16), 403),
                                (packet(self.blob, seed=bytes(range(1, 33))), 403),
-                               (packet(self.blob, runid="not_published"), 503)):
+                               (packet(self.blob, runid="not_published"), 410)):   # P1704: final
             with self.subTest(expected=expected):
                 result = client.post("/api/hid", data=data, content_type="application/octet-stream")
                 self.assertEqual(result.status_code, expected, result.data)
@@ -275,6 +283,129 @@ class UploadTests(unittest.TestCase):
             "CONTENT_LENGTH": str(hidupload.MAX_JOURNAL + hidupload.HEADER_SIZE + 1)}).status_code, 413)
         self.assertEqual(self.client.get("/api/hid").status_code, 405)
         self.assert_clean()
+
+
+def view_packet(blob, mapname="surf_test", runid="1234_5678", nonce=NONCE, seed=SEED, server="127.0.0.1:27510"):
+    """P1704: a run's view sidecar, posted to /api/view with its own statement."""
+    msg = ("FTESURF-VIEW 1\nserver %s\nmap %s\nrunid %s\nnonce %s\nview %s %d\n" % (
+        server, mapname, runid, nonce, hashlib.sha256(blob).hexdigest(), len(blob))).encode("ascii")
+    header = msg + ("pub %s\nsig %s\n" % (
+        ed25519.publickey(seed).hex(), ed25519.sign(seed, msg).hex())).encode("ascii")
+    return header.ljust(hidupload.HEADER_SIZE - 1, b" ") + b"\n" + blob
+
+
+def view_receipt(root, view, mapname="surf_test", runid="1234_5678", nonce=NONCE, ticks="100", digest=None,
+                 server="127.0.0.1:27510"):
+    d = Path(root) / mapname
+    d.mkdir(parents=True, exist_ok=True)
+    digest = digest or hashlib.sha256(view).hexdigest()
+    msg = ("FTESURF-RCPT 1\nserver %s\nnonce %s\nticks %s\nhid - 0 0\nview %s\n" % (
+        server, nonce, ticks, digest)).encode("ascii")
+    p = d / (runid + ".rcpt")
+    signed = "".join("signed " + line + "\n" for line in msg.decode("ascii").splitlines()[1:])
+    p.write_text("FTESURF-RCPT 1\nrunid %s\npub %s\nsig %s\n%s" % (
+        runid, PUB, ed25519.sign(SEED, msg).hex(), signed), encoding="ascii")
+    return d / (runid + ".view")
+
+
+class ViewUploadTests(unittest.TestCase):
+    def setUp(self):
+        UploadTests.setUp(self)
+        self.view = b"FTESURF-VIEW synthetic frames\n" * 3000          # 90 KB: inside 256 KiB + 100 ticks * 4 KiB
+        self.vdest = view_receipt(self.tmp.name, self.view, runid="9999_0001")
+
+    def post(self, data, path="/api/view"):
+        return self.client.post(path, data=data, content_type="application/octet-stream")
+
+    def test_view_is_stored_against_the_receipt(self):
+        with self.assertLogs(level="INFO") as logs:
+            r = self.post(view_packet(self.view, runid="9999_0001"))
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(self.vdest.read_bytes(), self.view)
+        self.assertEqual(list(Path(self.tmp.name).rglob("*.part")), [])
+        self.assertTrue(any("stored view for surf_test/9999_0001" in m for m in logs.output), logs.output)
+
+    def test_routes_take_only_their_own_kind(self):
+        self.assertEqual(self.post(view_packet(self.view, runid="9999_0001"), "/api/hid").status_code, 400)
+        self.assertEqual(self.post(packet(self.blob)).status_code, 400)
+        self.assertFalse(self.vdest.exists())
+        self.assertFalse(self.dest.exists())
+
+    def test_a_receipt_without_a_view_takes_none(self):
+        # the default receipt commits to a journal and `view -`
+        r = self.post(view_packet(self.blob))
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertFalse(self.dest.with_suffix(".view").exists())
+
+    def test_a_mismatched_view_is_refused_and_logged(self):
+        other = b"another sidecar\n" * 100
+        with self.assertLogs(level="WARNING") as logs:
+            r = self.post(view_packet(other, runid="9999_0001"))
+        self.assertEqual(r.status_code, 403, r.data)
+        self.assertFalse(self.vdest.exists())
+        self.assertTrue(any("view does not match its receipt" in m and "9999_0001" in m for m in logs.output),
+                        logs.output)
+        marker = self.vdest.with_suffix(".viewrefused")
+        self.assertIn("offered %s %d" % (hashlib.sha256(other).hexdigest(), len(other)), marker.read_text())
+        before = marker.read_bytes()
+        self.post(view_packet(b"a third\n", runid="9999_0001"))
+        self.assertEqual(marker.read_bytes(), before)                       # the first offer is kept
+
+    def test_a_statement_from_another_server_is_refused(self):
+        with self.assertLogs(level="WARNING") as logs:
+            r = self.post(view_packet(self.view, runid="9999_0001", server="10.0.0.9:27500"))
+        self.assertEqual(r.status_code, 410, r.data)
+        self.assertFalse(self.vdest.exists())
+        self.assertTrue(any("names another server" in m for m in logs.output), logs.output)
+        self.assertEqual(self.post(view_packet(self.view, runid="9999_0001", server="bad server")).status_code, 400)
+
+    def test_a_scheme_server_name_is_accepted(self):
+        # DTLS/TLS/WebSocket clients sign the server with its scheme (rcptcheck SERVER_SCHEMES)
+        dest = view_receipt(self.tmp.name, self.view, runid="9999_0005", server="dtls://203.0.113.7:27510")
+        r = self.post(view_packet(self.view, runid="9999_0005", server="dtls://203.0.113.7:27510"))
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(dest.read_bytes(), self.view)
+
+    def test_no_receipt_is_final_for_a_view(self):
+        r = self.post(view_packet(self.view, runid="9999_0404"))
+        self.assertEqual(r.status_code, 410, r.data)          # final; the client counts it as junk
+
+    def test_an_unfinished_run_takes_no_view(self):
+        for ticks in ("0", "-1"):
+            dest = view_receipt(self.tmp.name, self.view, runid="9999_000" + ticks[-1], ticks=ticks)
+            r = self.post(view_packet(self.view, runid="9999_000" + ticks[-1]))
+            self.assertEqual(r.status_code, 403, (ticks, r.data))
+            self.assertFalse(dest.exists())
+
+    def test_view_budget_follows_the_run_clock(self):
+        big = b"0.1234 100 10 1.00 2.00 0\n" * 12000                 # 312 KB > 256 KiB + 4 KiB
+        dest = view_receipt(self.tmp.name, big, runid="9999_0003", ticks="1")
+        r = self.post(view_packet(big, runid="9999_0003"))
+        self.assertEqual(r.status_code, 413, r.data)
+        self.assertFalse(dest.exists())
+        self.assertEqual(list(Path(self.tmp.name).rglob("*.part")), [])
+
+    def test_existing_view_is_preserved(self):
+        self.assertEqual(self.post(view_packet(self.view, runid="9999_0001")).status_code, 200)
+        self.assertEqual(self.post(view_packet(self.view, runid="9999_0001")).status_code, 200)
+        self.vdest.write_bytes(b"kept")
+        self.assertEqual(self.post(view_packet(self.view, runid="9999_0001")).status_code, 409)
+        self.assertEqual(self.vdest.read_bytes(), b"kept")
+
+    def test_view_size_cap(self):
+        big = b"v" * (hidupload.MAX_VIEW + 1)
+        view_receipt(self.tmp.name, big, runid="9999_0002", ticks="100000")
+        r = self.post(view_packet(big, runid="9999_0002"))
+        self.assertEqual(r.status_code, 413, r.data)
+
+    def test_each_route_counts_every_request_in_its_own_bucket(self):
+        seen = []
+        self.env.rate_ok = lambda *a, **k: seen.append((k.get("bucket"), k.get("cap"))) or True
+        self.post(view_packet(self.view, runid="9999_0001"))
+        self.post(b"x" * 2048)                                        # malformed: still counted
+        self.post(packet(self.blob), "/api/hid")
+        self.assertEqual(seen, [("view", hidupload.VIEW_RATE_MAX), ("view", hidupload.VIEW_RATE_MAX),
+                                ("hid", hidupload.RATE_MAX)])
 
 
 class ApplicationBudgetTests(unittest.TestCase):

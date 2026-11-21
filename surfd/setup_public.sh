@@ -32,13 +32,16 @@ PORTS="27510 27520 27530 27540 27550"
 
 [ "$(id -u)" = "0" ] || { echo "run me with sudo -- I install nginx config." >&2; exit 1; }
 
-# Add only the P774 route/zones to an existing site, without vhosts or certbot.
-# sudo sh setup_public.sh --hid-only BACKUP_DIR SNIPPET_SHA256 ZONES_SHA256
-if [ "${1:-}" = "--hid-only" ]; then
-    [ "$#" = 4 ] || { echo "usage: --hid-only BACKUP_DIR SNIPPET_SHA256 ZONES_SHA256" >&2; exit 1; }
+# Add only the P774 journal route/zones (--hid-only) or the P1704 view route/zones (--view-only) to an existing
+# site, without vhosts or certbot.
+# sudo sh setup_public.sh --hid-only|--view-only BACKUP_DIR SNIPPET_SHA256 ZONES_SHA256
+if [ "${1:-}" = "--hid-only" ] || [ "${1:-}" = "--view-only" ]; then
+    [ "$#" = 4 ] || { echo "usage: --hid-only|--view-only BACKUP_DIR SNIPPET_SHA256 ZONES_SHA256" >&2; exit 1; }
+    ROUTE=hid
+    [ "$1" = "--view-only" ] && ROUTE=view
     SOURCE_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
     umask 077
-    python3 - "$SOURCE_DIR" "$2" "$3" "$4" <<'PY'
+    python3 - "$SOURCE_DIR" "$2" "$3" "$4" "$ROUTE" <<'PY'
 import datetime
 import hashlib
 import json
@@ -50,6 +53,9 @@ import subprocess
 import sys
 
 source, backup = Path(sys.argv[1]), Path(sys.argv[2])
+route = sys.argv[5] if len(sys.argv) > 5 else 'hid'
+if route not in ('hid', 'view'):
+    raise SystemExit('route must be hid or view')
 paths = [Path('/etc/nginx/snippets/surfd.conf'),
          Path('/etc/nginx/conf.d/surfd-ratelimit.conf')]
 expected = sys.argv[3:5]
@@ -65,18 +71,18 @@ if any(p.is_symlink() or not p.is_file() for p in paths):
 before = [p.read_bytes() for p in paths]
 if [hashlib.sha256(b).hexdigest() for b in before] != expected:
     raise SystemExit('nginx config changed; inspect fresh bytes before retrying')
-pattern = r'(?ms)^location = /api/hid \{\n.*?^\}'
+pattern = r'(?ms)^location = /api/' + route + r' \{\n.*?^\}'
 blocks = re.findall(pattern, (source / 'surfd.nginx').read_text())
 if len(blocks) != 1:
-    raise SystemExit('source must declare exactly one HID location')
+    raise SystemExit('source must declare exactly one ' + route + ' location')
 old_blocks = re.findall(pattern, before[0].decode())
 if old_blocks and old_blocks != blocks:
-    raise SystemExit('existing HID location differs; refusing to replace it')
+    raise SystemExit('existing ' + route + ' location differs; refusing to replace it')
 after = [before[0] if old_blocks else before[0] + b'\n' + blocks[0].encode() + b'\n', before[1]]
-zones = re.findall(r'(?m)^limit_(?:req|conn)_zone [^\n]*zone=surfdhid(?:ip|global)?:[^\n]*;$',
+zones = re.findall(r'(?m)^limit_(?:req|conn)_zone [^\n]*zone=surfd' + route + r'(?:ip|global)?:[^\n]*;$',
                    (source / 'setup_public.sh').read_text())
 if len(zones) != 3:
-    raise SystemExit('source must declare all three HID budgets')
+    raise SystemExit('source must declare all three ' + route + ' budgets')
 for zone in zones:
     name = re.search(r'zone=([^:]+):', zone).group(1)
     old = [l.strip() for l in before[1].decode().splitlines()
@@ -266,6 +272,9 @@ limit_req_zone $binary_remote_addr zone=surfdjoin:4m rate=30r/m;
 limit_req_zone $binary_remote_addr zone=surfdhid:1m rate=12r/m;
 limit_conn_zone $binary_remote_addr zone=surfdhidip:1m;
 limit_conn_zone $server_name zone=surfdhidglobal:1m;
+limit_req_zone $binary_remote_addr zone=surfdview:1m rate=30r/m;
+limit_conn_zone $binary_remote_addr zone=surfdviewip:1m;
+limit_conn_zone $server_name zone=surfdviewglobal:1m;
 limit_conn_zone $binary_remote_addr zone=ftesurf_maps:10m;'
 if ! grep -qrs "zone=surfdlogin" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
    ! grep -qrs "zone=surfdboard" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
@@ -274,6 +283,9 @@ if ! grep -qrs "zone=surfdlogin" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev
    ! grep -qrs "zone=surfdhid:" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
    ! grep -qrs "zone=surfdhidip:" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
    ! grep -qrs "zone=surfdhidglobal:" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
+   ! grep -qrs "zone=surfdview:" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
+   ! grep -qrs "zone=surfdviewip:" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
+   ! grep -qrs "zone=surfdviewglobal:" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null ||
    ! grep -qrs "zone=ftesurf_maps" /etc/nginx/nginx.conf /etc/nginx/conf.d/ 2>/dev/null; then
     printf '%s\n' "$ZONES" > /etc/nginx/conf.d/surfd-ratelimit.conf
     echo "  wrote the surfdlogin + surfdboard + surfdreplay + surfdjoin + ftesurf_maps zones in conf.d"

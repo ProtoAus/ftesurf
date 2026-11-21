@@ -21,6 +21,7 @@
 #   GET /api/social/menu/challenge and POST /api/social/menu: read-only Friends
 #                        proofs, NO capability mint/presence/graph mutations.
 #   POST /api/hid        signed journal, existing receipt only, bounded/rate limited
+#   POST /api/view       signed run view (P1704), existing receipt only, bounded/rate limited
 #   POST /api/run        NOT proxied (write path; servers post to 127.0.0.1)
 #   POST /api/heartbeat  NOT proxied, and must never be -- see below
 #   everything else      404 from the vhost's own `location / { return 404; }`
@@ -76,6 +77,31 @@ location = /api/hid {
     client_body_timeout 15s;
     proxy_request_buffering on;
     proxy_pass http://127.0.0.1:8084/api/hid;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout 15s;
+    proxy_no_cache 1;
+    proxy_cache_bypass 1;
+    add_header Cache-Control "no-store" always;
+}
+
+# P1704: run view sidecars (signed FTESURF-VIEW statements, at most 4 MiB), with budgets of their own so that
+# journals (above) never hold the slots a view needs. Same buffering as the journal route.
+location = /api/view {
+    limit_req zone=surfdview burst=10 nodelay;
+    limit_req_status 429;
+    limit_conn surfdviewip 2;
+    limit_conn surfdviewglobal 64;
+    limit_conn_status 429;
+    limit_except POST { deny all; }
+    client_max_body_size 4195328; # 4 MiB view + 1024-byte signed header
+    client_body_timeout 5s;
+    proxy_request_buffering on;
+    proxy_pass http://127.0.0.1:8084/api/view;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;

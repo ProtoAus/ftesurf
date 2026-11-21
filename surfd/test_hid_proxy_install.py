@@ -40,7 +40,7 @@ class InstallTest(unittest.TestCase):
         self.hashes = [hashlib.sha256(b).hexdigest() for b in self.before]
         self.addCleanup(self.temp.cleanup)
 
-    def run_install(self, *, hashes=None, failure=None, peer=None):
+    def run_install(self, *, hashes=None, failure=None, peer=None, route=None):
         def mapped(value):
             return self.paths[DESTS.index(str(value))] if str(value) in DESTS else REAL_PATH(value)
 
@@ -57,7 +57,8 @@ class InstallTest(unittest.TestCase):
             return subprocess.CompletedProcess(args, 0)
 
         with mock.patch("pathlib.Path", mapped), mock.patch("subprocess.run", command), \
-                mock.patch.object(sys, "argv", ["-", str(SOURCE), str(self.backup), *(hashes or self.hashes)]), \
+                mock.patch.object(sys, "argv", ["-", str(SOURCE), str(self.backup), *(hashes or self.hashes),
+                                                *([route] if route else [])]), \
                 contextlib.redirect_stdout(io.StringIO()):
             exec(CODE, {"__name__": "__hid_install_test__"})
 
@@ -78,6 +79,32 @@ class InstallTest(unittest.TestCase):
         for p, old in zip(self.paths, self.before):
             self.assertEqual((self.backup / p.name).read_bytes(), old)
         self.assertTrue((self.backup / "receipt.json").is_file())
+
+    def test_view_route_adds_only_its_block_and_zones(self):
+        # P1704: --view-only, after the journal route is already installed
+        self.run_install()
+        self.before = [p.read_bytes() for p in self.paths]
+        self.hashes = [hashlib.sha256(b).hexdigest() for b in self.before]
+        self.backup = self.root / "backup-view"
+        self.calls = []
+        self.run_install(route="view")
+        block = re.findall(r"(?ms)^location = /api/view \{\n.*?^\}", (SOURCE / "surfd.nginx").read_text())[0]
+        self.assertIn("zone=surfdview ", block)
+        self.assertEqual(self.paths[0].read_bytes(), self.before[0] + b"\n" + block.encode() + b"\n")
+        added = self.paths[1].read_text()[len(self.before[1]):]
+        self.assertEqual(re.findall(r"zone=(\w+):", added), ["surfdview", "surfdviewip", "surfdviewglobal"])
+        self.assertEqual(self.calls, [["nginx", "-t"], ["systemctl", "reload", "nginx"]])
+        # and once more: nothing left to add, nothing replaced
+        self.before = [p.read_bytes() for p in self.paths]
+        self.hashes = [hashlib.sha256(b).hexdigest() for b in self.before]
+        self.backup = self.root / "backup-view2"
+        self.run_install(route="view")
+        self.unchanged()
+
+    def test_unknown_route_is_refused(self):
+        with self.assertRaises(SystemExit):
+            self.run_install(route="other")
+        self.unchanged()
 
     def test_stale_config_does_not_write(self):
         with self.assertRaisesRegex(SystemExit, "changed"):

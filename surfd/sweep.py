@@ -556,6 +556,21 @@ def join_account_key(r, conn):
         r.note("account key not checked: %r" % exc)
 
 
+def _join_view_refused(r, path):
+    """P1704: the collector refuses a view that is not the one the receipt signed and keeps the first offer as
+    <runid>.viewrefused (an honest client cannot send one: rec_sign's pin, the statement's server). The netchan route
+    stored such a view and this read it as a digest FAULT; so it still is. True when it applied."""
+    base = os.path.splitext(path)[0]
+    if os.path.exists(base + ".view") or not os.path.isfile(base + ".viewrefused"):
+        return False
+    r.fault("a view that is not the sidecar the receipt signed was offered and refused (%s)"
+            % os.path.basename(base + ".viewrefused"))
+    r.digest_bad["view"] = r.faults[-1]
+    r.angles = "FAULT"
+    r.angles_detail = "not the sidecar the receipt signed: offered to the collector and refused"
+    return True
+
+
 def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=None,
                  view_only=False, defer_view=False, rec_only=False,
                  server_allow=None, accounts=None):
@@ -602,7 +617,11 @@ def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=
         rcptcheck.join_uploaded(r, {"hid": True})  # exclude the unrelated sibling
         observed.extend(f for f in r.digest_bad.values() if f not in observed)
         rcptcheck.join_angles(r, {})
-        deferred = r.ioerror or (view_only and r.file_bytes.get(os.path.splitext(path)[0] + ".view", False) is None)
+        refused = view_only and _join_view_refused(r, path)
+        if refused:
+            observed.append(r.faults[-1])
+        deferred = r.ioerror or (view_only and not refused
+                                 and r.file_bytes.get(os.path.splitext(path)[0] + ".view", False) is None)
         if deferred and not observed:
             return None
         faults = observed if deferred else r.faults
@@ -634,6 +653,7 @@ def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=
                 "angle check deferred after signed sibling I/O; no angle measurement", "")
     if not journal_only:
         rcptcheck.join_angles(r, {})
+    refused = not journal_only and _join_view_refused(r, path)
     # THE JOURNAL'S CONTENTS, and the reason this line is here rather than in a
     # tool nobody runs.  join_hid checks the digest the signature commits to and
     # join_uploaded hashes the sibling file against it, so "is this the journal
@@ -665,7 +685,7 @@ def read_receipt(path, journal_only=False, expected_identity=None, expected_pub=
             r.angles, reason[:300], 1 if r.ok is True else 0,
             r.journal, (r.journal_detail or "")[:300],
             1 if getattr(r, "journal_owed", False) else 0, False, identity,
-            not journal_only and r.file_bytes.get(os.path.splitext(path)[0] + ".view", False) is None,
+            not journal_only and not refused and r.file_bytes.get(os.path.splitext(path)[0] + ".view", False) is None,
             not journal_only and not r.recpath, r.angles_detail[:1000],
             json.dumps(r.journal_metrics, sort_keys=True, separators=(",", ":"), allow_nan=False)
             if r.journal_metrics is not None else "")
@@ -863,7 +883,8 @@ def receipt_step(conn, limit=200, now=None):
             # Only a final .hid wakes an ABSENT row; only PENDING expires on the
             # ORIGINAL signing observation. Touching the path cannot reset it.
             try:
-                if vkey(f) in view_wait and os.path.isfile(f[:-5] + ".view"):
+                if vkey(f) in view_wait and (os.path.isfile(f[:-5] + ".view")
+                                             or os.path.isfile(f[:-5] + ".viewrefused")):   # P1704: late either way
                     return True
                 return journal_due(f) or rec_due(f)
             except OSError:
@@ -924,7 +945,8 @@ def receipt_step(conn, limit=200, now=None):
             if mtime > cutoff:
                 continue
             delayed = not is_fresh and rows[runid][0] not in (1, 2)
-            view_ready = delayed and vkey(path) in view_wait and os.path.isfile(path[:-5] + ".view")
+            view_ready = delayed and vkey(path) in view_wait and (os.path.isfile(path[:-5] + ".view")
+                                                                  or os.path.isfile(path[:-5] + ".viewrefused"))
             journal_ready = delayed and journal_due(path)
             # Alternate co-ready sources, not just rows. An unreadable view must
             # not monopolize its own receipt's ready HID (and vice versa).

@@ -194,6 +194,50 @@ def case_receipt_fault():
     check("with a reason a human can read", "SIGNATURE DOES NOT VERIFY" in row[1], True)
 
 
+def case_receipt_view_refused_is_a_fault():
+    """P1704: a view the collector refused for not matching the receipt leaves <runid>.viewrefused and no .view; the
+    netchan route would have stored it and this read it as a digest FAULT, so the marker reads the same."""
+    surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    old = int(time.time()) - 2 * surfd.EVIDENCE_SETTLE
+    rp, _pub = make_receipt(surfd.EVIDENCE_DIR, "20260921-000009-0", age=old)
+    os.unlink(rp[:-5] + ".view")
+    n, bad = sweep.receipt_step(conn)
+    row = conn.execute("SELECT verdict, angles FROM receipts").fetchone()
+    check("CONTROL: no view and no marker is not a fault", (n, bad, row[0], row[1]), (1, 0, "VALID", ""))
+    surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    rp, _pub = make_receipt(surfd.EVIDENCE_DIR, "20260921-000010-0", age=old)
+    os.unlink(rp[:-5] + ".view")
+    with open(rp[:-5] + ".viewrefused", "w") as fh:
+        fh.write("FTESURF-VIEWREFUSED 1\noffered %s 5\nat 1\n" % ("ab" * 32))
+    n, bad = sweep.receipt_step(conn)
+    row = conn.execute("SELECT verdict, angles, reason FROM receipts").fetchone()
+    check("a refused view reads as the digest FAULT", (n, bad, row[0], row[1]), (1, 1, "FAULT", "FAULT"))
+    check("and says so", "offered and refused" in row[2], True)
+    waits = conn.execute("SELECT COUNT(*) FROM sweepmeta WHERE k GLOB 'receipt_view_wait:*'").fetchone()[0]
+    check("and the run does not wait for a view", waits, 0)
+    # late: the first read found no view (a retry was still on its way); the marker then wakes the run
+    surfd, sweep, runs = fresh()
+    sweep.TOOLS = TOOLS
+    conn = surfd.connect()
+    rp, _pub = make_receipt(surfd.EVIDENCE_DIR, "20260921-000011-0", age=old)
+    os.unlink(rp[:-5] + ".view")
+    sweep.receipt_step(conn)
+    row = conn.execute("SELECT verdict, angles FROM receipts").fetchone()
+    check("late: first read, no view yet", (row[0], row[1]), ("VALID", ""))
+    with open(rp[:-5] + ".viewrefused", "w") as fh:
+        fh.write("FTESURF-VIEWREFUSED 1\noffered %s 5\nat 1\n" % ("cd" * 32))
+    for _ in range(3):
+        sweep.receipt_step(conn)
+    row = conn.execute("SELECT verdict, angles FROM receipts").fetchone()
+    check("late: the marker wakes the run into the FAULT", (row[0], row[1]), ("FAULT", "FAULT"))
+    waits = conn.execute("SELECT COUNT(*) FROM sweepmeta WHERE k GLOB 'receipt_view_wait:*'").fetchone()[0]
+    check("late: and the run stops waiting for a view", waits, 0)
+
+
 def case_receipt_settle():
     """A RECEIPT IS WRITTEN BEFORE THE UPLOAD IT COMMITS TO ARRIVES.  Reading it
     the instant it appears records "no .view on this host" for a file in
@@ -2196,7 +2240,8 @@ def main():
                  case_mid_run_tie, case_mid_run_recheck, case_command_line,
                  case_evidence_verified, case_stage_binding, case_row_check,
                  case_main_evidence,
-                 case_receipt_valid_and_once, case_receipt_fault, case_receipt_settle,
+                 case_receipt_valid_and_once, case_receipt_fault, case_receipt_view_refused_is_a_fault,
+                 case_receipt_settle,
                  case_receipt_key_binding, case_receipt_unbound_is_not_a_fault,
                  case_receipt_server_allowlist, case_receipt_account_key,
                  case_receipt_reread,
