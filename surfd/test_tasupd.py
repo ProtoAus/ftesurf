@@ -1535,6 +1535,15 @@ class CourseFinder(Service):
         r = self.upload(c, rec(), json_reply=False)          # the form posted from the map page uploads as from the front
         self.assertEqual(r.status_code, 303)
 
+    def test_the_map_comes_first_then_the_upload(self):
+        """Lex, 21 Nov: step 1 the map, step 2 the upload; the map page keeps the front page's text."""
+        for path in ('/tasup/', '/tasup/board?map=surf_sandtrap2&track=4'):
+            h = self.app.test_client().get(path).get_data(as_text=True)
+            self.assertIn('<h1>Uploaded TAS records</h1>', h)
+            self.assertLess(h.index('1. Pick a map'), h.index('list="tasup-maps"'))
+            self.assertLess(h.index('list="tasup-maps"'), h.index('2. Upload your run'))
+            self.assertLess(h.index('2. Upload your run'), h.index('Sign in with Steam to upload'))
+
     def test_no_mapmeta_still_works(self):
         app = svc.create_app(self.store, self.accounts, self.zdirs, BASE, http=self.fake_http, clock=self.clock)
         self.assertEqual(app.test_client().get('/tasup/board?map=surf_sandtrap2').status_code, 200)

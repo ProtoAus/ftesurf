@@ -444,7 +444,7 @@ nav.site a{color:var(--muted);text-decoration:none;font-size:14px}nav.site a:hov
 nav.site a[aria-current]{color:var(--ink);font-weight:600}nav.site .mark{margin-right:10px;color:var(--ink);font-size:15px}
 input[list]{min-width:260px}
 .mapcard{display:flex;flex-wrap:wrap;gap:16px;align-items:center}.mapcard img{width:240px;max-width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
-.chips{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.chip{padding:5px 12px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--ink);font-size:14px}
+.mapname{font-size:24px;margin:0 0 4px}.chips{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.chip{padding:5px 12px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--ink);font-size:14px}
 .chip[aria-current]{background:var(--acc);border-color:var(--acc);color:#fff}
 '''
 
@@ -733,6 +733,11 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
     @app.get(base)
     def bare(): return redirect(base + '/', 301)
 
+    INTRO = ('<h1>Uploaded TAS records</h1><p class="lede">Made a run with your own bot, a fork, or by hand? Upload its '
+             '<code>.rec</code>. It is checked against the game\'s movement physics (gravity, air acceleration, ground '
+             'speed, start, checkpoints and end zone). Runs that check out are listed here; anything the check cannot '
+             'clear waits for review. TAS runs stay off the normal leaderboards.</p>')
+
     def upload_card(sid):
         """Sign in, or (signed in) the upload form: on every page that shows boards, so picking a map does not lose it
         (Lex, 21 Nov: the map page had no way on)."""
@@ -763,13 +768,9 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         with connect(store) as db:
             recent, accts = recent_rows(db)
             mine = db.execute('SELECT ' + LIST + ' FROM runs WHERE steamid = ? ORDER BY id DESC LIMIT 50', (sid,)).fetchall() if sid else []
-        out = ['<h1>Uploaded TAS records</h1>',
-               '<p class="lede">Made a run with your own bot, a fork, or by hand? Upload its <code>.rec</code>. '
-               'It is checked against the game\'s movement physics (gravity, air acceleration, ground speed, '
-               'start, checkpoints and end zone). Runs that check out are listed here; anything the check '
-               'cannot clear waits for review. TAS runs stay off the normal leaderboards.</p>']
-        out.append(upload_card(sid))
-        out.append('<h2>Find a course</h2>' + map_finder() + '<p class="fine">Pick a map, then its main course or a bonus.</p>')
+        # P1700 (Lex): the map first, then the upload
+        out = [INTRO, '<h2>1. Pick a map</h2>' + map_finder() + '<p class="fine">Then its main course or a bonus.</p>',
+               '<h2>2. Upload your run</h2>' + upload_card(sid)]
         if mine:
             out.append('<h2>Your uploads</h2>' + runs_table(mine, accts, mine=True))
         out.append('<h2>Recently checked</h2>' + runs_table(recent, accts))
@@ -789,15 +790,17 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
             base, urllib.parse.quote(mapname), t, ' aria-current="page"' if t == track else '', course(t)) for t in tracks)
         facts = ', '.join(x for x in ('tier %d' % tier if tier else '', '%d stages' % stages if stages > 1 else 'linear' if info else '',
                                        '%d bonus%s' % (bonuses, 'es' if bonuses != 1 else '') if bonuses else '') if x)
-        card = ('<div class="card mapcard">%s<div><h1>%s</h1><p class="lede">%s</p></div></div>' % (
+        card = ('<div class="card mapcard">%s<div><h2 class="mapname">%s</h2><p class="lede">%s</p></div></div>' % (
             '<img src="/ftesurf/media/thumbs/%s.jpg" alt="">' % thumb if thumb else '', html.escape(mapname),
             html.escape(facts) if facts else ('not in the map list' if not info else '')))
         note = ('<p class="fine">TAS uploads are whole courses: the main course from its start (all %d stages) or a bonus.</p>'
                 % stages if stages > 1 else '')
-        return page('%s %s' % (mapname, course(track)), upload_card(session()) + map_finder(mapname) + card
+        # the front page's text and steps (Lex, 21 Nov: the map page had lost the top text, and the map comes first)
+        return page('%s %s' % (mapname, course(track)), INTRO + '<h2>1. Pick a map</h2>' + map_finder(mapname) + card
                     + '<div class="chips">%s</div>' % chips + note
-                    + '<h2>%s</h2><p class="lede">Uploaded TAS runs, best per player. Times are the file\'s own clock at 66.67 tick.</p>\n%s'
-                    % (course(track), runs_table(rows, accts, ranked=True)))
+                    + '<h2>2. Upload your run</h2>' + upload_card(session())
+                    + '<h2>%s %s</h2><p class="lede">Uploaded TAS runs, best per player. Times are the file\'s own clock at 66.67 tick.</p>\n%s'
+                    % (html.escape(mapname), course(track), runs_table(rows, accts, ranked=True)))
 
     @app.get(base + '/api/health')
     def api_health():

@@ -7,7 +7,9 @@
    matching maps; pick surf_sandtrap2 and Show: its picture, "tier 2, linear, 4 bonuses", and Main / Bonus 1-4 to
    click. A staged map says its main course is taken whole.
 3. "Link your Steam account" on that page opens the link page (it was a 404 before).
-4. On a map's page (e.g. surf_sandtrap2) the sign-in / upload card is at the top: you can upload from there.
+4. Both pages read: the intro, "1. Pick a map", then "2. Upload your run" (sign-in or the form), then the board.
+5. After the next backend generation: the Leaderboard / Players menu has TAS uploads, and each map on the
+   leaderboard has a "TAS uploads for this map" button.
 
 ## P1697 -- the top 10 review page (anti-cheat finish list item 7; worldofsurf-47) -- after the next backend generation
 1. Open the admin, click "Top 10" (beside Runs). Every run in a ranked top 10 from the last 14 days is listed, newest

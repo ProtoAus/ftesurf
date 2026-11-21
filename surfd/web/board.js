@@ -608,6 +608,10 @@
     showOnly('map');
     $('title').textContent = h.m;
     setHero(h.m);
+    // P1700: the TAS board of this map; a stage is no TAS course (uploads are whole), so it opens the map's main
+    var tas = 'https://play.proto.bar/tasup/board?map=' + encodeURIComponent(String(h.m || '').toLowerCase());
+    if (/^[0-9]+$/.test(String(h.t)) && !Number(h.l)) { tas += '&track=' + Number(h.t); }
+    $('maptas').href = tas;
     var seq = ++state.seq;
     get(mapQuery(h, 0)).then(function (body) {
       if (seq !== state.seq) { return; }

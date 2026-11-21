@@ -9,7 +9,9 @@ pins native fteqw-svarm64 1753f9d4 (lobby engine patch-1683, swapped 01:38Z), an
 
 ## P1700 board menu link -- READY for the NEXT generation (session a03de808, 21 Nov)
 - surfd/web/board.html: one `<a href="https://play.proto.bar/tasup/">TAS uploads</a>` after Anti-Cheat in the site
-  nav (the static pages and tasupd carry it already). Markup only; no surfd code or schema change.
+  nav (the static pages and tasupd carry it already), and a "TAS uploads for this map" button under each map's title,
+  which board.js showMap points at /tasup/board?map=<map>[&track=<n> for a whole course]. Markup and two lines of
+  board.js; no surfd code or schema change. Lex (21 Nov) asked for both on the Players and Leaderboard tabs.
 
 ## P1699 "no evidence" mark -- READY for the NEXT generation, switched OFF (worldofsurf-47)
 surfd/surfd.py (noev_reasons, board_rows' `noev`), web/board.js + board.css; the lobby QC (cl_online/cl_scores) shows
