@@ -1411,11 +1411,37 @@ class GameUpload(Service):
         self.assertTrue(v(pub, msg, sig))
         self.assertFalse(v(pub, msg + b'x', sig))
         self.assertFalse(v(ed.publickey(SEED_BOB), msg, sig))
-        self.assertFalse(v(bytes(32), msg, bytes(64)))              # the identity point: small order
+        self.assertFalse(v(bytes(32), msg, bytes(64)))              # y = 0: the order-4 point
+        # review 5: non-canonical encodings of small-order points, which OpenSSL reduces mod p and would verify a
+        # textbook forgery under (R = [r]B, s = r); ed25519.py cannot decode them, so they are refused before
+        p = 2 ** 255 - 19
+        for y, sign in ((1, 1), (p + 1, 0), (p + 1, 1), (p, 0), (p, 1)):
+            enc = bytearray((y & (2 ** 255 - 1)).to_bytes(32, 'little')); enc[31] |= sign << 7
+            r = 12345
+            R = ed._point_compress(ed._point_mul(r, ed.G))
+            self.assertFalse(v(bytes(enc), msg, R + r.to_bytes(32, 'little')), (y, sign))
         app = self.game_app(verify=None)                            # the service's own verifier, end to end
         c, body = app.test_client(), rec()
         n = c.post('/tasup/api/game/challenge', json={'sha': hashlib.sha256(body).hexdigest()}).get_json()['nonce']
         self.assertEqual(self.post(c, self.game_body(body, n)).get_json()['ok'], 1)
+
+    def test_one_account_cannot_fill_everyones_budget(self):
+        """review 5: one linked account's verified proofs from many addresses filled the shared minute."""
+        saved = svc.GAME_ACCOUNT, svc.GAME_ALL; svc.GAME_ACCOUNT, svc.GAME_ALL = 2, 4
+        try:
+            for k in range(2): self.assertEqual(self.send(seed=SEED_BOB, body=rec(extra='comment b%d\n' % k)).get_json()['ok'], 1)
+            self.refused(self.send(seed=SEED_BOB, body=rec(extra='comment b9\n')), 429, 'busy')       # Bob's own minute
+            self.assertEqual(self.send(body=rec(extra='comment a1\n')).get_json()['ok'], 1)           # Alice still goes
+        finally:
+            svc.GAME_ACCOUNT, svc.GAME_ALL = saved
+
+    def test_a_ban_is_told_only_after_a_valid_proof(self):
+        c, body = self.app.test_client(), rec()
+        n = self.challenge(c, body)['nonce']
+        good = self.game_body(body, n, seed=SEED_BANNED)
+        bad = good.replace(b'sig ' + good.split(b'sig ')[1][:4], b'sig 0000', 1)
+        self.refused(self.post(c, bad), 403, 'did not check out')
+        self.refused(self.post(c, good), 403, 'cannot upload')
 
     def test_junk_does_not_spend_everyones_budget(self):
         """attack review 4: junk from many addresses emptied the shared minute; only proofs of an account count now."""

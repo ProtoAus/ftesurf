@@ -7150,20 +7150,24 @@ void(entity e, float ticks, float stamp, float tag, float flags, string destinat
 // still there, rewritten through a .part (append mode rewrites the whole file anyway; a crash then emptied it: ops 3).
 #define TAS_UPKEEP 50
 string() SV_TASUpListPath = { return sprintf("data/tasproj/%s/uploads.txt", strtolower(mapname)); };
-// the default profile's whole courses: data/runs/<map>/main/ or .../bonus_<N>/ -- not bonus_<N>_stage_<M> (FS_LegDir: flow
-// review 4) -- what the tab offers and tasupd takes
+// this map's whole courses in the default profile: data/runs/<map>/main/ or data/runs/<map>/bonus_<N>/ -- not
+// bonus_<N>_stage_<M> (FS_LegDir: flow review 4), the leg read after this map's own prefix (a map named main: review 5)
 float(string path) SV_TASUpCourse =
 {
-	local float i, c;
-	if (substring(path, 0, 10) != "data/runs/") return FALSE;
-	if (strstrofs(path, "/main/") >= 0) return TRUE;
-	i = strstrofs(path, "/bonus_");
-	if (i < 0) return FALSE;
-	for (i = i + 7; i < strlen(path); i = i + 1)
+	local float i, c, n;
+	local string pre, rest;
+	pre = strcat("data/runs/", strtolower(mapname), "/");
+	if (strcmp(strtolower(substring(path, 0, strlen(pre))), pre)) return FALSE;
+	rest = substring(path, strlen(pre), -1);
+	if (!strcmp(substring(rest, 0, 5), "main/")) return TRUE;
+	if (strcmp(substring(rest, 0, 6), "bonus_")) return FALSE;
+	n = 0;
+	for (i = 6; i < strlen(rest); i = i + 1)
 	{
-		c = str2chr(path, i);
-		if (c == 47) return TRUE;          // '/'
+		c = str2chr(rest, i);
+		if (c == 47) return (n > 0);       // '/'
 		if (c < 48 || c > 57) return FALSE;
+		n = n + 1;
 	}
 	return FALSE;
 };

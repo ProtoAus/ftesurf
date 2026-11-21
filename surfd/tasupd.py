@@ -104,6 +104,7 @@ ACCT_STATEMENT = 'FTESURF-ACCT 1\nserver %s\nnonce %s\nkind %d\nkey %d\ncode %s\
 GAME_TOOL = 'sent from the game'    # how it came, not what made it: any linked key can sign any file (attack review 2)
 CHALLENGE_TTL = 600                 # s a code is good for; it is the service's own MAC, stored only once used
 PEER_GAME, GAME_ALL = 20, 1200      # game requests a minute per address; verified game uploads a minute, everyone
+GAME_ACCOUNT = 10                   # verified game uploads a minute per account
 RELEASES_KEPT = 10                  # the newest releases whose csprogs may sign (a TAS run is made in a local game)
 CODE_PATHS = ('ftesurf/csprogs.dat', 'worldofsurf/csprogs.dat')   # its path in a manifest, before and after the rename
 CODE_MARK = b'ftesurf-tasup '      # in a csprogs with this upload flow (cl_tasupload.qc TASUp_Signed): no other signs here
@@ -160,7 +161,9 @@ def ed25519_verifier():
     except ImportError:
         return ed.verify
     def fast(pub, msg, sig):
-        if len(pub) != 32 or len(sig) != 64 or ed.small_order(pub): return False
+        # a key ed25519.py cannot decode is refused too: OpenSSL reduces non-canonical encodings of small-order points
+        # mod p and then takes the textbook forgery (review 5)
+        if len(pub) != 32 or len(sig) != 64 or ed._point_decompress(pub) is None or ed.small_order(pub): return False
         try:
             Ed25519PublicKey.from_public_bytes(pub).verify(sig, msg)
             return True
@@ -997,7 +1000,6 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
             done = set()
             for version, blake, url in missing_releases()[2]:
                 if blake in done: continue     # two releases with one csprogs: fetched once (ops review 4)
-                done.add(blake)
                 _when, net, wrong = fetch_failed.get(blake, (0, 0, 0))
                 try: data = fetch(url, CODE_MAX)
                 except urllib.error.HTTPError as e:
@@ -1025,6 +1027,7 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                     app.logger.warning('tasupd: release %s csprogs not kept (%s)', version, type(e).__name__)
                     continue
                 fetch_failed.pop(blake, None)
+                done.add(blake)                # learned: a failed one may still come from another release's mirror
                 app.logger.info('tasupd: release %s csprogs learned%s', version, '' if marked else ' (no upload flow)')
         finally:
             fetching.release()
@@ -1096,12 +1099,14 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         # the key's account before its signature: an unlinked key costs a query, not a pure-Python verify (attack review 4)
         sid, banned = key_account(pub)
         if not sid: return drained('Link your Steam account first (play.proto.bar/board/link), then upload again.', 403)
-        if banned: return drained('This Steam account cannot upload.', 403)
         good = signature(pub, game_nonce(nonce, sha), code, sig)
         if good is None: return drained('The upload service cannot check account proofs right now.', 503)
         if not good: return drained('The account proof did not check out.', 403)
-        # everyone's budget counts proofs that verified to an account: junk from many addresses cannot spend it (review 4)
-        if limited('game', GAME_ALL, 'everyone'): return drained('The upload service is busy; try again in a minute.', 429)
+        if banned: return drained('This Steam account cannot upload.', 403)   # after the proof: a ban is not anyone's to probe
+        # an account's own minute, then everyone's: proofs that verified only (review 4), and one account from many
+        # addresses cannot fill everyone's (review 5)
+        if limited('gameacct', GAME_ACCOUNT, sid) or limited('game', GAME_ALL, 'everyone'):
+            return drained('The upload service is busy; try again in a minute.', 429)
         try:
             with connect(store) as db, writing(db):
                 db.execute("DELETE FROM nonces WHERE nonce LIKE 'game %' AND seen_at < ?", (now - CHALLENGE_TTL - 60,))   # past its code's life
