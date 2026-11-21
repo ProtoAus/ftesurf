@@ -312,6 +312,27 @@ def record_install(release, outcome):
     except OSError as e: say('(could not write %s: %s)' % (release / 'INSTALL.txt', e))
 
 
+def older_releases(keep):
+    """Release directories other than `keep` (P1702, Lex 21 Nov: the serving release and its rollback, no more).
+    Only this installer's own: a commit-named directory whose SOURCE.json names that commit; never a link."""
+    out = []
+    for p in sorted(RELEASES.iterdir()) if RELEASES.is_dir() else []:
+        if p.name in keep or not re.fullmatch(r'[0-9a-f]{40}', p.name) or not stat.S_ISDIR(os.lstat(p).st_mode):
+            continue
+        try: commit = json.loads((p / 'SOURCE.json').read_text()).get('commit')
+        except (OSError, ValueError): continue
+        if commit == p.name: out.append(p)
+    return out
+
+
+def prune_releases(keep):
+    gone = []
+    for p in older_releases(keep):
+        try: shutil.rmtree(p); gone.append(p.name[:12])
+        except OSError as e: say('(could not remove the old release %s: %s)' % (p, e))
+    return gone
+
+
 def upgrade(a, blobs):
     """The installed release `a.upgrade_from` -> `a.commit`; see the module doc."""
     old = RELEASES / a.upgrade_from if (RELEASES / a.upgrade_from).is_dir() else ROOT / a.upgrade_from
@@ -336,6 +357,8 @@ def upgrade(a, blobs):
     check_imports(blobs)
     print('Preflight (upgrade): the commit\'s files, the unit and snippet this installer wrote for %s, state present, serving it'
           % a.upgrade_from[:12])
+    older = older_releases((a.commit, a.upgrade_from))
+    if older: print('Once it serves, removes the older releases: %s' % ', '.join(p.name[:12] for p in older))
     if not a.apply:
         print('DRY RUN: no changes; owner may rerun under sudo with --apply')
         return
@@ -368,6 +391,8 @@ def upgrade(a, blobs):
     try: (new / 'unit.prev').write_bytes(oldunit); (new / 'unit.prev').chmod(0o644)
     except OSError as e: say('(could not keep the old unit in %s: %s)' % (new / 'unit.prev', e))
     outcome = 'Upgraded the TAS upload service to %s (the old release stays at %s; its unit is %s)' % (a.commit, old, new / 'unit.prev')
+    gone = prune_releases((a.commit, a.upgrade_from))
+    if gone: outcome += '; removed older releases %s' % ', '.join(gone)
     record(new, outcome); say(outcome)
 
 

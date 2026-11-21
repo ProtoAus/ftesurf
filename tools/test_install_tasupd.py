@@ -168,6 +168,45 @@ class Upgrade(unittest.TestCase):
         self.main('--apply')
         self.assertEqual(self.serving, NEW)
 
+    def older(self, name, source=None, link=False):
+        p = t.RELEASES / name
+        if link:
+            t.RELEASES.mkdir(parents=True, exist_ok=True); p.symlink_to(t.ROOT); return p
+        p.mkdir(parents=True)
+        if source is not False: (p / 'SOURCE.json').write_text(json.dumps({'commit': source or name}))
+        return p
+
+    def test_older_releases_go_once_the_new_one_serves(self):
+        """P1702 (Lex): keep the serving release and its rollback; only this installer's own directories go."""
+        self.install_old(t.RELEASES)
+        gone = [self.older('1' * 40), self.older('2' * 40)]
+        kept = [self.older('3' * 40, source='4' * 40), self.older('5' * 40, source=False), self.older('6' * 40, link=True),
+                self.older('not-a-commit')]
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out): self.main('--apply')
+        self.assertEqual(self.serving, NEW)
+        for p in gone: self.assertFalse(p.exists() or p.is_symlink(), p)
+        for p in kept: self.assertTrue(p.exists() or p.is_symlink(), p)
+        self.assertTrue((t.RELEASES / OLD).is_dir()); self.assertTrue((t.RELEASES / NEW).is_dir())
+        self.assertIn('removed older releases 111111111111, 222222222222', out.getvalue())
+        self.assertIn('removed older releases', (t.RELEASES / NEW / 'UPGRADE.txt').read_text())
+
+    def test_a_failed_upgrade_removes_nothing(self):
+        self.install_old(t.RELEASES)
+        keep = self.older('1' * 40); self.fail_new = True    # switched, then the new release does not serve
+        with contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaisesRegex(RuntimeError, 'rolled back'): self.main('--apply')
+        self.assertEqual(self.serving, OLD)
+        self.assertTrue(keep.is_dir())
+
+    def test_the_dry_run_names_what_would_go(self):
+        self.install_old(t.RELEASES)
+        keep = self.older('1' * 40)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out): self.main()
+        self.assertIn('removes the older releases: 111111111111', out.getvalue())
+        self.assertTrue(keep.is_dir())
+
     def test_the_old_unit_is_kept_in_the_new_release(self):
         old = t.UNIT.read_bytes()
         self.main('--apply')
