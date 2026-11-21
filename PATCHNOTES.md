@@ -21,6 +21,8 @@
 
 ## next
 
+## 0.1.54 2026-11-21
+
 ### P1695 A sky where a map's own is missing
 - A Half-Life map whose sky could not be found now shows Half-Life's desert sky instead of another game's sky (or black), and so does a Half-Life map that names no sky, as in Half-Life itself.
 - With neither Half-Life, Momentum nor Half-Life 2 installed, a map whose sky is missing now shows World of Surf's own blue sky instead of black.

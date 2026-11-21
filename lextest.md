@@ -1,5 +1,10 @@
 # lextest.md — things waiting on a human
 
+## 0.1.54 release -- PUBLISHED 21 Nov 01:32Z (record: tools/release-0.1.54.md); owner check PENDING
+- 26 patches (P1640-P1695), and the first new engine since 0.1.52: the in-game download and the red map warning
+  (P1669/P1670), the script guard's client half (P1646), Discord presence, GoldSrc mode fixes, the stand-in skies.
+- Your installs update from the game or the launcher as usual. The lobbies get the matching QC from worldofsurf-42.
+
 ## P1695 -- a sky where a map's own is missing (worldofsurf-9e, 21 Nov) -- in 0.1.54
 1. Download and play bhop_hellokapink_gs (its own sky is missing): the sky is Half-Life's desert (blue, a red rock
    butte), not Momentum's grey one. In Maps, hover its row: the tooltip says "a stand-in sky replaces the missing one".
@@ -35,7 +40,7 @@ Your request: all AG maps downloadable with a red warning, and no disconnecting 
 3. Known: a big GoldSrc package (over ~10 MB; 43 of them) stalls the game for about a second per 12 MB when it lands
    (unpacking, BACKLOG); kz_unicorn_gs / kz_gigablockier_gs about 10 s.
 4. Players on 0.1.53 already see all 1,308 maps (the catalogue is live since 20 Nov 17:33Z), without the warning; the
-   warning and the in-game download need the next release (engine + menu).
+   warning and the in-game download arrive with 0.1.54 (engine + menu).
 
 ## P1640 -- TAS uploads (tasupload-20261120-c7) -- LIVE 21 Nov 00:10Z
 
