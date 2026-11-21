@@ -39,6 +39,7 @@ import sys
 import threading
 import time
 import urllib.parse
+import urllib.error
 import urllib.request
 import zlib
 from array import array
@@ -102,7 +103,7 @@ GAME_SITE, GAME_KIND = 'play.proto.bar:443', -6
 ACCT_STATEMENT = 'FTESURF-ACCT 1\nserver %s\nnonce %s\nkind %d\nkey %d\ncode %s\n'   # surfd accounts.STATEMENT (a test pins it)
 GAME_TOOL = 'sent from the game'    # how it came, not what made it: any linked key can sign any file (attack review 2)
 CHALLENGE_TTL = 600                 # s a code is good for; it is the service's own MAC, stored only once used
-PEER_GAME, GAME_ALL = 20, 600       # challenges and game uploads a minute: per address, everyone (each may verify a signature)
+PEER_GAME, GAME_ALL = 20, 1200      # game requests a minute per address; game uploads a minute, everyone (a signature each)
 RELEASES_KEPT = 10                  # the newest releases whose csprogs may sign (a TAS run is made in a local game)
 CODE_PATHS = ('ftesurf/csprogs.dat', 'worldofsurf/csprogs.dat')   # its path in a manifest, before and after the rename
 CODE_MARK = b'ftesurf-tasup '      # in a csprogs with this upload flow (cl_tasupload.qc TASUp_Signed): no other signs here
@@ -541,8 +542,15 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
             request.accept_mimetypes.best_match(['text/html', 'application/json']) == 'application/json')
 
     def refuse(message, status, reasons=None):
-        # P1696: the game's HTTP client drops a non-200 reply's body (zonepub.py P826): the status goes inside
-        if g.get('game'): return jsonify(ok=0, error=message, status=status, reasons=reasons or []), 200
+        # P1696: the game's HTTP client drops a non-200 reply's body (zonepub.py P826): the status goes inside. A body
+        # still unread is read first, whichever path refuses (the error handlers too: ops review 3)
+        if g.get('game'):
+            if not g.get('read'):
+                g.read = True
+                try:
+                    while request.stream.read(65536): pass
+                except Exception: pass
+            return jsonify(ok=0, error=message, status=status, reasons=reasons or []), 200
         if wants_json():
             return jsonify(ok=0, error=message, reasons=reasons or []), status
         inner = '<h1>Not uploaded</h1>\n<p class="lede">%s</p>' % html.escape(message)
@@ -571,8 +579,7 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
             return refuse('That form is too large.', 413)
         if request.method == 'POST' and request.path == base + '/api/game/challenge':
             g.game = True
-            if limited('game', PEER_GAME) or limited('game', GAME_ALL, 'everyone'):
-                return refuse('Too many requests; try again in a minute.', 429)
+            if limited('game', PEER_GAME): return refuse('Too many requests; try again in a minute.', 429)   # codes cost nothing
         if request.method == 'POST' and request.path == base + '/upload' and request.mimetype == GAME_MIME:
             g.game = True   # the proof is in the body: game_upload reads it
             # Werkzeug 2.2.2's get_data does not hold MAX_CONTENT_LENGTH (zonepub.py body_budget); nginx sends the length
@@ -592,11 +599,8 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
                 return refuse('That form has too many parts.', 400)
 
     def drained(message, status):
-        """refuse(), after reading what is left of the body (nginx has it buffered): a reply while it still writes the body
-        can reach the game as a 502 (ops review 2). Bounded by nginx's client_max_body_size."""
-        try:
-            while request.stream.read(65536): pass
-        except Exception: pass
+        """refuse() of a game request whose body is unread: refuse reads it first (nginx may still be sending it, and a
+        reply then can reach the game as a 502: ops review 2), bounded by nginx's client_max_body_size."""
         return refuse(message, status)
 
     @app.after_request
@@ -964,8 +968,8 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         # wrong-bytes fails); only the mirror serving other bytes gives up -- a network outage never does (ops review 2)
         now = clock()
         todo = [x for x in rel if x[1] not in have and fetch_failed.get(x[1], (0, 0, 0))[2] < CODE_TRIES]
-        due = lambda f: now - f[0] >= min(CODE_RETRY_MAX, CODE_RETRY * 2 ** max(0, f[1] + f[2] - 1))
-        return rel, todo, [x for x in todo if x[1] not in fetch_failed or due(fetch_failed[x[1]])]
+        due = lambda f: f is None or now - f[0] >= min(CODE_RETRY_MAX, CODE_RETRY * 2 ** max(0, f[1] + f[2] - 1))
+        return rel, todo, [x for x in todo if due(fetch_failed.get(x[1]))]   # one read: the learner pops (ops review 3)
 
     def learn_releases():
         """Fetch the csprogs of releases not yet known, one caller at a time (a challenge's thread, in the background)."""
@@ -974,6 +978,13 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
             for version, blake, url in missing_releases()[2]:
                 _when, net, wrong = fetch_failed.get(blake, (0, 0, 0))
                 try: data = fetch(url, CODE_MAX)
+                except urllib.error.HTTPError as e:
+                    # the mirror answered: an object it says is not there counts as given-up-able (flow review 3: a 404
+                    # said "try again" forever, never "update your game"); its other errors are an outage
+                    gone = e.code in (403, 404, 410)
+                    fetch_failed[blake] = (clock(), net + (not gone), wrong + gone)
+                    app.logger.warning('tasupd: release %s csprogs: the mirror answered %d', version, e.code)
+                    continue
                 except Exception as e:
                     fetch_failed[blake] = (clock(), net + 1, wrong)
                     app.logger.warning('tasupd: release %s csprogs not fetched (%s); tried again later', version, type(e).__name__)
@@ -1073,6 +1084,7 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
             return drained('That upload\'s confirmation was used: press Upload again.', 409)
         # Only now the file: an account has proved it, and the one code is spent
         data = request.stream.read(MAX_REC + 1)
+        g.read = len(data) <= MAX_REC     # more: the rest is drained by the refusal
         if len(data) > MAX_REC: return drained('That file is over %d MB.' % (MAX_REC // 1024 ** 2), 413)
         if not hmac.compare_digest(hashlib.sha256(data).hexdigest(), sha):
             return refuse('The file is not the one confirmed: press Upload again.', 409)
@@ -1105,7 +1117,9 @@ def create_app(store, account_db, zone_dirs, base_url, http=steam.http, clock=ti
         if f is None: return refuse('Choose a .rec file.', 400)
         body = f.read(MAX_REC + 1)
         if len(body) > MAX_REC: return refuse('That file is over %d MB.' % (MAX_REC // 1024 ** 2), 413)
-        return accept(sid, body, clean_tool(request.form.get('tool')))
+        tool = clean_tool(request.form.get('tool'))
+        if tool.lower() == GAME_TOOL: tool += ' (typed)'   # the game's own label is the game route's (attack review 3)
+        return accept(sid, body, tool)
 
     def accept(sid, body, tool):
         """Check, compare and keep one upload of `sid`'s, from the form or the game (tool None)."""

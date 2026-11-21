@@ -18,6 +18,7 @@ float tup_n, tup_at, tupe_n;
 string tup_key;                 // the map the list was asked for
 float tup_state;                // 0 the list, 1 asking for a code, 2 confirm, 3 sending, 4 answered
 float tup_req, tup_until, tup_armed, tup_size;
+var float tup_pend = -1;         // `tas upload N` waiting for the list (or -2: `tas upload`, to print it)
 string tup_path, tup_label, tup_nonce, tup_sha, tup_note;
 
 string(string old, string value) TASUp_Keep =
@@ -70,6 +71,7 @@ void(string p, string sha) TASUp_Add =
 		? sprintf("%g:%s%.2f", floor(t / 60), (t - 60 * floor(t / 60) < 10) ? "0" : "", t - 60 * floor(t / 60)) : sprintf("%.2fs", t)));
 	tup_n = tup_n + 1;
 };
+void() TASUp_Pending;
 // SV_TASUpList's events: index, count, then the run's sha and path; the list is replaced once the last arrives
 void() TASUp_ListEvent =
 {
@@ -85,6 +87,7 @@ void() TASUp_ListEvent =
 	for (k = 0; k < tup_n; k = k + 1) { strunzone(tup_p[k]); strunzone(tup_l[k]); strunzone(tup_s[k]); }
 	tup_n = 0;
 	for (k = 0; k < tupe_n; k = k + 1) TASUp_Add(tupe_p[k], tupe_s[k]);
+	if (tup_pend != -1) TASUp_Pending();    // the console verb, answered by this list (flow review 3: it read the last one)
 };
 // asks the local game for its list: when the map changes, and every 3 s while the tab is drawn
 void() TASUp_List =
@@ -109,6 +112,7 @@ string(string p) TASUp_Read =
 {
 	local float fh;
 	local string s;
+	tup_size = 0;
 	fh = fopen(p, FILE_READNL);
 	if (fh < 0) return "";
 	s = fgets(fh);
@@ -125,6 +129,7 @@ void(float i) TASUp_Ask =
 	tup_label = TASUp_Keep(tup_label, tup_l[i]);   // first: a refusal below shows this run's name (flow review 2)
 	if (!TASShare_Allowed()) { TASUp_Answer("accept the online terms in the main menu first"); return; }
 	if (!isserver()) { TASUp_Answer("upload from a game you host, not while on a server"); return; }
+	if (!Zone_LooseOwn(tup_p[i])) { TASUp_Answer("that file is not your game's own copy (a package has it); nothing was sent"); return; }
 	body = TASUp_Read(tup_p[i]);
 	if (body == "") { TASUp_Answer((tup_size > TUP_BYTES) ? "that file is over 8 MB" : "that file could not be read"); return; }
 	tup_sha = TASUp_Keep(tup_sha, strtolower(digest_hex("SHA256", body)));
@@ -181,6 +186,8 @@ float(float reqid, float code, string body) TASUp_Reply =
 	local string s, why;
 	if (!tup_req || reqid != tup_req) return FALSE;
 	tup_req = 0;
+	if (code == 504 && tup_state == 3)    // nginx gave up waiting (150 s): the check may have finished and kept it
+		{ TASUp_Answer("no answer in time: the run may still have arrived -- look at play.proto.bar/tasup before sending it again"); return TRUE; }
 	if (code) { TASUp_Answer(sprintf("play.proto.bar could not be reached (%g); try again in a minute", code)); return TRUE; }
 	root = json_parse(body);
 	if (root <= 0i) { TASUp_Answer("play.proto.bar answered something unreadable; try again in a minute"); return TRUE; }
@@ -252,7 +259,7 @@ void(vector at, float width, float tsz, float hint, float row) TASUp_Draw =
 		if (!tup_n)
 		{
 			ZonePub_Wrap(at, width, tsz, "No TAS run of this map yet. Finish one with Jargon or Manual TAS and it shows here. "
-				"(A bot's .rec: upload it at play.proto.bar/tasup.)", SUI_THEME_TEXT, TRUE);
+				"Runs from before this update, and a bot's .rec, go through play.proto.bar/tasup.", SUI_THEME_TEXT, TRUE);
 			return;
 		}
 		chip = [tsz * 7, row, 0];
@@ -281,12 +288,29 @@ void(vector at, float width, float tsz, float hint, float row) TASUp_Draw =
 	}
 };
 
-// `tas upload` lists, `tas upload N` asks for row N's code and opens the tab (Send is a click), `tas upload status`
+// `tas upload` lists, `tas upload N` asks for row N's code and opens the tab (Send is a click), `tas upload status`.
+// The list comes from the local game (TASUp_ListEvent): the verb acts when it arrives.
+void() TASUp_Pending =
+{
+	local float i;
+	i = tup_pend; tup_pend = -1;
+	if (i == -2)
+	{
+		print(sprintf("tas upload: %g run(s) of %s\n", tup_n, zone_mapname));
+		for (i = 0; i < tup_n; i = i + 1) print(sprintf("tas upload: %g %s (%s)\n", i + 1, tup_l[i], tup_p[i]));
+		return;
+	}
+	if (i != floor(i) || i < 0 || i >= tup_n) { print(sprintf("tas upload: 1..%g\n", tup_n)); return; }
+	if (!tasu_open) TASUI_Toggle(0);
+	TASUI_SelectTab(TAS_TAB_UPLOAD);
+	if (tup_state == 1 || tup_state == 3) { print("tas upload: one is on its way; wait for its answer\n"); return; }
+	tup_state = 0; TASUp_Ask(i);
+};
 void(float argc) TASUp_Verb =
 {
 	local float i;
 	if (argc >= 3 && argv(2) == "status") { print(sprintf("tas upload: state %g %s\n", tup_state, tup_note)); return; }
-	i = (argc >= 3) ? stof(argv(2)) - 1 : -1;     // before the list: reading headers tokenizes
+	i = (argc >= 3) ? stof(argv(2)) - 1 : -2;
 	if (argc >= 3)
 	if (checkbuiltin(cmdlevel_local))      // nested: QC evaluates both sides of &&
 	if (!cmdlevel_local())
@@ -294,16 +318,7 @@ void(float argc) TASUp_Verb =
 		print("tas upload: only from your own console or binds\n");   // review: a server's command opened the tab
 		return;
 	}
+	if (!isserver()) { print("tas upload: in a game you host\n"); return; }
+	tup_pend = i;
 	tup_at = 0; TASUp_List();
-	if (argc >= 3)
-	{
-		if (i != floor(i) || i < 0 || i >= tup_n) { print(sprintf("tas upload: 1..%g\n", tup_n)); return; }
-		if (!tasu_open) TASUI_Toggle(0);
-		TASUI_SelectTab(TAS_TAB_UPLOAD);
-		if (tup_state == 1 || tup_state == 3) { print("tas upload: one is on its way; wait for its answer\n"); return; }
-		tup_state = 0; TASUp_Ask(i);
-		return;
-	}
-	print(sprintf("tas upload: %g run(s) of %s\n", tup_n, zone_mapname));
-	for (i = 0; i < tup_n; i = i + 1) print(sprintf("tas upload: %g %s (%s)\n", i + 1, tup_l[i], tup_p[i]));
 };

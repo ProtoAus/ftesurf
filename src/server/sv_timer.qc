@@ -7146,22 +7146,76 @@ void(entity e, float ticks, float stamp, float tag, float flags, string destinat
 
 // P1696: a TAS run this game finished, by its bytes' SHA-256, in data/tasproj/ -- which client code cannot write
 // (pr_bgcmd.c QC_TasprojDenied) -- so the Upload tab offers only these (SV_TASUpList), not a file a server's csprogs
-// put in data/runs/. A local game only; read once at the finish (a few MB at most).
-#define TAS_UPLIST "data/tasproj/uploads.txt"
-void(string path) SV_TASUpNote =
+// put in data/runs/. A local game only. One small file a map: the newest TAS_UPKEEP whole-course runs whose files are
+// still there, rewritten through a .part (append mode rewrites the whole file anyway; a crash then emptied it: ops 3).
+#define TAS_UPKEEP 50
+string() SV_TASUpListPath = { return sprintf("data/tasproj/%s/uploads.txt", strtolower(mapname)); };
+float(string path) SV_TASUpCourse =     // the default profile's whole courses: what the tab offers and tasupd takes
+{
+	if (substring(path, 0, 10) != "data/runs/") return FALSE;
+	return (strstrofs(path, "/main/") >= 0 || strstrofs(path, "/bonus_") >= 0);
+};
+// read only from the player's own loose files: a server can make the client mount a package holding a data/tasproj/
+// file (downloads/*.pk3), and every read searches packages (attack review 3; fs.c's P1102 note, Zone_LooseOwn)
+float(string path) SV_TASUpLoose = { local string w; w = whichpack(path, 2); return (!strcmp(w, "ftesurf") || !strcmp(w, "worldofsurf")); };
+// the host's own client: a guest's TAS finish on a listen server is not the host's run (attack review 3). Its address
+// prints as exactly QLoopBack (net_wins.c NET_BaseAdrToString), not "loopback" (flow review 3); an ICE guest's is
+// "<prot>[name]", never equal to it
+float(entity e) SV_TASUpHost =
+{
+	local string ip;
+	if (Lobby_Active()) return FALSE;
+	ip = strtolower(infokey(e, "ip"));
+	return (!strcmp(ip, "qloopback") || !strcmp(ip, "127.0.0.1"));
+};
+float(string path) SV_TASUpThere =
 {
 	local float fh;
-	local string body;
-	if (Lobby_Active()) return;
+	fh = fopen(path, FILE_READ);
+	if (fh < 0) return FALSE;
+	fclose(fh);
+	return TRUE;
+};
+void(entity e, string path) SV_TASUpNote =
+{
+	local float fh, i, c, size, b;
+	local string body, l, list, part;
+	if (!SV_TASUpHost(e) || !SV_TASUpCourse(path) || !SV_TASUpLoose(path)) return;
+	fh = fopen(path, FILE_READ);
+	if (fh < 0) return;
+	size = fsize(fh);
+	fclose(fh);
+	if (size < 16 || size > 8388608) return;    // before loading it (tasupd.MAX_REC)
 	fh = fopen(path, FILE_READNL);
 	if (fh < 0) return;
 	body = fgets(fh);
 	fclose(fh);
-	if (strlen(body) < 16 || strlen(body) > 8388608) return;
-	fh = fopen(TAS_UPLIST, FILE_APPEND);
-	if (fh < 0) { dprint(sprintf("tas upload: cannot write %s\n", TAS_UPLIST)); return; }
-	fputs(fh, strcat(strtolower(digest_hex("SHA256", body)), " ", path, "\n"));
-	fclose(fh);
+	list = SV_TASUpListPath(); part = strcat(list, ".part");
+	b = buf_create();
+	bufstr_add(b, strcat(strtolower(digest_hex("SHA256", body)), " ", path), TRUE);     // newest first
+	fh = SV_TASUpLoose(list) ? fopen(list, FILE_READ) : -1;     // a package's list is never carried into ours
+	if (fh >= 0)
+	{
+		for (i = 0; i < 1000 && buf_getsize(b) < TAS_UPKEEP; i = i + 1)
+		{
+			l = fgets(fh);
+			if (l == "") break;
+			c = tokenize(l);
+			if (c != 2 || strlen(argv(0)) != 64 || !strcmp(argv(1), path) || !SV_TASUpThere(argv(1))) continue;   // pruned files go
+			bufstr_add(b, l, TRUE);
+		}
+		fclose(fh);
+	}
+	fh = fopen(part, FILE_WRITE);
+	if (fh >= 0)
+	{
+		for (i = 0; i < buf_getsize(b); i = i + 1) fputs(fh, strcat(bufstr_get(b, i), "\n"));
+		fclose(fh);
+		fremove(list);
+		if (frename(part, list) != 0) dprint(sprintf("tas upload: cannot rename %s\n", part));
+	}
+	else dprint(sprintf("tas upload: cannot write %s\n", part));
+	buf_del(b);
 };
 
 void(entity e, float ticks, float tag, float flags) SV_RecClose =
@@ -7419,7 +7473,7 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 		{
 			e.rec_rec_saved = TRUE;
 			SV_RecSetLeaf(e, FS_RunLeaf(stamp, who, SV_RecTagName(tag), "rec"));
-			if (tag == RT_TAS) SV_TASUpNote(dst);     // P1696
+			if (tag == RT_TAS) SV_TASUpNote(e, dst);     // P1696
 			if (FS_TagHistory(tag))
 			{
 				Archive_SealFile(e, dst);
@@ -7469,7 +7523,7 @@ void(entity e, float ticks, float tag, float flags) SV_RecClose =
 		// file, no rename -- so reaching here IS the file landing.
 		e.rec_rec_saved = TRUE;
 		SV_RecSetLeaf(e, FS_RunLeaf(stamp, who, SV_RecTagName(tag), "rec"));
-		if (tag == RT_TAS) SV_TASUpNote(dst);     // P1696
+		if (tag == RT_TAS) SV_TASUpNote(e, dst);     // P1696
 		if (FS_TagHistory(tag))
 		{
 			Archive_SealFile(e, dst);

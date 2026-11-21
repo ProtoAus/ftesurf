@@ -1170,12 +1170,30 @@ class GameUpload(Service):
         with contextlib.closing(sqlite3.connect(self.store)) as db:
             self.assertEqual(db.execute('SELECT tool FROM runs WHERE id = ?', (j['id'],)).fetchone()[0], svc.GAME_TOOL)
 
+    def test_the_web_form_cannot_type_the_games_label(self):
+        c, _ = self.sign_in(ALICE)
+        j = self.upload(c, rec(extra='comment typed\n'), tool=svc.GAME_TOOL.upper()).get_json()
+        with contextlib.closing(sqlite3.connect(self.store)) as db:
+            self.assertEqual(db.execute('SELECT tool FROM runs WHERE id = ?', (j['id'],)).fetchone()[0], svc.GAME_TOOL.upper() + ' (typed)')
+
     def test_the_owner_can_refuse_any_build(self):
         """deny-code stops a build the service would take (here the lobby's), until allow-code."""
         self.assertEqual(self.cli('deny-code', self.code)[0], 0)
         self.refused(self.send(), 403, 'Update your game')
         self.assertEqual(self.cli('allow-code', self.code)[0], 0)
         self.assertEqual(self.send(body=rec(extra='comment again\n')).get_json()['ok'], 1)
+
+    def test_an_error_handlers_refusal_reads_the_body_too(self):
+        """ops review 3: surfd.db unreadable (the keylinks read raises) went out through the error handler undrained."""
+        with contextlib.closing(sqlite3.connect(self.accounts)) as db, db: db.execute('DROP TABLE keylinks')
+        c, body = self.app.test_client(), rec()
+        n = self.challenge(c, body)['nonce']
+        data = self.game_body(body, n)
+        stream = io.BytesIO(data)
+        r = c.post('/tasup/upload', content_type=svc.GAME_MIME,
+                   environ_overrides={'wsgi.input': stream, 'CONTENT_LENGTH': str(len(data))})
+        self.refused(r, 503, 'cannot tell right now')
+        self.assertEqual(stream.tell(), len(data))
 
     def test_a_refusal_before_the_file_reads_the_rest_of_the_body(self):
         """nginx may still be writing the body: a reply then can reach the game as a 502 (ops review 2)."""
@@ -1345,6 +1363,29 @@ class GameUpload(Service):
         for k, x in enumerate((new, old)):
             self.assertEqual(self.send(code=hashlib.sha256(x).hexdigest(), body=rec(extra='comment p%d\n' % k)).get_json()['ok'], 1)
 
+    def test_an_object_the_mirror_says_is_gone_is_given_up(self):
+        """flow review 3: a 404 counted as an outage, so an unknown code got "try again" forever."""
+        import urllib.error
+        rel = b'csprogs of release 0.1.64 ' + svc.CODE_MARK
+        blake = hashlib.blake2b(rel, digest_size=32).hexdigest()
+        (self.releases / '0.1.64').mkdir()
+        pay = {'hash_algo': 'blake2b-256', 'object_layout': 'objects/{h0h1}/{hash}', 'mirrors': ['https://dl.example/u'],
+               'files': [{'path': 'ftesurf/csprogs.dat', 'hash': blake, 'size': len(rel), 'platform': 'all', 'exec': False}]}
+        (self.releases / '0.1.64' / 'update.json').write_text(json.dumps({'payload': json.dumps(pay), 'signature': 'x'}))
+        def gone(url, cap):
+            self.fetched.append(url)
+            raise urllib.error.HTTPError(url, 404, 'Not Found', {}, None)
+        self.app = self.game_app(fetch=gone)
+        c, code = self.app.test_client(), 'cd' * 32
+        def settle(k):
+            for _ in range(300):
+                if len(self.fetched) >= k and not any(t.name != 'MainThread' and t.is_alive() for t in threading.enumerate()): return
+                time.sleep(0.01)
+        for k in range(1, svc.CODE_TRIES + 1):
+            self.challenge(c, b'%d' % k); settle(k)
+            self.clock.t += svc.CODE_RETRY_MAX + 1
+        self.refused(self.send(code=code), 403, 'Update your game')
+
     def test_lobby_backups_are_the_newest_two(self):
         """csprogs.dat.pre* (a lobby deploy's copy of the build it replaced): the newest LOBBY_BACKUPS of them sign."""
         import os
@@ -1353,8 +1394,11 @@ class GameUpload(Service):
         for i, name in enumerate(('csprogs.dat.pre321-x', 'csprogs.dat.pre1685-y', 'csprogs.dat.pre1692-z')):
             (d / name).write_bytes(b'lobby build %d ' % i + svc.CODE_MARK); os.utime(d / name, (1000 + i, 1000 + i))
             olds.append(hashlib.sha256(b'lobby build %d ' % i + svc.CODE_MARK).hexdigest())
-        self.app = self.game_app(game_files=[str(self.lobby), str(d / 'csprogs.dat.pre*')])
+        (d / 'csprogs.dat.prev').write_bytes(b'stale prev ' + svc.CODE_MARK); os.utime(d / 'csprogs.dat.prev', (2000, 2000))
+        self.app = self.game_app(game_files=[str(self.lobby), str(d / 'csprogs.dat.pre[0-9]*')])
         self.refused(self.send(code=olds[0]), 403, 'Update your game')                  # the oldest: not taken
+        self.refused(self.send(code=hashlib.sha256(b'stale prev ' + svc.CODE_MARK).hexdigest(), body=rec(extra='comment p\n')),
+                     403, 'Update your game')                                           # .prev is not a deploy's copy
         for k, code in enumerate(olds[1:]):
             self.assertEqual(self.send(code=code, body=rec(extra='comment %d\n' % k)).get_json()['ok'], 1)
 

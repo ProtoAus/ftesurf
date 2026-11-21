@@ -89,8 +89,8 @@ limit_conn_zone $server_name zone=tasupd_all:64k;
 FILES = {'surfd/tasupd.py': 'tasupd.py', 'surfd/tasupd_wsgi.py': 'tasupd_wsgi.py', 'surfd/steam.py': 'steam.py',
          'tools/tasplaus.py': 'tools/tasplaus.py', 'tools/ed25519.py': 'tools/ed25519.py'}
 # P1696: the game code whose upload proofs are taken -- the lobbies' csprogs, and released ones by their manifests
-# (a lobby deploy keeps the build it replaced as csprogs.dat.preNNNN-<when>: tasupd takes the newest two; .prev is stale)
-GAME_FILES = ['/srv/nvme/ftesurf-server/game/ftesurf/csprogs.dat', '/srv/nvme/ftesurf-server/game/ftesurf/csprogs.dat.pre*']
+# (a lobby deploy keeps the build it replaced as csprogs.dat.preNNNN-<when>: tasupd takes the newest two; .prev* are stale)
+GAME_FILES = ['/srv/nvme/ftesurf-server/game/ftesurf/csprogs.dat', '/srv/nvme/ftesurf-server/game/ftesurf/csprogs.dat.pre[0-9]*']
 SITE_RELEASES = '/srv/nvme/ftesurf-site/releases'   # <version>/update.json (not RELEASES, the installs)
 
 
