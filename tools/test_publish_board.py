@@ -250,6 +250,10 @@ class ByteRule(unittest.TestCase):
         held = pb.ui_only(self.info(), ref, self.repo)
         self.assertIn('surfd/surfd.py', held); self.assertNotIn('surfd/recplot.py', held); self.assertNotIn('tools/momimport.py', held)
         with self.assertRaisesRegex(SystemExit, 'no dry run'): quiet(pb.main, ['--install-follow', '--dry-run'])
+        script = pb.follow_script()                       # refuse a non-lingering user before anything is written
+        self.assertLess(script.index('-p Linger --value'), script.index('mkdir -p'))
+        self.assertLess(script.index('enable --now'), script.index('is-active'))
+        self.assertLess(script.index('is-active'), script.index('--follow\n'))
 
     def test_a_reverted_server_change_passes(self):
         self.write('surfd/surfd.py', 'tried'); self.commit('try')

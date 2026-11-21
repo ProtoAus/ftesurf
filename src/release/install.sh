@@ -41,8 +41,7 @@ SURFD=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8084/board/api/m
 for f in board.html board.css board.js link.css runview.js watch.css watch.html watch.js; do
     [ -f "$SITE/board/current/$f" ] || {
         echo "missing $SITE/board/current/$f -- publish the board first (as proto):" >&2
-        echo "    python3 -B tools/publish_board.py --install-follow   (from a game checkout; publishes within 5 min)" >&2
-        echo "    python3 -B tools/publish_board.py --live             (or at once)" >&2
+        echo "    python3 -B tools/publish_board.py --install-follow --pi <this host>   (from a game checkout; publishes at once)" >&2
         exit 1
     }
 done
@@ -146,6 +145,7 @@ fi
 
 probe_failed() {
     echo "FAILED: $1" >&2
+    [ "${2:-}" = keep ] && { echo "No restore needed; re-run install.sh." >&2; exit 1; }
     echo "Restore vhost: cp -p $BAK $VHOST" >&2
     if [ -n "$SNIP_BAK" ]; then echo "Restore snippet: cp -p $SNIP_BAK $SNIP" >&2; fi
     echo "Then: nginx -t && systemctl reload nginx" >&2
@@ -194,7 +194,7 @@ PY
         grep -qi '^last-modified:' "$PROBE/headers" || probe_failed "/$BASE/board/$f was not served from board/current"
         # The CSP must be the one the LIVE surfd sends for the same file (it still serves /board/<file>).
         curl --silent --show-error --max-time 10 -D "$PROBE/want" -o /dev/null "http://127.0.0.1:8084/board/$f" ||
-            probe_failed "the live surfd did not answer /board/$f (re-run install.sh once it does)"
+            probe_failed "the live surfd did not answer /board/$f, so its CSP could not be compared" keep
         GOT=$(grep -i '^content-security-policy:' "$PROBE/headers" | tr -d '\r' | cut -d: -f2-)
         WANT=$(grep -i '^content-security-policy:' "$PROBE/want" | tr -d '\r' | cut -d: -f2-)
         [ -n "$WANT" ] || probe_failed "the live surfd sent no CSP for /board/$f"

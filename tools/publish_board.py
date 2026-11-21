@@ -92,10 +92,14 @@ def csp_of(source):
     return ns['csp_of'](source)
 
 
-def install_follow(pi):
-    """Install the Pi program and the user timer as proto (no root; proto lingers), then publish once."""
+def follow_script():
+    """The POSIX sh install script --install-follow runs on the Pi (as proto)."""
     units = ROOT / 'tools/board-follow'
-    script = 'set -eu\nD=%s\numask 022\nmkdir -p "$D" ~/.config/systemd/user\n' % FOLLOW_DIR
+    script = ('set -eu\n'
+              '[ "$(loginctl show-user "$(id -un)" -p Linger --value)" = yes ] || '
+              '{ echo "REFUSED: $(id -un) does not linger, so a user timer dies at logout '
+              '(sudo loginctl enable-linger $(id -un))" >&2; exit 1; }\n'
+              'D=%s\numask 022\nmkdir -p "$D" ~/.config/systemd/user\n' % FOLLOW_DIR)
     for path, dest in ((PI_PROGRAM, '"$D/board_publish_pi.py"'),
                        (units / 'ftesurf-board-follow.service', '~/.config/systemd/user/ftesurf-board-follow.service'),
                        (units / 'ftesurf-board-follow.timer', '~/.config/systemd/user/ftesurf-board-follow.timer')):
@@ -105,9 +109,14 @@ def install_follow(pi):
     script += ('echo %s > "$D/SOURCE.txt"\n' % git('rev-parse', 'HEAD').decode().strip() +
                'systemctl --user daemon-reload\nsystemctl --user enable --now ftesurf-board-follow.timer\n'
                'systemctl --user is-active --quiet ftesurf-board-follow.timer\n'
-               'test "$(loginctl show-user "$(id -un)" -p Linger --value)" = yes   # else the timer dies at logout\n'
                '/usr/bin/python3.11 -I -B "$D/board_publish_pi.py" --follow\n'
                'test -f /srv/nvme/ftesurf-site/board/current/board.html\necho FOLLOW INSTALLED\n')
+    return script
+
+
+def install_follow(pi):
+    """Install the Pi program and the user timer as proto (no root; proto lingers), then publish once."""
+    script = follow_script()
     done = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-T', pi, 'sh -s'], input=script.encode(), capture_output=True, timeout=180)
     sys.stdout.write(done.stdout.decode()); sys.stderr.write(done.stderr.decode())
     if done.returncode or 'FOLLOW INSTALLED' not in done.stdout.decode():
