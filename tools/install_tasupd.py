@@ -88,8 +88,9 @@ limit_conn_zone $server_name zone=tasupd_all:64k;
 '''
 FILES = {'surfd/tasupd.py': 'tasupd.py', 'surfd/tasupd_wsgi.py': 'tasupd_wsgi.py', 'surfd/steam.py': 'steam.py',
          'tools/tasplaus.py': 'tools/tasplaus.py', 'tools/ed25519.py': 'tools/ed25519.py'}
-# P1695: the game code whose upload proofs are taken -- the lobbies' csprogs, and released ones by their manifests
-GAME_FILES = ['/srv/nvme/ftesurf-server/game/ftesurf/csprogs.dat', '/srv/nvme/ftesurf-server/game/ftesurf/csprogs.dat.prev']
+# P1696: the game code whose upload proofs are taken -- the lobbies' csprogs, and released ones by their manifests
+# (a lobby deploy keeps the build it replaced as csprogs.dat.preNNNN-<when>: tasupd takes the newest two; .prev is stale)
+GAME_FILES = ['/srv/nvme/ftesurf-server/game/ftesurf/csprogs.dat', '/srv/nvme/ftesurf-server/game/ftesurf/csprogs.dat.pre*']
 SITE_RELEASES = '/srv/nvme/ftesurf-site/releases'   # <version>/update.json (not RELEASES, the installs)
 
 
@@ -202,6 +203,16 @@ def init_store(release):
         cwd=str(release), env=dict(PATH='/usr/bin:/bin', SURFD_TOOLS=str(release / 'tools')))
 
 
+# P1696: environment an earlier installer did not write (a8efd378's has none of these); its unit is still its own
+ENV_ADDED = ('TASUPD_GAMES', 'TASUPD_RELEASES')
+
+
+def old_units(old, account_db, commit):
+    """The units an installer could have written for the release `old`: this one's, or one from before ENV_ADDED."""
+    env = service_env(old, account_db, commit)
+    return (unit_text(old, env).encode(), unit_text(old, {k: v for k, v in env.items() if k not in ENV_ADDED}).encode())
+
+
 def service_env(release, account_db, commit):
     return dict(TASUPD_STORE=str(STATE / 'tasup.sqlite3'), TASUPD_ACCOUNTS=str(account_db),
                 TASUPD_ZONES=os.pathsep.join(ZONE_DIRS), TASUPD_MAPCFG=os.pathsep.join(MAPCFG_DIRS),
@@ -302,8 +313,9 @@ def upgrade(a, blobs):
     if any(p.exists() or p.is_symlink() for p in (new, ROOT / a.commit)): raise RuntimeError('The new release directory already exists')
     if json.loads((old / 'SOURCE.json').read_text()).get('commit') != a.upgrade_from:
         raise RuntimeError('The old release directory is not that commit')
-    oldunit = unit_text(old, service_env(old, a.account_db, a.upgrade_from)).encode()
-    if UNIT.read_bytes() != oldunit: raise RuntimeError('The unit is not the one this installer wrote for that release; owner inspection')
+    oldunit = UNIT.read_bytes()   # put back as read, if the switch fails
+    if oldunit not in old_units(old, a.account_db, a.upgrade_from):
+        raise RuntimeError('The unit is not the one this installer wrote for that release; owner inspection')
     if SNIPPET.read_bytes() != NGINX.encode() or ZONES.read_bytes() != NGINX_ZONES.encode():
         raise RuntimeError('The nginx snippet or its zones changed; owner inspection')
     if not (STATE / 'tasup.sqlite3').is_file(): raise RuntimeError('Service state missing')

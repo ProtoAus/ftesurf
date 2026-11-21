@@ -1,5 +1,5 @@
 /*
-  P1695: upload a TAS run from the game to play.proto.bar/tasup (surfd/tasupd.py's game route), the TAS menu's Upload
+  P1696: upload a TAS run from the game to play.proto.bar/tasup (surfd/tasupd.py's game route), the TAS menu's Upload
   tab. Upload asks the service for a code bound to the file's SHA-256; Send, on a real press only, signs
   TASUp_Signed (the code, the purpose and the file) with the linked key -- acct_sign kind -6, as zone publishing signs --
   and posts the proof and the file in one body. The service checks the run as it checks the web form's.
@@ -130,6 +130,7 @@ void(float i) TASUp_Ask =
 	local string body;
 	if (i < 0 || i >= tup_n || tup_state == 1 || tup_state == 3) return;
 	if (!TASShare_Allowed()) { TASUp_Answer("accept the online terms in the main menu first"); return; }
+	if (Rec_ServerIsRemote()) { TASUp_Answer("upload from a local game, not while on a server"); return; }   // review: a server's plant
 	body = TASUp_Read(tup_p[i]);
 	if (body == "") { TASUp_Answer((tup_size > TUP_BYTES) ? "that file is over 8 MB" : "that file could not be read"); return; }
 	tup_path = TASUp_Keep(tup_path, tup_p[i]);
@@ -150,6 +151,7 @@ void() TASUp_Send =
 	local string body, p, env;
 	if (tup_state != 2 || !cl_input_real) return;
 	if (gettime(0) < tup_armed) return;     // no press carried in from the Upload click
+	if (Rec_ServerIsRemote()) { TASUp_Answer("upload from a local game, not while on a server; nothing was sent"); return; }
 	body = TASUp_Read(tup_path);
 	if (body == "" || strcmp(strtolower(digest_hex("SHA256", body)), tup_sha))
 	{
@@ -162,8 +164,9 @@ void() TASUp_Send =
 			"real click; nothing was sent");
 		return;
 	}
-	env = strcat("FTESURF-TASUP 1\nnonce ", tup_nonce, "\npub ", argv(0), "\nsig ", argv(2), "\ngame ", argv(4));
-	env = strcat(env, "\n", body);   // the bytes the code was asked for, raw: no escape of a large string
+	// tasupd.GAME_HEAD: the proof is checked before the file is read; then the bytes the code was asked for, raw
+	env = strcat("FTESURF-TASUP 1\nnonce ", tup_nonce, "\nsha ", tup_sha, "\npub ", argv(0), "\nsig ", argv(2));
+	env = strcat(env, "\ngame ", argv(4), "\n", body);
 	tup_req = Online_NextReq();
 	if (!uri_post(strcat(TUP_BASE, "upload"), tup_req, "application/x-ftesurf-tasup", env))
 	{
@@ -285,6 +288,13 @@ void(float argc) TASUp_Verb =
 	local float i;
 	if (argc >= 3 && argv(2) == "status") { print(sprintf("tas upload: state %g %s\n", tup_state, tup_note)); return; }
 	i = (argc >= 3) ? stof(argv(2)) - 1 : -1;     // before the list: reading headers tokenizes
+	if (argc >= 3)
+	if (checkbuiltin(cmdlevel_local))      // nested: QC evaluates both sides of &&
+	if (!cmdlevel_local())
+	{
+		print("tas upload: only from your own console or binds\n");   // review: a server's command opened the tab
+		return;
+	}
 	tup_at = 0; TASUp_List();
 	if (argc >= 3)
 	{

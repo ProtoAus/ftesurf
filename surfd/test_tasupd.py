@@ -1050,11 +1050,11 @@ import threading
 import ed25519 as ed
 
 SEED_ALICE, SEED_BOB, SEED_BANNED, SEED_NOBODY = (bytes([i]) * 32 for i in (1, 2, 3, 4))
-CODE_BYTES = b'csprogs of a lobby, P1695'
+CODE_BYTES = b'csprogs of a lobby, P1696: ' + svc.CODE_MARK + b'...'
 
 
 class GameUpload(Service):
-    """P1695: the game's signed upload (cl_tasupload.qc): a challenge, then the proof and the file in one body."""
+    """P1696: the game's signed upload (cl_tasupload.qc): a challenge, then the proof and the file in one body."""
 
     def setUp(self):
         super().setUp()
@@ -1084,13 +1084,13 @@ class GameUpload(Service):
         self.assertEqual(r.status_code, 200)
         return r.get_json()
 
-    def game_body(self, body, nonce, seed=SEED_ALICE, code=None, signed=None, sha=None):
+    def game_body(self, body, nonce, seed=SEED_ALICE, code=None, signed=None, sha=None, head_sha=None):
         code = code or self.code
-        sha = sha or hashlib.sha256(body).hexdigest()
+        sha = sha or hashlib.sha256(body).hexdigest()          # the file the proof names
         signed = signed or svc.game_nonce(nonce, sha)
         sig = ed.sign(seed, (svc.ACCT_STATEMENT % (svc.GAME_SITE, signed, svc.GAME_KIND, 1, code)).encode())
-        return b'FTESURF-TASUP 1\nnonce %s\npub %s\nsig %s\ngame %s\n' % (
-            nonce.encode(), ed.publickey(seed).hex().encode(), sig.hex().encode(), code.encode()) + body
+        return b'FTESURF-TASUP 1\nnonce %s\nsha %s\npub %s\nsig %s\ngame %s\n' % (
+            nonce.encode(), (head_sha or sha).encode(), ed.publickey(seed).hex().encode(), sig.hex().encode(), code.encode()) + body
 
     def post(self, c, data):
         return c.post('/tasup/upload', data=data, content_type=svc.GAME_MIME)
@@ -1117,25 +1117,63 @@ class GameUpload(Service):
         self.assertEqual(j['page'], BASE + '/run/%d' % j['id'])
         with contextlib.closing(sqlite3.connect(self.store)) as db:
             self.assertEqual(db.execute('SELECT steamid, tool FROM runs WHERE id = ?', (j['id'],)).fetchone(), (ALICE, svc.GAME_TOOL))
-            self.assertEqual(db.execute('SELECT COUNT(*) FROM challenges').fetchone()[0], 0)   # spent
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM nonces WHERE nonce LIKE 'game %'").fetchone()[0], 1)   # spent
 
     def test_a_confirmation_is_used_once(self):
         c, body = self.app.test_client(), rec()
         n = self.challenge(c, body)['nonce']
         self.assertEqual(self.post(c, self.game_body(body, n)).get_json()['ok'], 1)
-        self.refused(self.post(c, self.game_body(body, n)), 409, 'expired or was used')
+        self.refused(self.post(c, self.game_body(body, n)), 409, 'was used')
 
     def test_a_confirmation_expires(self):
         c, body = self.app.test_client(), rec()
         n = self.challenge(c, body)['nonce']
         self.clock.t += svc.CHALLENGE_TTL + 1
-        self.refused(self.post(c, self.game_body(body, n)), 409, 'expired or was used')
+        self.refused(self.post(c, self.game_body(body, n)), 409, 'expired')
 
-    def test_the_file_must_be_the_one_confirmed(self):
+    def test_a_code_is_the_services_and_this_files(self):
         c, body = self.app.test_client(), rec()
         n = self.challenge(c, body)['nonce']
         other = rec(extra='comment other\n')
-        self.refused(self.post(c, self.game_body(other, n)), 409, 'The file changed')
+        self.refused(self.post(c, self.game_body(other, n)), 409, 'not this file')                       # another file's proof
+        forged = '%08x' % int(self.clock.t) + n[8:16] + '0' * 16
+        self.refused(self.post(c, self.game_body(body, forged)), 409, 'not this file')                   # not the service's MAC
+        self.assertEqual(self.post(c, self.game_body(body, n)).get_json()['ok'], 1)   # neither refusal spent it
+        n = self.challenge(c, body := rec(extra='comment third\n'))['nonce']
+        # a proof that checks out spends the code before the file is read: another file then is refused, and the code gone
+        self.refused(self.post(c, self.game_body(other, n, sha=hashlib.sha256(body).hexdigest())), 409, 'not the one confirmed')
+        self.refused(self.post(c, self.game_body(body, n)), 409, 'was used')
+
+    def test_a_build_without_the_upload_flow_signs_nothing(self):
+        """Only a csprogs carrying the upload code (CODE_MARK) is taken: a lobby file or a release without it is not."""
+        self.lobby.write_bytes(b'an older lobby build')
+        self.refused(self.send(code=hashlib.sha256(b'an older lobby build').hexdigest()), 403, 'Update your game')
+        rel = b'csprogs of release 0.1.50, no upload flow'
+        blake = hashlib.blake2b(rel, digest_size=32).hexdigest()
+        (self.releases / '0.1.50').mkdir()
+        pay = {'hash_algo': 'blake2b-256', 'object_layout': 'objects/{h0h1}/{hash}', 'mirrors': ['https://dl.example/u'],
+               'files': [{'path': 'worldofsurf/csprogs.dat', 'hash': blake, 'size': len(rel), 'platform': 'all', 'exec': False}]}
+        (self.releases / '0.1.50' / 'update.json').write_text(json.dumps({'payload': json.dumps(pay), 'signature': 'x'}))
+        self.objects = {'https://dl.example/u/objects/%s/%s' % (blake[:2], blake): rel}
+        c, body = self.app.test_client(), rec()
+        n = self.challenge(c, body)['nonce']
+        for _ in range(300):
+            with contextlib.closing(sqlite3.connect(self.store)) as db:
+                if db.execute('SELECT 1 FROM codes WHERE blake = ?', (blake,)).fetchone(): break
+            time.sleep(0.01)
+        self.refused(self.post(c, self.game_body(body, n, code=hashlib.sha256(rel).hexdigest())), 403, 'Update your game')
+        self.assertEqual(len(self.fetched), 1)                  # known now: not fetched again
+
+    def test_the_tool_is_named_by_the_runs_tas_flag(self):
+        j = self.send(body=rec(extra='flags %d\n' % (svc.TF_TAS | 256 | 1))).get_json()
+        with contextlib.closing(sqlite3.connect(self.store)) as db:
+            self.assertEqual(db.execute('SELECT tool FROM runs WHERE id = ?', (j['id'],)).fetchone()[0], svc.GAME_TOOL_TAS)
+
+    def test_codes_are_not_stored(self):
+        c = self.app.test_client()
+        for i in range(5): self.assertEqual(self.challenge(c, b'%d' % i)['ok'], 1)
+        with contextlib.closing(sqlite3.connect(self.store)) as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM nonces').fetchone()[0], 0)
 
     def test_unknown_game_code_is_told_to_update(self):
         self.refused(self.send(code='ab' * 32), 403, 'Update your game')
@@ -1154,16 +1192,18 @@ class GameUpload(Service):
         self.refused(self.post(c, self.game_body(body, n, signed=n)), 403, 'did not check out')
 
     def test_the_proof_names_the_file(self):
-        """A proof made for one file does not carry another (the challenge for the second, the proof of the first)."""
+        """A signature made for one file does not carry another (the header and code name the second)."""
         c, a, b = self.app.test_client(), rec(), rec(extra='comment b\n')
         n = self.challenge(c, b)['nonce']
-        self.refused(self.post(c, self.game_body(b, n, sha=hashlib.sha256(a).hexdigest())), 403, 'did not check out')
+        self.refused(self.post(c, self.game_body(b, n, sha=hashlib.sha256(a).hexdigest(), head_sha=hashlib.sha256(b).hexdigest())),
+                     403, 'did not check out')
 
-    def test_three_tries_a_confirmation(self):
+    def test_a_refused_proof_does_not_spend_the_code(self):
         c, body = self.app.test_client(), rec()
         n = self.challenge(c, body)['nonce']
         for _ in range(3): self.refused(self.post(c, self.game_body(body, n, code='ab' * 32)), 403, 'Update')
-        self.refused(self.post(c, self.game_body(body, n)), 409, 'expired or was used')
+        self.refused(self.post(c, self.game_body(body, n, seed=SEED_NOBODY)), 403, 'Link')
+        self.assertEqual(self.post(c, self.game_body(body, n)).get_json()['ok'], 1)
 
     def test_unlinked_and_banned_keys(self):
         self.refused(self.send(seed=SEED_NOBODY), 403, 'Link your Steam account first')
@@ -1183,7 +1223,7 @@ class GameUpload(Service):
         self.refused(self.send(body=b'not a recording'), 400, 'not a FTESURF-REC')
 
     def test_a_released_csprogs_is_learned_from_its_manifest(self):
-        rel = b'csprogs of release 0.1.60'
+        rel = b'csprogs of release 0.1.60 ' + svc.CODE_MARK
         blake = hashlib.blake2b(rel, digest_size=32).hexdigest()
         (self.releases / '0.1.60').mkdir()
         pay = {'hash_algo': 'blake2b-256', 'object_layout': 'objects/{h0h1}/{hash}', 'mirrors': ['https://dl.example/u'],
@@ -1203,19 +1243,28 @@ class GameUpload(Service):
         self.assertEqual((j['ok'], j['state']), (1, 'shown'), j)
 
     def test_a_release_object_with_other_bytes_is_not_learned(self):
-        rel = b'csprogs of release 0.1.61'
+        rel = b'csprogs of release 0.1.61 ' + svc.CODE_MARK
         blake = hashlib.blake2b(rel, digest_size=32).hexdigest()
         (self.releases / '0.1.61').mkdir()
         pay = {'hash_algo': 'blake2b-256', 'object_layout': 'objects/{h0h1}/{hash}', 'mirrors': ['https://dl.example/u'],
                'files': [{'path': 'ftesurf/csprogs.dat', 'hash': blake, 'size': len(rel), 'platform': 'all', 'exec': False}]}
         (self.releases / '0.1.61' / 'update.json').write_text(json.dumps({'payload': json.dumps(pay), 'signature': 'x'}))
         self.objects = {'https://dl.example/u/objects/%s/%s' % (blake[:2], blake): b'something else'}
-        c, body = self.app.test_client(), rec()
+        c, code = self.app.test_client(), hashlib.sha256(rel).hexdigest()
+        def settle(k):
+            for _ in range(300):
+                if len(self.fetched) >= k and not any(t.name != 'MainThread' and t.is_alive() for t in threading.enumerate()): return
+                time.sleep(0.01)
+        for k in range(1, svc.CODE_TRIES + 1):
+            body = rec(extra='comment try %d\n' % k)
+            n = self.challenge(c, body)['nonce']; settle(k)
+            # flow review: a release that could not be read yet is "try again", not "update your game"
+            if k < svc.CODE_TRIES: self.refused(self.post(c, self.game_body(body, n, code=code)), 503, 'still reading')
+            self.clock.t += svc.CODE_RETRY + 1
+        self.assertEqual(len(self.fetched), svc.CODE_TRIES)
+        body = rec(extra='comment last\n')
         n = self.challenge(c, body)['nonce']
-        for _ in range(200):
-            if self.fetched and not any(t.name != 'MainThread' and t.is_alive() for t in threading.enumerate()): break
-            time.sleep(0.01)
-        self.refused(self.post(c, self.game_body(body, n, code=hashlib.sha256(rel).hexdigest())), 403, 'Update your game')
+        self.refused(self.post(c, self.game_body(body, n, code=code)), 403, 'Update your game')   # given up on it
 
     def test_an_oversized_body_is_refused_before_it_is_read(self):
         c = self.app.test_client()
@@ -1223,11 +1272,45 @@ class GameUpload(Service):
                    environ_overrides={'CONTENT_LENGTH': str(svc.MAX_FORM + 1)})   # the client would send 16
         self.refused(r, 413, 'over 8 MB')
 
-    def test_challenges_are_capped_per_address(self):
+    def test_the_owner_allows_and_denies_a_build(self):
+        dev = hashlib.sha256(b'an owner dev build').hexdigest()
+        self.refused(self.send(code=dev), 403, 'Update your game')
+        self.assertEqual(self.cli('allow-code', dev.upper(), '--note', 'lex dev')[0], 0)
+        self.assertIn('manual: lex dev', self.cli('codes')[1])
+        self.assertEqual(self.send(code=dev, body=rec(extra='comment dev\n')).get_json()['ok'], 1)
+        self.assertEqual(self.cli('deny-code', dev)[0], 0)
+        self.refused(self.send(code=dev, body=rec(extra='comment dev2\n')), 403, 'Update your game')
+        self.assertEqual(self.cli('allow-code', 'nothex')[0], 1)
+
+    def test_lobby_backups_are_the_newest_two(self):
+        """csprogs.dat.pre* (a lobby deploy's copy of the build it replaced): the newest LOBBY_BACKUPS of them sign."""
+        import os
+        d = self.lobby.parent
+        olds = []
+        for i, name in enumerate(('csprogs.dat.pre321-x', 'csprogs.dat.pre1685-y', 'csprogs.dat.pre1692-z')):
+            (d / name).write_bytes(b'lobby build %d ' % i + svc.CODE_MARK); os.utime(d / name, (1000 + i, 1000 + i))
+            olds.append(hashlib.sha256(b'lobby build %d ' % i + svc.CODE_MARK).hexdigest())
+        self.app = self.game_app(game_files=[str(self.lobby), str(d / 'csprogs.dat.pre*')])
+        self.refused(self.send(code=olds[0]), 403, 'Update your game')                  # the oldest: not taken
+        for k, code in enumerate(olds[1:]):
+            self.assertEqual(self.send(code=code, body=rec(extra='comment %d\n' % k)).get_json()['ok'], 1)
+
+    def test_game_requests_are_rate_limited_per_address(self):
         c = self.app.test_client()
-        for i in range(svc.CHALLENGES_PEER): self.assertEqual(self.challenge(c, b'%d' % i)['ok'], 1)
+        for i in range(svc.PEER_GAME): self.assertEqual(self.challenge(c, b'%d' % i)['ok'], 1)
         j = self.challenge(c, b'one more')
         self.assertEqual((j['ok'], j['status']), (0, 429))
+        self.clock.t += 60
+        self.assertEqual(self.challenge(c, b'next minute')['ok'], 1)
+
+    def test_a_used_code_outlives_the_steam_nonce_prune(self):
+        """The sign-in route prunes its nonces after 480 s; a game code is good for 600 s and stays spent."""
+        c, body = self.app.test_client(), rec()
+        n = self.challenge(c, body)['nonce']
+        self.assertEqual(self.post(c, self.game_body(body, n)).get_json()['ok'], 1)
+        self.clock.t += 500
+        self.sign_in(BOB)
+        self.refused(self.post(c, self.game_body(body, n)), 409, 'was used')
 
 if __name__ == '__main__':
     unittest.main()

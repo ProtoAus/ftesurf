@@ -218,7 +218,7 @@ void(float want) TASJargon_Ksf =
 
 // P1693: your own clean runs of a course -- PBs and other finishes, data/runs/<map>/<leg>/<ticks>_..._<pb|run>.rec (the
 // zero-padded ticks sort fastest first); a cheated/practice/segmented one (FS_RunClass) or a lobby stub is no guide.
-// P1695: and your finished TAS runs (_tas.rec), unless a cheat (noclip, a cvar) is in their flags
+// P1696: and your finished TAS runs (_tas.rec with TF_TAS; every TAS run also carries TF_CHEAT, sv_timer.qc SV_TASFlags)
 void(float track, float leg, float want) TASJargon_Own =
 {
 	local float h, n, c, k, g, hd, tg, t;
@@ -237,7 +237,7 @@ void(float track, float leg, float want) TASJargon_Own =
 		hd = TASJargon_Head(f);
 		if (hd < 0) continue;
 		if (jg_hcf[hd] < 0) continue;   // no flags line: unknown, not clean
-		if (tg == RT_TAS) { if (!(jg_hcf[hd] & TF_TAS) || (jg_hcf[hd] & TF_CHEAT)) continue; }
+		if (tg == RT_TAS) { if (!(jg_hcf[hd] & TF_TAS)) continue; }
 		else if (FS_RunClass(jg_hcf[hd]) != RC_CLEAN) continue;
 		t = rint(stof(substring(b, 0, strstrofs(b, "_"))) * jg_hctr[hd] * 100) / 100;
 		g = jg_gn;

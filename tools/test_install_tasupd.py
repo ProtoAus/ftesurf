@@ -60,7 +60,8 @@ class Upgrade(unittest.TestCase):
     def install_old(self, root):
         old = root / OLD; old.mkdir(parents=True)
         (old / 'SOURCE.json').write_text(json.dumps(dict(commit=OLD, files={})))
-        t.UNIT.write_text(t.unit_text(old, t.service_env(old, Path('/srv/nvme/surfd/data/surfd.db'), OLD)))
+        # as a8efd378's installer wrote it (the live unit): without the keys added since (P1696 ops review)
+        t.UNIT.write_bytes(t.old_units(old, Path('/srv/nvme/surfd/data/surfd.db'), OLD)[1])
 
     def tearDown(self):
         for k, v in self.saved.items(): setattr(t, k, v)
@@ -159,6 +160,18 @@ class Upgrade(unittest.TestCase):
         self.main('--apply')
         self.assertEqual(self.serving, NEW)
         self.assertEqual(self.chains, [t.RELEASES, t.RELEASES])
+
+    def test_a_unit_with_this_installers_environment_is_also_its_own(self):
+        """A release this installer (or a later one) wrote carries ENV_ADDED: upgrading from it works too."""
+        t.UNIT.write_bytes(t.old_units(t.ROOT / OLD, Path('/srv/nvme/surfd/data/surfd.db'), OLD)[0])
+        self.assertIn(b'TASUPD_GAMES=', t.UNIT.read_bytes())
+        self.main('--apply')
+        self.assertEqual(self.serving, NEW)
+
+    def test_a_unit_with_one_added_key_is_refused(self):
+        env = t.service_env(t.ROOT / OLD, Path('/srv/nvme/surfd/data/surfd.db'), OLD); del env['TASUPD_RELEASES']
+        t.UNIT.write_text(t.unit_text(t.ROOT / OLD, env))
+        with self.assertRaisesRegex(RuntimeError, 'not the one this installer wrote'): self.main()
 
     def test_root_runs_no_proto_controlled_code(self):
         os.environ['SUDO_UID'] = '1000'   # git would trust a .git owned by that uid

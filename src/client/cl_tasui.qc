@@ -5,7 +5,7 @@
 #define TAS_TAB_PROJECT 3
 #define TAS_TAB_SECTIONS 4
 #define TAS_TAB_OPTIMIZE 5      // P1449: tas autosurf and the one-stretch optimizer (cl_tasoptui.qc)
-#define TAS_TAB_UPLOAD 6        // P1695: send a TAS run to play.proto.bar/tasup (cl_tasupload.qc)
+#define TAS_TAB_UPLOAD 6        // P1696: send a TAS run to play.proto.bar/tasup (cl_tasupload.qc)
 #define TAS_TAB_COUNT 7         // the Manual TAS tabs are the ones before TAS_TAB_OPTIMIZE
 float tasu_open, tasu_nextclick, tasu_frames, tasu_advanced, tasu_dirty;
 var float tasu_mode = TAS_PLAN_HOLD;
@@ -322,7 +322,7 @@ void(vector scr) TASUI_Draw =
 		{ TASUI_Close(); sui_end(); Font_Set(oldfont); return; }
 	// P1449: two tabs -- Jargon, and the manual frame-by-frame workshop with its own five under it (Lex, 10 Nov:
 	// "the whole menu wiped and start from scratch")
-	// P1695: and Upload, a TAS run to play.proto.bar/tasup
+	// P1696: and Upload, a TAS run to play.proto.bar/tasup
 	at = pos+[pad,tsz*3,0]; chip = [(width-12)/3,row,0];
 	if (Profile_Chip("tasu_tabj",at,chip,"Jargon",tsz,tasu_tab==TAS_TAB_OPTIMIZE)) TASUI_SelectTab(TAS_TAB_OPTIMIZE);
 	if (Profile_Chip("tasu_tabm",at+[(width+6)/3,0,0],chip,"Manual TAS",tsz,tasu_tab<TAS_TAB_OPTIMIZE))
@@ -433,7 +433,7 @@ float(float evtype, float scanx, float chary, float devid) TASUI_Input =
 		if (evtype==IE_KEYDOWN) _sui_mouse_move(_cursor_position,FALSE);
 		TASTimeline_RecipeInput(evtype,scanx,chary);
 		if (evtype==IE_KEYDOWN && scanx==K_MOUSE1 && tasu_tab==TAS_TAB_PROJECT && sui_is_hovered("tasp_sign")) TASProject_SignPress();
-		if (evtype==IE_KEYDOWN && scanx==K_MOUSE1 && tasu_tab==TAS_TAB_UPLOAD) TASUp_Press();     // P1695: Send signs on the press
+		if (evtype==IE_KEYDOWN && scanx==K_MOUSE1 && tasu_tab==TAS_TAB_UPLOAD) TASUp_Press();     // P1696: Send signs on the press
 		sui_input_event(evtype,scanx,chary,devid); return TRUE;
 	}
 	// Keyboard name ownership runs before chat in CL_InputChain, including closed-panel ups.

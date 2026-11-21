@@ -155,6 +155,9 @@ void() History_AutoFrame =
 	{
 		ha_row = ha_row + 1;
 		if (!FS_HistoryLeaf(bufstr_get(ar_rows, ha_row - 1))) continue;
+		// P1696: a lobby makes no TAS run (its tools are refused there): a tas file offered here would be planted for Upload
+		if (FS_TagFromName(FS_NameTag(substring(bufstr_get(ar_rows, ha_row - 1), 0, strlen(bufstr_get(ar_rows, ha_row - 1)) - 4))) == RT_TAS)
+			continue;
 		path = FS_MovementProfilePath(ar_profile,
 			strcat(FS_RunDir(ar_map, ar_track, ar_leg), bufstr_get(ar_rows, ha_row - 1)));
 		fh = fopen(path, FILE_READ);

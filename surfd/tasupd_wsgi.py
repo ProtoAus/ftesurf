@@ -8,7 +8,7 @@ from tasupd import create_app
 app = create_app(os.environ['TASUPD_STORE'], os.environ['TASUPD_ACCOUNTS'],
                  [d for d in os.environ['TASUPD_ZONES'].split(os.pathsep) if d], os.environ['TASUPD_URL'],
                  map_cfg_dirs=[d for d in os.environ.get('TASUPD_MAPCFG', '').split(os.pathsep) if d],
-                 # P1695: the csprogs whose proofs the game's upload takes
+                 # P1696: the csprogs whose proofs the game's upload takes
                  game_files=json.loads(os.environ.get('TASUPD_GAMES', '[]')),
                  releases=os.environ.get('TASUPD_RELEASES') or None)
 # The nginx location replaces X-Forwarded-For with its connection's address.
