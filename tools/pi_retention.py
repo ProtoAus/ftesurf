@@ -5,8 +5,9 @@ every backup ever made, maybe like the last 2 at most" and "ensure proper rotati
 Runs as proto, daily (systemd --user ftesurf-retention.timer; tools/pi-retention.md). Dry run unless --apply.
 
 - Backup copies (NAME.pre<N>..., NAME.pre-..., NAME.bak..., NAME-pre<N>...) directly in BACKUP_DIRS: the newest KEEP of
-  each (directory, NAME, scheme) -- the timestamp in the copy's name, else its newest of mtime/ctime (copies keep the
-  live file's mtime); a copy's -shm/-wal/-journal go with it.
+  each (directory, NAME), by the timestamp in the copy's name, else its mtime (never ctime: a chgrp would make an
+  October copy "newest"); a copy's -shm/-wal/-journal go with it. Also kept: what a reader picks by its own rule
+  (READER_PICKS: tasupd trusts the newest two csprogs.dat.pre[0-9]* by mtime).
 - Task roots in AGENT_WORK: removed once nothing in them changed (mtime or ctime: cp -a/rsync -a keep old mtimes) for
   IDLE_DAYS and nothing live names them. The newest KEEP gen<N>-* roots and a root holding RETAIN always stay.
 - tasupd-src-* checkouts in OPS: the newest KEEP and any whose commit has a release in TASUPD_RELEASES.
@@ -14,8 +15,9 @@ Runs as proto, daily (systemd --user ftesurf-retention.timer; tools/pi-retention
 Never removed: a path the live configuration names (systemd units and drop-ins, nginx, cron, the surfd home's own
 files, the live generation's manifest and identity, the namespace observer's policy); a file any process has open,
 maps or runs; a symlink; anything outside these directories. FAILS CLOSED: configuration it cannot read stops the
-run before anything is removed (the surfd drop-in alone keeps ~230 copies). Nothing outside a tree being removed has
-its permissions changed; a root with parts we cannot read (root-owned leftovers) is kept and reported."""
+run before anything is removed (the surfd drop-in alone keeps ~230 copies); only an unreadable copy no loader picks up
+(root's 0600 /etc/nginx/*.conf.pre-*) or TLS material is passed over. Nothing outside a tree being removed has its
+permissions changed; a root we could not wholly remove (unreadable parts, another user's files, a mount) is kept."""
 import argparse
 import calendar
 import glob
@@ -41,7 +43,8 @@ CONFIG_TREES = ('/etc/systemd', '/etc/nginx', '/etc/cron.d', os.path.expanduser(
 CONFIG_FLAT = ('/srv/nvme/surfd',)
 CONFIG_FILES = ('/usr/local/sbin/ftesurf-namespace-observer/policy.json',)
 UNREADABLE_OK = re.compile(r'\.(key|pem|crt)$')           # TLS material names no paths
-WHOLE_DIRS = ('/sites-enabled/',)    # nginx loads every file here; elsewhere a copy's name (.pre-x) is never loaded
+UNIT_SUFFIXES = ('.service', '.socket', '.timer', '.path', '.mount', '.automount', '.swap', '.target', '.slice', '.scope', '.device')
+READER_PICKS = (('/srv/nvme/ftesurf-server/game/ftesurf/csprogs.dat.pre[0-9]*', 2),)   # tasupd.py LOBBY_BACKUPS, by mtime
 CRONTAB = ('crontab', '-l')
 MAX_CONFIG = 32 << 20
 MEMORY = 1 << 30      # RLIMIT_AS: a MemoryError here, never the OOM killer choosing among the live services
@@ -65,24 +68,29 @@ def config_refs():
     refs = set()
     def scan(text): refs.update(m.rstrip('/.') for m in PATH.findall(text))
     def read(p):
-        if os.path.islink(p):
-            scan(os.readlink(p))
-            if not os.path.exists(p): return              # dangling: the link text is all it names
         try:
+            if os.path.islink(p):
+                scan(os.readlink(p))
+                try: os.stat(p)
+                except FileNotFoundError: return          # dangling: the link text is all it names
             st = os.stat(p)
             if not stat.S_ISREG(st.st_mode): return       # /dev/null masks and the like
             if st.st_size > MAX_CONFIG: raise Unreadable('%s is %d bytes' % (p, st.st_size))
             with open(p, errors='replace') as f: scan(f.read())
         except OSError as e:
-            # root's 0600 copies (/etc/nginx/play.proto.bar.conf.pre-zonepub-*): systemd and nginx's globs never load them
-            if UNREADABLE_OK.search(p) or (BACKUP.match(os.path.basename(p)) and not any(w in p for w in WHOLE_DIRS)): return
+            if UNREADABLE_OK.search(p) or (BACKUP.match(os.path.basename(p)) and not loaded(p)): return
             raise Unreadable('%s: %s' % (p, e)) from e
     def fail(e): raise Unreadable('%s: %s' % (e.filename, e))
     for top in CONFIG_TREES:
         if not os.path.exists(top): continue
-        for dp, dn, fn in os.walk(top, onerror=fail):
-            for f in fn + [d for d in dn if os.path.islink(os.path.join(dp, d))]:
-                read(os.path.join(dp, f))
+        seen = set()
+        for dp, dn, fn in os.walk(top, onerror=fail, followlinks=True):
+            real = os.path.realpath(dp)
+            if real in seen: dn[:] = []; continue       # a link loop
+            seen.add(real)
+            for d in dn:
+                if os.path.islink(os.path.join(dp, d)): scan(os.readlink(os.path.join(dp, d)))
+            for f in fn: read(os.path.join(dp, f))
     for top in CONFIG_FLAT:
         try: names = os.listdir(top)
         except FileNotFoundError: continue
@@ -103,6 +111,25 @@ def config_refs():
                  glob.glob('%s/%s/backend/*/generation-identity.json' % (AGENT_WORK, root)):
             read(p)
     return refs
+
+
+def loaded(p):
+    """Whether systemd or nginx would load this file by its place and name (an unreadable one then stops the run)."""
+    base, parent = os.path.basename(p), os.path.basename(os.path.dirname(p))
+    return ('/sites-enabled/' in p or base.endswith(UNIT_SUFFIXES) or
+            (base.endswith('.conf') and (parent in ('conf.d', 'modules-enabled') or parent.endswith('.d'))))
+
+
+def reader_picks():
+    """The copies a reader trusts by its own rule (newest N by mtime of a glob)."""
+    out = set()
+    for pattern, n in READER_PICKS:
+        got = []
+        for p in glob.glob(pattern):
+            try: got.append((os.lstat(p).st_mtime, p))
+            except FileNotFoundError: pass
+        out.update(p for _, p in sorted(got, reverse=True)[:n])
+    return out
 
 
 def in_use():
@@ -140,17 +167,17 @@ def changed(st): return max(st.st_mtime, st.st_ctime)
 
 
 def copy_time(copy, files):
-    """When this copy was made: the timestamp in its name, else the newest mtime/ctime of its files."""
+    """When this copy was made: the timestamp in its name, else its newest mtime."""
     m = STAMP.search(os.path.basename(copy))
     if m:
         y, mo, d, h, mi, s = (int(x or 0) for x in m.groups())
         if 1 <= mo <= 12 and 1 <= d <= 31 and h < 24: return calendar.timegm((y, mo, d, h, mi, s))
-    return max(changed(os.lstat(p)) for p in files)
+    return max(os.lstat(p).st_mtime for p in files)
 
 
 def backup_plan(refs, used):
-    """(remove, keep) lists of backup copies past the newest KEEP of each (directory, name, scheme)."""
-    remove, kept = [], []
+    """(remove, keep) lists of backup copies past the newest KEEP of each (directory, name)."""
+    remove, kept, picked = [], [], reader_picks()
     for d in BACKUP_DIRS:
         try: names = os.listdir(d)
         except FileNotFoundError: continue
@@ -162,28 +189,33 @@ def backup_plan(refs, used):
             try:
                 if not stat.S_ISREG(os.lstat(p).st_mode): continue
             except FileNotFoundError: continue
-            group = groups.setdefault((m.group('name'), m.group('scheme')), {})
+            group = groups.setdefault(m.group('name'), {})
             group.setdefault(os.path.join(d, COMPANION.sub('', n)), []).append(p)
         for copies in groups.values():
             try: newest = sorted(copies, key=lambda c: copy_time(c, copies[c]), reverse=True)
             except FileNotFoundError: continue           # a deploy is moving files: next run
             for i, c in enumerate(newest):
                 files = copies[c]
-                if i < KEEP or any(named(p, refs, used) for p in files): kept.extend(files)
+                if i < KEEP or any(named(p, refs, used) or p in picked for p in files): kept.extend(files)
                 else: remove.extend(files)
     return remove, kept
 
 
-def recent(root, cut):
-    """True when anything in the tree changed after `cut`, or part of it cannot be read (we could not remove it)."""
-    if changed(os.lstat(root)) > cut: return True
+def blocker(root, cut):
+    """Why `root` must stay: changed after `cut`, partly unreadable, holding another user's files, or crossing a mount.
+    None when it is idle and wholly ours to remove."""
+    me, top = os.geteuid(), os.lstat(root)
+    if changed(top) > cut: return 'changed in the last %d days' % IDLE_DAYS
+    if top.st_uid != me: return 'owned by another user'
     unreadable = []
     for dp, dn, fn in os.walk(root, onerror=unreadable.append):
         for n in dn + fn:
-            try:
-                if changed(os.lstat(os.path.join(dp, n))) > cut: return True
-            except FileNotFoundError: pass
-    return bool(unreadable)
+            try: st = os.lstat(os.path.join(dp, n))
+            except FileNotFoundError: continue
+            if changed(st) > cut: return 'changed in the last %d days' % IDLE_DAYS
+            if st.st_uid != me: return 'holds files owned by another user'
+            if st.st_dev != top.st_dev: return 'crosses a mount point'
+    return 'partly unreadable' if unreadable else None
 
 
 def root_plan(refs, used, now):
@@ -199,8 +231,7 @@ def root_plan(refs, used, now):
         try:
             if os.path.islink(p) or not os.path.isdir(p): kept.append((p, 'not a directory')); continue
             why = ('named by the live configuration or a process' if n in refd else 'one of the newest generations' if n in gens
-                   else 'holds RETAIN' if os.path.lexists(os.path.join(p, 'RETAIN')) else
-                   'changed in the last %d days, or partly unreadable' % IDLE_DAYS if recent(p, cut) else None)
+                   else 'holds RETAIN' if os.path.lexists(os.path.join(p, 'RETAIN')) else blocker(p, cut))
         except FileNotFoundError: continue
         if why: kept.append((p, why))
         else: remove.append(p)
@@ -284,9 +315,9 @@ def main(argv=None):
         except OSError as e: failed.append('%s: %s' % (p, e))
     cut = now - IDLE_DAYS * 86400
     for p in roots:
-        try:
-            if recent(p, cut): failed.append('%s: changed since planning; kept' % p); continue
+        try: why = blocker(p, cut)
         except FileNotFoundError: continue
+        if why: failed.append('%s: %s (found after planning); kept' % (p, why)); continue
         remove_tree(p, failed); done += 1
     for p in checkouts: remove_tree(p, failed); done += 1
     out = ['%s done: %d removed, %d problems' % (stamp(), done, len(failed))] + ['  NOT REMOVED ' + f for f in failed]

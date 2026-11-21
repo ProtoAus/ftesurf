@@ -16,7 +16,7 @@ import pi_retention as r
 DAY = 86400
 REAL = time.time()
 NAMES = ('AGENT_WORK', 'OPS', 'TASUPD_RELEASES', 'BACKUP_DIRS', 'CONFIG_TREES', 'CONFIG_FLAT', 'CONFIG_FILES', 'CRONTAB',
-         'NOW', 'AW_NAME', 'PATH', 'config_refs', 'in_use', 'recent', 'remove_tree')
+         'NOW', 'AW_NAME', 'PATH', 'READER_PICKS', 'config_refs', 'in_use', 'blocker', 'remove_tree')
 
 
 class Base(unittest.TestCase):
@@ -28,6 +28,7 @@ class Base(unittest.TestCase):
         for p in (self.data, self.aw, self.ops, self.rel, self.etc): p.mkdir()
         r.BACKUP_DIRS, r.AGENT_WORK, r.OPS, r.TASUPD_RELEASES = (str(self.data),), str(self.aw), str(self.ops), str(self.rel)
         r.CONFIG_TREES, r.CONFIG_FLAT, r.CONFIG_FILES, r.CRONTAB = (str(self.etc),), (), (), ('true',)
+        r.READER_PICKS = ()
         r.AW_NAME = re.compile(re.escape(str(self.aw)) + r'/([A-Za-z0-9._-]+)')
         r.PATH = re.compile(re.escape(str(d)) + r'/[A-Za-z0-9._@+=/-]+')
         self.now = REAL + 30 * DAY; r.NOW = lambda: self.now
@@ -83,15 +84,27 @@ class Backups(Base):
         old = self.file(d / 'fteqw-svarm64.pre1600-20261117T032800Z', 1)
         self.assertEqual(r.backup_plan(set(), set())[0], [old])
 
-    def test_each_naming_scheme_keeps_its_own_two(self):
-        """tasupd reads the newest two csprogs.dat.pre[0-9]*: a .bak or .pre- copy must not push one out."""
+    def test_two_per_file_whatever_the_naming_and_a_readers_picks_stay(self):
+        """Lex: 2 at most. tasupd trusts the newest two csprogs.dat.pre[0-9]* by mtime: those stay too."""
         d = self.data
-        pre = [self.file(d / 'csprogs.dat.pre1648-20261120T101329Z', 9), self.file(d / 'csprogs.dat.pre1672-20261120T175500Z', 8)]
-        other = [self.file(d / 'csprogs.dat.bak', 1), self.file(d / 'csprogs.dat.pre-p1700', 1),
-                 self.file(d / 'csprogs.dat.bak-2', 1), self.file(d / 'csprogs.dat.pre-p1701', 1)]
+        r.READER_PICKS = ((str(d / 'csprogs.dat.pre[0-9]*'), 2),)
+        picks = [self.file(d / 'csprogs.dat.pre1648-20261120T101329Z', 9), self.file(d / 'csprogs.dat.pre1672-20261120T175500Z', 8)]
+        gone = self.file(d / 'csprogs.dat.pre1600-20261117T032800Z', 20)
+        newest = [self.file(d / 'csprogs.dat.bak', 1), self.file(d / 'csprogs.dat.pre-p1700', 1)]
+        extra = self.file(d / 'csprogs.dat.bak-2', 2)
         remove, kept = r.backup_plan(set(), set())
-        self.assertEqual(remove, [])
-        for p in pre + other: self.assertIn(p, kept)
+        self.assertEqual(sorted(remove), sorted([gone, extra]))
+        for p in picks + newest: self.assertIn(p, kept)
+
+    def test_a_chgrp_does_not_make_an_old_unstamped_copy_newest(self):
+        """ctime moves on chmod/chgrp: two 23 Oct copies must not push out the 20-21 Nov rollback copies."""
+        d = self.data
+        stamped = [self.file(d / 'csprogs.dat.pre0154-20261121T013746Z', 25), self.file(d / 'csprogs.dat.pre1692-20261120T202249Z', 25)]
+        oct23 = 1792713600   # 2026-10-23T00:00Z
+        old = [self.file(d / n, 0) for n in ('csprogs.dat.pre948-01a16480.prev', 'csprogs.dat.pre948-strcmp-01a16480.prev')]
+        for p in old: os.utime(p, (oct23, oct23)); os.chmod(p, 0o640)          # fresh ctime
+        self.assertEqual(sorted(r.backup_plan(set(), set())[0]), sorted(old))
+        self.assertTrue(stamped)
 
     def test_a_named_or_used_copy_stays_past_two(self):
         d = self.data
@@ -137,7 +150,28 @@ class Roots(Base):
         locked = Path(p) / 'nginx-before'; locked.mkdir(); os.chmod(locked, 0)
         os.utime(p, (self.now - 25 * DAY,) * 2)
         remove, kept = r.root_plan(set(), set(), self.now)
-        self.assertEqual(remove, []); self.assertIn('unreadable', dict(kept)[p])
+        self.assertEqual(remove, []); self.assertEqual(dict(kept)[p], 'partly unreadable')
+
+    def test_another_users_files_keep_the_root(self):
+        p = self.dir(self.aw / 'theirs', 25)
+        real = os.geteuid; os.geteuid = lambda: real() + 1
+        try: remove, kept = r.root_plan(set(), set(), self.now)
+        finally: os.geteuid = real
+        self.assertEqual(remove, []); self.assertEqual(dict(kept)[p], 'owned by another user')
+
+    def test_another_users_file_deep_inside_keeps_the_root(self):
+        p = self.dir(self.aw / 'mixed', 25); inner = self.file(Path(p) / 'a' / 'root-owned.conf', 25)
+        os.utime(Path(p) / 'a', (self.now - 25 * DAY,) * 2); os.utime(p, (self.now - 25 * DAY,) * 2)
+        real = os.lstat
+        def lstat(q, *a, **k):
+            st = real(q, *a, **k)
+            if str(q) != inner: return st
+            return os.stat_result((st.st_mode, st.st_ino, st.st_dev, st.st_nlink, st.st_uid + 1, st.st_gid, st.st_size,
+                                   st.st_atime, st.st_mtime, st.st_ctime))
+        os.lstat = lstat
+        try: remove, kept = r.root_plan(set(), set(), self.now)
+        finally: os.lstat = real
+        self.assertEqual(remove, []); self.assertEqual(dict(kept)[p], 'holds files owned by another user')
 
     def test_a_referenced_old_generation_stays(self):
         aw = self.aw
@@ -216,6 +250,25 @@ class Refs(Base):
         r.CRONTAB = ('sh', '-c', 'echo "no crontab for proto" >&2; exit 1')
         self.assertEqual(self.run_main()[0], 0)
 
+    def test_an_unreadable_copy_a_loader_picks_up_stops_the_run(self):
+        if os.geteuid() == 0: self.skipTest('root reads everything')
+        for rel in ('nginx/conf.d/x.pre-1.conf', 'systemd/system/foo.service.d/20-a.pre1.conf', 'systemd/system/a.service.pre1-x.service'):
+            f = self.file(self.etc / rel, 1); os.chmod(f, 0)
+            rc, out = self.run_main('--apply'); os.chmod(f, 0o600); os.unlink(f)
+            self.assertEqual(rc, 2, rel)
+
+    def test_a_link_to_something_unreadable_stops_the_run(self):
+        if os.geteuid() == 0: self.skipTest('root reads everything')
+        locked = self.d / 'locked'; self.file(locked / 'real.service', 1); os.chmod(locked, 0)
+        os.symlink(locked / 'real.service', self.etc / 'enabled.service')
+        rc, out = self.run_main('--apply'); os.chmod(locked, 0o700)
+        self.assertEqual(rc, 2, out)
+
+    def test_a_linked_configuration_folder_is_read(self):
+        real = self.d / 'real-dropins'; self.file(real / '10.conf', 1, ('ReadOnlyPaths=%s/via-link/x' % self.aw).encode())
+        os.symlink(real, self.etc / 'surfd.service.d')
+        self.assertIn('%s/via-link/x' % self.aw, r.config_refs())
+
     def test_tls_keys_may_be_unreadable(self):
         if os.geteuid() == 0: self.skipTest('root reads everything')
         k = self.file(self.etc / 'nginx' / 'ssl' / 'site.key', 1); os.chmod(k, 0)
@@ -264,6 +317,15 @@ class Run(Base):
         self.assertEqual(os.stat(parent).st_mode, before)
         self.assertEqual(os.stat(outside).st_mode & 0o777, 0o755)
 
+    def test_a_folder_we_do_not_own_is_not_made_writable(self):
+        root = self.dir(self.aw / 'not-ours', 25)
+        ro = Path(root) / 'ro'; ro.mkdir(); self.file(ro / 'f', 25); os.chmod(ro, 0o500)
+        real = os.geteuid; os.geteuid = lambda: real() + 1
+        failed = []
+        try: r.remove_tree(root, failed)
+        finally: os.geteuid = real
+        self.assertTrue(failed); self.assertEqual(os.stat(ro).st_mode & 0o777, 0o500)
+
     def test_a_failure_is_logged_and_exits_one(self):
         root = self.dir(self.aw / 'stuck', 25)
         r.remove_tree = lambda p, failed: failed.append('%s: Permission denied' % p)
@@ -282,10 +344,10 @@ class Run(Base):
     def test_a_root_written_after_planning_is_kept(self):
         root = self.dir(self.aw / 'woke-up', 25)
         calls = []
-        def recent(p, cut): calls.append(p); return len(calls) > 1      # idle when planned, written before removal
-        r.recent = recent
+        def blocker(p, cut): calls.append(p); return 'changed in the last 14 days' if len(calls) > 1 else None
+        r.blocker = blocker
         rc, out = self.run_main('--apply')
-        self.assertEqual(rc, 1); self.assertTrue(os.path.isdir(root)); self.assertIn('changed since planning', out)
+        self.assertEqual(rc, 1); self.assertTrue(os.path.isdir(root)); self.assertIn('(found after planning); kept', out)
 
     def test_the_log_keeps_its_last_2000_lines(self):
         log = self.ops / 'retention.log'; log.write_text('old\n' * 2500)
@@ -298,7 +360,7 @@ class Patterns(unittest.TestCase):
     def test_backup_names(self):
         def m(n):
             x = r.BACKUP.match(n); return x and (x.group('name'), x.group('scheme'))
-        self.assertEqual(m('surfd.db.bak-pre1674-20261120T175713Z'), ('surfd.db', '.bak'))
+        self.assertEqual(m('surfd.db.bak-pre1674-20261120T175713Z'), ('surfd.db', '.bak'))   # name, scheme
         self.assertEqual(m('csprogs.dat.pre1648-20261120T101329Z'), ('csprogs.dat', '.pre'))
         self.assertEqual(m('story.txt.pre1681-20261121T014239Z'), ('story.txt', '.pre'))
         self.assertEqual(m('receipts-pre1580r-20261117T215426Z.jsonl'), ('receipts', '-pre'))
