@@ -1,6 +1,11 @@
 # BACKLOG.md
 
 ## P1704 views over HTTPS -- what it leaves (21 Nov, worldofsurf-47)
+- Found by P1704's review 14, older than it: a server can list `quake.rc`/`hexen.rc` in its model precache;
+  CL_EnqueDownload lets it into ftesurf/downloads/, and CL_ExecInitialConfigs (cl_main.c ~8348) then picks the quake.rc
+  branch (the addon hit counts) and skips cfg/default.cfg, ftesurf.cfg and autoexec.cfg on every later launch: engine
+  defaults, rec_upload back on, rec_hid_upload off. Fix: ignore addon-only hits there (FS_FileIsAddonOnly, as for
+  config.cfg) or refuse .rc/.cfg downloads.
 - Deploy order: surfd generation + `setup_public.sh --view-only` (nginx /api/view), then the lobby engine, then
   `set sv_recupload_https 1` in the Pi-only lobby_local.cfg (lobby.cfg ships 0; test cfgs exec it), then measure:
   of the views receipts sign, how many land (netchan baseline 18-21 Nov: 23 of 67; surfd logs `stored view` / `view
