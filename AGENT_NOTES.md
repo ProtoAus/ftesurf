@@ -8,10 +8,13 @@
 - Controller input can be injected for an arm with `in_journal_synth 1 pad <v>` (right stick held at v) and
   `in_journal_synth 1 padkey [down|up] [dpad]`; both count a script lapse every input frame while set, so such a run
   is unranked (`changed`) as well as tagged. `cmd timer` prints `pad` (the run's mark) and `padin` (counts arrive).
-- A headless nested-compositor harness on the owner's PC: on 21 Nov the owner's labwc aborted (wlroots assert on a DRM
-  flip, NVIDIA) about a second after such a rig shut down its GPU client. Cause not proven; run harnesses off the GPU
-  (WLR_RENDERER=pixman for the nested compositor; client __EGL_VENDOR_LIBRARY_FILENAMES=.../50_mesa.json,
-  LIBGL_ALWAYS_SOFTWARE=1 -- its log then says GL_RENDERER llvmpipe), and not while the owner's game is running.
+- The owner's labwc abort on 21 Nov (12:13 local) was a wlroots 0.20.2 bug, not a test rig. Read from its core dump:
+  the owner's lock screen committed a 2560x1600 buffer on a 1.25-scale monitor, and its import failed. 0.20.2 kept
+  the old 2048x1280 client buffer while the surface reported the new size, so render/pass.c:23 asserted on the next
+  frame. Reproduced CPU-only with a forced import failure; upstream fix e8c9838 (master only), and the owner now runs
+  a patched wlroots0.20 0.20.2-2. Still run nested-compositor harnesses off the GPU (WLR_RENDERER=pixman for the
+  nested compositor; client __EGL_VENDOR_LIBRARY_FILENAMES=.../50_mesa.json, LIBGL_ALWAYS_SOFTWARE=1 -- its log then
+  says GL_RENDERER llvmpipe), and not while the owner's game is running.
 
 ## P1692 retry: driving it from a test arm (21 Nov 2026)
 
