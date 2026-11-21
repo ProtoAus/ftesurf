@@ -133,7 +133,8 @@ vector(vector org, vector ang) FS_PortalTransformView =
        is empty (VBSP_ClusterPVS).  P802 dropped the noclip test that stood here, which
        hid every door from a noclipping player inside the map as well.  P1698: on a Source
        map CSQC's checkpvs judges a solid eye from the last good cluster, as the world draws,
-       so doors stay offered inside r_voidvis_margin; the far void still refuses them.
+       so doors stay offered inside r_voidvis_margin and after a fall out of the map; in the
+       noclip void overview it offers them and the engine's cluster -1 gate refuses the render.
     3  FACING.  You cannot see through the back of a portal, and GLR_DrawPortal
        refuses one you are behind -- which, before Patch 206 taught its depth
        mask the same test, is exactly where the transparent square came from.

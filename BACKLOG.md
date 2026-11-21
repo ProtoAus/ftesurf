@@ -1,5 +1,18 @@
 # BACKLOG.md
 
+## P1698 Source sky as a hole -- what it leaves (21 Nov, worldofsurf-42)
+- Site: `src/client/cl_emit.qc` persistent bursts (ps_bpers). A glow placed once lives in the engine's particle list
+  and shows through a sky after you leave its area. Fix: re-place it with a short life while in view, or draw it as
+  gated polygons.
+- Site: engine/plugin `VBSP_FindTouchedLeafs` (Patch 257). A box over three or more areas keeps two and can be culled
+  from the third; P1698 sends more records through that test (network and CSQC entities). Cheap fix: treat > 2 areas
+  as overflow (vbsp_lasttouch_nareas is already counted) -- it also changes the server's send test.
+- Ungated still: engine trails and effects from packet entities, tesla arcs, explosions, world text, spotlight shafts
+  and lasers (sky-traced, P1218), your own trail under a detached camera, r_rampwear overlays.
+- Not measured: a lobby with other players; a sky-room entity seen through a sky face.
+- Found on the way, not P1698's: tools/qcframes.py flags `Line_Alloc` (cl_lines.qc) holding globals ln_nath/ln_nat in
+  its frame (put back on every return), in main's csprogs too.
+
 ## P1703 journal in online play -- what it leaves (21 Nov, worldofsurf-47)
 - Set surfd.env SURFD_NOEV_JOURNAL_SINCE to the release time of the build whose menu asks for terms 10 (before it,
   runs are accepted without a journal); then SURFD_NOEV=1 once views upload reliably (P1699).

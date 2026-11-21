@@ -21,6 +21,10 @@
 
 ## next
 
+### P1698 The sky is a window, not a cutoff
+- On Source maps the sky no longer hides what is behind it at twice its distance (it hid more the closer you flew). What you could see behind the sky is drawn, as in Source, and only that: other stages' players, trails, effects, ropes and decals are no longer drawn where you cannot see them.
+- ahop_coast's sea no longer has a jagged edge seen from outside the map. Zone outlines show again on a few maps without vis data.
+
 ### P1703 The input journal is part of online play
 - Playing on the lobbies now always includes your input journal (your raw mouse and keyboard timings during a run), sent privately for anti-cheat review of top runs. It used to be a box you could untick.
 - If you already play online, the game shows the updated terms once when it starts. Runs you set before this keep their place without a journal. To keep the journal on your PC, play single player or on your own server.

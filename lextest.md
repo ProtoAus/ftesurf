@@ -1,5 +1,17 @@
 # lextest.md — things waiting on a human
 
+## P1698 -- the sky is a hole, and only what you could see shows behind it (worldofsurf-42) -- your dev install
+1. ahop_coast save 3 (west of the map, looking back): the sea draws whole, no jagged diagonal cut, zone outlines show.
+   Fly toward any sky and away: nothing behind it shrinks or vanishes as you get closer.
+2. Maps where other stages' ramps used to show in the sky: they should not (only what the PVS holds draws, as in
+   Source). If you see something floating in a sky, tell me the map and where (`viewpos`).
+3. In a lobby with other players on other stages: you do not see their bodies through your stage's sky (the engine
+   does that). Their trails, hats, ropes and map effects follow only once the lobbies run this game code (in a lobby
+   your game runs the lobby's csprogs); until then those can still float in a sky there. Local games have it all.
+4. Things that must still be there: doors, movers, trains, ropes and power cables, fire and dust, your knife or gun,
+   sprays and decals, on maps without vis too (surf_leidenfrost). `r_entpvs_source 0` is the old behaviour for a
+   comparison (only the entity part; the sky stays a hole).
+
 ## P1703 -- the input journal is part of online play (worldofsurf-47) -- with the next release
 1. Start the game with the new build: as an existing online player you see the terms once, with no journal box.
    Press Play online. F2 > Input journal now says the journal is part of online play (no Stop button).
@@ -12,8 +24,6 @@
    to the whole map, and none when you fly back in (it reloaded every particle shader: 375 ms here on the software
    renderer, 6 ms now).
 2. Particles still look right afterwards (fire, sparks, map effects) once you are back inside.
-The sky (your second point) is not in this build: removing the sky mask exposed things drawn with no visibility test
-(other players and their trails on other stages, sky-room props, decals, particle ropes); that work continues as P1698.
 
 ## P1700 -- TAS uploads on the website (root FTESurf-worktrees/tasweb-20261121-a03) -- LIVE 21 Nov (tasupd da9042b3)
 1. proto.bar/ftesurf/ (Overview, Zoning, Anti-Cheat): the menu has "TAS uploads"; it opens play.proto.bar/tasup/. The
