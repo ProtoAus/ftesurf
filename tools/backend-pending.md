@@ -1,5 +1,17 @@
 # Backend handoff delivered together — 10 November 2026 UTC
 
+## 21 Nov 2026 11:27Z: gen1702 LIVE -- the base for the NEXT generation (worldofsurf-47, Lex "Release + lobbies now")
+Primary 74bb6404 (members-v1, 92 members) = gen1674's files + REF 4fa70237's surfd changes (admin.py, hidupload.py,
+recplot.py, surfd.py, sweep.py, templates/admin{,_accounts,_maps,_run,_runs}.html, web/board.{css,html,js}, added
+templates/admin_top10.html); fallback 759e3931 = gen1674's 91. Root /srv/nvme/agent-work/gen1702-20261121-a03; private kit
+FTESurf-private/worktrees/gen1702-20261121-a03 (OWNER.md has every step); generation.json "built" recorded for advance.py.
+Carries P1694 surfd half, P1697, P1699 (OFF), P1700, P1703, P1704. runs.pad/replays.pad added by hand 10:07Z (backup
+surfd.db.bak-pre1702-20261121T100658Z). Root: trimmed drop-in 4d92f72e (139 lines, 2 preflights) -> each surfd start
+took ~2 s (was ~280 s), so the next kit may lower START_TIMEOUT. POSTFLIGHT PASS (mapwatch graded after 12:23Z).
+Readers stay pinned (P1671 recsim, P1694 reccheck NOT in SURFD_TOOLS yet). The static board follows 74bb6404 (11:30Z).
+Ordering note: 0.1.55 (engine 1694) reached the lobbies at 10:03Z, before this generation; one run was posted in
+10:03-11:27Z, so at most that run lacks a controller tag (no backfill).
+
 ## 21 Nov 2026 01:36Z: gen1674 (P1674) LIVE -- the base for the NEXT generation (tools/p1672-delivery.md)
 Primary cd1965f1 = gen1650's files + party_lobbies/surfd/tournament_pool/tournament_rules at main 9ccec5dc (pool keeps
 one build per map family; tournament standings on GET /api/tournament-lobbies?stats=1). The next generation takes
@@ -7,7 +19,11 @@ CURRENT = cd1965f1 (root /srv/nvme/agent-work/gen1674-20261121-e3; kit FTESurf-p
 pins native fteqw-svarm64 1753f9d4 (lobby engine patch-1683, swapped 01:38Z), and keeps the consumer's 900 s
 `systemctl start` (its drop-in will have 18 ExecStartPre blocks, ~280 s; or the owner prunes retired blocks).
 
-## P1704 views over HTTPS -- surfd + nginx part READY for the NEXT generation; lobby engine AFTER it (worldofsurf-47)
+## P1704 views over HTTPS -- LIVE 21 Nov 11:28Z (all three steps; worldofsurf-47)
+DONE: 1 in gen1702; 2 nginx --view-only 10:11Z (surfd.conf 91769a88, ratelimit f05ef5db; empty POST -> 413); 3 lobby
+engine patch-1704 (820137cd / plugin 04933baf, agent-work eng1704-20261121-47, gate identical) swapped 11:28:26Z with
+`set sv_recupload_https 1` in lobby_local.cfg (backup .pre1704-20261121T112821Z); rcon reads 1 on all 12. STILL TO
+SEE: the first `stored view for <map>/<runid>` in surfd.log from a 0.1.55 client. Steps as written:
 1. surfd/hidupload.py: POST /api/view (`FTESURF-VIEW 1`, exactly the receipt's signed view, finished runs,
    min(4 MiB, 256 KiB + 4 KiB/tick), 30/min, statement names the receipt's server; a refused mismatch leaves
    <map>/<runid>.viewrefused). Check: surfd/test_hidupload.py (29).
@@ -28,11 +44,11 @@ pins native fteqw-svarm64 1753f9d4 (lobby engine patch-1683, swapped 01:38Z), an
    surfd/sweep.py reads <runid>.viewrefused (no .view beside it) as the digest FAULT the netchan route gave. install_board_endpoint.sh writes the view zones too (surfd.nginx uses them).
    The collector now answers a missing receipt 410 on /api/hid too (it was 503): final, so clients do not re-send.
 
-## P1703 journal in online play -- surfd part READY for the NEXT generation (worldofsurf-47)
+## P1703 journal in online play -- surfd part LIVE in gen1702 (21 Nov 11:27Z); SURFD_NOEV_JOURNAL_SINCE unset (owner)
 surfd/surfd.py: SURFD_NOEV_JOURNAL_SINCE (epoch seconds; unset = a missing Windows journal never counts toward P1699's
 mark). Set it to the release time of the build whose menu asks for terms 10. Check: surfd/test_noev.py.
 
-## NEXT GENERATION KIT READY (offline): gen1702 (session a03de808, 21 Nov)
+## gen1702 kit (session a03de808, 21 Nov) -- RAN 21 Nov 11:24Z (worldofsurf-47); see the top entry
 Private kit FTESurf-private/worktrees/gen1702-20261121-a03 (RUNBOOK.md), made with the one maintained tool
 FTESurf-private/genkit/advance.py. It resolves both blockers below (ships the members-v1 guard and
 templates/admin_top10.html, excludes tasupd*.py), adds hand step 2c for P1694's runs.pad/replays.pad (as gen1603 did
@@ -40,7 +56,7 @@ plat), installs a TRIMMED drop-in (1303 -> 139 lines, 17 -> 2 preflights) and gi
 rotation. Its step 4 requires the deployed tools/pi_retention.py to keep what the newest two generations' code names.
 Dry build at main 4caa1ad7 passes every bank; two independent reviews + a fix round. Waits for Lex's go.
 
-## BLOCKERS for a generation at current main (session a03de808, 21 Nov; checked against the gen1674 kit)
+## BLOCKERS for a generation at current main -- RESOLVED by gen1702 (kept for the reasoning)
 1. surfd/tasupd.py + tasupd_wsgi.py (P1640/P1696/P1700) are a separate service (tools/install_tasupd.py), not surfd
    runtime, but sit in surfd/: the kit's build_candidate.py asserts "REF adds modules outside the 91-member runtime".
    The kit must exclude tasupd*.py (they never ship in a generation).
@@ -53,25 +69,25 @@ Dry build at main 4caa1ad7 passes every bank; two independent reviews + a fix ro
 Also: the guard re-hashes all 91 members at every `launch` (surfd_transition_guard.py verify_hashes), so a member
 edited in place in a live generation stops the next surfd start. Never hand-edit a generation's files.
 
-## P1700 board menu link -- READY for the NEXT generation (session a03de808, 21 Nov)
+## P1700 board menu link -- LIVE in gen1702 (21 Nov 11:27Z)
 - surfd/web/board.html: one `<a href="https://play.proto.bar/tasup/">TAS uploads</a>` after Anti-Cheat in the site
   nav (the static pages and tasupd carry it already), and a "TAS uploads for this map" button under each map's title,
   which board.js showMap points at /tasup/board?map=<map>[&track=<n> for a whole course]. Markup and two lines of
   board.js; no surfd code or schema change. Lex (21 Nov) asked for both on the Players and Leaderboard tabs.
 
-## P1699 "no evidence" mark -- READY for the NEXT generation, switched OFF (worldofsurf-47)
+## P1699 "no evidence" mark -- LIVE in gen1702, switched OFF (SURFD_NOEV unset; owner turns it on)
 surfd/surfd.py (noev_reasons, board_rows' `noev`), web/board.js + board.css; the lobby QC (cl_online/cl_scores) shows
 it once the JSON carries it. Leave SURFD_NOEV unset until top-10 evidence uploads are reliable (21 Nov, live db: of
 239 WOS main/bonus rows from 14 days, 33 had no receipt, 167 no view, 188 Windows rows no journal; 13 complete).
 Check: surfd/test_noev.py; live, /api/board rows carry no `noev` while the switch is off.
 
-## P1697 top-10 review page -- READY for the NEXT generation (worldofsurf-47)
+## P1697 top-10 review page -- LIVE in gen1702 (21 Nov 11:27Z; /admin/top10 behind login)
 surfd/admin.py (list_top10, rec_startlag, /admin/top10, /admin/api/top10), surfd/recplot.py (the `startlag` record into
 the admin cert), templates/admin_top10.html (new), admin_run.html (start lag row), the "Top 10" nav link in admin.html,
 admin_runs.html, admin_run.html, admin_maps.html, admin_accounts.html and reportd_reports.html. Read-only: no schema,
 no board or verdict change. Check: surfd/test_admin.py (section 9t); live, /admin/top10 lists rows after login.
 
-## P1694 controller tag -- surfd half READY for the NEXT generation; BEFORE the next client release (worldofsurf-6f)
+## P1694 controller tag -- surfd half LIVE in gen1702 (11:27Z; columns 10:07Z); reccheck pin and sv_rank_padcount pending
 Game main 9841756b. Files: surfd/surfd.py (`runs_pad`: `ALTER TABLE runs|replays ADD COLUMN pad INTEGER NOT NULL
 DEFAULT 0`, idempotent, no schema bump; post `pad=1` and the finish record `pad 1` raise it like `plat`; board and
 maps JSON `pad: 1`), surfd/recplot.py, surfd/web/board.js + board.css, surfd/templates/admin_run.html; SURFD_TOOLS
