@@ -242,9 +242,11 @@ def review_section(pw_hash, pw):
         return c.get("/admin/api/run/%d" % rid).get_json()
 
     def board():
+        # P1699's `noev` follows the receipt reader's watermark by design (test_noev.py); key decisions must not move
+        # anything else
         b = m.app.test_client().get("/api/board", query_string={
             "map": "surf_kitsune", "limit": "200"}).get_json()
-        return {x["player"]: x for x in b["rows"]}
+        return {x["player"]: {k: v for k, v in x.items() if k != "noev"} for x in b["rows"]}
 
     def pending():
         conn = m.connect()

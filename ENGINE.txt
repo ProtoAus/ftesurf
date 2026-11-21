@@ -1,4 +1,8 @@
 # The engine build this QuakeC requires.
+# P1699 (backend surfd.py board.js/css; QC cl_online.qc cl_scores.qc; Lex 21 Nov: "Show it with a 'no evidence'
+# mark"): a WOS top-10 main/bonus run whose receipt, view file or (Windows) journal never arrived carries `noev` on
+# the boards: grey "no evidence" after the name, a tooltip line. OFF until surfd.env SURFD_NOEV=1: on 21 Nov 226 of
+# 239 recent WOS rows lacked a view or journal, so uploads come first. No engine change. Record: ENGINE_PATCHES P1699.
 # P1697 (backend surfd/admin.py recplot.py templates/admin_top10.html admin_run.html + nav; Lex's anti-cheat finish
 # list item 7, worldofsurf-47): /admin/top10 lists every row standing in a ranked top 10 (main, bonus, stage), newest
 # first, with verdict, review, receipt (signature, view angles, journal), Linux/Controller tags and the run's start

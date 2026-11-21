@@ -2446,11 +2446,12 @@ float(vector rp, vector rs, float tick, float pad) Scores_DrawLocalRows =
 // P1569: a helped run's runner count ("" none) and the hover line naming every runner.
 string(float idx) Scores_HelpTag =
 {
-	local string h;
+	local string h, ev;
+	ev = (ob_noev[idx] > 0) ? " ^x888no evidence^7" : "";     // P1699
 	h = bufstr_get(ob_bhelp, idx);
 	if (h == "")
-		return "";
-	return strcat(" ^xACF+", substring(h, 0, strstrofs(h, "|", 0)), "^7");
+		return ev;
+	return strcat(" ^xACF+", substring(h, 0, strstrofs(h, "|", 0)), "^7", ev);
 };
 
 string(float idx) Scores_HelpTip =
@@ -2476,6 +2477,8 @@ string(float idx) Scores_OnlineTip =
 		t = strcat("Linux: Not mouse verified", strcmp(t, "") ? "\n" : "", t);
 	if (ob_pad[idx] > 0)            // P1694
 		t = strcat("Controller", strcmp(t, "") ? "\n" : "", t);
+	if (ob_noev[idx] > 0)           // P1699
+		t = strcat(t, strcmp(t, "") ? "\n" : "", "No evidence: this top-10 run's view file or input journal never arrived");
 	return t;
 };
 

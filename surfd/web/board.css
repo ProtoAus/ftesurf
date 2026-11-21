@@ -208,6 +208,10 @@ table.runs { width: 100%; border-collapse: collapse; margin-top: 6px; font-size:
   vertical-align: 1px;
 }
 .vchip { color: #041018; background: var(--accent); }
+/* P1699: a WOS top-10 run whose evidence never arrived. */
+.noev { display: inline-block; margin-left: 6px; font-family: var(--sans); font-size: 10.5px; font-weight: 700;
+        letter-spacing: 0.06em; border-radius: 2px; padding: 0 4px; line-height: 1.5; vertical-align: 1px;
+        color: var(--dim); border: 1px solid var(--border); cursor: help; }
 .src { cursor: help; margin-left: 6px; }
 .src-momentum { color: #E8EFFF; background: var(--foreign); }
 .src-ksf { color: #0A0F06; background: #9BC94E; }

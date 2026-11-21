@@ -139,6 +139,11 @@ MOMENTUM_DIR = os.environ.get(
     "SURFD_MOMENTUM",
     os.path.join(os.path.dirname(os.path.normpath(RUNS_DIR)), "momentum"))
 EVIDENCE_SETTLE = 600    # s; a file with no `end` younger than this may be mid-write
+# P1699 (Lex, 21 Nov: "Show it with a 'no evidence' mark"): a WOS top-10 main-course or bonus run whose evidence never
+# arrived is marked on the boards. Runs before NOEV_SINCE are not judged (older rows predate receipts); a run is judged
+# only once the receipt reader's watermark is NOEV_MARGIN past its submission.
+NOEV_SINCE = 1795219200  # 2026-11-21 00:00 UTC
+NOEV_MARGIN = 120        # s; the receipt is written at the run's end, a moment before the post
 # s; how long sweep.py holds a receipt's signed journal PENDING (re-read when
 # the .hid appears) before calling it ABSENT.  A 4 MiB journal is 5462 768-byte
 # chunks, one per round trip: 14 min at 150 ms.
@@ -704,6 +709,10 @@ def setting(name, default=None):
 
 
 PUBLIC_HOST = load_public_host(setting("SURFD_PUBLIC_HOST"))
+# P1699: the "no evidence" mark is off until SURFD_NOEV=1. On 21 Nov 226 of the 239 WOS main/bonus rows from the
+# previous 14 days lacked a view file or a Windows journal (uploads are opt-in or best effort), so it would mark
+# almost every top-10 run; it goes on once top-10 evidence is uploaded reliably.
+NOEV_ON = (setting("SURFD_NOEV") or "").strip() == "1"
 # RANKED MEANS LINKED (Patch 629, ROADMAP 14.3 a).  On unless the setting is
 # "0": a ranked row is stored under the SteamID of the account the run's
 # connection proved a key of, and a run with no such account goes to the
@@ -3210,6 +3219,42 @@ def board_counts(db, mapname, track, leg, style, base=None, name=""):
     return counts
 
 
+def noev_reasons(db, cands):
+    """P1699: {runid: why} for (runid, submitted, plat) WOS top-10 candidates whose evidence is missing -- "receipt"
+    (none was read, or the run has no id), "view" (no view file uploaded) or "journal" (a Windows run's input journal
+    never arrived). A run the receipt reader has not passed yet, or before NOEV_SINCE, is not judged."""
+    cands = [c for c in cands if c[1] >= NOEV_SINCE]
+    if not NOEV_ON or not cands:
+        return {}
+    try:
+        row = db.execute("SELECT v FROM sweepmeta WHERE k = 'receipts_through'").fetchone()
+        cols = {r[1] for r in db.execute("PRAGMA table_info(receipts)")}
+    except sqlite3.OperationalError:
+        return {}
+    through = int(row[0]) if row else 0
+    if not through or not {"angles", "journal"} <= cols:
+        return {}               # the reader has not run on this box: nothing can be called missing
+    ids = sorted({c[0] for c in cands if c[0] not in ("", "-")})
+    got = {}
+    for i in range(0, len(ids), 500):
+        part = ids[i:i + 500]
+        for r in db.execute("SELECT runid, angles, journal FROM receipts WHERE runid IN (%s)"
+                            % ",".join("?" * len(part)), part):
+            got[r[0]] = (r[1], r[2])
+    out = {}
+    for runid, submitted, plat in cands:
+        if through < submitted + NOEV_MARGIN:
+            continue
+        rc = got.get(runid) if runid not in ("", "-") else None
+        if rc is None:
+            out[runid] = "receipt"
+        elif not rc[0]:
+            out[runid] = "view"
+        elif not plat and rc[1] == "ABSENT":
+            out[runid] = "journal"
+    return out
+
+
 def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None, name=""):
     """One board page in BOARD_ORDER, as /api/board's row dicts (`ver` last)."""
     rows = []
@@ -3242,7 +3287,7 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None, n
         where, args = ("r.tier=?", (tier,))
     rank = "ROW_NUMBER() OVER (ORDER BY " + BOARD_ORDER + ") AS board_rank, " if name else ""
     query = ("SELECT " + rank + "r.rowid, r.momdemo, r.player, r.name, r.ticks, r.tickrate, r.millis, r.flags,"
-            "       r.submitted, r.replay_id, r.tier AS rtier, r.map AS rmap, r.plat, r.pad, "
+            "       r.submitted, r.replay_id, r.tier AS rtier, r.map AS rmap, r.plat, r.pad, r.runid, r.style AS rstyle, "
             + _PARENT_SQL + " AS prun, "
             + VER_SQL + " AS ver"
             "  FROM runs r"
@@ -3259,7 +3304,8 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None, n
     else:
         query += " ORDER BY " + BOARD_ORDER
     query += " LIMIT ? OFFSET ?"
-    for i, row in enumerate(db.execute(query, qargs + (limit, offset)).fetchall()):
+    fetched = db.execute(query, qargs + (limit, offset)).fetchall()
+    for i, row in enumerate(fetched):
         rows.append({
             "r": row["board_rank"] if name else offset + i + 1,
             "player": row["player"],
@@ -3306,6 +3352,26 @@ def board_rows(db, mapname, track, leg, tier, style, limit, offset, base=None, n
             token = momrequest.handle(row)
             if token:
                 rows[-1]["get"] = token
+    # P1699: a WOS top-10 main-course or bonus run whose evidence never arrived (noev_reasons). On a combined board a
+    # WOS row's place there bounds its WOS rank from above; past 10 the rank is counted on the board's index.
+    if style != STYLE_TAS and leg == 0 and (tier == TIER_RANKED or combined) and rows:
+        cands = []
+        for out, row in zip(rows, fetched):
+            if row["rtier"] != TIER_RANKED or row["submitted"] < NOEV_SINCE:
+                continue
+            rk = out["r"]
+            if combined and rk > 10:
+                rk = 1 + db.execute(
+                    "SELECT COUNT(*) FROM runs WHERE map=? AND track=? AND leg=? AND tier=? AND style=?"
+                    " AND (millis, submitted, player) < (?, ?, ?)",
+                    (row["rmap"], track, leg, TIER_RANKED, style,
+                     row["millis"], row["submitted"], row["player"])).fetchone()[0]
+            if rk <= 10:
+                cands.append((row["runid"], row["submitted"], row["plat"], out))
+        why = noev_reasons(db, [c[:3] for c in cands])
+        for runid, _sub, _plat, out in cands:
+            if runid in why:
+                out["noev"] = why[runid]
     return rows
 
 

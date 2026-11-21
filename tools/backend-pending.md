@@ -7,6 +7,12 @@ CURRENT = cd1965f1 (root /srv/nvme/agent-work/gen1674-20261121-e3; kit FTESurf-p
 pins native fteqw-svarm64 1753f9d4 (lobby engine patch-1683, swapped 01:38Z), and keeps the consumer's 900 s
 `systemctl start` (its drop-in will have 18 ExecStartPre blocks, ~280 s; or the owner prunes retired blocks).
 
+## P1699 "no evidence" mark -- READY for the NEXT generation, switched OFF (worldofsurf-47)
+surfd/surfd.py (noev_reasons, board_rows' `noev`), web/board.js + board.css; the lobby QC (cl_online/cl_scores) shows
+it once the JSON carries it. Leave SURFD_NOEV unset until top-10 evidence uploads are reliable (21 Nov, live db: of
+239 WOS main/bonus rows from 14 days, 33 had no receipt, 167 no view, 188 Windows rows no journal; 13 complete).
+Check: surfd/test_noev.py; live, /api/board rows carry no `noev` while the switch is off.
+
 ## P1697 top-10 review page -- READY for the NEXT generation (worldofsurf-47)
 surfd/admin.py (list_top10, rec_startlag, /admin/top10, /admin/api/top10), surfd/recplot.py (the `startlag` record into
 the admin cert), templates/admin_top10.html (new), admin_run.html (start lag row), the "Top 10" nav link in admin.html,

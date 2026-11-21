@@ -60,6 +60,10 @@
   var PLAT_TIP = 'Linux: Not mouse verified';
   // P1694: surfd's `pad` (the run used a controller): light fire red, over Linux's sky blue.
   var PAD_TIP = 'Controller';
+  // P1699: what surfd's `noev` word means on a WOS top-10 run.
+  var NOEV_TIP = { receipt: 'No evidence: the run\'s receipt was never read',
+                   view: 'No evidence: the run\'s view file was never uploaded',
+                   journal: 'No evidence: the run\'s input journal never arrived' };
   function markOf(o) { return o.pad ? ' pad' : (o.plat > 0 ? ' linux' : ''); }
   function markTip(o) {
     return [o.pad ? PAD_TIP : '', o.plat > 0 ? PLAT_TIP : ''].filter(Boolean).join('\n');
@@ -413,6 +417,12 @@
       var who = el('td', 'name');
       if (r.av) { who.appendChild(avatar(r.who)); }
       who.appendChild(link('plink', '#p=' + r.who, plain(r.name)));
+      // P1699: a WOS top-10 run whose evidence never arrived
+      if (r.noev) {
+        var ne = el('span', 'noev', 'no evidence');
+        ne.title = NOEV_TIP[r.noev] || NOEV_TIP.receipt;
+        who.appendChild(ne);
+      }
       // P1569: a run continued from other players' shared saves: "+N", every runner on hover.
       if (r.helpers && r.helpers.length) {
         var plus = el('span', 'helped', ' +' + r.helpers.length);

@@ -1,5 +1,15 @@
 # BACKLOG.md
 
+## P1699 "no evidence" mark -- before SURFD_NOEV=1 (21 Nov, worldofsurf-47)
+- Live db, 21 Nov: of 239 WOS main/bonus rows from the previous 14 days (all of them in a top 10), 33 had no receipt,
+  167 no view file and 188 Windows rows no input journal; 13 were complete. The mark would cover almost everyone.
+- Views: rec_upload defaults on, but the client uploads only with the online terms accepted, fs_ul >= 1 and a free
+  slot (one upload at a time; a run finishing during another's upload is never asked again; staged files cleared at
+  map load). Find which of these loses most views, then re-ask a top-10 run's client until its view lands.
+- Journals: rec_hid_upload is an opt-in box on the terms screen (pre-ticked only for players who had not accepted
+  yet), so most Windows players never send one. Making it the default is the owner's call (it is raw input timing).
+- A stage row is not judged (its run may have ended without a receipt); runs before NOEV_SINCE are not judged.
+
 ## P1694 controller tag -- what it leaves (21 Nov, worldofsurf-6f)
 - Deploy order: surfd's next generation before the client release (an older surfd drops `pad=1`; no backfill -- a
   one-off `_rec_finish_pad` pass over replays with files could add one). Lobby QC may go first. Set sv_rank_padcount 1
