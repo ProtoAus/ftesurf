@@ -84,7 +84,7 @@ def shade(dx, dy, dz):
     col = np.where((dz >= 0)[..., None], sky, below)
 
     # cloud layer: a plane above the eye, so clouds flatten and shrink toward the horizon
-    h = 1.0 / (dz + 0.12)
+    h = 1.0 / np.maximum(dz + 0.12, 1e-3)               # below -0.12 the layer is invisible (alpha 0); keep it finite
     px, py = dx * h * 1.1, dy * h * 1.1
     dens, n = clouds(px, py)
     _, n_sun = clouds(px + sun[0] * 0.05, py + sun[1] * 0.05)

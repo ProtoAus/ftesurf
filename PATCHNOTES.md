@@ -22,7 +22,7 @@
 ## next
 
 ### P1695 A sky where a map's own is missing
-- A Half-Life map whose sky could not be found now shows the Half-Life desert sky instead of a grey one, and so does a Half-Life map that names no sky, as in Half-Life itself.
+- A Half-Life map whose sky could not be found now shows Half-Life's desert sky instead of another game's sky (or black), and so does a Half-Life map that names no sky, as in Half-Life itself.
 - With neither Half-Life, Momentum nor Half-Life 2 installed, a map whose sky is missing now shows World of Surf's own blue sky instead of black.
 
 ### P1693 Jargon finds a run to follow
@@ -36,7 +36,8 @@
 - In ranked runs one key press makes one button press: a press made by a script, an alias, a wait or another program makes the run unranked, and the game says why. Normal keys, wheel and gamepad are fine. Comes with the next update.
 
 ### P1691 Discord shows what you are playing
-- With Discord running, your Discord profile shows World of Surf with the map you are on, its picture, your stage and your run time. Type cl_discord 0 in the console to hide it. Maps the game does not know show as a custom map, and watching someone shows as spectating.
+- With Discord running, your Discord profile shows World of Surf with the map you are on, its picture, your stage and your run time. Type cl_discord 0 in the console to hide it.
+- Maps the game does not know show as a custom map, and watching someone shows as spectating.
 
 ### P1640 Upload your own TAS runs
 - TAS runs made with any tool, bot or fork can be uploaded at play.proto.bar/tasup by signing in with a Steam account linked to World of Surf.
@@ -114,7 +115,7 @@
 
 ### P1669 Every Half-Life map can be downloaded
 - All 1308 Half-Life (GoldSrc) maps can now be downloaded and played, including 385 that were left out because some of their files could not be found, or because they are not bhop or kz maps.
-- A map with missing files shows a red "warning": hover over it to see what is missing (its sky, textures, models or sounds). Missing textures draw dark, and a stand-in sky draws in place of a missing one.
+- A map with missing files shows a red "warning": hover over it to see what is missing (its sky, textures, models or sounds). Missing textures draw dark, and a stand-in sky replaces a missing one.
 
 ## 0.1.53 2026-11-21
 
