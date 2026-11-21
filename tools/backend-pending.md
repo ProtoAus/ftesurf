@@ -1,5 +1,12 @@
 # Backend handoff delivered together — 10 November 2026 UTC
 
+## 21 Nov 2026 01:36Z: gen1674 (P1674) LIVE -- the base for the NEXT generation (tools/p1672-delivery.md)
+Primary cd1965f1 = gen1650's files + party_lobbies/surfd/tournament_pool/tournament_rules at main 9ccec5dc (pool keeps
+one build per map family; tournament standings on GET /api/tournament-lobbies?stats=1). The next generation takes
+CURRENT = cd1965f1 (root /srv/nvme/agent-work/gen1674-20261121-e3; kit FTESurf-private/worktrees/gen1674-20261121-e3),
+pins native fteqw-svarm64 1753f9d4 (lobby engine patch-1683, swapped 01:38Z), and keeps the consumer's 900 s
+`systemctl start` (its drop-in will have 18 ExecStartPre blocks, ~280 s; or the owner prunes retired blocks).
+
 ## P1671 pending: simcheck reads current (REC 14) recordings -- NEXT generation (queued 21 Nov, worldofsurf-6f)
 - Pin tools/census/recsim.py at or after the P1671 commit in SURFD_TOOLS. Effect: the stored, never-acted-on
   similarity scores start covering lobby runs from 10 Nov on (REC 14); no player-visible change. The surfd similarity

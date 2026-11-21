@@ -3,7 +3,17 @@
 ## 0.1.54 release -- PUBLISHED 21 Nov 01:32Z (record: tools/release-0.1.54.md); owner check PENDING
 - 26 patches (P1640-P1695), and the first new engine since 0.1.52: the in-game download and the red map warning
   (P1669/P1670), the script guard's client half (P1646), Discord presence, GoldSrc mode fixes, the stand-in skies.
-- Your installs update from the game or the launcher as usual. The lobbies get the matching QC from worldofsurf-42.
+- Your installs update from the game or the launcher as usual. The lobbies run its QC since 01:38Z (with the patch-1683 lobby engine).
+
+## P1672-P1674 -- tournaments: your 21 Nov list (worldofsurf-e3/-42) -- LIVE (lobbies, backend gen1674, 0.1.54)
+1. Tournament tab, Leaderboard (beside Refresh): you are #1 at 1031 with 2 wins (Markbeaton54 969); your row stays
+   pinned. Open rooms flips back. The four bubbles under the room list are the same size.
+2. Make a room: seats and spectators show Steam pictures; a lobby chat line says you opened a tournament room.
+3. Draft: no map appears twice (surf_x and surf_x_css): the Momentum build when it qualifies. Pool totals: surf 639.
+4. In a match: you see the others; holding jump while held does not bounce; the winner line and the out list do not
+   overlap; a map's own centre text waits until the tournament text is gone. After it: no "vote: vote cancelled" spam.
+5. ahop_coast (any lobby, new engine patch-1683): the metal ladder by the cliff climbs to the top.
+6. Story (P1681, live 01:42Z): silver = group 6, gold = group 4.
 
 ## P1695 -- a sky where a map's own is missing (worldofsurf-9e, 21 Nov) -- in 0.1.54
 1. Download and play bhop_hellokapink_gs (its own sky is missing): the sky is Half-Life's desert (blue, a red rock
