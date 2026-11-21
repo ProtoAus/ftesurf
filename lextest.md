@@ -1,5 +1,12 @@
 # lextest.md — things waiting on a human
 
+## P1695 -- a sky where a map's own is missing (worldofsurf-9e, 21 Nov) -- in 0.1.54
+1. Download and play bhop_hellokapink_gs (its own sky is missing): the sky is Half-Life's desert (blue, a red rock
+   butte), not Momentum's grey one. In Maps, hover its row: the tooltip says "a stand-in sky replaces the missing one".
+2. kz_bhop_gs names no sky: it draws desert too. Type `sky` in the console: it names the sky it is drawing.
+3. Our own sky shows only with none of Half-Life, Momentum and HL2 installed. To see it anyway: `r_skybox wos_day`,
+   then `r_skybox ""` to go back.
+
 ## P1693 -- Jargon finds a run to follow (root FTESurf-worktrees/jargondl-20261121-a03)
 1. surf_sandtrap2, `!b 4`, open the TAS menu: Course reads Bonus 4. Click "Download the top runs of Bonus 4": within a
    few seconds Guide run shows agentflwrs 7.83s and the whole panel appears (route, Arm Bonus 4).
