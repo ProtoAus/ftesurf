@@ -134,6 +134,10 @@ void() Ropes_LoadForMap =
 		e.rope_sag = sag;
 		e.rope_mid = (p0 + p1) * 0.5 - '0 0 1' * sag * 0.5;
 		e.rope_rad = d * 0.5 + sag;
+		// P1698: linked over the span and its sag, for Scene_InPVS
+		setorigin(e, e.rope_mid);
+		setsize(e, [min(p0_x, p1_x), min(p0_y, p1_y), min(p0_z, p1_z) - sag] - e.rope_mid - '1 1 1' * width,
+		        [max(p0_x, p1_x), max(p0_y, p1_y), max(p0_z, p1_z)] - e.rope_mid + '1 1 1' * width);
 		// c_rope.cpp:1756-1759: 4/TextureScale pixels a unit of rope, over the texture's height.
 		th = drawgetimagesize(e.rope_mat) * '0 1 0';
 		if (th <= 0)
@@ -181,6 +185,8 @@ void() Ropes_Draw =
 		if (d * fwd + e.rope_rad < dl * 0.17)
 			continue;               // outside an 80-degree cone round the view
 		if (maxd > 0 && dl > maxd + e.rope_rad)
+			continue;
+		if (!Scene_InPVS(e, TRUE))       // P1698: Source culls ropes by the PVS; the sky is a hole now
 			continue;
 		n = e.rope_n;
 		step = (dl > 2048 + e.rope_rad) ? 2 : 1;

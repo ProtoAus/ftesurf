@@ -114,6 +114,7 @@
 .float  pb_rstate, pb_rtrack, pb_rflags, pb_rticks;
 .entity pb_rcell;           // Patch 744: the cell Body_Eval drew from
 .float  pb_trailok, pb_duck;
+.float  pb_pvst;                // P1698: cltime this body was last in the view's PVS (Scene_InPVS)
 .float  pb_rx, pb_rx0t, pb_tks, pb_gapn, pb_reseed, pb_under, pb_frames, pb_latef;
 
 entity pb_list;
@@ -205,6 +206,10 @@ float() Body_Predraw =
 	}
 	setorigin(self, org);
 	self.angles = [0, self.pb_rang_y, 0];
+	// P1698: the engine culls a body outside the view's PVS on a Source map. Its trail is fed only while it is in
+	// view, so what was drawn fades by age and nothing grows where you cannot see (another stage, behind your sky).
+	if (Scene_InPVS(self, FALSE))
+		self.pb_pvst = cltime;
 
 	if (self.pb_lf & PBL_CUSTOM)
 		rgb = self.pb_rgb * (1 / 255);
@@ -234,14 +239,20 @@ float() Body_Predraw =
 	if (self.pb_lf & PBL_TRAIL)
 	{
 		if (self.pb_slot >= 1)
-			PTrail_Feed(PT_BODY + self.pb_slot - 1, org, (!self.pb_trailok || self.pb_snap),
-			            Av_PaletteRGB(self.pb_tc), self.pb_tlife, pb_cv_fx);
+		{
+			if (cltime == self.pb_pvst)
+				PTrail_Feed(PT_BODY + self.pb_slot - 1, org, (!self.pb_trailok || self.pb_snap),
+				            Av_PaletteRGB(self.pb_tc), self.pb_tlife, pb_cv_fx);
+			else
+				PTrail_Cut(PT_BODY + self.pb_slot - 1);
+		}
 		self.pb_trailok = TRUE;
 	}
 	else
 		self.pb_trailok = FALSE;
 	kit = Inv_Public(self.pb_slot - 1);
-	Inv_Draw(self, kit_y, kit_z, duck == 1, Inv_SantaFlag(self.pb_slot - 1));
+	if (cltime == self.pb_pvst)         // P1698: no hat, crown or glow for a body the engine culls
+		Inv_Draw(self, kit_y, kit_z, duck == 1, Inv_SantaFlag(self.pb_slot - 1));
 	return PREDRAW_AUTOADD;
 };
 

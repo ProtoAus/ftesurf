@@ -173,6 +173,7 @@ vector *em_vel;                 // base velocity, passed as pointparticles' dir
 float  *em_jit;                 // extra omnidirectional speed, per particle
 float  *em_rad;                 // cull radius, precomputed
 float  *em_dist;                // the entity's own DistMax
+entity *em_probe;               // P1698: linked over em_mid/em_rad, for Scene_InPVS
 float  *em_rate;                // EMISSIONS per second (not particles)
 float  *em_burst;               // particles per emission -- 1 except for sparks
 float  *em_eff;                 // index into em_fx; EK_PSYS: the handle itself;
@@ -243,6 +244,7 @@ void() Emit_Alloc =
 	em_kind  = memalloc(sizeof(float) * EM_MAX);
 	em_acc   = memalloc(sizeof(float) * EM_MAX);
 	em_want  = memalloc(sizeof(float) * EM_MAX);
+	em_probe = memalloc(sizeof(entity) * EM_MAX);
 	em_lit   = memalloc(sizeof(float) * EM_MAX);
 	em_ltacc = memalloc(sizeof(float) * EM_MAX);
 	em_drop  = memalloc(sizeof(float) * EM_MAX);
@@ -509,6 +511,7 @@ vector rp_fi[RP_MAX];           // fade in, x..y, fractions of the life
 vector rp_fo[RP_MAX];           // fade out, x..y
 float  ri_type[RI_MAX];
 vector ri_org[RI_MAX];
+entity ri_probe[RI_MAX];                // P1698: linked over the rope's fall, for checkpvs
 
 // P1263: shell orbits -- tools/pcf.py's `orbit` lines (translate_orbit), stepped and drawn by
 // Emit_OrbitFrame.  surf_fantasy: ring01-03, shells of 512 about the laser rings.
@@ -529,6 +532,7 @@ float  orb_n;
 float  orb_zoned;
 float  ori_type[OI_MAX], ori_stop[OI_MAX], ori_acc[OI_MAX], ori_live[OI_MAX];
 vector ori_org[OI_MAX], ori_axis[OI_MAX];
+entity ori_probe[OI_MAX];               // P1698: linked over the orbit's clamp radius, for Scene_InPVS
 string ori_eff[OI_MAX];          // the placing system's effect_name, which a server Start/Stop names
 float  ori_n;
 // OP_MAX long, memalloc'd at the first orbit line: as arrays they took the globals past 16 bits.
@@ -779,6 +783,7 @@ float(float j, float f) Emit_RopeAlpha =
 void(string effname, vector org) Emit_RopeAt =
 {
 	local float j;
+	local vector ext;
 
 	for (j = 0; j < rp_n; j = j + 1)
 		if (rp_parent[j] == effname || (rp_parent[j] == "" && rp_name[j] == effname))
@@ -790,6 +795,12 @@ void(string effname, vector org) Emit_RopeAt =
 			}
 			ri_type[ri_n] = j;
 			ri_org[ri_n] = org + rp_ofs[j];
+			if (!ri_probe[ri_n])
+				ri_probe[ri_n] = spawn();
+			setorigin(ri_probe[ri_n], ri_org[ri_n]);
+			ext = rp_grav[j] * (0.5 * rp_life[j] * rp_life[j]);
+			setsize(ri_probe[ri_n], [min(ext_x, 0), min(ext_y, 0), min(ext_z, 0)] - '1 1 1' * rp_width[j],
+			        [max(ext_x, 0), max(ext_y, 0), max(ext_z, 0)] + '1 1 1' * rp_width[j]);
 			ri_n = ri_n + 1;
 			dprint(sprintf("emit: rope %s at %v, %g wide\n", rp_name[j], org + rp_ofs[j], rp_width[j]));
 		}
@@ -805,6 +816,8 @@ void() Emit_RopeFrame =
 	eye = getproperty(VF_ORIGIN);
 	for (i = 0; i < ri_n; i = i + 1)
 	{
+		if (!Scene_InPVS(ri_probe[i], TRUE))   // P1698
+			continue;
 		j = ri_type[i];
 		shaderforname(rp_shader[j], rp_body[j]);
 		lf = rp_life[j];
@@ -944,6 +957,28 @@ float(float j, float f) Emit_OrbitAlpha =
   (Source's m_flPreviousDt), else alternating 14/16 ms frames change the speed 1.79x; a paused
   frame (0) steps nothing and only draws.
 */
+float(float i) Emit_OrbitInPVS =
+{
+	local entity p;
+	local vector c;
+
+	p = ori_probe[i];
+	if (!p)
+	{
+		p = spawn();
+		p.classname = "orbit_pvs";
+		ori_probe[i] = p;
+	}
+	c = orb_clamp[ori_type[i]];
+	if (p.origin != ori_org[i] || p.maxs_x != c_y + 8)
+	{
+		setorigin(p, ori_org[i]);
+		setsize(p, '-1 -1 -1' * (c_y + 8), '1 1 1' * (c_y + 8));
+		p.scene_pvsep = 0;
+	}
+	return Scene_InPVS(p, TRUE);
+};
+
 void() Emit_OrbitFrame =
 {
 	local float i, j, k, s, nsub, h, dt, d, u, lf, keep, ratio;
@@ -1046,6 +1081,8 @@ void() Emit_OrbitFrame =
 		if (ofs * fwd < -orp_rad[k])               // behind the eye
 			continue;
 		if (orb_dist[j] > 0 && vlen(ofs) > orb_dist[j])
+			continue;
+		if (!Emit_OrbitInPVS(orp_inst[k]))  // P1698
 			continue;
 		col = orp_col[k];
 		R_BeginPolygon(orb_shader[j], DRAWFLAG_TWOSIDED, FALSE);
@@ -4722,6 +4759,28 @@ void(float i, vector v) Emit_PsysSpawn =
 #define EM_BURST_FRAME  128     // P1416: particles one burst places a frame (secretroom fires 2000)
 #define EM_BURST_TOTAL  1024    //   and all bursts together
 
+// P1698: Source culls particle systems by the PVS; with the sky a hole another stage's showed through it.
+// A probe linked over the emitter's volume, relinked only if that changes.
+float(float i) Emit_InPVS =
+{
+	local entity p;
+
+	p = em_probe[i];
+	if (!p)
+	{
+		p = spawn();
+		p.classname = "emit_pvs";
+		em_probe[i] = p;
+	}
+	if (p.origin != em_mid[i] || p.maxs_x != em_rad[i])
+	{
+		setorigin(p, em_mid[i]);
+		setsize(p, '-1 -1 -1' * em_rad[i], '1 1 1' * em_rad[i]);
+		p.scene_pvsep = 0;
+	}
+	return Scene_InPVS(p, TRUE);
+};
+
 void() Emit_Frame =
 {
 	local float i, n, ft, thr, budget, dscale, d, lights, lit, k, mdem, under;
@@ -4928,6 +4987,11 @@ void() Emit_Frame =
 				continue;
 			}
 		}
+		if (!Emit_InPVS(i))              // P1698
+		{
+			i = i + 1;
+			continue;
+		}
 		em_want[i] = em_rate[i];
 		// A sheet fire reaches as far as Source's and thins on the way, so the
 		// hundred in range on surf_anubis do not cost the near ones their flame.
@@ -5123,6 +5187,8 @@ void() Emit_Frame =
 			if (dscale > 0)
 			if (vlen(em_mid[i] - eye) - em_rad[i] > em_dist[i] * dscale)
 				continue;
+			if (!Emit_InPVS(i))          // P1698: kept pending until it is in view
+				continue;
 			n = floor(em_bcnt[i]);
 			lit = lit - n;
 			em_bplaced[i] = 1;
@@ -5149,6 +5215,11 @@ void() Emit_Frame =
 		}
 		if (dscale > 0)
 		if (vlen(em_mid[i] - eye) - em_rad[i] > em_dist[i] * dscale)
+		{
+			em_bpend[i] = 0;
+			continue;
+		}
+		if (!Emit_InPVS(i))              // P1698: out of view, as out of range
 		{
 			em_bpend[i] = 0;
 			continue;
