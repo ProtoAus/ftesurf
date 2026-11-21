@@ -32,41 +32,48 @@ TASUPD_RELEASES = '/opt/ftesurf-tasupd'
 BACKUP_DIRS = ('/srv/nvme/surfd', '/srv/nvme/surfd/data', '/srv/nvme/ftesurf-server', '/srv/nvme/ftesurf-server/game',
                '/srv/nvme/ftesurf-server/game/ftesurf', '/srv/nvme/ftesurf-server/game/tools', '/srv/nvme/ftesurf-server/fteqw',
                '/srv/nvme/ftesurf-site') + tuple(sorted(glob.glob('/srv/nvme/ftesurf-site/releases/*')))
-# Where live configuration lives; logs, bytecode caches and backup copies only name dead paths (old tracebacks).
-CONFIG_TREES = ('/etc/systemd', '/etc/nginx', '/etc/cron.d', '/srv/nvme/surfd', os.path.expanduser('~/.config/systemd'))
+# Where live configuration lives (logs, bytecode and backup copies only name dead paths: old tracebacks). The surfd
+# home is read one level deep: below it are fixtures and the data tree (a whole-tree read held 4.8 GB, OOM, 21 Nov).
+CONFIG_TREES = ('/etc/systemd', '/etc/nginx', '/etc/cron.d', os.path.expanduser('~/.config/systemd'))
+CONFIG_FLAT = ('/srv/nvme/surfd',)
 CONFIG_FILES = ('/usr/local/sbin/ftesurf-namespace-observer/policy.json',)
-SKIP_TREES = ('/srv/nvme/surfd/data',)
+MEMORY = 1 << 30      # RLIMIT_AS: a MemoryError here, never the OOM killer choosing among the live services
 
 BACKUP = re.compile(r'^(?P<name>.+?)(?:\.pre(?=[0-9]|-)|\.bak(?=$|[0-9]|-|\.)|-pre(?=[0-9]))')
 COMPANION = re.compile(r'-(?:shm|wal|journal)$')
 AW_NAME = re.compile(r'/srv/nvme/agent-work/([A-Za-z0-9._-]+)')
+PATH = re.compile(r'/srv/nvme/[A-Za-z0-9._@+=/-]+')
 GEN = re.compile(r'^gen([0-9]+)-')
 COMMIT = re.compile(r'[0-9a-f]{7,40}')
 
 
-def config_text():
-    """Every live configuration file's text, plus the crontab and the live generation records it names."""
-    parts = []
+def config_refs():
+    """Every /srv/nvme path the live configuration names (files read one at a time; only the paths are kept)."""
+    refs = set()
     def read(p):
         try:
             if os.path.isfile(p) and not os.path.islink(p) and os.path.getsize(p) < 4 << 20:
-                with open(p, errors='replace') as f: parts.append(f.read())
+                with open(p, errors='replace') as f: scan(f.read())
         except OSError: pass
+    def scan(text): refs.update(m.rstrip('/.') for m in PATH.findall(text))
     for top in CONFIG_TREES:
         for dp, dn, fn in os.walk(top):
-            if dp.startswith(SKIP_TREES): dn[:] = []; continue
             dn[:] = [d for d in dn if d not in ('logs', '__pycache__')]
             for f in fn:
-                if f.endswith('.log') or BACKUP.match(f): continue
-                read(os.path.join(dp, f))
+                if not f.endswith('.log') and not BACKUP.match(f): read(os.path.join(dp, f))
+    for top in CONFIG_FLAT:
+        try: names = os.listdir(top)
+        except OSError: names = []
+        for f in names:
+            if not f.endswith('.log') and not BACKUP.match(f): read(os.path.join(top, f))
     for p in CONFIG_FILES: read(p)
-    try: parts.append(subprocess.run(['crontab', '-l'], capture_output=True, text=True, timeout=30).stdout)
+    try: scan(subprocess.run(['crontab', '-l'], capture_output=True, text=True, timeout=30).stdout)
     except (OSError, subprocess.SubprocessError): pass
-    for root in sorted(set(AW_NAME.findall('\n'.join(parts)))):
+    for root in sorted({m.group(1) for r in list(refs) for m in [AW_NAME.match(r)] if m}):
         for p in glob.glob('%s/%s/backend/*/control/manifest.json' % (AGENT_WORK, root)) + \
                  glob.glob('%s/%s/backend/*/generation-identity.json' % (AGENT_WORK, root)):
             read(p)
-    return '\n'.join(parts)
+    return refs
 
 
 def in_use():
@@ -90,13 +97,13 @@ def in_use():
     return used
 
 
-def named(path, text, used):
-    """True when the configuration names this path, or a process uses it or anything under it."""
-    if path in text or path in used: return True
-    return any(u.startswith(path + '/') for u in used)
+def named(path, refs, used):
+    """True when the configuration or a process names this path or anything under it."""
+    under = path + '/'
+    return path in refs or path in used or any(r.startswith(under) for r in refs) or any(u.startswith(under) for u in used)
 
 
-def backup_plan(text, used):
+def backup_plan(refs, used):
     """(remove, keep) lists of backup copies past the newest KEEP of each (directory, name)."""
     remove, kept = [], []
     for d in BACKUP_DIRS:
@@ -112,7 +119,7 @@ def backup_plan(text, used):
             newest = sorted(copies, key=lambda c: max(os.lstat(p).st_mtime for p in copies[c]), reverse=True)
             for i, c in enumerate(newest):
                 files = copies[c]
-                if i < KEEP or any(named(p, text, used) for p in files): kept.extend(files)
+                if i < KEEP or any(named(p, refs, used) for p in files): kept.extend(files)
                 else: remove.extend(files)
     return remove, kept
 
@@ -127,9 +134,9 @@ def recent(root, cut):
     return False
 
 
-def root_plan(text, used, now):
+def root_plan(refs, used, now):
     """(remove, keep) task roots in AGENT_WORK; keep carries the reason."""
-    refd = set(AW_NAME.findall(text)) | {m.group(1) for u in used for m in [AW_NAME.match(u)] if m}
+    refd = {m.group(1) for x in refs | used for m in [AW_NAME.match(x)] if m}
     try: names = sorted(os.listdir(AGENT_WORK))
     except OSError: return [], []
     gens = sorted((n for n in names if GEN.match(n)), key=lambda n: int(GEN.match(n).group(1)), reverse=True)[:KEEP]
@@ -146,7 +153,7 @@ def root_plan(text, used, now):
     return remove, kept
 
 
-def checkout_plan(text, used):
+def checkout_plan(refs, used):
     try: names = [n for n in os.listdir(OPS) if n.startswith('tasupd-src-')]
     except OSError: return []
     try: releases = os.listdir(TASUPD_RELEASES)
@@ -157,7 +164,7 @@ def checkout_plan(text, used):
     for i, p in enumerate(paths):
         c = p.rsplit('tasupd-src-', 1)[1]
         live = COMMIT.fullmatch(c) and any(r.startswith(c) for r in releases)
-        if i >= KEEP and not live and not named(p, text, used): out.append(p)
+        if i >= KEEP and not live and not named(p, refs, used): out.append(p)
     return out
 
 
@@ -177,10 +184,10 @@ def main(argv=None):
     ap.add_argument('--log', help='append the summary here (kept to its last 2000 lines)')
     a = ap.parse_args(argv)
     now = time.time()
-    text, used = config_text(), in_use()
-    files, _ = backup_plan(text, used)
-    roots, _ = root_plan(text, used, now)
-    checkouts = checkout_plan(text, used)
+    refs, used = config_refs(), in_use()
+    files, _ = backup_plan(refs, used)
+    roots, _ = root_plan(refs, used, now)
+    checkouts = checkout_plan(refs, used)
     size = 0
     for p in files: size += os.lstat(p).st_size
     lines = ['%s %s: %d backup copies (%.1f MB), %d task roots, %d checkouts' % (
@@ -207,4 +214,6 @@ def main(argv=None):
 
 
 if __name__ == '__main__':
+    import resource
+    resource.setrlimit(resource.RLIMIT_AS, (MEMORY, MEMORY))
     sys.exit(main())

@@ -18,13 +18,13 @@ DAY = 86400
 class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); d = Path(self.tmp.name)
-        self.saved = {k: getattr(r, k) for k in ('AGENT_WORK', 'OPS', 'TASUPD_RELEASES', 'BACKUP_DIRS', 'config_text', 'in_use')}
+        self.saved = {k: getattr(r, k) for k in ('AGENT_WORK', 'OPS', 'TASUPD_RELEASES', 'BACKUP_DIRS', 'config_refs', 'in_use')}
         self.data, self.aw, self.ops, self.rel = d / 'data', d / 'agent-work', d / 'ops', d / 'opt-tasupd'
         for p in (self.data, self.aw, self.ops, self.rel): p.mkdir()
         r.BACKUP_DIRS, r.AGENT_WORK, r.OPS, r.TASUPD_RELEASES = (str(self.data),), str(self.aw), str(self.ops), str(self.rel)
         r.AW_NAME = __import__('re').compile(__import__('re').escape(str(self.aw)) + r'/([A-Za-z0-9._-]+)')
-        self.text, self.used = '', set()
-        r.config_text = lambda: self.text; r.in_use = lambda: self.used
+        self.refs, self.used = set(), set()
+        r.config_refs = lambda: self.refs; r.in_use = lambda: self.used
         self.now = time.time()
 
     def tearDown(self):
@@ -57,7 +57,7 @@ class Backups(Base):
                self.file(d / 'receipts-pre1580r-z.jsonl', 4)]
         two = [self.file(d / 'ksfgrab.py.pre996-q', 40), self.file(d / 'ksfgrab.py.pre-906bfd78-w', 39)]
         plain = [self.file(d / n, 50) for n in ('prefs.cfg', 'x.prefs', 'unit.prev', 'csprogs.dat', 'notes.backup')]
-        remove, kept = r.backup_plan('', set())
+        remove, kept = r.backup_plan(set(), set())
         self.assertEqual(sorted(remove), sorted(oldest + rec[:1]))
         for p in keep + rec[1:] + two: self.assertIn(p, kept)
         for p in plain: self.assertNotIn(p, remove + kept)
@@ -66,14 +66,14 @@ class Backups(Base):
         d = self.data
         a, b = self.file(d / 'run.sh.pre1-a', 9), self.file(d / 'run.sh.pre2-b', 8)
         self.file(d / 'run.sh.pre3-c', 2); self.file(d / 'run.sh.pre4-d', 1)
-        remove, _ = r.backup_plan('ExecStartPre=/bin/cat ' + a, {b})
+        remove, _ = r.backup_plan({a}, {b})
         self.assertEqual(remove, [])
 
     def test_a_link_is_never_a_copy(self):
         d = self.data
         target = self.file(d / 'elsewhere', 1)
         for i in range(4): os.symlink(target, d / ('fteqw-svarm64.pre%d' % i))
-        self.assertEqual(r.backup_plan('', set()), ([], []))
+        self.assertEqual(r.backup_plan(set(), set()), ([], []))
 
 
 class Roots(Base):
@@ -86,9 +86,9 @@ class Roots(Base):
         busy = self.dir(aw / 'deep', 30); self.file(aw / 'deep' / 'a' / 'b' / 'c' / 'new.txt', 1)
         running = self.dir(aw / 'pictures-coverage-d25cd9e', 30)
         os.symlink(old, aw / 'link-root')
-        self.text = 'ReadOnlyPaths=%s/state' % named
+        self.refs = {named + '/state'}
         self.used = {running + '/bin/worker.py'}
-        remove, kept = r.root_plan(self.text, self.used, self.now)
+        remove, kept = r.root_plan(self.refs, self.used, self.now)
         self.assertEqual(sorted(remove), sorted([g[2], old]))
         why = dict(kept)
         self.assertEqual(why[g[0]], 'one of the newest generations'); self.assertEqual(why[g[1]], 'one of the newest generations')
@@ -100,7 +100,7 @@ class Roots(Base):
         aw = self.aw
         for n in ('gen1674-a', 'gen1650-b'): self.dir(aw / n, 20)
         g = self.dir(aw / 'gen1603-c', 40)
-        remove, _ = r.root_plan('BindReadOnlyPaths=%s/backend' % g, set(), self.now)
+        remove, _ = r.root_plan({g + '/backend'}, set(), self.now)
         self.assertEqual(remove, [])
 
 
@@ -112,7 +112,7 @@ class Checkouts(Base):
         old = self.dir(o / 'tasupd-src-73229378', 8)
         n1, n2 = self.dir(o / 'tasupd-src-091ad1e9', 2), self.dir(o / 'tasupd-src-e5ecca2b', 1)
         self.dir(o / 'retention', 50)
-        self.assertEqual(r.checkout_plan('', set()), [old])
+        self.assertEqual(r.checkout_plan(set(), set()), [old])
 
 
 class Run(Base):
@@ -141,6 +141,31 @@ class Run(Base):
         with contextlib.redirect_stdout(io.StringIO()): r.main(['--log', str(log)])
         lines = log.read_text().splitlines()
         self.assertEqual(len(lines), 2000); self.assertIn('would remove', lines[-1])
+
+
+class Refs(Base):
+    def test_paths_are_read_from_configuration_one_file_at_a_time(self):
+        etc, home = Path(self.tmp.name) / 'etc', Path(self.tmp.name) / 'home'
+        self.file(etc / 'surfd.service.d' / '10.conf', 1,
+                  b"ReadOnlyPaths=/srv/nvme/agent-work/gen1650-x/backend/primary\nExecStartPre=/usr/bin/python3 -c \"f=['/srv/nvme/agent-work/ac-1/state', '/srv/nvme/surfd/run.sh']\\nx\"\n")
+        self.file(etc / 'logs' / 'old.conf', 1, b'/srv/nvme/agent-work/dead-1/x')
+        self.file(etc / 'a.conf.pre1-x', 1, b'/srv/nvme/agent-work/dead-2/x')
+        self.file(home / 'run.sh', 1, b'exec /srv/nvme/agent-work/gen1674-y/backend/primary/control/guard.py --x')
+        self.file(home / 'fixtures' / 'deep.json', 1, b'/srv/nvme/agent-work/dead-3/x')
+        saved = (r.CONFIG_TREES, r.CONFIG_FLAT, r.CONFIG_FILES)
+        r.CONFIG_TREES, r.CONFIG_FLAT, r.CONFIG_FILES = (str(etc),), (str(home),), ()
+        r.AW_NAME = __import__('re').compile(r'/srv/nvme/agent-work/([A-Za-z0-9._-]+)')
+        try: refs = self.saved['config_refs']()
+        finally: r.CONFIG_TREES, r.CONFIG_FLAT, r.CONFIG_FILES = saved
+        self.assertIn('/srv/nvme/agent-work/gen1650-x/backend/primary', refs)
+        self.assertIn('/srv/nvme/agent-work/ac-1/state', refs)       # stops at the quote and the literal \\n
+        self.assertIn('/srv/nvme/surfd/run.sh', refs)
+        self.assertIn('/srv/nvme/agent-work/gen1674-y/backend/primary/control/guard.py', refs)
+        for dead in ('dead-1', 'dead-2', 'dead-3'): self.assertFalse(any(dead in x for x in refs), dead)
+
+    def test_a_path_named_beneath_a_copy_or_root_protects_it(self):
+        self.assertTrue(r.named('/srv/nvme/x/a', {'/srv/nvme/x/a/b'}, set()))
+        self.assertFalse(r.named('/srv/nvme/x/a', {'/srv/nvme/x/ab'}, set()))
 
 
 class Patterns(unittest.TestCase):
