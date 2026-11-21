@@ -263,7 +263,10 @@ def checkout_plan(refs, used, mounts=frozenset()):
     for i, (_, p) in enumerate(sorted(paths, reverse=True)):
         c = p.rsplit('tasupd-src-', 1)[1]
         live = COMMIT.fullmatch(c) and any(r.startswith(c) for r in releases)
-        if i >= KEEP and not live and not named(p, refs, used) and not blocker(p, None, mounts): out.append(p)
+        if i >= KEEP and not live and not named(p, refs, used):
+            try:
+                if not blocker(p, None, mounts): out.append(p)
+            except FileNotFoundError: pass
     return out
 
 
@@ -327,6 +330,7 @@ def main(argv=None):
     for p, age in [(x, cut) for x in roots] + [(x, None) for x in checkouts]:
         try: why = blocker(p, age, mount_points())
         except FileNotFoundError: continue
+        except Unreadable as e: failed.append('%s; the rest kept' % e); break
         if why: failed.append('%s: %s (found after planning); kept' % (p, why)); continue
         remove_tree(p, failed); done += 1
     out = ['%s done: %d removed, %d problems' % (stamp(), done, len(failed))] + ['  NOT REMOVED ' + f for f in failed]

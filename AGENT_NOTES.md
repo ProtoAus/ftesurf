@@ -1,5 +1,16 @@
 # AGENT_NOTES.md
 
+## P1702 Pi backup rotation: keep the newest 2; idle task roots go (21 Nov 2026)
+Lex's rule, everywhere: keep the newest 2 backups. On the Pi, proto's daily `ftesurf-retention.timer` (17:17 UTC)
+runs tools/pi_retention.py (tools/pi-retention.md): backup copies `NAME.pre*`/`NAME.bak*`/`NAME-pre<N>*` in the surfd
+home and data, the lobby game folders and the site keep two per file (+ tasupd's two csprogs.dat.pre[0-9]*);
+`/srv/nvme/agent-work/<root>` is REMOVED after 14 days with no change (mtime or ctime) unless something live names it
+(units, drop-ins, nginx, cron, the live generation's records, a running process), it is one of the newest two
+`gen<N>-*`, or it holds a `RETAIN` file. **A Pi task root you need past 14 idle days: `touch RETAIN` in it.** It fails
+closed (unreadable configuration stops the run) and logs to /srv/nvme/ftesurf-ops/retention/retention.log. Producers
+prune their own root-owned copies: install_tasupd.py keeps two releases. A new backup scheme: name copies
+`<file>.pre<patch>-<UTC stamp>` so the stamp orders them.
+
 ## P1694 controller tag: what it changes for arms and tools (21 Nov 2026)
 
 - The usercmd cursor block now carries the controller count: cursor_screen x = in_pad_frames mod 32767 (+0.5, exact

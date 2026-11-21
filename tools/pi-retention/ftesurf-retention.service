@@ -1,0 +1,10 @@
+[Unit]
+Description=World of Surf backup rotation: keep the newest 2 (P1702; tools/pi-retention.md)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3.11 -I -B /srv/nvme/ftesurf-ops/retention/pi_retention.py --apply --log /srv/nvme/ftesurf-ops/retention/retention.log
+Nice=19
+IOSchedulingClass=idle
+MemoryMax=512M
+TimeoutStartSec=30min

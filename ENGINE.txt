@@ -1,4 +1,7 @@
 # The engine build this QuakeC requires.
+# P1702 (game tools/pi_retention.py + pi-retention/ units, install_tasupd.py; Lex 21 Nov: "I like backups and I like
+# safety, but sensible ... the last 2 at most", "ensure proper rotation"): keep-2 rotation on the Pi, daily as proto;
+# the TAS installer keeps two releases. No engine or QC change. Record: engine P1702.
 # P1703 (menu m_main.qc m_settings.qc, sh_defs.qc; surfd.py; Lex 21 Nov: "when you play online, also accept input
 # journal ... runs before this point dated, and accepted ... it should be on if you're playing on a lobby"): terms
 # tier 10 (FS_TERMS_JOURNAL) makes the input journal part of online play: no box or switch, accepting sets rec_hid 1

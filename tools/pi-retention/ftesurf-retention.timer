@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily World of Surf backup rotation (P1702)
+
+[Timer]
+# 17:17 UTC is about 04:17 in Melbourne: the quietest hour on the lobbies.
+OnCalendar=*-*-* 17:17:00 UTC
+RandomizedDelaySec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
